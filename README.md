@@ -13,21 +13,33 @@ A real-time video conferencing application built with RTCMultiConnection that su
 
 ## 🚀 Quick Start
 
-### Option 1: Direct HTML File
-1. Open `video-conference.html` in a modern web browser
-2. Allow camera and microphone permissions when prompted
-3. Click "Start Conference" to create a room or "Join Room" to join an existing one
+### Prerequisites
+- Node.js (version 12 or higher)
+- Modern web browser with WebRTC support
 
-### Option 2: PHP Server
-1. Start a PHP server in the project directory:
+### Installation & Running
+1. Clone or download this repository
+2. Open terminal/command prompt in the project directory
+3. Start the Node.js server:
    ```bash
-   php -S localhost:8000
+   npm start
    ```
-2. Open `http://localhost:8000` in your browser
+   or
+   ```bash
+   node server.js
+   ```
+4. Open your browser and navigate to `http://localhost:3000`
+5. Allow camera and microphone permissions when prompted
+6. Click "Start Conference" to create a room or "Join Room" to join an existing one
 
-### Option 3: Any Web Server
-- Place the files on any web server (Apache, Nginx, etc.)
-- Access via HTTPS (required for camera access in most browsers)
+### Alternative: Direct HTML File
+- You can also open `video-conference.html` directly in a browser
+- Note: Some features may require HTTPS for camera access
+
+### Mobile Testing
+- For mobile testing, use your computer's IP address instead of localhost
+- Example: `http://192.168.1.100:3000`
+- Ensure both devices are on the same network
 
 ## 📱 Mobile Camera Switching
 
@@ -71,6 +83,7 @@ A real-time video conferencing application built with RTCMultiConnection that su
 ## 🔧 Technical Details
 
 ### Technologies Used
+- **Node.js**: Server runtime environment
 - **RTCMultiConnection**: WebRTC library for peer-to-peer connections
 - **WebRTC**: Real-time communication protocol
 - **HTML5**: Video and audio elements
