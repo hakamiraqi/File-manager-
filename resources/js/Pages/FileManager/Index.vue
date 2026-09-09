@@ -44,6 +44,8 @@ const search = ref(props.filters.q ?? '');
 const selected = reactive({ files: new Set(), folders: new Set() });
 const fileInput = ref(null);
 const dragOver = ref(false);
+const draggedItems = ref(null); // { files: [id...], folders: [id...] } while dragging an item within the app
+const dropTargetFolderId = ref(undefined); // undefined = none, null = root breadcrumb
 
 const newFolderModal = ref(false);
 const renameTarget = ref(null);
@@ -88,11 +90,90 @@ function onFilesChosen(event) {
     event.target.value = '';
 }
 
+function isExternalFileDrag(event) {
+    return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+}
+
+function onContainerDragOver(event) {
+    if (isExternalFileDrag(event)) {
+        dragOver.value = true;
+    }
+}
+
 function onDrop(event) {
     dragOver.value = false;
     if (event.dataTransfer.files.length) {
         uploadMany(event.dataTransfer.files, props.currentFolder?.id ?? null);
     }
+}
+
+function onDragStartItem(event, type, id) {
+    const key = type === 'file' ? 'files' : 'folders';
+    const inSelection = selected[key].has(id);
+
+    draggedItems.value = inSelection
+        ? { files: [...selected.files], folders: [...selected.folders] }
+        : { files: type === 'file' ? [id] : [], folders: type === 'folder' ? [id] : [] };
+
+    event.dataTransfer.effectAllowed = 'move';
+    // Required by some browsers (notably Firefox) for the drop to fire at all.
+    event.dataTransfer.setData('text/plain', 'filenest-item');
+}
+
+function onDragEndItem() {
+    draggedItems.value = null;
+    dropTargetFolderId.value = undefined;
+}
+
+function onDragOverDropTarget(event, folderId) {
+    if (draggedItems.value) {
+        if (draggedItems.value.folders.includes(folderId)) return; // can't drop a folder onto itself
+        dropTargetFolderId.value = folderId;
+    } else if (isExternalFileDrag(event)) {
+        dropTargetFolderId.value = folderId;
+    }
+}
+
+function onDropOnTarget(event, folderId) {
+    dropTargetFolderId.value = undefined;
+
+    if (draggedItems.value) {
+        if (draggedItems.value.folders.includes(folderId)) {
+            draggedItems.value = null;
+            return;
+        }
+        moveItemsInto(draggedItems.value, folderId);
+        draggedItems.value = null;
+        return;
+    }
+
+    if (event.dataTransfer.files.length) {
+        uploadMany(event.dataTransfer.files, folderId);
+    }
+}
+
+function moveOne(url, data) {
+    return new Promise((resolve) => {
+        router.put(url, data, { preserveScroll: true, preserveState: true, onFinish: resolve });
+    });
+}
+
+async function moveItemsInto(items, targetFolderId) {
+    for (const id of items.files) {
+        const file = props.files.find((f) => f.id === id);
+        if (file && file.folder_id === targetFolderId) continue;
+        await moveOne(route('files.update', id), { folder_id: targetFolderId });
+    }
+
+    for (const id of items.folders) {
+        if (id === targetFolderId) continue;
+        const folder = props.folders.find((f) => f.id === id);
+        if (folder && folder.parent_id === targetFolderId) continue;
+        await moveOne(route('folders.update', id), { parent_id: targetFolderId });
+    }
+
+    clearSelection();
+    router.reload({ only: ['folders', 'files'] });
 }
 
 function downloadSelection() {
@@ -146,10 +227,28 @@ function uploadFromUrl() {
         <template #header>
             <div class="flex items-center gap-3">
                 <nav class="flex min-w-0 items-center gap-1 text-sm text-gray-500">
-                    <button @click="goToFolder(null)" class="shrink-0 hover:text-gray-900">ملفاتي</button>
+                    <button
+                        @click="goToFolder(null)"
+                        @dragover.prevent="onDragOverDropTarget($event, null)"
+                        @dragleave="dropTargetFolderId = undefined"
+                        @drop.prevent.stop="onDropOnTarget($event, null)"
+                        class="shrink-0 rounded px-1 hover:text-gray-900"
+                        :class="{ 'bg-[var(--accent-100)] text-[var(--accent-700)] ring-2 ring-[var(--accent-400)]': dropTargetFolderId === null }"
+                    >
+                        ملفاتي
+                    </button>
                     <template v-for="crumb in breadcrumbs" :key="crumb.id">
                         <span>/</span>
-                        <button @click="goToFolder(crumb.id)" class="truncate hover:text-gray-900">{{ crumb.name }}</button>
+                        <button
+                            @click="goToFolder(crumb.id)"
+                            @dragover.prevent="onDragOverDropTarget($event, crumb.id)"
+                            @dragleave="dropTargetFolderId = undefined"
+                            @drop.prevent.stop="onDropOnTarget($event, crumb.id)"
+                            class="truncate rounded px-1 hover:text-gray-900"
+                            :class="{ 'bg-[var(--accent-100)] text-[var(--accent-700)] ring-2 ring-[var(--accent-400)]': dropTargetFolderId === crumb.id }"
+                        >
+                            {{ crumb.name }}
+                        </button>
                     </template>
                 </nav>
                 <div class="ms-auto flex items-center gap-2">
@@ -169,7 +268,7 @@ function uploadFromUrl() {
 
         <div
             class="relative min-h-full p-6"
-            @dragover.prevent="dragOver = true"
+            @dragover.prevent="onContainerDragOver"
             @dragleave.prevent="dragOver = false"
             @drop.prevent="onDrop"
         >
@@ -236,9 +335,18 @@ function uploadFromUrl() {
                     v-for="folder in folders"
                     :key="`folder-${folder.id}`"
                     class="group relative flex cursor-pointer flex-col items-center rounded-xl border p-4 text-center hover:shadow-md"
-                    :class="selected.folders.has(folder.id) ? 'border-[var(--accent-500)] bg-[var(--accent-50)]' : 'border-gray-200 bg-white'"
+                    :class="[
+                        selected.folders.has(folder.id) ? 'border-[var(--accent-500)] bg-[var(--accent-50)]' : 'border-gray-200 bg-white',
+                        dropTargetFolderId === folder.id ? 'ring-2 ring-[var(--accent-500)]' : '',
+                    ]"
+                    :draggable="can.move"
                     @click="toggleSelect('folders', folder.id, $event)"
                     @dblclick="goToFolder(folder.id)"
+                    @dragstart="onDragStartItem($event, 'folder', folder.id)"
+                    @dragend="onDragEndItem"
+                    @dragover.prevent="onDragOverDropTarget($event, folder.id)"
+                    @dragleave="dropTargetFolderId = undefined"
+                    @drop.prevent.stop="onDropOnTarget($event, folder.id)"
                 >
                     <FolderIcon class="h-12 w-12 text-amber-400" />
                     <p class="mt-2 w-full truncate text-sm font-medium text-gray-700">{{ folder.name }}</p>
@@ -280,8 +388,11 @@ function uploadFromUrl() {
                     :key="`file-${file.id}`"
                     class="group relative flex cursor-pointer flex-col items-center rounded-xl border p-4 text-center hover:shadow-md"
                     :class="selected.files.has(file.id) ? 'border-[var(--accent-500)] bg-[var(--accent-50)]' : 'border-gray-200 bg-white'"
+                    :draggable="can.move"
                     @click="toggleSelect('files', file.id, $event)"
                     @dblclick="openPreview(file)"
+                    @dragstart="onDragStartItem($event, 'file', file.id)"
+                    @dragend="onDragEndItem"
                 >
                     <div class="flex h-16 w-16 items-center justify-center">
                         <FileThumbnail :file="file" :src="route('files.thumbnail', file.id)" icon-class="h-12 w-12" />
