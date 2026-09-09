@@ -10,7 +10,6 @@ use App\Services\ZipDownloadBuilder;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -185,7 +184,7 @@ class FileController extends Controller
         ]);
     }
 
-    public function downloadZip(Request $request, ZipDownloadBuilder $builder): Response
+    public function downloadZip(Request $request, ZipDownloadBuilder $builder): BinaryFileResponse
     {
         if (! $request->user()->canPerform('download')) {
             throw new AuthorizationException('لا تملك صلاحية تحميل الملفات.');
