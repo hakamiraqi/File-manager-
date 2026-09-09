@@ -30,7 +30,7 @@ class FolderDuplicator
             $disk->makeDirectory((string) $user->id);
             $disk->copy($file->path, $relativePath);
 
-            File::create([
+            $fileCopy = File::create([
                 'user_id' => $user->id,
                 'folder_id' => $copy->id,
                 'name' => UniqueNamer::forFile($user->id, $copy->id, $file->name),
@@ -40,6 +40,11 @@ class FolderDuplicator
                 'mime_type' => $file->mime_type,
                 'size' => $file->size,
             ]);
+
+            $fileCopy->forceFill([
+                'content_text' => $file->content_text,
+                'content_indexed_at' => $file->content_indexed_at,
+            ])->save();
 
             $this->quota->increment($user, $file->size);
         }

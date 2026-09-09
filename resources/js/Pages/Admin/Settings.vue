@@ -36,6 +36,8 @@ const form = useForm({
     max_zip_files: props.settings.max_zip_files,
     enable_pretty_links: props.settings.enable_pretty_links === '1',
     global_search: props.settings.global_search === '1',
+    content_indexing_enabled: props.settings.content_indexing_enabled === '1',
+    content_indexing_max_mb: props.settings.content_indexing_max_mb,
     logo: null,
     header_image: null,
 });
@@ -132,6 +134,24 @@ function submit() {
                     <p class="mt-2 text-xs text-gray-500">
                         هذه القائمة إضافية إلى القائمة الأمنية الثابتة (php, phtml, exe...) التي لا يمكن تعطيلها من هنا.
                     </p>
+                </section>
+
+                <section class="rounded-xl border border-gray-200 bg-white p-6">
+                    <h3 class="mb-4 font-semibold text-gray-800">فهرسة محتوى المستندات للبحث</h3>
+                    <p class="mb-4 text-xs text-gray-500">
+                        عند التفعيل، يُستخرَج النص من داخل ملفات Word وPDF وPowerPoint والنصوص عند رفعها، ليصبح البحث
+                        قادراً على إيجاد الملف من محتواه الداخلي وليس فقط من اسمه — تماماً كفهرسة مكتبة أو دار نشر.
+                    </p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600">
+                            <input type="checkbox" v-model="form.content_indexing_enabled" class="rounded border-gray-300" />
+                            تفعيل استخراج النص وفهرسته تلقائياً عند الرفع (Word, PDF, PowerPoint, نصوص)
+                        </label>
+                        <div>
+                            <InputLabel value="لا تُفهرس الملفات الأكبر من (ميغابايت)" />
+                            <TextInput type="number" min="1" v-model="form.content_indexing_max_mb" class="mt-1 block w-full" />
+                        </div>
+                    </div>
                 </section>
 
                 <section class="rounded-xl border border-gray-200 bg-white p-6">

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -12,15 +13,28 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 
 #[Fillable(['user_id', 'folder_id', 'name', 'disk', 'path', 'extension', 'mime_type', 'size', 'thumbnail_path'])]
+#[Hidden(['content_text'])]
 class File extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $appends = ['human_size'];
+    protected $appends = ['human_size', 'is_indexed'];
+
+    protected function casts(): array
+    {
+        return [
+            'content_indexed_at' => 'datetime',
+        ];
+    }
 
     protected function humanSize(): Attribute
     {
         return Attribute::get(fn () => $this->formatSize($this->size));
+    }
+
+    protected function isIndexed(): Attribute
+    {
+        return Attribute::get(fn () => $this->content_indexed_at !== null && $this->content_text !== null);
     }
 
     public function user(): BelongsTo

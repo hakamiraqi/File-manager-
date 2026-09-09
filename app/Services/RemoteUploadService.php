@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\ExtractFileText;
 use App\Models\ActivityLog;
 use App\Models\File;
 use App\Models\User;
@@ -78,6 +79,7 @@ class RemoteUploadService
         $this->quota->increment($user, $size);
 
         ActivityLog::record('file.remote_uploaded', "رفع الملف \"{$file->name}\" من رابط خارجي", $file);
+        ExtractFileText::dispatch($file->id);
 
         return $file;
     }

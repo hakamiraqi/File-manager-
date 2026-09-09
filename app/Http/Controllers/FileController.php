@@ -98,6 +98,13 @@ class FileController extends Controller
             'size' => $file->size,
         ]);
 
+        // The bytes are identical to the source file, so the already
+        // extracted text (if any) is copied over instead of re-parsing it.
+        $copy->forceFill([
+            'content_text' => $file->content_text,
+            'content_indexed_at' => $file->content_indexed_at,
+        ])->save();
+
         app(\App\Services\StorageQuotaService::class)->increment($user, $file->size);
 
         ActivityLog::record('file.copied', "نسخ الملف \"{$file->name}\"", $copy);

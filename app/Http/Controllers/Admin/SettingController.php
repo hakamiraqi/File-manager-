@@ -29,6 +29,8 @@ class SettingController extends Controller
         'max_zip_files' => '2000',
         'enable_pretty_links' => '0',
         'global_search' => '1',
+        'content_indexing_enabled' => '1',
+        'content_indexing_max_mb' => '25',
     ];
 
     public function index(): Response
@@ -59,6 +61,8 @@ class SettingController extends Controller
             'max_zip_files' => ['required', 'integer', 'min:1'],
             'enable_pretty_links' => ['boolean'],
             'global_search' => ['boolean'],
+            'content_indexing_enabled' => ['boolean'],
+            'content_indexing_max_mb' => ['required', 'integer', 'min:1', 'max:500'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
         ]);
@@ -76,7 +80,7 @@ class SettingController extends Controller
             $data['header_image_path'] = $request->file('header_image')->store('branding', 'public');
         }
 
-        foreach (['registration_enabled', 'enable_pretty_links', 'global_search'] as $boolField) {
+        foreach (['registration_enabled', 'enable_pretty_links', 'global_search', 'content_indexing_enabled'] as $boolField) {
             $data[$boolField] = $request->boolean($boolField) ? '1' : '0';
         }
 

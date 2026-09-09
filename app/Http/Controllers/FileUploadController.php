@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ExtractFileText;
 use App\Models\ActivityLog;
 use App\Models\File;
 use App\Models\FileUploadSession;
@@ -172,6 +173,7 @@ class FileUploadController extends Controller
 
         ActivityLog::record('file.uploaded', "رفع الملف \"{$file->name}\"", $file);
         $notifier->uploadOccurred($user, $file->name);
+        ExtractFileText::dispatch($file->id);
 
         return response()->json(['file' => $file]);
     }

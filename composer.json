@@ -12,6 +12,8 @@
         "laravel/sanctum": "^4.0",
         "laravel/socialite": "^5.31",
         "laravel/tinker": "^3.0",
+        "phpoffice/phpword": "^1.4",
+        "smalot/pdfparser": "^2.12",
         "socialiteproviders/linkedin": "^5.0",
         "tightenco/ziggy": "^2.0"
     },
