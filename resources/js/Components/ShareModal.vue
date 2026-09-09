@@ -26,6 +26,7 @@ const form = useForm({
     password: '',
     expires_at: '',
     max_downloads: '',
+    one_time_download: false,
     allow_download: true,
 });
 
@@ -97,6 +98,10 @@ function sendEmail() {
                 <label class="flex items-center gap-2">
                     <Checkbox v-model:checked="form.allow_download" />
                     <span class="text-sm text-gray-600">السماح بالتنزيل</span>
+                </label>
+                <label class="flex items-center gap-2">
+                    <Checkbox v-model:checked="form.one_time_download" />
+                    <span class="text-sm text-gray-600">رابط للاستخدام مرة واحدة فقط (يُلغى تلقائياً بعد أول تنزيل)</span>
                 </label>
                 <div class="flex justify-end gap-3">
                     <SecondaryButton @click="$emit('close')">إلغاء</SecondaryButton>

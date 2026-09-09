@@ -7,6 +7,7 @@ use App\Models\File;
 use App\Models\Folder;
 use App\Services\UniqueNamer;
 use App\Services\ZipDownloadBuilder;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -23,6 +24,17 @@ class FileController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'folder_id' => ['sometimes', 'nullable', 'integer', 'exists:folders,id'],
         ]);
+
+        $isMove = array_key_exists('folder_id', $data) && $data['folder_id'] !== $file->folder_id;
+        $isRename = isset($data['name']) && $data['name'] !== $file->name;
+
+        if ($isMove && ! $request->user()->canPerform('move')) {
+            throw new AuthorizationException('لا تملك صلاحية نقل الملفات.');
+        }
+
+        if ($isRename && ! $request->user()->canPerform('rename')) {
+            throw new AuthorizationException('لا تملك صلاحية إعادة تسمية الملفات.');
+        }
 
         if (array_key_exists('folder_id', $data) && $data['folder_id']) {
             $folder = Folder::where('user_id', $file->user_id)->whereNull('deleted_at')->findOrFail($data['folder_id']);
@@ -45,9 +57,61 @@ class FileController extends Controller
         return back()->with('success', 'تم تحديث الملف.');
     }
 
+    public function copy(Request $request, File $file): RedirectResponse
+    {
+        $this->authorize('view', $file);
+
+        if (! $request->user()->canPerform('copy')) {
+            throw new AuthorizationException('لا تملك صلاحية نسخ الملفات.');
+        }
+
+        $data = $request->validate([
+            'folder_id' => ['nullable', 'integer', 'exists:folders,id'],
+        ]);
+
+        $user = $request->user();
+        $targetFolderId = $data['folder_id'] ?? $file->folder_id;
+
+        if ($targetFolderId) {
+            $folder = Folder::where('user_id', $user->id)->whereNull('deleted_at')->findOrFail($targetFolderId);
+            $this->authorize('view', $folder);
+        }
+
+        app(\App\Services\StorageQuotaService::class)->assertHasSpace($user, $file->size);
+
+        $extension = $file->extension ? ".{$file->extension}" : '';
+        $storedName = \Illuminate\Support\Str::uuid().$extension;
+        $relativePath = "{$user->id}/{$storedName}";
+
+        $disk = $file->disk();
+        $disk->makeDirectory((string) $user->id);
+        $disk->copy($file->path, $relativePath);
+
+        $copy = File::create([
+            'user_id' => $user->id,
+            'folder_id' => $targetFolderId,
+            'name' => UniqueNamer::forFile($user->id, $targetFolderId, $file->name),
+            'disk' => $file->disk,
+            'path' => $relativePath,
+            'extension' => $file->extension,
+            'mime_type' => $file->mime_type,
+            'size' => $file->size,
+        ]);
+
+        app(\App\Services\StorageQuotaService::class)->increment($user, $file->size);
+
+        ActivityLog::record('file.copied', "نسخ الملف \"{$file->name}\"", $copy);
+
+        return back()->with('success', 'تم نسخ الملف.');
+    }
+
     public function destroy(Request $request, File $file): RedirectResponse
     {
         $this->authorize('delete', $file);
+
+        if (! $request->user()->canPerform('delete')) {
+            throw new AuthorizationException('لا تملك صلاحية حذف الملفات.');
+        }
 
         $file->delete();
 
@@ -60,12 +124,35 @@ class FileController extends Controller
     {
         $this->authorize('view', $file);
 
+        if (! $request->user()->canPerform('download')) {
+            throw new AuthorizationException('لا تملك صلاحية تحميل الملفات.');
+        }
+
+        ActivityLog::record('file.downloaded', "حمّل الملف \"{$file->name}\"", $file);
+        app(\App\Services\NotificationDispatcher::class)->downloadOccurred($file->user, $file->name);
+
         return response()->download($file->disk()->path($file->path), $file->name);
     }
 
-    public function preview(Request $request, File $file): StreamedResponse
+    /**
+     * Inline preview. For local-disk media this returns a BinaryFileResponse
+     * so Symfony negotiates HTTP Range requests automatically, which is what
+     * lets a <video>/<audio> element seek instead of re-downloading the file
+     * from the start on every scrub.
+     */
+    public function preview(Request $request, File $file): StreamedResponse|BinaryFileResponse
     {
         $this->authorize('view', $file);
+
+        if (! $request->user()->canPerform('view')) {
+            throw new AuthorizationException('لا تملك صلاحية عرض الملفات.');
+        }
+
+        if ($file->disk === 'filemanager' || $file->disk === 'local') {
+            return response()->file($file->disk()->path($file->path), [
+                'Content-Type' => $file->mime_type,
+            ]);
+        }
 
         return $file->disk()->response($file->path, $file->name, [
             'Content-Type' => $file->mime_type,
@@ -74,6 +161,10 @@ class FileController extends Controller
 
     public function downloadZip(Request $request, ZipDownloadBuilder $builder): Response
     {
+        if (! $request->user()->canPerform('download')) {
+            throw new AuthorizationException('لا تملك صلاحية تحميل الملفات.');
+        }
+
         $data = $request->validate([
             'file_ids' => ['array'],
             'file_ids.*' => ['integer'],
@@ -90,6 +181,9 @@ class FileController extends Controller
             ->where('user_id', $user->id)->whereNull('deleted_at')->get();
 
         abort_if($files->isEmpty() && $folders->isEmpty(), 404);
+
+        $maxFiles = (int) \App\Models\Setting::get('max_zip_files', 2000);
+        abort_if($files->count() + $folders->sum(fn ($f) => $f->files()->count()) > $maxFiles, 422, 'عدد الملفات يتجاوز الحد الأقصى المسموح به لأرشيف واحد.');
 
         $zipPath = $builder->build($files, $folders);
 

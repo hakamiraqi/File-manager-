@@ -8,6 +8,7 @@ use App\Models\File;
 use App\Models\Folder;
 use App\Models\Share;
 use App\Models\ShareEmail;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -29,17 +30,24 @@ class ShareController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        if (! $request->user()->canPerform('share')) {
+            throw new AuthorizationException('لا تملك صلاحية مشاركة الملفات.');
+        }
+
         $data = $request->validate([
             'shareable_type' => ['required', 'in:file,folder'],
             'shareable_id' => ['required', 'integer'],
             'password' => ['nullable', 'string', 'min:4'],
             'expires_at' => ['nullable', 'date', 'after:now'],
             'max_downloads' => ['nullable', 'integer', 'min:1'],
+            'one_time_download' => ['boolean'],
             'allow_download' => ['boolean'],
         ]);
 
         $shareable = $this->resolveShareable($request, $data['shareable_type'], $data['shareable_id']);
         $this->authorize('view', $shareable);
+
+        $oneTime = $data['one_time_download'] ?? false;
 
         $share = Share::create([
             'user_id' => $request->user()->id,
@@ -47,15 +55,20 @@ class ShareController extends Controller
             'shareable_id' => $shareable->id,
             'password' => isset($data['password']) ? Hash::make($data['password']) : null,
             'expires_at' => $data['expires_at'] ?? null,
-            'max_downloads' => $data['max_downloads'] ?? null,
+            'max_downloads' => $oneTime ? 1 : ($data['max_downloads'] ?? null),
+            'one_time_download' => $oneTime,
             'allow_download' => $data['allow_download'] ?? true,
         ]);
 
         ActivityLog::record('share.created', "أنشأ رابط مشاركة لـ \"{$shareable->name}\"", $share);
 
+        $usePretty = \App\Models\Setting::get('enable_pretty_links', false);
+
         return back()
             ->with('success', 'تم إنشاء رابط المشاركة.')
-            ->with('shareUrl', route('share.public.show', $share->token))
+            ->with('shareUrl', $usePretty
+                ? route('share.public.short', $share->short_code)
+                : route('share.public.show', $share->token))
             ->with('shareId', $share->id);
     }
 
@@ -68,6 +81,7 @@ class ShareController extends Controller
             'remove_password' => ['boolean'],
             'expires_at' => ['nullable', 'date', 'after:now'],
             'max_downloads' => ['nullable', 'integer', 'min:1'],
+            'one_time_download' => ['boolean'],
             'allow_download' => ['boolean'],
         ]);
 
@@ -77,7 +91,11 @@ class ShareController extends Controller
             $share->password = Hash::make($data['password']);
         }
 
-        $share->fill($request->only(['expires_at', 'max_downloads', 'allow_download']))->save();
+        if (! empty($data['one_time_download'])) {
+            $data['max_downloads'] = 1;
+        }
+
+        $share->fill($request->only(['expires_at', 'max_downloads', 'one_time_download', 'allow_download']))->save();
 
         return back()->with('success', 'تم تحديث إعدادات المشاركة.');
     }

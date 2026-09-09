@@ -18,11 +18,17 @@ class SettingController extends Controller
         'logo_path' => null,
         'header_image_path' => null,
         'registration_enabled' => '1',
+        'registration_role' => 'user',
         'default_locale' => 'ar',
         'active_skin' => 'indigo',
         'custom_css' => '',
         'default_quota_mb' => '5120',
         'max_upload_mb' => '2048',
+        'extension_filter_mode' => 'reject',
+        'extension_list' => '',
+        'max_zip_files' => '2000',
+        'enable_pretty_links' => '0',
+        'global_search' => '1',
     ];
 
     public function index(): Response
@@ -33,6 +39,7 @@ class SettingController extends Controller
             'settings' => $settings,
             'skins' => config('filenest.skins'),
             'locales' => config('filenest.supported_locales'),
+            'roles' => \App\Models\User::ROLES,
         ]);
     }
 
@@ -41,26 +48,45 @@ class SettingController extends Controller
         $data = $request->validate([
             'site_name' => ['required', 'string', 'max:100'],
             'registration_enabled' => ['boolean'],
+            'registration_role' => ['required', 'in:user,editor,contributor'],
             'default_locale' => ['required', 'in:ar,en'],
             'active_skin' => ['required', 'string', 'in:'.implode(',', config('filenest.skins')).',custom'],
             'custom_css' => ['nullable', 'string', 'max:20000'],
             'default_quota_mb' => ['required', 'integer', 'min:1'],
             'max_upload_mb' => ['required', 'integer', 'min:1'],
+            'extension_filter_mode' => ['required', 'in:reject,allow'],
+            'extension_list' => ['nullable', 'string', 'max:2000'],
+            'max_zip_files' => ['required', 'integer', 'min:1'],
+            'enable_pretty_links' => ['boolean'],
+            'global_search' => ['boolean'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
         ]);
 
-        if ($request->hasFile('logo')) {
+        $user = $request->user();
+        $canAppearance = $user->hasAdminCapability('can_manage_appearance');
+        $canSettings = $user->hasAdminCapability('can_manage_settings');
+        $appearanceFields = ['site_name', 'active_skin', 'custom_css', 'logo_path', 'header_image_path'];
+
+        if ($request->hasFile('logo') && $canAppearance) {
             $data['logo_path'] = $request->file('logo')->store('branding', 'public');
         }
 
-        if ($request->hasFile('header_image')) {
+        if ($request->hasFile('header_image') && $canAppearance) {
             $data['header_image_path'] = $request->file('header_image')->store('branding', 'public');
         }
 
-        $data['registration_enabled'] = $request->boolean('registration_enabled') ? '1' : '0';
+        foreach (['registration_enabled', 'enable_pretty_links', 'global_search'] as $boolField) {
+            $data[$boolField] = $request->boolean($boolField) ? '1' : '0';
+        }
 
         unset($data['logo'], $data['header_image']);
+
+        if (! $canSettings) {
+            $data = array_intersect_key($data, array_flip($appearanceFields));
+        } elseif (! $canAppearance) {
+            $data = array_diff_key($data, array_flip($appearanceFields));
+        }
 
         Setting::setMany($data);
 

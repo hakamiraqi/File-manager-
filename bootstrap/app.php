@@ -16,10 +16,14 @@ return Application::configure(basePath: dirname(__DIR__))
 
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(__DIR__.'/../routes/share.php');
+
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(__DIR__.'/../routes/guest-access.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            \App\Http\Middleware\IpAccessControl::class,
             \App\Http\Middleware\SetApplicationLocale::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,

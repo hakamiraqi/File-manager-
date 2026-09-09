@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
@@ -15,6 +15,7 @@ import {
     FolderIcon,
     FolderPlusIcon,
     ArrowUpTrayIcon,
+    LinkIcon,
     MagnifyingGlassIcon,
     EllipsisVerticalIcon,
     ArrowDownTrayIcon,
@@ -22,6 +23,8 @@ import {
     ShareIcon,
     PencilIcon,
     ArrowsRightLeftIcon,
+    DocumentDuplicateIcon,
+    GlobeAltIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -31,6 +34,10 @@ const props = defineProps({
     files: Array,
     filters: Object,
 });
+
+const page = usePage();
+const can = computed(() => page.props.permissions ?? {});
+const remoteUploadEnabled = computed(() => page.props.appSettings?.remoteUploadEnabled ?? false);
 
 const search = ref(props.filters.q ?? '');
 const selected = reactive({ files: new Set(), folders: new Set() });
@@ -109,6 +116,26 @@ function deleteOne(type, id) {
 function openPreview(file) {
     previewFile.value = file;
 }
+
+function togglePublic(folder) {
+    router.put(route('folders.update', folder.id), { is_public: !folder.is_public }, { preserveScroll: true });
+}
+
+function copyOne(type, id) {
+    const url = type === 'file' ? route('files.copy', id) : route('folders.copy', id);
+    router.post(url, { folder_id: props.currentFolder?.id ?? null, parent_id: props.currentFolder?.id ?? null }, { preserveScroll: true });
+}
+
+function uploadFromUrl() {
+    const url = window.prompt('أدخل رابط الملف المراد رفعه:');
+    if (!url) return;
+
+    router.post(
+        route('uploads.remote'),
+        { url, folder_id: props.currentFolder?.id ?? null },
+        { preserveScroll: true, onSuccess: () => router.reload({ only: ['folders', 'files'] }) },
+    );
+}
 </script>
 
 <template>
@@ -152,16 +179,25 @@ function openPreview(file) {
             <!-- Toolbar -->
             <div class="mb-6 flex flex-wrap items-center gap-3">
                 <button
+                    v-if="can.new_folder"
                     @click="newFolderModal = true"
                     class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                     <FolderPlusIcon class="h-5 w-5" /> مجلد جديد
                 </button>
                 <button
+                    v-if="can.upload"
                     @click="fileInput.click()"
                     class="flex items-center gap-2 rounded-lg bg-[var(--accent-600)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--accent-700)]"
                 >
                     <ArrowUpTrayIcon class="h-5 w-5" /> رفع ملفات
+                </button>
+                <button
+                    v-if="can.upload && remoteUploadEnabled"
+                    @click="uploadFromUrl"
+                    class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                    <LinkIcon class="h-5 w-5" /> رفع من رابط
                 </button>
                 <input ref="fileInput" type="file" multiple class="hidden" @change="onFilesChosen" />
 
@@ -177,10 +213,10 @@ function openPreview(file) {
 
                 <div v-if="selectionCount" class="ms-auto flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5">
                     <span class="text-sm text-gray-600">{{ selectionCount }} محدد</span>
-                    <button @click="downloadSelection" class="rounded-md p-1.5 hover:bg-gray-200" title="تنزيل كملف مضغوط">
+                    <button v-if="can.download" @click="downloadSelection" class="rounded-md p-1.5 hover:bg-gray-200" title="تنزيل كملف مضغوط">
                         <ArrowDownTrayIcon class="h-4 w-4" />
                     </button>
-                    <button @click="deleteSelection" class="rounded-md p-1.5 hover:bg-gray-200" title="حذف">
+                    <button v-if="can.delete || can.delete_folder" @click="deleteSelection" class="rounded-md p-1.5 hover:bg-gray-200" title="حذف">
                         <TrashIcon class="h-4 w-4 text-red-500" />
                     </button>
                     <button @click="clearSelection" class="text-sm text-gray-500 hover:underline">إلغاء التحديد</button>
@@ -214,17 +250,24 @@ function openPreview(file) {
                                 </button>
                             </template>
                             <template #content>
-                                <DropdownLink as="button" @click="shareTarget = { ...folder, type: 'folder' }">
+                                <DropdownLink v-if="can.share" as="button" @click="shareTarget = { ...folder, type: 'folder' }">
                                     <ShareIcon class="me-2 inline h-4 w-4" /> مشاركة
                                 </DropdownLink>
-                                <DropdownLink as="button" @click="renameTarget = { ...folder, type: 'folder' }">
+                                <DropdownLink v-if="can.rename_folder" as="button" @click="renameTarget = { ...folder, type: 'folder' }">
                                     <PencilIcon class="me-2 inline h-4 w-4" /> إعادة تسمية
                                 </DropdownLink>
-                                <DropdownLink as="button" @click="moveTarget = { ...folder, type: 'folder' }">
+                                <DropdownLink v-if="can.move" as="button" @click="moveTarget = { ...folder, type: 'folder' }">
                                     <ArrowsRightLeftIcon class="me-2 inline h-4 w-4" /> نقل
                                 </DropdownLink>
-                                <DropdownLink as="button" @click="deleteOne('folder', folder.id)">
+                                <DropdownLink v-if="can.copy" as="button" @click="copyOne('folder', folder.id)">
+                                    <DocumentDuplicateIcon class="me-2 inline h-4 w-4" /> نسخ
+                                </DropdownLink>
+                                <DropdownLink v-if="can.delete_folder" as="button" @click="deleteOne('folder', folder.id)">
                                     <TrashIcon class="me-2 inline h-4 w-4 text-red-500" /> حذف
+                                </DropdownLink>
+                                <DropdownLink v-if="can.is_admin" as="button" @click="togglePublic(folder)">
+                                    <GlobeAltIcon class="me-2 inline h-4 w-4" />
+                                    {{ folder.is_public ? 'إلغاء المشاركة العامة' : 'جعله مجلداً عاماً (للزوار)' }}
                                 </DropdownLink>
                             </template>
                         </Dropdown>
@@ -251,19 +294,22 @@ function openPreview(file) {
                                 </button>
                             </template>
                             <template #content>
-                                <DropdownLink :href="route('files.download', file.id)">
+                                <DropdownLink v-if="can.download" :href="route('files.download', file.id)">
                                     <ArrowDownTrayIcon class="me-2 inline h-4 w-4" /> تنزيل
                                 </DropdownLink>
-                                <DropdownLink as="button" @click="shareTarget = { ...file, type: 'file' }">
+                                <DropdownLink v-if="can.share" as="button" @click="shareTarget = { ...file, type: 'file' }">
                                     <ShareIcon class="me-2 inline h-4 w-4" /> مشاركة
                                 </DropdownLink>
-                                <DropdownLink as="button" @click="renameTarget = { ...file, type: 'file' }">
+                                <DropdownLink v-if="can.rename" as="button" @click="renameTarget = { ...file, type: 'file' }">
                                     <PencilIcon class="me-2 inline h-4 w-4" /> إعادة تسمية
                                 </DropdownLink>
-                                <DropdownLink as="button" @click="moveTarget = { ...file, type: 'file' }">
+                                <DropdownLink v-if="can.move" as="button" @click="moveTarget = { ...file, type: 'file' }">
                                     <ArrowsRightLeftIcon class="me-2 inline h-4 w-4" /> نقل
                                 </DropdownLink>
-                                <DropdownLink as="button" @click="deleteOne('file', file.id)">
+                                <DropdownLink v-if="can.copy" as="button" @click="copyOne('file', file.id)">
+                                    <DocumentDuplicateIcon class="me-2 inline h-4 w-4" /> نسخ
+                                </DropdownLink>
+                                <DropdownLink v-if="can.delete" as="button" @click="deleteOne('file', file.id)">
                                     <TrashIcon class="me-2 inline h-4 w-4 text-red-500" /> حذف
                                 </DropdownLink>
                             </template>

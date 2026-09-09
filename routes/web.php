@@ -22,15 +22,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/folders/{folder}', [FolderController::class, 'destroy'])->name('folders.destroy');
 
     Route::put('/files/{file}', [FileController::class, 'update'])->name('files.update');
+    Route::post('/files/{file}/copy', [FileController::class, 'copy'])->name('files.copy');
     Route::delete('/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
     Route::get('/files/{file}/preview', [FileController::class, 'preview'])->name('files.preview');
     Route::post('/download-zip', [FileController::class, 'downloadZip'])->name('files.download-zip');
 
+    Route::post('/folders/{folder}/copy', [FolderController::class, 'copy'])->name('folders.copy');
+
     Route::post('/uploads/init', [FileUploadController::class, 'init'])->name('uploads.init');
     Route::post('/uploads/chunk', [FileUploadController::class, 'chunk'])->name('uploads.chunk');
     Route::post('/uploads/finalize', [FileUploadController::class, 'finalize'])->name('uploads.finalize');
     Route::post('/uploads/cancel', [FileUploadController::class, 'cancel'])->name('uploads.cancel');
+    Route::post('/uploads/remote', [\App\Http\Controllers\RemoteUploadController::class, 'store'])->name('uploads.remote');
 
     Route::get('/trash', [TrashController::class, 'index'])->name('trash.index');
     Route::post('/trash/restore', [TrashController::class, 'restore'])->name('trash.restore');

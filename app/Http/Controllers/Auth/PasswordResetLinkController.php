@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Setting;
+use App\Services\CaptchaValidator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
@@ -15,10 +17,15 @@ class PasswordResetLinkController extends Controller
     /**
      * Display the password reset link request view.
      */
-    public function create(): Response
+    public function create(Request $request, CaptchaValidator $captcha): Response
     {
         return Inertia::render('Auth/ForgotPassword', [
             'status' => session('status'),
+            'captcha' => Setting::get('show_captcha_reset', false)
+                ? ['enabled' => true, ...($captcha->isRecaptchaEnabled()
+                    ? ['siteKey' => $captcha->siteKey(), 'invisible' => $captcha->isInvisible()]
+                    : $captcha->generateMathChallenge($request))]
+                : ['enabled' => false],
         ]);
     }
 
@@ -27,8 +34,12 @@ class PasswordResetLinkController extends Controller
      *
      * @throws ValidationException
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, CaptchaValidator $captcha): RedirectResponse
     {
+        if (Setting::get('show_captcha_reset', false)) {
+            $captcha->assertValid($request);
+        }
+
         $request->validate([
             'email' => 'required|email',
         ]);

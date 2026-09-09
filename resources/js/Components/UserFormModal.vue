@@ -1,6 +1,6 @@
 <script setup>
-import { watch } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { computed, watch } from 'vue';
+import { useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
@@ -14,6 +14,16 @@ const props = defineProps({
 });
 const emit = defineEmits(['close']);
 
+const isMasterAdmin = computed(() => usePage().props.auth.user?.is_master_admin ?? false);
+
+const CAPABILITIES = [
+    { key: 'can_manage_appearance', label: 'إدارة المظهر' },
+    { key: 'can_manage_users', label: 'إدارة المستخدمين' },
+    { key: 'can_manage_translations', label: 'إدارة الترجمات' },
+    { key: 'can_view_statistics', label: 'عرض التحليلات والسجلات' },
+    { key: 'can_manage_settings', label: 'إدارة الإعدادات العامة' },
+];
+
 const form = useForm({
     name: '',
     email: '',
@@ -21,6 +31,11 @@ const form = useForm({
     role: 'user',
     storage_quota_mb: '',
     is_active: true,
+    can_manage_appearance: false,
+    can_manage_users: false,
+    can_manage_translations: false,
+    can_view_statistics: false,
+    can_manage_settings: false,
 });
 
 watch(
@@ -37,6 +52,7 @@ watch(
                 form.storage_quota_mb = props.user.storage_quota_bytes
                     ? Math.round(props.user.storage_quota_bytes / (1024 * 1024))
                     : '';
+                CAPABILITIES.forEach((c) => (form[c.key] = !!props.user[c.key]));
             } else {
                 form.reset();
                 form.role = 'user';
@@ -86,6 +102,8 @@ function submit() {
                     <InputLabel value="الصلاحية" />
                     <select v-model="form.role" class="mt-1 block w-full rounded-md border-gray-300">
                         <option value="user">مستخدم</option>
+                        <option value="editor">محرّر</option>
+                        <option value="contributor">مساهم</option>
                         <option value="admin">مشرف</option>
                     </select>
                 </div>
@@ -98,6 +116,15 @@ function submit() {
                         <input type="checkbox" v-model="form.is_active" class="rounded border-gray-300" />
                         الحساب مفعّل
                     </label>
+                </div>
+                <div class="col-span-2 border-t border-gray-100 pt-3" v-if="form.role === 'admin' && isMasterAdmin">
+                    <InputLabel value="صلاحيات هذا المشرف" />
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        <label v-for="c in CAPABILITIES" :key="c.key" class="flex items-center gap-2 text-sm text-gray-600">
+                            <input type="checkbox" v-model="form[c.key]" class="rounded border-gray-300" />
+                            {{ c.label }}
+                        </label>
+                    </div>
                 </div>
             </div>
 

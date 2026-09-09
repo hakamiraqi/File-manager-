@@ -6,8 +6,11 @@ use App\Models\ActivityLog;
 use App\Models\File;
 use App\Models\FileUploadSession;
 use App\Models\Folder;
+use App\Services\ExtensionFilter;
+use App\Services\NotificationDispatcher;
 use App\Services\StorageQuotaService;
 use App\Services\UniqueNamer;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -22,8 +25,12 @@ class FileUploadController extends Controller
      * Start a new (possibly chunked) upload. Returns an identifier the
      * client will attach every subsequent chunk request to.
      */
-    public function init(Request $request): JsonResponse
+    public function init(Request $request, ExtensionFilter $extensionFilter): JsonResponse
     {
+        if (! $request->user()->canPerform('upload')) {
+            throw new AuthorizationException('لا تملك صلاحية رفع الملفات.');
+        }
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'size' => ['required', 'integer', 'min:1'],
@@ -33,8 +40,8 @@ class FileUploadController extends Controller
         $user = $request->user();
         $extension = strtolower(pathinfo($data['name'], PATHINFO_EXTENSION));
 
-        if (in_array($extension, config('filenest.forbidden_extensions'), true)) {
-            throw ValidationException::withMessages(['name' => 'نوع هذا الملف غير مسموح به لأسباب أمنية.']);
+        if (in_array($extension, config('filenest.forbidden_extensions'), true) || ! $extensionFilter->isAllowed($extension)) {
+            throw ValidationException::withMessages(['name' => 'نوع هذا الملف غير مسموح به.']);
         }
 
         $maxUploadBytes = config('filenest.max_upload_mb') * 1024 * 1024;
@@ -101,7 +108,7 @@ class FileUploadController extends Controller
         ]);
     }
 
-    public function finalize(Request $request): JsonResponse
+    public function finalize(Request $request, NotificationDispatcher $notifier): JsonResponse
     {
         $data = $request->validate([
             'identifier' => ['required', 'uuid'],
@@ -164,6 +171,7 @@ class FileUploadController extends Controller
         $this->cleanupSession($session);
 
         ActivityLog::record('file.uploaded', "رفع الملف \"{$file->name}\"", $file);
+        $notifier->uploadOccurred($user, $file->name);
 
         return response()->json(['file' => $file]);
     }

@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
+use App\Models\Setting;
+use App\Services\NotificationDispatcher;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,17 +23,26 @@ class AuthenticatedSessionController extends Controller
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => session('status'),
+            'oauth' => [
+                'google' => (string) Setting::get('oauth_google_client_id', '') !== '',
+                'github' => (string) Setting::get('oauth_github_client_id', '') !== '',
+                'linkedin' => (string) Setting::get('oauth_linkedin_client_id', '') !== '',
+            ],
         ]);
     }
 
     /**
      * Handle an incoming authentication request.
      */
-    public function store(LoginRequest $request): RedirectResponse
+    public function store(LoginRequest $request, NotificationDispatcher $notifier): RedirectResponse
     {
         $request->authenticate();
 
         $request->session()->regenerate();
+
+        $user = $request->user();
+        $user->forceFill(['last_login_at' => now()])->save();
+        $notifier->loginOccurred($user);
 
         return redirect()->intended(route('dashboard', absolute: false));
     }

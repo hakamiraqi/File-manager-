@@ -16,6 +16,13 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class PublicShareController extends Controller
 {
+    public function resolveShortCode(string $code): RedirectResponse
+    {
+        $share = Share::where('short_code', $code)->firstOrFail();
+
+        return redirect()->route('share.public.show', $share->token);
+    }
+
     public function show(Request $request, string $token): Response
     {
         $share = Share::where('token', $token)->firstOrFail();
@@ -58,7 +65,18 @@ class PublicShareController extends Controller
         abort_unless($share->allow_download, 403, 'التنزيل غير مفعّل لهذه المشاركة.');
         abort_unless($this->isUnlocked($request, $share), 403, 'هذه المشاركة محمية بكلمة مرور.');
 
+        if (\App\Models\Setting::get('show_captcha_download', false)) {
+            app(\App\Services\CaptchaValidator::class)->assertValid($request);
+        }
+
         $share->increment('download_count');
+
+        if ($share->one_time_download) {
+            $share->update(['revoked_at' => now()]);
+        }
+
+        \App\Models\ActivityLog::record('share.downloaded', 'حمّل زائر عنصراً مشتركاً عبر رابط عام', $share);
+        app(\App\Services\NotificationDispatcher::class)->downloadOccurred($share->user, (string) $share->shareable?->name);
 
         if ($share->shareable_type === 'file') {
             /** @var File $file */

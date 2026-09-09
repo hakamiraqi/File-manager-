@@ -5,6 +5,7 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import OauthButtons from '@/Components/OauthButtons.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 
 defineProps({
@@ -13,6 +14,10 @@ defineProps({
     },
     status: {
         type: String,
+    },
+    oauth: {
+        type: Object,
+        default: () => ({}),
     },
 });
 
@@ -101,5 +106,9 @@ const submit = () => {
                 <Link :href="route('register')" class="font-medium text-[var(--accent-600)] hover:underline">إنشاء حساب جديد</Link>
             </p>
         </form>
+
+        <div class="mt-6">
+            <OauthButtons :oauth="oauth" />
+        </div>
     </GuestLayout>
 </template>

@@ -32,6 +32,8 @@ function destroy(user) {
     router.delete(route('admin.users.destroy', user.id), { preserveScroll: true });
 }
 
+const ROLE_LABELS = { admin: 'مشرف', editor: 'محرّر', contributor: 'مساهم', user: 'مستخدم' };
+
 function humanSize(bytes) {
     if (!bytes) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -88,7 +90,10 @@ function humanSize(bytes) {
                                     class="rounded-full px-2 py-0.5 text-xs font-medium"
                                     :class="user.role === 'admin' ? 'bg-[var(--accent-50)] text-[var(--accent-700)]' : 'bg-gray-100 text-gray-600'"
                                 >
-                                    {{ user.role === 'admin' ? 'مشرف' : 'مستخدم' }}
+                                    {{ ROLE_LABELS[user.role] ?? user.role }}
+                                </span>
+                                <span v-if="user.is_master_admin" class="ms-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                    رئيسي
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-gray-500">
@@ -103,7 +108,7 @@ function humanSize(bytes) {
                                 <button @click="openEdit(user)" class="rounded-md p-1.5 hover:bg-gray-100">
                                     <PencilIcon class="h-4 w-4" />
                                 </button>
-                                <button @click="destroy(user)" class="rounded-md p-1.5 hover:bg-gray-100">
+                                <button v-if="!user.is_master_admin" @click="destroy(user)" class="rounded-md p-1.5 hover:bg-gray-100">
                                     <TrashIcon class="h-4 w-4 text-red-500" />
                                 </button>
                             </td>

@@ -4,19 +4,28 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import CaptchaField from '@/Components/CaptchaField.vue';
+import { readRecaptchaToken } from '@/Composables/useRecaptcha';
 import { Head, useForm } from '@inertiajs/vue3';
 
-defineProps({
+const props = defineProps({
     status: {
         type: String,
     },
+    captcha: { type: Object, default: () => ({ enabled: false }) },
 });
 
 const form = useForm({
     email: '',
+    captcha_answer: '',
+    'g-recaptcha-response': '',
 });
 
 const submit = () => {
+    if (props.captcha?.siteKey) {
+        form['g-recaptcha-response'] = readRecaptchaToken();
+    }
+
     form.post(route('password.email'));
 };
 </script>
@@ -52,6 +61,8 @@ const submit = () => {
 
                 <InputError class="mt-2" :message="form.errors.email" />
             </div>
+
+            <CaptchaField v-model="form.captcha_answer" :captcha="captcha" :error="form.errors.captcha_answer" />
 
             <div class="mt-4 flex items-center justify-end">
                 <PrimaryButton

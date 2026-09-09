@@ -13,18 +13,29 @@ import {
     ArrowUturnLeftIcon,
     Bars3Icon,
     XMarkIcon,
+    ShieldCheckIcon,
+    LockClosedIcon,
+    EnvelopeIcon,
+    ChartBarIcon,
+    LanguageIcon,
 } from '@heroicons/vue/24/outline';
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
+const admin = computed(() => page.props.permissions?.admin ?? {});
 const mobileOpen = ref(false);
 
-const nav = [
-    { label: 'لوحة التحكم', href: () => route('admin.dashboard'), icon: Squares2X2Icon, active: () => route().current('admin.dashboard') },
-    { label: 'المستخدمون', href: () => route('admin.users.index'), icon: UsersIcon, active: () => route().current('admin.users.*') },
-    { label: 'الإعدادات العامة', href: () => route('admin.settings.index'), icon: Cog6ToothIcon, active: () => route().current('admin.settings.*') },
-    { label: 'سجل النشاطات', href: () => route('admin.activity.index'), icon: ClipboardDocumentListIcon, active: () => route().current('admin.activity.*') },
-];
+const nav = computed(() => [
+    { label: 'لوحة التحكم', href: () => route('admin.dashboard'), icon: Squares2X2Icon, active: () => route().current('admin.dashboard'), show: true },
+    { label: 'المستخدمون', href: () => route('admin.users.index'), icon: UsersIcon, active: () => route().current('admin.users.*'), show: admin.value.users },
+    { label: 'الصلاحيات', href: () => route('admin.permissions.index'), icon: ShieldCheckIcon, active: () => route().current('admin.permissions.*'), show: admin.value.settings },
+    { label: 'الإعدادات العامة', href: () => route('admin.settings.index'), icon: Cog6ToothIcon, active: () => route().current('admin.settings.*'), show: admin.value.settings || admin.value.appearance },
+    { label: 'الأمان وتسجيل الدخول', href: () => route('admin.security.index'), icon: LockClosedIcon, active: () => route().current('admin.security.*'), show: admin.value.settings },
+    { label: 'البريد الإلكتروني', href: () => route('admin.mail.index'), icon: EnvelopeIcon, active: () => route().current('admin.mail.*'), show: admin.value.settings },
+    { label: 'التحليلات', href: () => route('admin.analytics.index'), icon: ChartBarIcon, active: () => route().current('admin.analytics.*'), show: admin.value.statistics },
+    { label: 'الترجمات', href: () => route('admin.translations.index'), icon: LanguageIcon, active: () => route().current('admin.translations.*'), show: admin.value.translations },
+    { label: 'سجل النشاطات', href: () => route('admin.activity.index'), icon: ClipboardDocumentListIcon, active: () => route().current('admin.activity.*'), show: admin.value.statistics },
+]);
 </script>
 
 <template>
@@ -43,7 +54,7 @@ const nav = [
 
             <nav class="space-y-1 p-3">
                 <Link
-                    v-for="item in nav"
+                    v-for="item in nav.filter((i) => i.show)"
                     :key="item.label"
                     :href="item.href()"
                     class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition"

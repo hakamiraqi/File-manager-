@@ -11,7 +11,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Str;
 
-#[Fillable(['user_id', 'shareable_type', 'shareable_id', 'token', 'password', 'allow_download', 'max_downloads', 'expires_at'])]
+#[Fillable([
+    'user_id', 'shareable_type', 'shareable_id', 'token', 'short_code', 'password',
+    'allow_download', 'max_downloads', 'one_time_download', 'expires_at', 'revoked_at',
+])]
 #[Hidden(['password'])]
 class Share extends Model
 {
@@ -21,7 +24,9 @@ class Share extends Model
     {
         return [
             'allow_download' => 'boolean',
+            'one_time_download' => 'boolean',
             'expires_at' => 'datetime',
+            'revoked_at' => 'datetime',
         ];
     }
 
@@ -29,7 +34,22 @@ class Share extends Model
     {
         static::creating(function (Share $share) {
             $share->token ??= Str::random(40);
+            $share->short_code ??= self::generateUniqueShortCode();
         });
+    }
+
+    public static function generateUniqueShortCode(): string
+    {
+        do {
+            $code = Str::lower(Str::random(7));
+        } while (self::where('short_code', $code)->exists());
+
+        return $code;
+    }
+
+    public function isRevoked(): bool
+    {
+        return $this->revoked_at !== null;
     }
 
     public function user(): BelongsTo
@@ -49,7 +69,7 @@ class Share extends Model
 
     public function isExpired(): bool
     {
-        return $this->expires_at !== null && $this->expires_at->isPast();
+        return ($this->expires_at !== null && $this->expires_at->isPast()) || $this->isRevoked();
     }
 
     public function isDownloadLimitReached(): bool

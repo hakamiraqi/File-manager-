@@ -5,6 +5,7 @@ use App\Http\Controllers\Auth\ConfirmablePasswordController;
 use App\Http\Controllers\Auth\EmailVerificationNotificationController;
 use App\Http\Controllers\Auth\EmailVerificationPromptController;
 use App\Http\Controllers\Auth\NewPasswordController;
+use App\Http\Controllers\Auth\OauthController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
@@ -12,6 +13,14 @@ use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
+    Route::get('auth/{provider}/redirect', [OauthController::class, 'redirect'])
+        ->whereIn('provider', ['google', 'github', 'linkedin'])
+        ->name('oauth.redirect');
+
+    Route::get('auth/{provider}/callback', [OauthController::class, 'callback'])
+        ->whereIn('provider', ['google', 'github', 'linkedin'])
+        ->name('oauth.callback');
+
     Route::get('register', [RegisteredUserController::class, 'create'])
         ->name('register');
 

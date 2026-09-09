@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
 use App\Models\Folder;
+use App\Services\NotificationDispatcher;
 use App\Services\UniqueNamer;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,8 +23,12 @@ class FolderController extends Controller
         return response()->json($folders);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, NotificationDispatcher $notifier): RedirectResponse
     {
+        if (! $request->user()->canPerform('new_folder')) {
+            throw new AuthorizationException('لا تملك صلاحية إنشاء مجلدات جديدة.');
+        }
+
         $data = $request->validate([
             'parent_id' => ['nullable', 'integer', 'exists:folders,id'],
             'name' => ['required', 'string', 'max:255'],
@@ -41,6 +47,7 @@ class FolderController extends Controller
         ]);
 
         ActivityLog::record('folder.created', "أنشأ المجلد \"{$folder->name}\"", $folder);
+        $notifier->newFolderOccurred($user, $folder->name);
 
         return back()->with('success', 'تم إنشاء المجلد بنجاح.');
     }
@@ -53,7 +60,23 @@ class FolderController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'parent_id' => ['sometimes', 'nullable', 'integer', 'exists:folders,id'],
             'color' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'is_public' => ['sometimes', 'boolean'],
         ]);
+
+        $isMove = array_key_exists('parent_id', $data) && $data['parent_id'] !== $folder->parent_id;
+        $isRename = isset($data['name']) && $data['name'] !== $folder->name;
+
+        if ($isMove && ! $request->user()->canPerform('move')) {
+            throw new AuthorizationException('لا تملك صلاحية نقل المجلدات.');
+        }
+
+        if ($isRename && ! $request->user()->canPerform('rename_folder')) {
+            throw new AuthorizationException('لا تملك صلاحية إعادة تسمية المجلدات.');
+        }
+
+        if (array_key_exists('is_public', $data) && ! $request->user()->isAdmin()) {
+            unset($data['is_public']);
+        }
 
         if (array_key_exists('parent_id', $data)) {
             if ($data['parent_id'] === $folder->id || in_array($data['parent_id'], $folder->descendantIds(), true)) {
@@ -81,9 +104,42 @@ class FolderController extends Controller
         return back()->with('success', 'تم تحديث المجلد.');
     }
 
+    public function copy(Request $request, Folder $folder): RedirectResponse
+    {
+        $this->authorize('view', $folder);
+
+        if (! $request->user()->canPerform('copy')) {
+            throw new AuthorizationException('لا تملك صلاحية نسخ المجلدات.');
+        }
+
+        $data = $request->validate([
+            'parent_id' => ['nullable', 'integer', 'exists:folders,id'],
+        ]);
+
+        $targetParentId = $data['parent_id'] ?? $folder->parent_id;
+
+        if ($targetParentId === $folder->id || in_array($targetParentId, $folder->descendantIds(), true)) {
+            return back()->withErrors(['parent_id' => 'لا يمكن نسخ المجلد إلى داخل نفسه.']);
+        }
+
+        if ($targetParentId) {
+            $this->authorizeParent($request, $targetParentId);
+        }
+
+        $copy = app(\App\Services\FolderDuplicator::class)->duplicate($folder, $request->user(), $targetParentId);
+
+        ActivityLog::record('folder.copied', "نسخ المجلد \"{$folder->name}\"", $copy);
+
+        return back()->with('success', 'تم نسخ المجلد.');
+    }
+
     public function destroy(Request $request, Folder $folder): RedirectResponse
     {
         $this->authorize('delete', $folder);
+
+        if (! $request->user()->canPerform('delete_folder')) {
+            throw new AuthorizationException('لا تملك صلاحية حذف المجلدات.');
+        }
 
         $folder->delete();
 

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\File;
 use App\Models\Folder;
+use App\Models\Setting;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -13,8 +15,14 @@ class FileManagerController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
+
+        if (! $user->canPerform('view')) {
+            throw new AuthorizationException('لا تملك صلاحية عرض الملفات.');
+        }
+
         $folderId = $request->integer('folder') ?: null;
-        $search = trim((string) $request->string('q'));
+        $globalSearchEnabled = (bool) Setting::get('global_search', true);
+        $search = $globalSearchEnabled ? trim((string) $request->string('q')) : '';
         $sort = $request->string('sort', 'name')->toString();
         $direction = $request->string('direction', 'asc')->toString() === 'desc' ? 'desc' : 'asc';
 

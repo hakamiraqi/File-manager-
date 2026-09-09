@@ -10,10 +10,36 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-#[Fillable(['user_id', 'parent_id', 'name', 'color'])]
+#[Fillable(['user_id', 'parent_id', 'name', 'color', 'is_public'])]
 class Folder extends Model
 {
     use HasFactory, SoftDeletes;
+
+    protected function casts(): array
+    {
+        return [
+            'is_public' => 'boolean',
+        ];
+    }
+
+    /**
+     * True if this folder or any ancestor is flagged public, which is what
+     * makes it (and everything under it) reachable by unauthenticated guest
+     * browsing when the "guest_access_enabled" setting is on.
+     */
+    public function isPubliclyReachable(): bool
+    {
+        $node = $this;
+
+        while ($node !== null) {
+            if ($node->is_public) {
+                return true;
+            }
+            $node = $node->parent;
+        }
+
+        return false;
+    }
 
     public function user(): BelongsTo
     {
