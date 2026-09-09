@@ -9,7 +9,10 @@ use Illuminate\Support\Str;
 
 class FolderDuplicator
 {
-    public function __construct(private readonly StorageQuotaService $quota) {}
+    public function __construct(
+        private readonly StorageQuotaService $quota,
+        private readonly ThumbnailGenerator $thumbnails,
+    ) {}
 
     public function duplicate(Folder $source, User $user, ?int $targetParentId): Folder
     {
@@ -45,6 +48,12 @@ class FolderDuplicator
                 'content_text' => $file->content_text,
                 'content_indexed_at' => $file->content_indexed_at,
             ])->save();
+
+            if ($file->thumbnail_path) {
+                $thumbCopy = $this->thumbnails->randomThumbnailPath($user->id);
+                $disk->copy($file->thumbnail_path, $thumbCopy);
+                $fileCopy->forceFill(['thumbnail_path' => $thumbCopy])->save();
+            }
 
             $this->quota->increment($user, $file->size);
         }

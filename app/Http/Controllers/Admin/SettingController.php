@@ -31,6 +31,8 @@ class SettingController extends Controller
         'global_search' => '1',
         'content_indexing_enabled' => '1',
         'content_indexing_max_mb' => '25',
+        'thumbnails_enabled' => '1',
+        'thumbnail_max_px' => '400',
     ];
 
     public function index(): Response
@@ -63,6 +65,8 @@ class SettingController extends Controller
             'global_search' => ['boolean'],
             'content_indexing_enabled' => ['boolean'],
             'content_indexing_max_mb' => ['required', 'integer', 'min:1', 'max:500'],
+            'thumbnails_enabled' => ['boolean'],
+            'thumbnail_max_px' => ['required', 'integer', 'min:50', 'max:2000'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
         ]);
@@ -80,7 +84,7 @@ class SettingController extends Controller
             $data['header_image_path'] = $request->file('header_image')->store('branding', 'public');
         }
 
-        foreach (['registration_enabled', 'enable_pretty_links', 'global_search', 'content_indexing_enabled'] as $boolField) {
+        foreach (['registration_enabled', 'enable_pretty_links', 'global_search', 'content_indexing_enabled', 'thumbnails_enabled'] as $boolField) {
             $data[$boolField] = $request->boolean($boolField) ? '1' : '0';
         }
 

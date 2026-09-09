@@ -52,6 +52,20 @@ class GuestBrowseController extends Controller
         return response()->download($file->disk()->path($file->path), $file->name);
     }
 
+    public function thumbnail(Request $request, File $file): BinaryFileResponse
+    {
+        $this->assertGuestAccessEnabled('view');
+
+        if (! $file->folder || ! $file->folder->isPubliclyReachable() || ! $file->thumbnail_path || ! $file->disk()->exists($file->thumbnail_path)) {
+            throw new NotFoundHttpException;
+        }
+
+        return response()->file($file->disk()->path($file->thumbnail_path), [
+            'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'private, max-age=604800',
+        ]);
+    }
+
     private function render(?Folder $folder): Response
     {
         $folders = Folder::where('parent_id', $folder?->id)

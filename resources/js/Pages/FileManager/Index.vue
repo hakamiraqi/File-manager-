@@ -4,7 +4,7 @@ import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
-import FileIcon from '@/Components/FileIcon.vue';
+import FileThumbnail from '@/Components/FileThumbnail.vue';
 import NewFolderModal from '@/Components/NewFolderModal.vue';
 import RenameModal from '@/Components/RenameModal.vue';
 import MoveModal from '@/Components/MoveModal.vue';
@@ -283,7 +283,9 @@ function uploadFromUrl() {
                     @click="toggleSelect('files', file.id, $event)"
                     @dblclick="openPreview(file)"
                 >
-                    <FileIcon :extension="file.extension" :mime-type="file.mime_type" class="h-12 w-12" />
+                    <div class="flex h-16 w-16 items-center justify-center">
+                        <FileThumbnail :file="file" :src="route('files.thumbnail', file.id)" icon-class="h-12 w-12" />
+                    </div>
                     <p class="mt-2 flex w-full items-center justify-center gap-1 truncate text-sm font-medium text-gray-700">
                         <DocumentMagnifyingGlassIcon v-if="file.is_indexed" class="h-3.5 w-3.5 shrink-0 text-gray-400" title="مفهرس للبحث داخل المحتوى" />
                         <span class="truncate">{{ file.name }}</span>

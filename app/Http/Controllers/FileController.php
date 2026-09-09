@@ -99,11 +99,18 @@ class FileController extends Controller
         ]);
 
         // The bytes are identical to the source file, so the already
-        // extracted text (if any) is copied over instead of re-parsing it.
+        // extracted text and thumbnail (if any) are copied over instead of
+        // re-parsing/re-rendering them.
         $copy->forceFill([
             'content_text' => $file->content_text,
             'content_indexed_at' => $file->content_indexed_at,
         ])->save();
+
+        if ($file->thumbnail_path) {
+            $thumbCopy = app(\App\Services\ThumbnailGenerator::class)->randomThumbnailPath($user->id);
+            $disk->copy($file->thumbnail_path, $thumbCopy);
+            $copy->forceFill(['thumbnail_path' => $thumbCopy])->save();
+        }
 
         app(\App\Services\StorageQuotaService::class)->increment($user, $file->size);
 
@@ -163,6 +170,18 @@ class FileController extends Controller
 
         return $file->disk()->response($file->path, $file->name, [
             'Content-Type' => $file->mime_type,
+        ]);
+    }
+
+    public function thumbnail(Request $request, File $file): BinaryFileResponse
+    {
+        $this->authorize('view', $file);
+
+        abort_unless($file->thumbnail_path && $file->disk()->exists($file->thumbnail_path), 404);
+
+        return response()->file($file->disk()->path($file->thumbnail_path), [
+            'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'private, max-age=604800',
         ]);
     }
 

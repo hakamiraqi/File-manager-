@@ -38,6 +38,8 @@ const form = useForm({
     global_search: props.settings.global_search === '1',
     content_indexing_enabled: props.settings.content_indexing_enabled === '1',
     content_indexing_max_mb: props.settings.content_indexing_max_mb,
+    thumbnails_enabled: props.settings.thumbnails_enabled === '1',
+    thumbnail_max_px: props.settings.thumbnail_max_px,
     logo: null,
     header_image: null,
 });
@@ -134,6 +136,25 @@ function submit() {
                     <p class="mt-2 text-xs text-gray-500">
                         هذه القائمة إضافية إلى القائمة الأمنية الثابتة (php, phtml, exe...) التي لا يمكن تعطيلها من هنا.
                     </p>
+                </section>
+
+                <section class="rounded-xl border border-gray-200 bg-white p-6">
+                    <h3 class="mb-4 font-semibold text-gray-800">الصور المصغّرة (Thumbnails)</h3>
+                    <p class="mb-4 text-xs text-gray-500">
+                        عرض صورة مصغّرة حقيقية للصور مباشرة، ولمقاطع الفيديو (يتطلب توفّر أداة <code dir="ltr">ffmpeg</code>
+                        على الخادم)، ولأول صفحة من ملفات PDF (يتطلب امتداد <code dir="ltr">Imagick</code>). عند عدم توفّر
+                        الأداة المطلوبة تُعرض الأيقونة العامة بدلاً من ذلك تلقائياً دون أي خطأ.
+                    </p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600">
+                            <input type="checkbox" v-model="form.thumbnails_enabled" class="rounded border-gray-300" />
+                            تفعيل توليد الصور المصغّرة تلقائياً عند الرفع
+                        </label>
+                        <div>
+                            <InputLabel value="أقصى أبعاد للصورة المصغّرة (بكسل)" />
+                            <TextInput type="number" min="50" v-model="form.thumbnail_max_px" class="mt-1 block w-full" />
+                        </div>
+                    </div>
                 </section>
 
                 <section class="rounded-xl border border-gray-200 bg-white p-6">

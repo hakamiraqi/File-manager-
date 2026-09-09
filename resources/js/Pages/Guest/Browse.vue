@@ -1,7 +1,7 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
-import FileIcon from '@/Components/FileIcon.vue';
+import FileThumbnail from '@/Components/FileThumbnail.vue';
 import { FolderIcon, ArrowDownTrayIcon, HomeIcon } from '@heroicons/vue/24/outline';
 
 defineProps({ currentFolder: Object, breadcrumbs: Array, folders: Array, files: Array, canDownload: Boolean });
@@ -39,7 +39,9 @@ defineProps({ currentFolder: Object, breadcrumbs: Array, folders: Array, files: 
                         </Link>
                     </li>
                     <li v-for="file in files" :key="'file' + file.id" class="flex items-center gap-3 px-4 py-3">
-                        <FileIcon :extension="file.extension" :mime-type="file.mime_type" class="h-6 w-6" />
+                        <div class="flex h-8 w-8 shrink-0 items-center justify-center">
+                            <FileThumbnail :file="file" :src="route('guest.thumbnail', file.id)" icon-class="h-6 w-6" />
+                        </div>
                         <span class="flex-1 text-sm text-gray-700">{{ file.name }}</span>
                         <span class="text-xs text-gray-400">{{ file.human_size }}</span>
                         <a
