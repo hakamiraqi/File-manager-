@@ -1158,11 +1158,14 @@ curl -s https://your-domain.com/api/v1/browse -H "Authorization: Bearer $TOKEN"
 | PUT | `/api/v1/questions/{question}` | تعديل سؤال (نفس حقول الإضافة) |
 | DELETE | `/api/v1/questions/{question}` | حذف سؤال |
 | POST | `/api/v1/questions/{question}/answer` | تسجيل إجابة (`{choice_id}`) — يعود `{is_correct, correct_choice_id, score}`؛ يعود `422` عند محاولة إجابة نفس السؤال مرة ثانية |
+| POST | `/api/v1/files/{file}/questions/import` | استيراد جماعي من ملف JSON أو CSV (`multipart/form-data`: `file`) — يعود `{created, errors[], questions[]}`؛ الأسطر غير الصالحة تُتجاوز وتُذكر في `errors` بدل إفشال الاستيراد بالكامل |
+| GET | `/api/v1/questions/import/template` | نموذج CSV جاهز للتنزيل يوضّح الأعمدة المطلوبة |
+| GET | `/api/v1/files/{file}/questions/report` | تقرير نتائج مُجمَّع (معدَّل الإجابات الصحيحة لكل سؤال وخيار، ودرجة كل مستخدم أجاب) — يتطلب صلاحية `manage_questions` |
 | GET | `/api/v1/files/{file}/comments` | قائمة تعليقات الفيديو |
 | POST | `/api/v1/files/{file}/comments` | إضافة تعليق (`body`, `timestamp_seconds` اختياري) — يتطلب صلاحية `comment` |
 | DELETE | `/api/v1/comments/{comment}` | حذف تعليق (صاحبه أو صاحب الفيديو) |
 
-مغطّاة باختبارات Feature كاملة في `tests/Feature/Api/InteractiveVideoApiTest.php` (12 اختباراً) بنفس تغطية نظيرتها على الويب.
+مغطّاة باختبارات Feature كاملة في `tests/Feature/Api/InteractiveVideoApiTest.php` (18 اختباراً) بنفس تغطية نظيرتها على الويب، بما فيها الاستيراد الجماعي وتقرير النتائج.
 
 ## 24. تطبيق الجوّال (Flutter)
 

@@ -101,8 +101,11 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // Interactive video quizzes — index() returns the exact payload the
         // app caches to let a downloaded video's quiz work offline; answers
         // recorded while offline are POSTed to answer() once back online.
+        Route::get('/questions/import/template', [VideoQuestionController::class, 'template'])->name('questions.import-template');
+        Route::get('/files/{file}/questions/report', [VideoQuestionController::class, 'report'])->name('questions.report');
         Route::get('/files/{file}/questions', [VideoQuestionController::class, 'index'])->name('questions.index');
         Route::post('/files/{file}/questions', [VideoQuestionController::class, 'store'])->name('questions.store');
+        Route::post('/files/{file}/questions/import', [VideoQuestionController::class, 'import'])->name('questions.import');
         Route::put('/questions/{question}', [VideoQuestionController::class, 'update'])->name('questions.update');
         Route::delete('/questions/{question}', [VideoQuestionController::class, 'destroy'])->name('questions.destroy');
         Route::post('/questions/{question}/answer', [VideoQuestionController::class, 'answer'])->name('questions.answer');
