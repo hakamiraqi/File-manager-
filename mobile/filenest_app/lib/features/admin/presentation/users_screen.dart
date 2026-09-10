@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/formatters.dart';
 import '../../auth/state/auth_provider.dart';
@@ -8,7 +9,7 @@ import '../data/admin_repository.dart';
 import '../models/admin_user.dart';
 import 'widgets/user_form_dialog.dart';
 
-const _roleLabels = {'admin': 'مشرف', 'editor': 'محرّر', 'contributor': 'مساهم', 'user': 'مستخدم'};
+const _roleLabelKeys = {'admin': 'role.admin', 'editor': 'role.editor', 'contributor': 'role.contributor', 'user': 'role.user'};
 
 /// Mobile counterpart of Admin/Users/Index.vue: searchable, paginated user
 /// list with create/edit/delete.
@@ -73,14 +74,14 @@ class _UsersScreenState extends State<UsersScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('حذف المستخدم'),
-        content: Text('هل أنت متأكد من حذف المستخدم "${user.name}"؟ سيتم حذف جميع ملفاته نهائياً.'),
+        title: Text(context.tr('admin.users.delete_title')),
+        content: Text(context.tr('admin.users.confirm_delete', {'name': user.name})),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr('action.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('حذف'),
+            child: Text(context.tr('action.delete')),
           ),
         ],
       ),
@@ -98,7 +99,7 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('المستخدمون')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.users'))),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _openForm(),
         child: const Icon(Icons.add_rounded),
@@ -110,7 +111,7 @@ class _UsersScreenState extends State<UsersScreen> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'بحث بالاسم أو البريد...',
+                hintText: context.tr('admin.users.search_placeholder'),
                 prefixIcon: const Icon(Icons.search_rounded),
                 border: const OutlineInputBorder(),
                 isDense: true,
@@ -137,7 +138,7 @@ class _UsersScreenState extends State<UsersScreen> {
   Widget _buildList() {
     final page = _page;
     if (page == null || page.users.isEmpty) {
-      return const Center(child: Text('لا يوجد مستخدمون.'));
+      return Center(child: Text(context.tr('admin.users.none')));
     }
 
     return RefreshIndicator(
@@ -203,7 +204,9 @@ class _RoleChip extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
-          isMasterAdmin ? '${_roleLabels[role] ?? role} (رئيسي)' : _roleLabels[role] ?? role,
+          isMasterAdmin
+              ? '${context.tr(_roleLabelKeys[role] ?? role)} (${context.tr('admin.users.master')})'
+              : context.tr(_roleLabelKeys[role] ?? role),
           style: TextStyle(
             fontSize: 11,
             fontWeight: FontWeight.w600,
@@ -211,7 +214,7 @@ class _RoleChip extends StatelessWidget {
           ),
         ),
         Text(
-          isActive ? 'مفعّل' : 'معلّق',
+          isActive ? context.tr('admin.users.active') : context.tr('admin.users.suspended'),
           style: TextStyle(fontSize: 10, color: isActive ? Colors.green : Colors.red),
         ),
       ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../data/admin_repository.dart';
 import '../models/ip_rule.dart';
@@ -134,7 +135,7 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
         'oauth_linkedin_client_id': _linkedinIdController.text,
         'oauth_linkedin_client_secret': _linkedinSecretController.text,
       });
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ إعدادات الأمان.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('security.saved'))));
     } catch (e) {
       if (mounted) setState(() => _error = ApiClient.messageFor(e));
     } finally {
@@ -164,10 +165,10 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('حذف هذه القاعدة؟'),
+        title: Text(context.tr('security.confirm_delete_rule')),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('حذف')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr('action.cancel'))),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.tr('action.delete'))),
         ],
       ),
     );
@@ -184,7 +185,7 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('الأمان وتسجيل الدخول')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.security'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -192,45 +193,45 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _Section(title: 'الوصول العام', children: [
+                  _Section(title: context.tr('security.public_access'), children: [
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _guestAccessEnabled,
                       onChanged: (v) => setState(() => _guestAccessEnabled = v),
-                      title: const Text('السماح للزوار بتصفح المجلدات العامة'),
+                      title: Text(context.tr('security.guest_access')),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _remoteUploadEnabled,
                       onChanged: (v) => setState(() => _remoteUploadEnabled = v),
-                      title: const Text('السماح برفع الملفات من رابط خارجي'),
+                      title: Text(context.tr('security.remote_upload')),
                     ),
                   ]),
-                  _Section(title: 'رمز التحقق (Captcha)', children: [
+                  _Section(title: context.tr('security.captcha_title'), children: [
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _showCaptchaRegister,
                       onChanged: (v) => setState(() => _showCaptchaRegister = v),
-                      title: const Text('عرضه في صفحة إنشاء حساب'),
+                      title: Text(context.tr('security.captcha_register')),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _showCaptchaReset,
                       onChanged: (v) => setState(() => _showCaptchaReset = v),
-                      title: const Text('عرضه في صفحة استعادة كلمة المرور'),
+                      title: Text(context.tr('security.captcha_reset')),
                     ),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _showCaptchaDownload,
                       onChanged: (v) => setState(() => _showCaptchaDownload = v),
-                      title: const Text('عرضه عند تحميل زائر من رابط مشاركة عام'),
+                      title: Text(context.tr('security.captcha_download')),
                     ),
                     const Divider(),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       value: _recaptchaEnabled,
                       onChanged: (v) => setState(() => _recaptchaEnabled = v),
-                      title: const Text('استخدام Google reCAPTCHA'),
+                      title: Text(context.tr('security.recaptcha_enabled')),
                     ),
                     if (_recaptchaEnabled) ...[
                       TextField(controller: _recaptchaSiteKeyController, decoration: const InputDecoration(labelText: 'Site Key'), textDirection: TextDirection.ltr),
@@ -240,16 +241,16 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
                         contentPadding: EdgeInsets.zero,
                         value: _recaptchaInvisible,
                         onChanged: (v) => setState(() => _recaptchaInvisible = v),
-                        title: const Text('النمط غير المرئي (Invisible)'),
+                        title: Text(context.tr('security.recaptcha_invisible')),
                       ),
                     ],
                   ]),
-                  _Section(title: 'تسجيل الدخول عبر مزوّدين خارجيين', children: [
+                  _Section(title: context.tr('security.oauth_title'), children: [
                     if (_appUrl.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Text(
-                          'رابط إعادة التوجيه: $_appUrl/auth/<google|github|linkedin>/callback',
+                          '${context.tr('security.oauth_redirect')} $_appUrl/auth/<google|github|linkedin>/callback',
                           style: const TextStyle(fontSize: 11, color: Colors.grey),
                         ),
                       ),
@@ -269,48 +270,48 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
                     Text(_error!, style: const TextStyle(color: Colors.red)),
                     const SizedBox(height: 8),
                   ],
-                  FilledButton(onPressed: _saving ? null : _submit, child: const Text('حفظ إعدادات الأمان')),
+                  FilledButton(onPressed: _saving ? null : _submit, child: Text(context.tr('security.save'))),
                   const SizedBox(height: 16),
-                  _Section(title: 'حظر / سماح عناوين IP', children: [
+                  _Section(title: context.tr('security.ip_rules_title'), children: [
                     DropdownButtonFormField<String>(
                       value: _ipFilterMode,
-                      decoration: const InputDecoration(labelText: 'نمط التصفية'),
-                      items: const [
-                        DropdownMenuItem(value: 'none', child: Text('معطّل')),
-                        DropdownMenuItem(value: 'blacklist', child: Text('قائمة حظر')),
-                        DropdownMenuItem(value: 'whitelist', child: Text('قائمة سماح')),
+                      decoration: InputDecoration(labelText: context.tr('security.filter_mode_label')),
+                      items: [
+                        DropdownMenuItem(value: 'none', child: Text(context.tr('security.ip_mode_off'))),
+                        DropdownMenuItem(value: 'blacklist', child: Text(context.tr('security.ip_mode_blacklist'))),
+                        DropdownMenuItem(value: 'whitelist', child: Text(context.tr('security.ip_mode_whitelist'))),
                       ],
                       onChanged: (v) => setState(() => _ipFilterMode = v ?? 'none'),
                     ),
                     const SizedBox(height: 8),
-                    TextField(controller: _ipRedirectUrlController, decoration: const InputDecoration(labelText: 'رابط إعادة توجيه عند الحظر (اختياري)'), textDirection: TextDirection.ltr),
+                    TextField(controller: _ipRedirectUrlController, decoration: InputDecoration(labelText: context.tr('security.ip_redirect_placeholder')), textDirection: TextDirection.ltr),
                     const Divider(height: 24),
                     ValueListenableBuilder<String>(
                       valueListenable: _ipTypeController,
                       builder: (context, type, _) => DropdownButtonFormField<String>(
                         value: type,
-                        decoration: const InputDecoration(labelText: 'نوع القاعدة الجديدة'),
-                        items: const [
-                          DropdownMenuItem(value: 'blacklist', child: Text('حظر')),
-                          DropdownMenuItem(value: 'whitelist', child: Text('سماح')),
+                        decoration: InputDecoration(labelText: context.tr('security.new_rule_type')),
+                        items: [
+                          DropdownMenuItem(value: 'blacklist', child: Text(context.tr('security.block'))),
+                          DropdownMenuItem(value: 'whitelist', child: Text(context.tr('security.allow'))),
                         ],
                         onChanged: (v) => _ipTypeController.value = v ?? 'blacklist',
                       ),
                     ),
                     const SizedBox(height: 8),
-                    TextField(controller: _ipValueController, decoration: const InputDecoration(labelText: '192.168.1.1 أو 10.0.0.0/8'), textDirection: TextDirection.ltr),
+                    TextField(controller: _ipValueController, decoration: InputDecoration(labelText: context.tr('security.ip_example_placeholder')), textDirection: TextDirection.ltr),
                     const SizedBox(height: 8),
-                    TextField(controller: _ipNoteController, decoration: const InputDecoration(labelText: 'ملاحظة (اختياري)')),
+                    TextField(controller: _ipNoteController, decoration: InputDecoration(labelText: context.tr('security.note_optional'))),
                     const SizedBox(height: 8),
-                    OutlinedButton(onPressed: _addIpRule, child: const Text('إضافة قاعدة')),
+                    OutlinedButton(onPressed: _addIpRule, child: Text(context.tr('security.add_rule'))),
                     const SizedBox(height: 12),
                     if (_ipRules.isEmpty)
-                      const Text('لا توجد قواعد بعد.', style: TextStyle(color: Colors.grey))
+                      Text(context.tr('security.no_rules'), style: const TextStyle(color: Colors.grey))
                     else
                       ..._ipRules.map((rule) => ListTile(
                             contentPadding: EdgeInsets.zero,
                             dense: true,
-                            leading: Text(rule.type == 'blacklist' ? 'حظر' : 'سماح', style: const TextStyle(fontSize: 12)),
+                            leading: Text(rule.type == 'blacklist' ? context.tr('security.block') : context.tr('security.allow'), style: const TextStyle(fontSize: 12)),
                             title: Text(rule.ipOrCidr, textDirection: TextDirection.ltr),
                             subtitle: rule.note != null ? Text(rule.note!) : null,
                             trailing: IconButton(icon: const Icon(Icons.delete_outline_rounded, color: Colors.red), onPressed: () => _removeIpRule(rule)),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../auth/state/auth_provider.dart';
 import '../data/two_factor_service.dart';
@@ -36,19 +37,19 @@ class _SecurityScreenState extends State<SecurityScreen> {
           controller: controller,
           obscureText: true,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'كلمة المرور الحالية'),
+          decoration: InputDecoration(labelText: context.tr('password.current')),
           onSubmitted: (value) => Navigator.of(context).pop(value),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: const Text('متابعة')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('action.cancel'))),
+          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: Text(context.tr('twofactor.continue'))),
         ],
       ),
     );
   }
 
   Future<void> _enable() async {
-    final password = await _promptPassword('تفعيل المصادقة الثنائية');
+    final password = await _promptPassword(context.tr('twofactor.enable'));
     if (password == null || password.isEmpty) return;
 
     setState(() {
@@ -65,7 +66,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   Future<void> _confirm() async {
-    final password = await _promptPassword('تأكيد التفعيل');
+    final password = await _promptPassword(context.tr('twofactor.confirm_activation'));
     if (password == null || password.isEmpty) return;
 
     setState(() {
@@ -90,7 +91,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   Future<void> _regenerateRecoveryCodes() async {
-    final password = await _promptPassword('توليد رموز استرداد جديدة');
+    final password = await _promptPassword(context.tr('twofactor.regenerate_codes'));
     if (password == null || password.isEmpty) return;
 
     setState(() => _isLoading = true);
@@ -105,7 +106,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   Future<void> _disable() async {
-    final password = await _promptPassword('تعطيل المصادقة الثنائية');
+    final password = await _promptPassword(context.tr('twofactor.disable'));
     if (password == null || password.isEmpty) return;
 
     setState(() => _isLoading = true);
@@ -126,29 +127,29 @@ class _SecurityScreenState extends State<SecurityScreen> {
     final enabled = user?.twoFactorEnabled ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('الأمان')),
+      appBar: AppBar(title: Text(context.tr('nav.security'))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Text(
-                'المصادقة الثنائية (2FA)',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Text(
+                context.tr('twofactor.title'),
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-              const Text('طبقة حماية إضافية: بعد كلمة المرور، سيُطلب منك أيضاً رمز من تطبيق مصادقة.'),
+              Text(context.tr('twofactor.short_description')),
               const SizedBox(height: 16),
 
               if (!enabled && _pendingSetup == null)
                 FilledButton(
                   onPressed: _isLoading ? null : _enable,
-                  child: const Text('تفعيل المصادقة الثنائية'),
+                  child: Text(context.tr('twofactor.enable')),
                 ),
 
               if (_pendingSetup != null) ...[
-                const Text('امسح رمز QR بتطبيق المصادقة، أو أدخل المفتاح يدوياً:'),
+                Text(context.tr('twofactor.scan_instructions_short')),
                 const SizedBox(height: 12),
                 Center(
                   child: QrImageView(data: _pendingSetup!.qrCodeUri, size: 200),
@@ -159,24 +160,24 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 TextField(
                   controller: _codeController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'رمز التحقق', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: context.tr('twofactor.code'), border: const OutlineInputBorder()),
                 ),
                 const SizedBox(height: 12),
-                FilledButton(onPressed: _isLoading ? null : _confirm, child: const Text('تأكيد')),
+                FilledButton(onPressed: _isLoading ? null : _confirm, child: Text(context.tr('action.confirm'))),
               ],
 
               if (enabled) ...[
-                const Text('المصادقة الثنائية مفعّلة.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
+                Text(context.tr('twofactor.enabled_short'), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
                 OutlinedButton(
                   onPressed: _isLoading ? null : _regenerateRecoveryCodes,
-                  child: const Text('توليد رموز استرداد جديدة'),
+                  child: Text(context.tr('twofactor.regenerate_codes')),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton(
                   onPressed: _isLoading ? null : _disable,
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                  child: const Text('تعطيل'),
+                  child: Text(context.tr('twofactor.disable_short')),
                 ),
               ],
 
@@ -192,9 +193,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'احفظ رموز الاسترداد هذه — لن تظهر مجدداً:',
-                        style: TextStyle(fontWeight: FontWeight.w600),
+                      Text(
+                        context.tr('twofactor.recovery_codes_notice_short'),
+                        style: const TextStyle(fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 8),
                       ..._recoveryCodes!.map((c) => SelectableText(c)),

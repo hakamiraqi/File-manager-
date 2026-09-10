@@ -1,18 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/app_strings.dart';
 import '../../../../core/network/api_client.dart';
 import '../../data/admin_repository.dart';
 import '../../models/admin_user.dart';
 
-const _capabilityLabels = {
-  'can_manage_appearance': 'إدارة المظهر',
-  'can_manage_users': 'إدارة المستخدمين',
-  'can_manage_translations': 'إدارة الترجمات',
-  'can_view_statistics': 'عرض التحليلات والسجلات',
-  'can_manage_settings': 'إدارة الإعدادات العامة',
+const _capabilityLabelKeys = {
+  'can_manage_appearance': 'capability.manage_appearance',
+  'can_manage_users': 'capability.manage_users',
+  'can_manage_translations': 'capability.manage_translations',
+  'can_view_statistics': 'capability.view_statistics',
+  'can_manage_settings': 'capability.manage_settings',
 };
 
-const _roleLabels = {'user': 'مستخدم', 'editor': 'محرّر', 'contributor': 'مساهم', 'admin': 'مشرف'};
+const _roleLabelKeys = {'user': 'role.user', 'editor': 'role.editor', 'contributor': 'role.contributor', 'admin': 'role.admin'};
 
 /// Create/edit dialog mirroring UserFormModal.vue. Returns true via
 /// Navigator.pop when a user was created/updated, so the caller knows to
@@ -36,7 +37,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
 
   late String _role;
   bool _isActive = true;
-  final Map<String, bool> _capabilities = {for (final key in _capabilityLabels.keys) key: false};
+  final Map<String, bool> _capabilities = {for (final key in _capabilityLabelKeys.keys) key: false};
 
   bool _saving = false;
   String? _error;
@@ -105,36 +106,36 @@ class _UserFormDialogState extends State<UserFormDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(_isEdit ? 'تعديل المستخدم' : 'مستخدم جديد'),
+      title: Text(_isEdit ? context.tr('admin.users.edit') : context.tr('admin.users.new')),
       content: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(controller: _nameController, decoration: const InputDecoration(labelText: 'الاسم')),
+            TextField(controller: _nameController, decoration: InputDecoration(labelText: context.tr('auth.name'))),
             const SizedBox(height: 8),
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'البريد الإلكتروني'),
+              decoration: InputDecoration(labelText: context.tr('auth.email')),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _passwordController,
               obscureText: true,
-              decoration: InputDecoration(labelText: _isEdit ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور'),
+              decoration: InputDecoration(labelText: _isEdit ? context.tr('admin.users.new_password_optional') : context.tr('auth.password')),
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
               value: _role,
-              decoration: const InputDecoration(labelText: 'الصلاحية'),
-              items: _roleLabels.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
+              decoration: InputDecoration(labelText: context.tr('admin.users.role')),
+              items: _roleLabelKeys.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(context.tr(e.value)))).toList(),
               onChanged: (value) => setState(() => _role = value ?? 'user'),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _quotaController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'حصة التخزين (ميغابايت، اتركه فارغاً للافتراضي)'),
+              decoration: InputDecoration(labelText: context.tr('admin.users.quota')),
             ),
             if (_isEdit)
               CheckboxListTile(
@@ -142,18 +143,18 @@ class _UserFormDialogState extends State<UserFormDialog> {
                 controlAffinity: ListTileControlAffinity.leading,
                 value: _isActive,
                 onChanged: (v) => setState(() => _isActive = v ?? true),
-                title: const Text('الحساب مفعّل'),
+                title: Text(context.tr('admin.users.account_active')),
               ),
             if (_role == 'admin' && widget.isMasterAdmin) ...[
               const Divider(),
-              const Align(alignment: Alignment.centerRight, child: Text('صلاحيات هذا المشرف', style: TextStyle(fontWeight: FontWeight.w600))),
-              ..._capabilityLabels.entries.map((e) => CheckboxListTile(
+              Align(alignment: Alignment.centerRight, child: Text(context.tr('admin.users.admin_capabilities'), style: const TextStyle(fontWeight: FontWeight.w600))),
+              ..._capabilityLabelKeys.entries.map((e) => CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     controlAffinity: ListTileControlAffinity.leading,
                     dense: true,
                     value: _capabilities[e.key],
                     onChanged: (v) => setState(() => _capabilities[e.key] = v ?? false),
-                    title: Text(e.value),
+                    title: Text(context.tr(e.value)),
                   )),
             ],
             if (_error != null) ...[
@@ -164,8 +165,8 @@ class _UserFormDialogState extends State<UserFormDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
-        FilledButton(onPressed: _saving ? null : _submit, child: const Text('حفظ')),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('action.cancel'))),
+        FilledButton(onPressed: _saving ? null : _submit, child: Text(context.tr('action.save'))),
       ],
     );
   }

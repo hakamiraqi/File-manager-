@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../auth/state/auth_provider.dart';
 import 'activity_log_screen.dart';
 import 'analytics_screen.dart';
@@ -35,63 +36,63 @@ class AdminHomeScreen extends StatelessWidget {
     final admin = user?.admin;
 
     if (admin == null) {
-      return const Scaffold(body: Center(child: Text('لا تملك صلاحية الوصول إلى لوحة الإدارة.')));
+      return Scaffold(body: Center(child: Text(context.tr('admin.no_access'))));
     }
 
     final sections = <_AdminSection>[
-      _AdminSection(icon: Icons.dashboard_outlined, label: 'نظرة عامة', builder: (_) => const DashboardScreen()),
+      _AdminSection(icon: Icons.dashboard_outlined, label: context.tr('admin.nav.dashboard'), builder: (_) => const DashboardScreen()),
       _AdminSection(
         icon: Icons.people_outline_rounded,
-        label: 'المستخدمون',
+        label: context.tr('admin.nav.users'),
         builder: (_) => const UsersScreen(),
         enabled: admin.users,
       ),
       _AdminSection(
         icon: Icons.tune_rounded,
-        label: 'الإعدادات العامة',
+        label: context.tr('admin.nav.settings'),
         builder: (_) => const AdminSettingsScreen(),
         enabled: admin.settingsPage,
       ),
       _AdminSection(
         icon: Icons.shield_outlined,
-        label: 'مصفوفة الصلاحيات',
+        label: context.tr('admin.nav.permissions'),
         builder: (_) => const PermissionsScreen(),
         enabled: admin.settings,
       ),
       _AdminSection(
         icon: Icons.lock_outline_rounded,
-        label: 'الأمان وتسجيل الدخول',
+        label: context.tr('admin.nav.security'),
         builder: (_) => const AdminSecurityScreen(),
         enabled: admin.settings,
       ),
       _AdminSection(
         icon: Icons.mail_outline_rounded,
-        label: 'البريد الإلكتروني',
+        label: context.tr('admin.nav.mail'),
         builder: (_) => const MailScreen(),
         enabled: admin.settings,
       ),
       _AdminSection(
         icon: Icons.translate_rounded,
-        label: 'الترجمات',
+        label: context.tr('admin.nav.translations'),
         builder: (_) => const TranslationsScreen(),
         enabled: admin.translations,
       ),
       _AdminSection(
         icon: Icons.history_rounded,
-        label: 'سجل النشاطات',
+        label: context.tr('admin.nav.activity'),
         builder: (_) => const ActivityLogScreen(),
         enabled: admin.statistics,
       ),
       _AdminSection(
         icon: Icons.bar_chart_rounded,
-        label: 'التحليلات',
+        label: context.tr('admin.nav.analytics'),
         builder: (_) => const AnalyticsScreen(),
         enabled: admin.statistics,
       ),
     ].where((s) => s.enabled).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('الإدارة')),
+      appBar: AppBar(title: Text(context.tr('nav.admin'))),
       body: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: sections.length,

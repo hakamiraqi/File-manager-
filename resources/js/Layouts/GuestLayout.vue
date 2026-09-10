@@ -11,7 +11,7 @@ import { Link } from '@inertiajs/vue3';
             <Link href="/">
                 <ApplicationLogo class="h-16 w-16 fill-current text-[var(--accent-600)]" />
             </Link>
-            <span class="text-xl font-bold text-gray-700">{{ $page.props.appSettings.siteName }}</span>
+            <span class="text-xl font-bold text-gray-700 dark:text-gray-300">{{ $page.props.appSettings.siteName }}</span>
         </div>
 
         <div

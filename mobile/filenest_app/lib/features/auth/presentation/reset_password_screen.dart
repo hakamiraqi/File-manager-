@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../data/auth_service.dart';
 
@@ -52,7 +53,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       if (mounted) {
         Navigator.of(context).popUntil((route) => route.isFirst);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم تحديث كلمة المرور، يمكنك تسجيل الدخول الآن.')),
+          SnackBar(content: Text(context.tr('auth.password_reset_success'))),
         );
       }
     } catch (e) {
@@ -65,7 +66,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('إعادة تعيين كلمة المرور')),
+      appBar: AppBar(title: Text(context.tr('auth.reset_password_title'))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -74,30 +75,30 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'أدخل الرمز الموجود في رابط البريد الإلكتروني (الجزء بعد "token=" في الرابط) مع كلمة مرورك الجديدة.',
-                  style: TextStyle(color: Colors.grey),
+                Text(
+                  context.tr('auth.reset_password_instructions'),
+                  style: const TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'البريد الإلكتروني', border: OutlineInputBorder()),
-                  validator: (value) => (value == null || value.isEmpty) ? 'الرجاء إدخال البريد الإلكتروني' : null,
+                  decoration: InputDecoration(labelText: context.tr('auth.email'), border: const OutlineInputBorder()),
+                  validator: (value) => (value == null || value.isEmpty) ? context.tr('auth.email_required') : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _tokenController,
-                  decoration: const InputDecoration(labelText: 'رمز الاستعادة', border: OutlineInputBorder()),
-                  validator: (value) => (value == null || value.isEmpty) ? 'الرجاء إدخال رمز الاستعادة' : null,
+                  decoration: InputDecoration(labelText: context.tr('auth.reset_token'), border: const OutlineInputBorder()),
+                  validator: (value) => (value == null || value.isEmpty) ? context.tr('auth.reset_token_required') : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة (8 أحرف على الأقل)', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: context.tr('auth.new_password_min_length'), border: const OutlineInputBorder()),
                   validator: (value) =>
-                      (value == null || value.length < 8) ? 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل' : null,
+                      (value == null || value.length < 8) ? context.tr('auth.password_min_length_error') : null,
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
@@ -108,7 +109,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   onPressed: _isLoading ? null : _submit,
                   child: _isLoading
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('تحديث كلمة المرور'),
+                      : Text(context.tr('account.update_password')),
                 ),
               ],
             ),

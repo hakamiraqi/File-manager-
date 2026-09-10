@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../state/auth_provider.dart';
 
@@ -41,7 +42,7 @@ class _TwoFactorChallengeScreenState extends State<TwoFactorChallengeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('التحقق بخطوتين')),
+      appBar: AppBar(title: Text(context.tr('twofactor.challenge_title'))),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -52,8 +53,8 @@ class _TwoFactorChallengeScreenState extends State<TwoFactorChallengeScreen> {
               children: [
                 Text(
                   _usingRecoveryCode
-                      ? 'أدخل أحد رموز الاسترداد التي حفظتها.'
-                      : 'أدخل رمز التحقق المكوّن من 6 أرقام من تطبيق المصادقة.',
+                      ? context.tr('twofactor.enter_recovery_code')
+                      : context.tr('twofactor.enter_verification_code'),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 24),
@@ -62,7 +63,7 @@ class _TwoFactorChallengeScreenState extends State<TwoFactorChallengeScreen> {
                   autofocus: true,
                   keyboardType: _usingRecoveryCode ? TextInputType.text : TextInputType.number,
                   decoration: InputDecoration(
-                    labelText: _usingRecoveryCode ? 'رمز الاسترداد' : 'رمز التحقق',
+                    labelText: _usingRecoveryCode ? context.tr('twofactor.recovery_code') : context.tr('twofactor.code'),
                     border: const OutlineInputBorder(),
                   ),
                 ),
@@ -75,7 +76,7 @@ class _TwoFactorChallengeScreenState extends State<TwoFactorChallengeScreen> {
                   onPressed: _isLoading ? null : _submit,
                   child: _isLoading
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('تأكيد'),
+                      : Text(context.tr('action.confirm')),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
@@ -84,7 +85,7 @@ class _TwoFactorChallengeScreenState extends State<TwoFactorChallengeScreen> {
                     _controller.clear();
                     _error = null;
                   }),
-                  child: Text(_usingRecoveryCode ? 'استخدام رمز التحقق بدلاً من ذلك' : 'استخدام رمز استرداد بدلاً من ذلك'),
+                  child: Text(_usingRecoveryCode ? context.tr('twofactor.use_code_instead') : context.tr('twofactor.use_recovery_instead')),
                 ),
               ],
             ),

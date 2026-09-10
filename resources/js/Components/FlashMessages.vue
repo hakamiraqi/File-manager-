@@ -22,7 +22,7 @@ watch(message, (value) => {
         leave-active-class="transition ease-in duration-150"
         leave-to-class="opacity-0"
     >
-        <div v-if="visible && message" class="flex items-center gap-2 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+        <div v-if="visible && message" class="flex items-center gap-2 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
             <CheckCircleIcon class="h-5 w-5 shrink-0" />
             <span class="flex-1">{{ message }}</span>
             <button @click="visible = false">

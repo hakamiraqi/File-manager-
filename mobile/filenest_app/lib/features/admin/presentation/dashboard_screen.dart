@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/formatters.dart';
 import '../data/admin_repository.dart';
@@ -44,7 +45,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('نظرة عامة')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.dashboard'))),
       body: RefreshIndicator(
         onRefresh: _load,
         child: _loading
@@ -58,11 +59,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildBody(DashboardData data) {
     final cards = [
-      (_StatCard(icon: Icons.people_outline_rounded, label: 'المستخدمون', value: '${data.stats.users}')),
-      (_StatCard(icon: Icons.description_outlined, label: 'الملفات', value: '${data.stats.files}')),
-      (_StatCard(icon: Icons.folder_outlined, label: 'المجلدات', value: '${data.stats.folders}')),
-      (_StatCard(icon: Icons.ios_share_rounded, label: 'روابط المشاركة', value: '${data.stats.shares}')),
-      (_StatCard(icon: Icons.storage_rounded, label: 'إجمالي التخزين المستخدم', value: formatBytes(data.stats.storageUsed))),
+      (_StatCard(icon: Icons.people_outline_rounded, label: context.tr('admin.dashboard.users'), value: '${data.stats.users}')),
+      (_StatCard(icon: Icons.description_outlined, label: context.tr('admin.dashboard.files'), value: '${data.stats.files}')),
+      (_StatCard(icon: Icons.folder_outlined, label: context.tr('admin.dashboard.folders'), value: '${data.stats.folders}')),
+      (_StatCard(icon: Icons.ios_share_rounded, label: context.tr('admin.dashboard.shares'), value: '${data.stats.shares}')),
+      (_StatCard(icon: Icons.storage_rounded, label: context.tr('admin.dashboard.total_storage'), value: formatBytes(data.stats.storageUsed))),
     ];
 
     return ListView(
@@ -78,7 +79,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: cards,
         ),
         const SizedBox(height: 24),
-        const Text('أعلى المستخدمين استهلاكاً للمساحة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(context.tr('admin.dashboard.top_users'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Card(
           child: Column(
@@ -92,7 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         const SizedBox(height: 24),
-        const Text('أحدث النشاطات', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(context.tr('admin.dashboard.recent_activity'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Card(
           child: Column(
@@ -100,7 +101,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 .map((log) => ListTile(
                       dense: true,
                       title: Text(log.description ?? log.action, overflow: TextOverflow.ellipsis),
-                      subtitle: Text(log.userName ?? 'النظام'),
+                      subtitle: Text(log.userName ?? context.tr('admin.dashboard.system')),
                       trailing: Text(formatDate(log.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
                     ))
                 .toList(),

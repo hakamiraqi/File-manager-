@@ -7,7 +7,10 @@ import TextInput from '@/Components/TextInput.vue';
 import Checkbox from '@/Components/Checkbox.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import { useTrans } from '@/Composables/useTrans';
 import { ClipboardIcon, CheckIcon } from '@heroicons/vue/24/outline';
+
+const { t } = useTrans();
 
 const props = defineProps({
     show: Boolean,
@@ -78,57 +81,57 @@ function sendEmail() {
 <template>
     <Modal :show="show" @close="$emit('close')" max-width="lg">
         <div class="p-6" v-if="item">
-            <h2 class="text-lg font-medium text-gray-900">مشاركة "{{ item.name }}"</h2>
+            <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('share.title', 'مشاركة ":name"', { name: item.name }) }}</h2>
 
             <form v-if="!linkUrl" @submit.prevent="submit" class="mt-4 space-y-4">
                 <div>
-                    <InputLabel value="كلمة مرور (اختياري)" />
-                    <TextInput type="password" v-model="form.password" class="mt-1 block w-full" placeholder="بدون كلمة مرور" />
+                    <InputLabel :value="t('share.password_optional', 'كلمة مرور (اختياري)')" />
+                    <TextInput type="password" v-model="form.password" class="mt-1 block w-full" :placeholder="t('share.no_password', 'بدون كلمة مرور')" />
                 </div>
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <InputLabel value="تاريخ انتهاء الصلاحية (اختياري)" />
+                        <InputLabel :value="t('share.expires_optional', 'تاريخ انتهاء الصلاحية (اختياري)')" />
                         <TextInput type="datetime-local" v-model="form.expires_at" class="mt-1 block w-full" />
                     </div>
                     <div>
-                        <InputLabel value="حد التنزيلات (اختياري)" />
+                        <InputLabel :value="t('share.max_downloads_optional', 'حد التنزيلات (اختياري)')" />
                         <TextInput type="number" min="1" v-model="form.max_downloads" class="mt-1 block w-full" />
                     </div>
                 </div>
                 <label class="flex items-center gap-2">
                     <Checkbox v-model:checked="form.allow_download" />
-                    <span class="text-sm text-gray-600">السماح بالتنزيل</span>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('share.allow_download', 'السماح بالتنزيل') }}</span>
                 </label>
                 <label class="flex items-center gap-2">
                     <Checkbox v-model:checked="form.one_time_download" />
-                    <span class="text-sm text-gray-600">رابط للاستخدام مرة واحدة فقط (يُلغى تلقائياً بعد أول تنزيل)</span>
+                    <span class="text-sm text-gray-600 dark:text-gray-400">{{ t('share.one_time', 'رابط للاستخدام مرة واحدة فقط (يُلغى تلقائياً بعد أول تنزيل)') }}</span>
                 </label>
                 <div class="flex justify-end gap-3">
-                    <SecondaryButton @click="$emit('close')">إلغاء</SecondaryButton>
-                    <PrimaryButton :disabled="form.processing">إنشاء رابط المشاركة</PrimaryButton>
+                    <SecondaryButton @click="$emit('close')">{{ t('action.cancel', 'إلغاء') }}</SecondaryButton>
+                    <PrimaryButton :disabled="form.processing">{{ t('share.create_link', 'إنشاء رابط المشاركة') }}</PrimaryButton>
                 </div>
             </form>
 
             <div v-else class="mt-4 space-y-5">
-                <div class="flex items-center gap-2 rounded-lg border border-gray-200 p-2">
-                    <input readonly :value="linkUrl" class="flex-1 truncate border-0 bg-transparent text-sm focus:ring-0" />
-                    <button type="button" @click="copyLink" class="rounded-md bg-gray-100 p-2 hover:bg-gray-200">
+                <div class="flex items-center gap-2 rounded-lg border border-gray-200 p-2 dark:border-gray-700">
+                    <input readonly :value="linkUrl" class="flex-1 truncate border-0 bg-transparent text-sm focus:ring-0 dark:text-gray-200" />
+                    <button type="button" @click="copyLink" class="rounded-md bg-gray-100 p-2 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">
                         <CheckIcon v-if="copied" class="h-4 w-4 text-emerald-600" />
                         <ClipboardIcon v-else class="h-4 w-4" />
                     </button>
                 </div>
 
-                <form @submit.prevent="sendEmail" class="space-y-3 border-t border-gray-200 pt-4">
-                    <InputLabel value="إرسال عبر البريد الإلكتروني (افصل بين العناوين بفاصلة)" />
+                <form @submit.prevent="sendEmail" class="space-y-3 border-t border-gray-200 pt-4 dark:border-gray-700">
+                    <InputLabel :value="t('share.email_label', 'إرسال عبر البريد الإلكتروني (افصل بين العناوين بفاصلة)')" />
                     <TextInput v-model="emailForm.emails" class="block w-full" placeholder="user@example.com, user2@example.com" />
-                    <textarea v-model="emailForm.message" rows="2" class="block w-full rounded-md border-gray-300 text-sm" placeholder="رسالة اختيارية..." />
+                    <textarea v-model="emailForm.message" rows="2" class="block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" :placeholder="t('share.optional_message', 'رسالة اختيارية...')" />
                     <div class="flex items-center justify-between">
-                        <span v-if="emailSent" class="text-sm text-emerald-600">تم الإرسال بنجاح.</span>
-                        <PrimaryButton class="ms-auto" :disabled="emailForm.processing">إرسال</PrimaryButton>
+                        <span v-if="emailSent" class="text-sm text-emerald-600 dark:text-emerald-400">{{ t('share.email_sent', 'تم الإرسال بنجاح.') }}</span>
+                        <PrimaryButton class="ms-auto" :disabled="emailForm.processing">{{ t('share.send', 'إرسال') }}</PrimaryButton>
                     </div>
                 </form>
 
-                <SecondaryButton @click="$emit('close')" class="w-full justify-center">إغلاق</SecondaryButton>
+                <SecondaryButton @click="$emit('close')" class="w-full justify-center">{{ t('action.close', 'إغلاق') }}</SecondaryButton>
             </div>
         </div>
     </Modal>

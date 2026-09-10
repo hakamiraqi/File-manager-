@@ -9,7 +9,9 @@ import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import { useTrans } from '@/Composables/useTrans';
 
+const { t } = useTrans();
 const page = usePage();
 const enabled = computed(() => page.props.auth?.twoFactorEnabled ?? false);
 
@@ -78,34 +80,34 @@ function regenerateRecoveryCodes() {
     <section class="space-y-6">
         <header>
             <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                المصادقة الثنائية (2FA)
+                {{ t('twofactor.title', 'المصادقة الثنائية (2FA)') }}
             </h2>
 
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                طبقة حماية إضافية لحسابك: بعد إدخال كلمة المرور، سيُطلب منك أيضاً رمز تحقق من تطبيق مصادقة على هاتفك (مثل Google Authenticator أو Authy).
+                {{ t('twofactor.description', 'طبقة حماية إضافية لحسابك: بعد إدخال كلمة المرور، سيُطلب منك أيضاً رمز تحقق من تطبيق مصادقة على هاتفك (مثل Google Authenticator أو Authy).') }}
             </p>
         </header>
 
         <div v-if="!enabled && !qrCodeUri">
             <PrimaryButton @click="enable" :disabled="enableForm.processing">
-                تفعيل المصادقة الثنائية
+                {{ t('twofactor.enable', 'تفعيل المصادقة الثنائية') }}
             </PrimaryButton>
         </div>
 
-        <div v-else-if="!enabled && qrCodeUri" class="space-y-4 rounded-lg border border-gray-200 p-4">
-            <p class="text-sm text-gray-700">
-                امسح رمز QR هذا بتطبيق المصادقة، أو أدخل المفتاح يدوياً، ثم اكتب رمز التحقق المكوّن من 6 أرقام لتفعيل الحماية.
+        <div v-else-if="!enabled && qrCodeUri" class="space-y-4 rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+            <p class="text-sm text-gray-700 dark:text-gray-300">
+                {{ t('twofactor.scan_instructions', 'امسح رمز QR هذا بتطبيق المصادقة، أو أدخل المفتاح يدوياً، ثم اكتب رمز التحقق المكوّن من 6 أرقام لتفعيل الحماية.') }}
             </p>
 
             <canvas ref="qrCanvas"></canvas>
 
-            <p v-if="manualSecret" class="break-all rounded bg-gray-50 p-2 font-mono text-xs text-gray-600">
+            <p v-if="manualSecret" class="break-all rounded bg-gray-50 p-2 font-mono text-xs text-gray-600 dark:bg-gray-900 dark:text-gray-400">
                 {{ manualSecret }}
             </p>
 
             <form @submit.prevent="confirm" class="flex items-end gap-3">
                 <div class="flex-1">
-                    <InputLabel for="two_factor_code" value="رمز التحقق" />
+                    <InputLabel for="two_factor_code" :value="t('twofactor.code', 'رمز التحقق')" />
                     <TextInput
                         id="two_factor_code"
                         v-model="confirmForm.code"
@@ -115,65 +117,65 @@ function regenerateRecoveryCodes() {
                     />
                     <InputError :message="confirmForm.errors.code" class="mt-2" />
                 </div>
-                <PrimaryButton :disabled="confirmForm.processing">تأكيد</PrimaryButton>
+                <PrimaryButton :disabled="confirmForm.processing">{{ t('action.confirm', 'تأكيد') }}</PrimaryButton>
             </form>
         </div>
 
         <div v-else class="space-y-4">
-            <p class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700">
-                المصادقة الثنائية مفعّلة
+            <p class="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                {{ t('twofactor.enabled_badge', 'المصادقة الثنائية مفعّلة') }}
             </p>
 
-            <div v-if="recoveryCodes" class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <p class="text-sm font-medium text-amber-800">
-                    احفظ رموز الاسترداد هذه في مكان آمن — كل رمز يُستخدم مرة واحدة فقط لتسجيل الدخول إذا فقدت الوصول إلى تطبيق المصادقة، ولن تظهر هذه الرموز مجدداً بعد مغادرة الصفحة.
+            <div v-if="recoveryCodes" class="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+                <p class="text-sm font-medium text-amber-800 dark:text-amber-400">
+                    {{ t('twofactor.recovery_codes_notice', 'احفظ رموز الاسترداد هذه في مكان آمن — كل رمز يُستخدم مرة واحدة فقط لتسجيل الدخول إذا فقدت الوصول إلى تطبيق المصادقة، ولن تظهر هذه الرموز مجدداً بعد مغادرة الصفحة.') }}
                 </p>
-                <div class="grid grid-cols-2 gap-2 font-mono text-sm text-amber-900">
+                <div class="grid grid-cols-2 gap-2 font-mono text-sm text-amber-900 dark:text-amber-300">
                     <span v-for="rc in recoveryCodes" :key="rc">{{ rc }}</span>
                 </div>
             </div>
 
             <div class="flex gap-3">
                 <SecondaryButton @click="regenerateRecoveryCodes" :disabled="enableForm.processing">
-                    توليد رموز استرداد جديدة
+                    {{ t('twofactor.regenerate_codes', 'توليد رموز استرداد جديدة') }}
                 </SecondaryButton>
-                <DangerButton @click="confirmDisable">تعطيل</DangerButton>
+                <DangerButton @click="confirmDisable">{{ t('twofactor.disable', 'تعطيل') }}</DangerButton>
             </div>
         </div>
 
         <Modal :show="confirmingDisable" @close="closeDisableModal">
             <div class="p-6">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    تعطيل المصادقة الثنائية
+                    {{ t('twofactor.disable_title', 'تعطيل المصادقة الثنائية') }}
                 </h2>
 
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    أدخل كلمة المرور الحالية لتأكيد تعطيل المصادقة الثنائية عن حسابك.
+                    {{ t('twofactor.disable_description', 'أدخل كلمة المرور الحالية لتأكيد تعطيل المصادقة الثنائية عن حسابك.') }}
                 </p>
 
                 <div class="mt-6">
-                    <InputLabel for="disable_password" value="كلمة المرور" class="sr-only" />
+                    <InputLabel for="disable_password" :value="t('auth.password', 'كلمة المرور')" class="sr-only" />
                     <TextInput
                         id="disable_password"
                         ref="passwordInput"
                         v-model="disableForm.password"
                         type="password"
                         class="mt-1 block w-3/4"
-                        placeholder="كلمة المرور"
+                        :placeholder="t('auth.password', 'كلمة المرور')"
                         @keyup.enter="disable"
                     />
                     <InputError :message="disableForm.errors.password" class="mt-2" />
                 </div>
 
                 <div class="mt-6 flex justify-end">
-                    <SecondaryButton @click="closeDisableModal">إلغاء</SecondaryButton>
+                    <SecondaryButton @click="closeDisableModal">{{ t('action.cancel', 'إلغاء') }}</SecondaryButton>
                     <DangerButton
                         class="ms-3"
                         :class="{ 'opacity-25': disableForm.processing }"
                         :disabled="disableForm.processing"
                         @click="disable"
                     >
-                        تعطيل المصادقة الثنائية
+                        {{ t('twofactor.disable_confirm', 'تعطيل المصادقة الثنائية') }}
                     </DangerButton>
                 </div>
             </div>

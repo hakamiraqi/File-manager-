@@ -6,7 +6,10 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import CaptchaField from '@/Components/CaptchaField.vue';
 import { readRecaptchaToken } from '@/Composables/useRecaptcha';
+import { useTrans } from '@/Composables/useTrans';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+
+const { t } = useTrans();
 
 const props = defineProps({
     captcha: { type: Object, default: () => ({ enabled: false }) },
@@ -34,11 +37,11 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="التسجيل" />
+        <Head :title="t('auth.register', 'التسجيل')" />
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="name" value="الاسم" />
+                <InputLabel for="name" :value="t('auth.name', 'الاسم')" />
 
                 <TextInput
                     id="name"
@@ -54,7 +57,7 @@ const submit = () => {
             </div>
 
             <div class="mt-4">
-                <InputLabel for="email" value="البريد الإلكتروني" />
+                <InputLabel for="email" :value="t('auth.email', 'البريد الإلكتروني')" />
 
                 <TextInput
                     id="email"
@@ -69,7 +72,7 @@ const submit = () => {
             </div>
 
             <div class="mt-4">
-                <InputLabel for="password" value="كلمة المرور" />
+                <InputLabel for="password" :value="t('auth.password', 'كلمة المرور')" />
 
                 <TextInput
                     id="password"
@@ -86,7 +89,7 @@ const submit = () => {
             <div class="mt-4">
                 <InputLabel
                     for="password_confirmation"
-                    value="تأكيد كلمة المرور"
+                    :value="t('auth.confirm_password', 'تأكيد كلمة المرور')"
                 />
 
                 <TextInput
@@ -111,7 +114,7 @@ const submit = () => {
                     :href="route('login')"
                     class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:text-gray-100 dark:focus:ring-offset-gray-800"
                 >
-                    لديك حساب بالفعل؟
+                    {{ t('auth.have_account', 'لديك حساب بالفعل؟') }}
                 </Link>
 
                 <PrimaryButton
@@ -119,7 +122,7 @@ const submit = () => {
                     :class="{ 'opacity-25': form.processing }"
                     :disabled="form.processing"
                 >
-                    إنشاء الحساب
+                    {{ t('auth.register', 'إنشاء الحساب') }}
                 </PrimaryButton>
             </div>
         </form>

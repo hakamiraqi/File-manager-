@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/i18n/app_strings.dart';
 import '../../features/account/presentation/account_screen.dart';
 import '../../features/admin/presentation/admin_home_screen.dart';
+import '../../features/app_settings/presentation/app_settings_screen.dart';
 import '../../features/auth/state/auth_provider.dart';
+import '../../features/playlists/presentation/playlists_screen.dart';
 import '../../features/security/presentation/security_screen.dart';
 import '../../features/server_settings/presentation/server_settings_screen.dart';
 import '../../features/trash/presentation/trash_screen.dart';
@@ -37,32 +40,42 @@ List<NavDestinationItem> buildSecondaryDestinations(BuildContext context) {
     if (isAdmin)
       NavDestinationItem(
         icon: Icons.admin_panel_settings_outlined,
-        label: 'الإدارة',
+        label: context.tr('nav.admin'),
         onTap: () => push(const AdminHomeScreen()),
       ),
     NavDestinationItem(
+      icon: Icons.queue_music_rounded,
+      label: context.tr('nav.playlists'),
+      onTap: () => push(const PlaylistsScreen()),
+    ),
+    NavDestinationItem(
       icon: Icons.shield_outlined,
-      label: 'الأمان',
+      label: context.tr('nav.security'),
       onTap: () => push(const SecurityScreen()),
     ),
     NavDestinationItem(
       icon: Icons.person_outline_rounded,
-      label: 'الحساب',
+      label: context.tr('nav.account'),
       onTap: () => push(const AccountScreen()),
     ),
     NavDestinationItem(
       icon: Icons.delete_outline_rounded,
-      label: 'سلة المحذوفات',
+      label: context.tr('nav.trash'),
       onTap: () => push(const TrashScreen()),
     ),
     NavDestinationItem(
+      icon: Icons.language_rounded,
+      label: context.tr('nav.app_settings'),
+      onTap: () => push(const AppSettingsScreen()),
+    ),
+    NavDestinationItem(
       icon: Icons.dns_outlined,
-      label: 'إعدادات الخادم',
+      label: context.tr('nav.server_settings'),
       onTap: () => push(const ServerSettingsScreen()),
     ),
     NavDestinationItem(
       icon: Icons.logout_rounded,
-      label: 'تسجيل الخروج',
+      label: context.tr('nav.logout'),
       isDestructive: true,
       onTap: () => context.read<AuthProvider>().logout(),
     ),

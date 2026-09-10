@@ -26,7 +26,9 @@ import 'plyr/dist/plyr.css';
 // (cdn.plyr.io) at runtime, which may be unreachable behind a firewall.
 import plyrIconUrl from '@/vendor/plyr-icons.svg?url';
 import WaveSurfer from 'wavesurfer.js';
+import { useTrans } from '@/Composables/useTrans';
 
+const { t } = useTrans();
 const props = defineProps({
     show: Boolean,
     file: { type: Object, default: null },
@@ -260,7 +262,7 @@ async function submitQuestionForm() {
             await loadQuestions();
         },
         onError: (errors) => {
-            questionFormError.value = Object.values(errors)[0] ?? 'تعذّر حفظ السؤال.';
+            questionFormError.value = Object.values(errors)[0] ?? t('preview.question_save_error', 'تعذّر حفظ السؤال.');
         },
         onFinish: () => {
             questionFormBusy.value = false;
@@ -297,7 +299,7 @@ async function toggleReport() {
         const { data } = await window.axios.get(route('questions.report', props.file.id));
         reportData.value = data;
     } catch {
-        reportError.value = 'تعذّر تحميل التقرير.';
+        reportError.value = t('preview.report_error', 'تعذّر تحميل التقرير.');
     } finally {
         reportLoading.value = false;
     }
@@ -324,11 +326,11 @@ async function handleImportFile(event) {
         preserveState: true,
         forceFormData: true,
         onSuccess: async (page) => {
-            importMessage.value = page.props.flash?.success ?? 'تم الاستيراد.';
+            importMessage.value = page.props.flash?.success ?? t('preview.import_success', 'تم الاستيراد.');
             await loadQuestions();
         },
         onError: (errors) => {
-            importError.value = Object.values(errors)[0] ?? 'تعذّر استيراد الملف.';
+            importError.value = Object.values(errors)[0] ?? t('preview.import_error', 'تعذّر استيراد الملف.');
         },
         onFinish: () => {
             importBusy.value = false;
@@ -501,6 +503,10 @@ function toggleAudioPlay() {
 watch(volume, (v) => wavesurfer?.setVolume(v));
 watch(playbackRate, (r) => wavesurfer?.setPlaybackRate(r));
 
+// ---- Extracted document text (DocumentTextExtractor's content_text) ----
+const showExtractedText = ref(false);
+const extractedText = ref(null);
+
 async function loadForFile(file) {
     destroyPlyr();
     destroyWavesurfer();
@@ -528,10 +534,6 @@ watch(
     (file) => loadForFile(file),
     { immediate: true },
 );
-
-// ---- Extracted document text (DocumentTextExtractor's content_text) ----
-const showExtractedText = ref(false);
-const extractedText = ref(null);
 const extractedTextLoading = ref(false);
 
 async function toggleExtractedText() {
@@ -563,38 +565,38 @@ onBeforeUnmount(() => {
 
 <template>
     <Modal :show="show" @close="handleClose" max-width="4xl">
-        <div v-if="file" class="flex max-h-[85vh] flex-col">
-            <div class="flex items-center justify-between border-b border-gray-200 p-4">
+        <div v-if="file" class="flex max-h-[85vh] flex-col dark:bg-gray-800">
+            <div class="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
                 <div class="min-w-0">
-                    <h3 class="truncate font-medium text-gray-900">{{ file.name }}</h3>
-                    <p v-if="playlist.length > 1" class="text-xs text-gray-500">
-                        {{ currentIndex + 1 }} من {{ playlist.length }} في قائمة التشغيل
+                    <h3 class="truncate font-medium text-gray-900 dark:text-gray-100">{{ file.name }}</h3>
+                    <p v-if="playlist.length > 1" class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('preview.playlist_position', ':index من :total في قائمة التشغيل', { index: currentIndex + 1, total: playlist.length }) }}
                     </p>
                     <p v-if="score.answered > 0" class="text-xs font-medium text-[var(--accent-600)]">
-                        درجتك: {{ score.correct }} من {{ score.total }}
+                        {{ t('preview.your_score', 'درجتك: :correct من :total', { correct: score.correct, total: score.total }) }}
                     </p>
                 </div>
                 <div class="flex items-center gap-2">
                     <button
                         v-if="playlist.length > 1"
                         @click="showPlaylist = !showPlaylist"
-                        class="rounded-md p-2 hover:bg-gray-100"
-                        :class="{ 'bg-gray-100': showPlaylist }"
-                        title="قائمة التشغيل"
+                        class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        :class="{ 'bg-gray-100 dark:bg-gray-700': showPlaylist }"
+                        :title="t('preview.playlist_title', 'قائمة التشغيل')"
                     >
-                        <QueueListIcon class="h-5 w-5" />
+                        <QueueListIcon class="h-5 w-5 dark:text-gray-300" />
                     </button>
-                    <a :href="route('files.download', file.id)" class="rounded-md p-2 hover:bg-gray-100" title="تنزيل">
-                        <ArrowDownTrayIcon class="h-5 w-5" />
+                    <a :href="route('files.download', file.id)" class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.download', 'تنزيل')">
+                        <ArrowDownTrayIcon class="h-5 w-5 dark:text-gray-300" />
                     </a>
-                    <button @click="handleClose" class="rounded-md p-2 hover:bg-gray-100">
-                        <XMarkIcon class="h-5 w-5" />
+                    <button @click="handleClose" class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <XMarkIcon class="h-5 w-5 dark:text-gray-300" />
                     </button>
                 </div>
             </div>
 
             <div class="flex flex-1 overflow-hidden">
-                <div class="flex flex-1 flex-col overflow-auto bg-gray-50">
+                <div class="flex flex-1 flex-col overflow-auto bg-gray-50 dark:bg-gray-900">
                     <div class="flex flex-1 items-center justify-center p-4">
                         <img v-if="kind(file) === 'image'" :src="route('files.preview', file.id)" class="max-h-[65vh] rounded" />
 
@@ -620,16 +622,16 @@ onBeforeUnmount(() => {
 
                             <!-- Interactive question overlay: blocks the video until answered -->
                             <div v-if="activeQuestion" class="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
-                                <div class="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+                                <div class="w-full max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-gray-800">
                                     <p class="mb-3 flex items-center gap-1.5 text-xs font-medium text-[var(--accent-600)]">
-                                        <QuestionMarkCircleIcon class="h-4 w-4" /> سؤال تفاعلي
+                                        <QuestionMarkCircleIcon class="h-4 w-4" /> {{ t('preview.interactive_question_label', 'سؤال تفاعلي') }}
                                     </p>
-                                    <p class="mb-4 font-semibold text-gray-900">{{ activeQuestion.question }}</p>
+                                    <p class="mb-4 font-semibold text-gray-900 dark:text-gray-100">{{ activeQuestion.question }}</p>
                                     <div class="space-y-2">
                                         <label
                                             v-for="choice in activeQuestion.choices"
                                             :key="choice.id"
-                                            class="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm text-gray-700"
+                                            class="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm text-gray-700 dark:text-gray-300"
                                             :class="choiceClasses(choice)"
                                         >
                                             <input
@@ -648,7 +650,7 @@ onBeforeUnmount(() => {
                                             class="text-sm font-medium"
                                             :class="answerFeedback.is_correct ? 'text-green-600' : 'text-red-600'"
                                         >
-                                            {{ answerFeedback.is_correct ? 'إجابة صحيحة!' : 'إجابة غير صحيحة.' }}
+                                            {{ answerFeedback.is_correct ? t('preview.correct_answer', 'إجابة صحيحة!') : t('preview.wrong_answer', 'إجابة غير صحيحة.') }}
                                         </p>
                                         <span v-else></span>
                                         <button
@@ -657,14 +659,14 @@ onBeforeUnmount(() => {
                                             :disabled="selectedChoiceId == null || answering"
                                             class="shrink-0 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50"
                                         >
-                                            إرسال الإجابة
+                                            {{ t('preview.submit_answer', 'إرسال الإجابة') }}
                                         </button>
                                         <button
                                             v-else
                                             @click="continueAfterQuestion"
                                             class="shrink-0 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]"
                                         >
-                                            متابعة المشاهدة
+                                            {{ t('preview.continue_watching', 'متابعة المشاهدة') }}
                                         </button>
                                     </div>
                                 </div>
@@ -684,20 +686,20 @@ onBeforeUnmount(() => {
                                     <PauseIcon v-if="isPlaying" class="h-5 w-5" />
                                     <PlayIcon v-else class="h-5 w-5" />
                                 </button>
-                                <span class="text-xs tabular-nums text-gray-500">
+                                <span class="text-xs tabular-nums text-gray-500 dark:text-gray-400">
                                     {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
                                 </span>
-                                <label class="flex items-center gap-1 text-xs text-gray-500">
-                                    السرعة
-                                    <select v-model.number="playbackRate" class="rounded border-gray-300 text-xs">
+                                <label class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                                    {{ t('preview.speed', 'السرعة') }}
+                                    <select v-model.number="playbackRate" class="rounded border-gray-300 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
                                         <option :value="0.5">0.5x</option>
                                         <option :value="1">1x</option>
                                         <option :value="1.5">1.5x</option>
                                         <option :value="2">2x</option>
                                     </select>
                                 </label>
-                                <label class="flex items-center gap-1 text-xs text-gray-500">
-                                    الصوت
+                                <label class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                                    {{ t('preview.volume', 'الصوت') }}
                                     <input type="range" min="0" max="1" step="0.05" v-model.number="volume" class="w-24" />
                                 </label>
                             </div>
@@ -705,47 +707,47 @@ onBeforeUnmount(() => {
 
                         <iframe v-else-if="kind(file) === 'pdf'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
                         <iframe v-else-if="kind(file) === 'text'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
-                        <p v-else-if="!file.is_indexed" class="text-sm text-gray-500">لا تتوفر معاينة لهذا النوع من الملفات. الرجاء تنزيله للاطلاع عليه.</p>
+                        <p v-else-if="!file.is_indexed" class="text-sm text-gray-500 dark:text-gray-400">{{ t('preview.no_preview', 'لا تتوفر معاينة لهذا النوع من الملفات. الرجاء تنزيله للاطلاع عليه.') }}</p>
                     </div>
 
-                    <div v-if="file.is_indexed" class="border-t border-gray-200 bg-white p-3">
+                    <div v-if="file.is_indexed" class="border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
                         <button
                             @click="toggleExtractedText"
-                            class="flex w-full items-center justify-between text-xs font-medium text-gray-600 hover:text-gray-900"
+                            class="flex w-full items-center justify-between text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                         >
                             <span class="flex items-center gap-1.5">
-                                <DocumentMagnifyingGlassIcon class="h-4 w-4" /> النص المستخرج من المستند
+                                <DocumentMagnifyingGlassIcon class="h-4 w-4" /> {{ t('preview.extracted_text', 'النص المستخرج من المستند') }}
                             </span>
                             <ChevronUpIcon v-if="showExtractedText" class="h-4 w-4" />
                             <ChevronDownIcon v-else class="h-4 w-4" />
                         </button>
                         <div v-if="showExtractedText" class="mt-2">
-                            <p v-if="extractedTextLoading" class="text-xs text-gray-400">جارِ التحميل...</p>
-                            <p v-else-if="!extractedText" class="text-xs text-gray-400">لا يوجد نص مستخرج لهذا الملف.</p>
-                            <pre v-else class="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-gray-50 p-3 text-xs leading-relaxed text-gray-700">{{ extractedText }}</pre>
+                            <p v-if="extractedTextLoading" class="text-xs text-gray-400">{{ t('common.loading', 'جارِ التحميل...') }}</p>
+                            <p v-else-if="!extractedText" class="text-xs text-gray-400">{{ t('preview.no_extracted_text', 'لا يوجد نص مستخرج لهذا الملف.') }}</p>
+                            <pre v-else class="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-gray-50 p-3 text-xs leading-relaxed text-gray-700 dark:bg-gray-900 dark:text-gray-300">{{ extractedText }}</pre>
                         </div>
                     </div>
 
-                    <div v-if="playlist.length > 1 && (kind(file) === 'video' || kind(file) === 'audio')" class="flex items-center justify-center gap-4 border-t border-gray-200 bg-white p-2">
-                        <button @click="playPrev" :disabled="!hasPrev" class="rounded-md p-2 hover:bg-gray-100 disabled:opacity-30" title="السابق">
+                    <div v-if="playlist.length > 1 && (kind(file) === 'video' || kind(file) === 'audio')" class="flex items-center justify-center gap-4 border-t border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
+                        <button @click="playPrev" :disabled="!hasPrev" class="rounded-md p-2 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700 dark:text-gray-300" :title="t('preview.prev', 'السابق')">
                             <BackwardIcon class="h-5 w-5" />
                         </button>
-                        <label class="flex items-center gap-1 text-xs text-gray-500">
+                        <label class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                             <input type="checkbox" v-model="autoplayNext" class="rounded border-gray-300" />
-                            تشغيل تلقائي للتالي
+                            {{ t('preview.autoplay_next', 'تشغيل تلقائي للتالي') }}
                         </label>
-                        <button @click="playNext" :disabled="!hasNext" class="rounded-md p-2 hover:bg-gray-100 disabled:opacity-30" title="التالي">
+                        <button @click="playNext" :disabled="!hasNext" class="rounded-md p-2 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700 dark:text-gray-300" :title="t('preview.next', 'التالي')">
                             <ForwardIcon class="h-5 w-5" />
                         </button>
                     </div>
 
-                    <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-3">
-                        <p class="mb-2 text-xs font-medium text-gray-600">الترجمة</p>
+                    <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+                        <p class="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('preview.subtitles_title', 'الترجمة') }}</p>
                         <div v-if="subtitles.length" class="mb-2 flex flex-wrap gap-2">
                             <span
                                 v-for="subtitle in subtitles"
                                 :key="subtitle.id"
-                                class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700"
+                                class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-300"
                             >
                                 {{ subtitle.label }} ({{ subtitle.language }})
                                 <button @click="deleteSubtitle(subtitle)" class="text-gray-400 hover:text-red-600">
@@ -759,18 +761,18 @@ onBeforeUnmount(() => {
                                 type="file"
                                 accept=".srt,.vtt"
                                 @input="subtitleForm.subtitle = $event.target.files[0]"
-                                class="text-xs"
+                                class="text-xs dark:text-gray-300"
                             />
                             <input
                                 v-model="subtitleForm.language"
-                                placeholder="رمز اللغة (ar, en...)"
-                                class="w-28 rounded-md border-gray-300 text-xs"
+                                :placeholder="t('preview.subtitle_language_placeholder', 'رمز اللغة (ar, en...)')"
+                                class="w-28 rounded-md border-gray-300 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                 maxlength="10"
                             />
                             <input
                                 v-model="subtitleForm.label"
-                                placeholder="اسم الترجمة"
-                                class="w-32 rounded-md border-gray-300 text-xs"
+                                :placeholder="t('preview.subtitle_label_placeholder', 'اسم الترجمة')"
+                                class="w-32 rounded-md border-gray-300 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
                                 maxlength="100"
                             />
                             <button
@@ -778,20 +780,20 @@ onBeforeUnmount(() => {
                                 :disabled="subtitleForm.processing || !subtitleForm.subtitle"
                                 class="rounded-md bg-gray-800 px-3 py-1.5 text-xs text-white hover:bg-gray-900 disabled:opacity-50"
                             >
-                                إضافة
+                                {{ t('security.add', 'إضافة') }}
                             </button>
                         </form>
                         <p v-if="subtitleForm.errors.subtitle" class="mt-1 text-xs text-red-600">{{ subtitleForm.errors.subtitle }}</p>
                     </div>
 
                     <!-- Interactive video question manager -->
-                    <div v-if="kind(file) === 'video' && interactiveVideoEnabled && can.manage_questions" class="border-t border-gray-200 bg-white p-3">
+                    <div v-if="kind(file) === 'video' && interactiveVideoEnabled && can.manage_questions" class="border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
                         <button
                             @click="showQuestionManager = !showQuestionManager; if (showQuestionManager) resetQuestionForm()"
-                            class="flex w-full items-center justify-between text-xs font-medium text-gray-600 hover:text-gray-900"
+                            class="flex w-full items-center justify-between text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                         >
                             <span class="flex items-center gap-1.5">
-                                <QuestionMarkCircleIcon class="h-4 w-4" /> الأسئلة التفاعلية ({{ questions.length }})
+                                <QuestionMarkCircleIcon class="h-4 w-4" /> {{ t('preview.interactive_questions', 'الأسئلة التفاعلية (:count)', { count: questions.length }) }}
                             </span>
                             <ChevronUpIcon v-if="showQuestionManager" class="h-4 w-4" />
                             <ChevronDownIcon v-else class="h-4 w-4" />
@@ -802,116 +804,116 @@ onBeforeUnmount(() => {
                                 <li
                                     v-for="q in questions"
                                     :key="q.id"
-                                    class="flex items-center justify-between gap-2 rounded-md bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700"
+                                    class="flex items-center justify-between gap-2 rounded-md bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-300"
                                 >
                                     <button @click="seekTo(q.timestamp_seconds)" class="min-w-0 flex-1 truncate text-right hover:text-[var(--accent-600)]">
                                         <span class="tabular-nums text-gray-400">{{ formatTimestamp(q.timestamp_seconds) }}</span>
                                         — {{ q.question }}
                                     </button>
-                                    <button @click="editQuestion(q)" class="shrink-0 text-gray-400 hover:text-[var(--accent-600)]">تعديل</button>
-                                    <button @click="deleteQuestion(q)" class="shrink-0 text-gray-400 hover:text-red-600">حذف</button>
+                                    <button @click="editQuestion(q)" class="shrink-0 text-gray-400 hover:text-[var(--accent-600)]">{{ t('preview.edit', 'تعديل') }}</button>
+                                    <button @click="deleteQuestion(q)" class="shrink-0 text-gray-400 hover:text-red-600">{{ t('action.delete', 'حذف') }}</button>
                                 </li>
                             </ul>
 
-                            <div v-if="questions.length" class="rounded-lg border border-gray-200">
+                            <div v-if="questions.length" class="rounded-lg border border-gray-200 dark:border-gray-700">
                                 <button
                                     type="button"
                                     @click="toggleReport"
-                                    class="flex w-full items-center justify-between px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900"
+                                    class="flex w-full items-center justify-between px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
                                 >
-                                    <span>تقرير النتائج</span>
+                                    <span>{{ t('preview.report_title', 'تقرير النتائج') }}</span>
                                     <ChevronUpIcon v-if="showReport" class="h-3.5 w-3.5" />
                                     <ChevronDownIcon v-else class="h-3.5 w-3.5" />
                                 </button>
 
-                                <div v-if="showReport" class="border-t border-gray-200 p-3">
-                                    <p v-if="reportLoading" class="text-xs text-gray-500">جارٍ التحميل...</p>
+                                <div v-if="showReport" class="border-t border-gray-200 p-3 dark:border-gray-700">
+                                    <p v-if="reportLoading" class="text-xs text-gray-500 dark:text-gray-400">{{ t('common.loading', 'جارٍ التحميل...') }}</p>
                                     <p v-else-if="reportError" class="text-xs text-red-600">{{ reportError }}</p>
                                     <div v-else-if="reportData" class="space-y-4">
-                                        <p class="text-xs text-gray-500">
-                                            {{ reportData.summary.respondents }} مشاهد أجاب على الأسئلة
+                                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                                            {{ t('preview.report_respondents', ':count مشاهد أجاب على الأسئلة', { count: reportData.summary.respondents }) }}
                                             <span v-if="reportData.summary.average_percent != null">
-                                                — متوسط الدرجات {{ percent(reportData.summary.average_percent) }}
+                                                {{ t('preview.report_average', '— متوسط الدرجات :percent', { percent: percent(reportData.summary.average_percent) }) }}
                                             </span>
                                         </p>
 
                                         <div v-if="reportData.questions.length" class="space-y-2">
-                                            <div v-for="q in reportData.questions" :key="q.id" class="rounded-md bg-gray-50 p-2">
-                                                <p class="mb-1 truncate text-xs text-gray-700">
+                                            <div v-for="q in reportData.questions" :key="q.id" class="rounded-md bg-gray-50 p-2 dark:bg-gray-900">
+                                                <p class="mb-1 truncate text-xs text-gray-700 dark:text-gray-300">
                                                     <span class="tabular-nums text-gray-400">{{ formatTimestamp(q.timestamp_seconds) }}</span>
                                                     — {{ q.question }}
-                                                    <span class="text-gray-400">({{ q.total_answers }} إجابة)</span>
+                                                    <span class="text-gray-400">{{ t('preview.report_answers_count', '(:count إجابة)', { count: q.total_answers }) }}</span>
                                                 </p>
                                                 <div v-for="choice in q.choices" :key="choice.id" class="mb-1 flex items-center gap-2">
                                                     <span
                                                         class="w-24 shrink-0 truncate text-[11px]"
-                                                        :class="choice.is_correct ? 'font-medium text-green-700' : 'text-gray-500'"
+                                                        :class="choice.is_correct ? 'font-medium text-green-700 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'"
                                                     >{{ choice.label }}</span>
-                                                    <div class="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
+                                                    <div class="h-2 flex-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
                                                         <div
                                                             class="h-full rounded-full"
                                                             :class="choice.is_correct ? 'bg-green-500' : 'bg-gray-400'"
                                                             :style="{ width: percent(choice.percent) === '—' ? '0%' : percent(choice.percent) }"
                                                         ></div>
                                                     </div>
-                                                    <span class="w-10 shrink-0 text-left text-[11px] tabular-nums text-gray-500">{{ percent(choice.percent) }}</span>
+                                                    <span class="w-10 shrink-0 text-left text-[11px] tabular-nums text-gray-500 dark:text-gray-400">{{ percent(choice.percent) }}</span>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <div v-if="reportData.users.length">
-                                            <p class="mb-1 text-xs font-medium text-gray-500">النتائج حسب المستخدم</p>
+                                            <p class="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('preview.report_by_user', 'النتائج حسب المستخدم') }}</p>
                                             <table class="w-full text-xs">
                                                 <tbody>
-                                                    <tr v-for="u in reportData.users" :key="u.user_id" class="border-t border-gray-100">
-                                                        <td class="py-1 pr-2 text-gray-700">{{ u.name ?? u.email }}</td>
+                                                    <tr v-for="u in reportData.users" :key="u.user_id" class="border-t border-gray-100 dark:border-gray-700">
+                                                        <td class="py-1 pr-2 text-gray-700 dark:text-gray-300">{{ u.name ?? u.email }}</td>
                                                         <td class="py-1 text-gray-400">{{ u.correct }}/{{ u.total_questions }}</td>
-                                                        <td class="py-1 text-left tabular-nums text-gray-600">{{ percent(u.percent) }}</td>
+                                                        <td class="py-1 text-left tabular-nums text-gray-600 dark:text-gray-400">{{ percent(u.percent) }}</td>
                                                     </tr>
                                                 </tbody>
                                             </table>
                                         </div>
-                                        <p v-else class="text-xs text-gray-400">لم يجب أحد على الأسئلة بعد.</p>
+                                        <p v-else class="text-xs text-gray-400">{{ t('preview.report_no_answers', 'لم يجب أحد على الأسئلة بعد.') }}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-gray-300 p-2.5">
+                            <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-gray-300 p-2.5 dark:border-gray-600">
                                 <button
                                     type="button"
                                     @click="triggerImportPicker"
                                     :disabled="importBusy"
-                                    class="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                    class="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
                                 >
-                                    {{ importBusy ? 'جارٍ الاستيراد...' : 'استيراد أسئلة من ملف (JSON/CSV)' }}
+                                    {{ importBusy ? t('preview.import_button_importing', 'جارٍ الاستيراد...') : t('preview.import_button', 'استيراد أسئلة من ملف (JSON/CSV)') }}
                                 </button>
                                 <a :href="route('questions.import-template')" class="text-xs text-[var(--accent-600)] hover:underline">
-                                    تنزيل نموذج CSV
+                                    {{ t('preview.download_template', 'تنزيل نموذج CSV') }}
                                 </a>
                                 <input ref="importFileInput" type="file" accept=".json,.csv,.txt" class="hidden" @change="handleImportFile" />
                             </div>
                             <p v-if="importMessage" class="text-xs text-green-600">{{ importMessage }}</p>
                             <p v-if="importError" class="text-xs text-red-600">{{ importError }}</p>
 
-                            <form @submit.prevent="submitQuestionForm" class="space-y-2 rounded-lg border border-gray-200 p-3">
-                                <p class="text-xs font-medium text-gray-500">{{ questionForm.editingId ? 'تعديل سؤال' : 'إضافة سؤال جديد' }}</p>
+                            <form @submit.prevent="submitQuestionForm" class="space-y-2 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ questionForm.editingId ? t('preview.edit_question_title', 'تعديل سؤال') : t('preview.new_question_title', 'إضافة سؤال جديد') }}</p>
                                 <div class="flex items-center gap-2">
-                                    <label class="text-xs text-gray-500 shrink-0">يظهر عند الثانية</label>
-                                    <input type="number" min="0" v-model.number="questionForm.timestamp_seconds" class="w-24 rounded-md border-gray-300 text-xs" />
+                                    <label class="text-xs text-gray-500 shrink-0 dark:text-gray-400">{{ t('preview.appears_at_second', 'يظهر عند الثانية') }}</label>
+                                    <input type="number" min="0" v-model.number="questionForm.timestamp_seconds" class="w-24 rounded-md border-gray-300 text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
                                     <button type="button" @click="questionForm.timestamp_seconds = Math.floor(player?.currentTime ?? 0)" class="text-xs text-[var(--accent-600)] hover:underline">
-                                        استخدام الوقت الحالي
+                                        {{ t('preview.use_current_time', 'استخدام الوقت الحالي') }}
                                     </button>
                                 </div>
-                                <textarea v-model="questionForm.question" rows="2" placeholder="نص السؤال" class="w-full rounded-md border-gray-300 text-sm" required></textarea>
+                                <textarea v-model="questionForm.question" rows="2" :placeholder="t('preview.question_placeholder', 'نص السؤال')" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" required></textarea>
                                 <div v-for="(choice, index) in questionForm.choices" :key="index" class="flex items-center gap-2">
                                     <input type="radio" :value="index" v-model.number="questionForm.correct_index" class="shrink-0 border-gray-300 text-[var(--accent-600)]" />
-                                    <input v-model="questionForm.choices[index]" placeholder="نص الخيار" class="flex-1 rounded-md border-gray-300 text-sm" required />
+                                    <input v-model="questionForm.choices[index]" :placeholder="t('preview.choice_placeholder', 'نص الخيار')" class="flex-1 rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" required />
                                     <button v-if="questionForm.choices.length > 2" type="button" @click="removeChoiceField(index)" class="shrink-0 text-gray-400 hover:text-red-600">
                                         <XMarkIcon class="h-4 w-4" />
                                     </button>
                                 </div>
                                 <button v-if="questionForm.choices.length < 6" type="button" @click="addChoiceField" class="flex items-center gap-1 text-xs text-[var(--accent-600)] hover:underline">
-                                    <PlusIcon class="h-3.5 w-3.5" /> إضافة خيار
+                                    <PlusIcon class="h-3.5 w-3.5" /> {{ t('preview.add_choice', 'إضافة خيار') }}
                                 </button>
                                 <p v-if="questionFormError" class="text-xs text-red-600">{{ questionFormError }}</p>
                                 <div class="flex items-center gap-2 pt-1">
@@ -920,10 +922,10 @@ onBeforeUnmount(() => {
                                         :disabled="questionFormBusy"
                                         class="rounded-md bg-[var(--accent-600)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50"
                                     >
-                                        {{ questionForm.editingId ? 'حفظ التعديل' : 'إضافة السؤال' }}
+                                        {{ questionForm.editingId ? t('preview.save_edit', 'حفظ التعديل') : t('preview.add_question', 'إضافة السؤال') }}
                                     </button>
-                                    <button v-if="questionForm.editingId" type="button" @click="resetQuestionForm" class="text-xs text-gray-500 hover:underline">
-                                        إلغاء التعديل
+                                    <button v-if="questionForm.editingId" type="button" @click="resetQuestionForm" class="text-xs text-gray-500 hover:underline dark:text-gray-400">
+                                        {{ t('preview.cancel_edit', 'إلغاء التعديل') }}
                                     </button>
                                 </div>
                             </form>
@@ -931,9 +933,9 @@ onBeforeUnmount(() => {
                     </div>
 
                     <!-- Comments -->
-                    <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-3">
-                        <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-600">
-                            <ChatBubbleLeftIcon class="h-4 w-4" /> التعليقات ({{ comments.length }})
+                    <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+                        <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
+                            <ChatBubbleLeftIcon class="h-4 w-4" /> {{ t('preview.comments_title', 'التعليقات (:count)', { count: comments.length }) }}
                         </p>
                         <ul v-if="comments.length" class="mb-3 max-h-40 space-y-2 overflow-y-auto">
                             <li v-for="comment in comments" :key="comment.id" class="flex items-start justify-between gap-2 text-sm">
@@ -941,12 +943,12 @@ onBeforeUnmount(() => {
                                     <button
                                         v-if="comment.timestamp_seconds != null"
                                         @click="seekTo(comment.timestamp_seconds)"
-                                        class="me-1 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs tabular-nums text-gray-500 hover:bg-gray-200"
+                                        class="me-1 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs tabular-nums text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600"
                                     >
                                         {{ formatTimestamp(comment.timestamp_seconds) }}
                                     </button>
-                                    <span class="font-medium text-gray-700">{{ comment.user?.name }}:</span>
-                                    <span class="text-gray-600">{{ comment.body }}</span>
+                                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ comment.user?.name }}:</span>
+                                    <span class="text-gray-600 dark:text-gray-400">{{ comment.body }}</span>
                                 </div>
                                 <button
                                     v-if="comment.user_id === currentUserId"
@@ -958,31 +960,31 @@ onBeforeUnmount(() => {
                             </li>
                         </ul>
                         <form v-if="can.comment" @submit.prevent="submitComment" class="space-y-1.5">
-                            <textarea v-model="commentForm.body" rows="2" placeholder="أضف تعليقاً..." class="w-full rounded-md border-gray-300 text-sm"></textarea>
+                            <textarea v-model="commentForm.body" rows="2" :placeholder="t('preview.comment_placeholder', 'أضف تعليقاً...')" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"></textarea>
                             <div class="flex items-center justify-between">
-                                <label class="flex items-center gap-1.5 text-xs text-gray-500">
+                                <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                                     <input type="checkbox" v-model="anchorCommentToTime" class="rounded border-gray-300" />
-                                    ربط التعليق بلحظة {{ formatTimestamp(Math.floor(player?.currentTime ?? 0)) }} الحالية
+                                    {{ t('preview.anchor_comment', 'ربط التعليق بلحظة :time الحالية', { time: formatTimestamp(Math.floor(player?.currentTime ?? 0)) }) }}
                                 </label>
                                 <button
                                     type="submit"
                                     :disabled="commentForm.processing || !commentForm.body.trim()"
                                     class="rounded-md bg-gray-800 px-3 py-1.5 text-xs text-white hover:bg-gray-900 disabled:opacity-50"
                                 >
-                                    نشر
+                                    {{ t('preview.post', 'نشر') }}
                                 </button>
                             </div>
                         </form>
                     </div>
                 </div>
 
-                <div v-if="showPlaylist && playlist.length > 1" class="w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-white">
+                <div v-if="showPlaylist && playlist.length > 1" class="w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                     <ul>
                         <li v-for="item in playlist" :key="item.id">
                             <button
                                 @click="playFromList(item)"
-                                class="block w-full truncate px-3 py-2 text-right text-sm hover:bg-gray-50"
-                                :class="item.id === file.id ? 'bg-orange-50 font-medium text-orange-700' : 'text-gray-700'"
+                                class="block w-full truncate px-3 py-2 text-right text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
+                                :class="item.id === file.id ? 'bg-orange-50 font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'"
                             >
                                 {{ item.name }}
                             </button>

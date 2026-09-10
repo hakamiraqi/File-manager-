@@ -7,6 +7,9 @@ import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import { useTrans } from '@/Composables/useTrans';
+
+const { t } = useTrans();
 
 const props = defineProps({
     show: Boolean,
@@ -17,11 +20,11 @@ const emit = defineEmits(['close']);
 const isMasterAdmin = computed(() => usePage().props.auth.user?.is_master_admin ?? false);
 
 const CAPABILITIES = [
-    { key: 'can_manage_appearance', label: 'إدارة المظهر' },
-    { key: 'can_manage_users', label: 'إدارة المستخدمين' },
-    { key: 'can_manage_translations', label: 'إدارة الترجمات' },
-    { key: 'can_view_statistics', label: 'عرض التحليلات والسجلات' },
-    { key: 'can_manage_settings', label: 'إدارة الإعدادات العامة' },
+    { key: 'can_manage_appearance', label: () => t('capability.manage_appearance', 'إدارة المظهر') },
+    { key: 'can_manage_users', label: () => t('capability.manage_users', 'إدارة المستخدمين') },
+    { key: 'can_manage_translations', label: () => t('capability.manage_translations', 'إدارة الترجمات') },
+    { key: 'can_view_statistics', label: () => t('capability.view_statistics', 'عرض التحليلات والسجلات') },
+    { key: 'can_manage_settings', label: () => t('capability.manage_settings', 'إدارة الإعدادات العامة') },
 ];
 
 const form = useForm({
@@ -80,57 +83,57 @@ function submit() {
 <template>
     <Modal :show="show" @close="$emit('close')">
         <form @submit.prevent="submit" class="p-6">
-            <h2 class="text-lg font-medium text-gray-900">{{ user ? 'تعديل المستخدم' : 'مستخدم جديد' }}</h2>
+            <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ user ? t('admin.users.edit', 'تعديل المستخدم') : t('admin.users.new', 'مستخدم جديد') }}</h2>
 
             <div class="mt-4 grid grid-cols-2 gap-4">
                 <div class="col-span-2">
-                    <InputLabel value="الاسم" />
+                    <InputLabel :value="t('auth.name', 'الاسم')" />
                     <TextInput v-model="form.name" class="mt-1 block w-full" />
                     <InputError :message="form.errors.name" class="mt-1" />
                 </div>
                 <div class="col-span-2">
-                    <InputLabel value="البريد الإلكتروني" />
+                    <InputLabel :value="t('auth.email', 'البريد الإلكتروني')" />
                     <TextInput type="email" v-model="form.email" class="mt-1 block w-full" />
                     <InputError :message="form.errors.email" class="mt-1" />
                 </div>
                 <div class="col-span-2">
-                    <InputLabel :value="user ? 'كلمة مرور جديدة (اختياري)' : 'كلمة المرور'" />
+                    <InputLabel :value="user ? t('admin.users.new_password_optional', 'كلمة مرور جديدة (اختياري)') : t('auth.password', 'كلمة المرور')" />
                     <TextInput type="password" v-model="form.password" class="mt-1 block w-full" />
                     <InputError :message="form.errors.password" class="mt-1" />
                 </div>
                 <div>
-                    <InputLabel value="الصلاحية" />
-                    <select v-model="form.role" class="mt-1 block w-full rounded-md border-gray-300">
-                        <option value="user">مستخدم</option>
-                        <option value="editor">محرّر</option>
-                        <option value="contributor">مساهم</option>
-                        <option value="admin">مشرف</option>
+                    <InputLabel :value="t('admin.users.role', 'الصلاحية')" />
+                    <select v-model="form.role" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                        <option value="user">{{ t('role.user', 'مستخدم') }}</option>
+                        <option value="editor">{{ t('role.editor', 'محرّر') }}</option>
+                        <option value="contributor">{{ t('role.contributor', 'مساهم') }}</option>
+                        <option value="admin">{{ t('role.admin', 'مشرف') }}</option>
                     </select>
                 </div>
                 <div>
-                    <InputLabel value="حصة التخزين (ميغابايت، اتركه فارغاً للافتراضي)" />
+                    <InputLabel :value="t('admin.users.quota', 'حصة التخزين (ميغابايت، اتركه فارغاً للافتراضي)')" />
                     <TextInput type="number" min="1" v-model="form.storage_quota_mb" class="mt-1 block w-full" />
                 </div>
                 <div class="col-span-2" v-if="user">
-                    <label class="flex items-center gap-2 text-sm text-gray-600">
+                    <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <input type="checkbox" v-model="form.is_active" class="rounded border-gray-300" />
-                        الحساب مفعّل
+                        {{ t('admin.users.account_active', 'الحساب مفعّل') }}
                     </label>
                 </div>
-                <div class="col-span-2 border-t border-gray-100 pt-3" v-if="form.role === 'admin' && isMasterAdmin">
-                    <InputLabel value="صلاحيات هذا المشرف" />
+                <div class="col-span-2 border-t border-gray-100 pt-3 dark:border-gray-700" v-if="form.role === 'admin' && isMasterAdmin">
+                    <InputLabel :value="t('admin.users.admin_capabilities', 'صلاحيات هذا المشرف')" />
                     <div class="mt-2 grid grid-cols-2 gap-2">
-                        <label v-for="c in CAPABILITIES" :key="c.key" class="flex items-center gap-2 text-sm text-gray-600">
+                        <label v-for="c in CAPABILITIES" :key="c.key" class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <input type="checkbox" v-model="form[c.key]" class="rounded border-gray-300" />
-                            {{ c.label }}
+                            {{ c.label() }}
                         </label>
                     </div>
                 </div>
             </div>
 
             <div class="mt-6 flex justify-end gap-3">
-                <SecondaryButton @click="$emit('close')">إلغاء</SecondaryButton>
-                <PrimaryButton :disabled="form.processing">حفظ</PrimaryButton>
+                <SecondaryButton @click="$emit('close')">{{ t('action.cancel', 'إلغاء') }}</SecondaryButton>
+                <PrimaryButton :disabled="form.processing">{{ t('action.save', 'حفظ') }}</PrimaryButton>
             </div>
         </form>
     </Modal>

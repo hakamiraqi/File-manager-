@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../data/admin_repository.dart';
 import '../models/analytics_data.dart';
@@ -44,7 +45,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('التحليلات')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.analytics'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -54,14 +55,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   children: [
                     Row(
                       children: [
-                        const Text('النطاق الزمني:'),
+                        Text(context.tr('analytics.range')),
                         const SizedBox(width: 12),
                         DropdownButton<int>(
                           value: _days,
-                          items: const [
-                            DropdownMenuItem(value: 7, child: Text('آخر 7 أيام')),
-                            DropdownMenuItem(value: 30, child: Text('آخر 30 يوماً')),
-                            DropdownMenuItem(value: 90, child: Text('آخر 90 يوماً')),
+                          items: [
+                            DropdownMenuItem(value: 7, child: Text(context.tr('analytics.last_7_days'))),
+                            DropdownMenuItem(value: 30, child: Text(context.tr('analytics.last_30_days'))),
+                            DropdownMenuItem(value: 90, child: Text(context.tr('analytics.last_90_days'))),
                           ],
                           onChanged: (v) {
                             if (v == null) return;

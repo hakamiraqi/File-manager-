@@ -1,23 +1,24 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../data/admin_repository.dart';
 
-const _roleLabels = {'guest': 'زائر', 'user': 'مستخدم', 'editor': 'محرّر', 'contributor': 'مساهم'};
-const _actionLabels = {
-  'view': 'عرض الملفات',
-  'download': 'تحميل الملفات',
-  'share': 'إنشاء روابط مشاركة',
-  'upload': 'رفع ملفات',
-  'delete': 'حذف ملفات',
-  'rename': 'إعادة تسمية ملفات',
-  'move': 'نقل ملفات/مجلدات',
-  'copy': 'نسخ ملفات/مجلدات',
-  'new_folder': 'إنشاء مجلدات',
-  'delete_folder': 'حذف مجلدات',
-  'rename_folder': 'إعادة تسمية مجلدات',
-  'manage_questions': 'إدارة أسئلة الفيديو التفاعلي',
-  'comment': 'التعليق على الفيديوهات',
+const _roleLabelKeys = {'guest': 'role.guest', 'user': 'role.user', 'editor': 'role.editor', 'contributor': 'role.contributor'};
+const _actionLabelKeys = {
+  'view': 'permission.view',
+  'download': 'permission.download',
+  'share': 'permission.share',
+  'upload': 'permission.upload',
+  'delete': 'permission.delete',
+  'rename': 'permission.rename',
+  'move': 'permission.move',
+  'copy': 'permission.copy',
+  'new_folder': 'permission.new_folder',
+  'delete_folder': 'permission.delete_folder',
+  'rename_folder': 'permission.rename_folder',
+  'manage_questions': 'permission.manage_questions',
+  'comment': 'permission.comment',
 };
 
 // Guests can only ever view/download/share by design — matches
@@ -78,7 +79,7 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
     setState(() => _saving = true);
     try {
       await _repository.updatePermissions(_matrix);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الصلاحيات.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('permissions.saved'))));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiClient.messageFor(e))));
     } finally {
@@ -89,11 +90,11 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('مصفوفة الصلاحيات')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.permissions'))),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _saving ? null : _submit,
         icon: const Icon(Icons.save_outlined),
-        label: const Text('حفظ'),
+        label: Text(context.tr('action.save')),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -101,11 +102,11 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
               ? Center(child: Text(_error!))
               : Column(
                   children: [
-                    const Padding(
-                      padding: EdgeInsets.all(12),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
                       child: Text(
-                        'يملك المدير (Admin) دائماً كل الصلاحيات ولا يظهر في هذا الجدول.',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                        context.tr('permissions.description'),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                     ),
                     Expanded(
@@ -114,12 +115,12 @@ class _PermissionsScreenState extends State<PermissionsScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: DataTable(
                           columns: [
-                            const DataColumn(label: Text('الإجراء')),
-                            ..._roles.map((role) => DataColumn(label: Text(_roleLabels[role] ?? role))),
+                            DataColumn(label: Text(context.tr('permissions.action'))),
+                            ..._roles.map((role) => DataColumn(label: Text(context.tr(_roleLabelKeys[role] ?? role)))),
                           ],
                           rows: _actions.map((action) {
                             return DataRow(cells: [
-                              DataCell(Text(_actionLabels[action] ?? action)),
+                              DataCell(Text(context.tr(_actionLabelKeys[action] ?? action))),
                               ..._roles.map((role) {
                                 final editable = _isEditable(role, action);
                                 return DataCell(Checkbox(

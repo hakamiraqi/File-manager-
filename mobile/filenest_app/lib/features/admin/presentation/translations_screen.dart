@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../data/admin_repository.dart';
 import '../models/translation_row.dart';
@@ -94,7 +95,7 @@ class _TranslationsScreenState extends State<TranslationsScreen> {
         : _rows.where((r) => r.key.toLowerCase().contains(search) || r.value.toLowerCase().contains(search)).toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('الترجمات')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.translations'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -123,7 +124,7 @@ class _TranslationsScreenState extends State<TranslationsScreen> {
                           Expanded(
                             child: TextField(
                               controller: _searchController,
-                              decoration: const InputDecoration(hintText: 'بحث في المفاتيح أو النصوص...', isDense: true, border: OutlineInputBorder()),
+                              decoration: InputDecoration(hintText: context.tr('translations.search_placeholder'), isDense: true, border: const OutlineInputBorder()),
                               onChanged: (_) => setState(() {}),
                             ),
                           ),
@@ -164,7 +165,7 @@ class _TranslationsScreenState extends State<TranslationsScreen> {
                                     if (row.overridden)
                                       IconButton(
                                         icon: const Icon(Icons.undo_rounded, size: 20),
-                                        tooltip: 'الأصلي',
+                                        tooltip: context.tr('translations.original'),
                                         onPressed: saving ? null : () => _reset(row),
                                       ),
                                   ],

@@ -8,6 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/models/file_item.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/token_storage.dart';
@@ -220,7 +221,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
       await controller.dispose();
       if (mounted) {
         setState(() {
-          _error = isLocalFile ? 'تعذّر تشغيل النسخة المحلية من هذا الملف.' : 'تعذّر تشغيل هذا الملف.';
+          _error = isLocalFile ? context.tr('player.offline_playback_error') : context.tr('player.playback_error');
           _isInitializing = false;
         });
       }
@@ -508,14 +509,14 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('حذف السؤال'),
-        content: Text('هل تريد حذف السؤال "${question.question}"؟'),
+        title: Text(context.tr('player.delete_question_title')),
+        content: Text(context.tr('player.confirm_delete_question', {'question': question.question})),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr('action.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('حذف'),
+            child: Text(context.tr('action.delete')),
           ),
         ],
       ),
@@ -548,8 +549,8 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
       if (!mounted) return;
       setState(() {
         _importMessage = outcome.errors.isEmpty
-            ? 'تم استيراد ${outcome.created} سؤالاً بنجاح.'
-            : 'تم استيراد ${outcome.created} سؤالاً. تم تجاوز ${outcome.errors.length} سطر بسبب أخطاء.';
+            ? context.tr('player.import_success', {'count': outcome.created})
+            : context.tr('player.import_success_with_errors', {'count': outcome.created, 'errors': outcome.errors.length});
       });
       await _loadQuestions();
     } catch (e) {
@@ -703,8 +704,8 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 child: Padding(
                   padding: const EdgeInsets.only(bottom: 6),
                   child: Text(
-                    'درجتك: ${_score.correct} من ${_score.total}'
-                    '${_isOffline && _questions.any((q) => q.pendingSync) ? ' (بانتظار المزامنة)' : ''}',
+                    context.tr('preview.your_score', {'correct': _score.correct, 'total': _score.total}) +
+                        (_isOffline && _questions.any((q) => q.pendingSync) ? ' ${context.tr('player.pending_sync')}' : ''),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
@@ -805,13 +806,13 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                     child: _answering
                         ? const SizedBox(
                             width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('إرسال الإجابة'),
+                        : Text(context.tr('preview.submit_answer')),
                   )
                 else ...[
                   Text(
                     _answerFeedback!.correctChoiceId == null
-                        ? 'تم تسجيل إجابتك — ستظهر النتيجة عند الاتصال بالإنترنت.'
-                        : (_answerFeedback!.isCorrect ? 'إجابة صحيحة!' : 'إجابة غير صحيحة.'),
+                        ? context.tr('player.answer_recorded_offline')
+                        : (_answerFeedback!.isCorrect ? context.tr('preview.correct_answer') : context.tr('preview.wrong_answer')),
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: _answerFeedback!.correctChoiceId == null
@@ -821,7 +822,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  FilledButton(onPressed: _continueAfterQuestion, child: const Text('متابعة المشاهدة')),
+                  FilledButton(onPressed: _continueAfterQuestion, child: Text(context.tr('preview.continue_watching'))),
                 ],
               ],
             ),
@@ -840,7 +841,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
           if (_showQuestionManager) _resetQuestionForm();
         }),
         icon: Icon(_showQuestionManager ? Icons.expand_less_rounded : Icons.quiz_outlined),
-        label: Text('الأسئلة التفاعلية (${_questions.length})'),
+        label: Text(context.tr('preview.interactive_questions', {'count': _questions.length})),
       ),
     );
   }
@@ -879,9 +880,9 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 icon: _importing
                     ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.upload_file_outlined, size: 18),
-                label: const Text('استيراد من ملف (JSON/CSV)'),
+                label: Text(context.tr('preview.import_button')),
               ),
-              TextButton(onPressed: _downloadImportTemplate, child: const Text('تنزيل نموذج CSV')),
+              TextButton(onPressed: _downloadImportTemplate, child: Text(context.tr('preview.download_template'))),
             ],
           ),
           if (_importMessage != null)
@@ -896,13 +897,13 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
             ),
           const Divider(),
           Text(
-            _editingQuestionId != null ? 'تعديل سؤال' : 'إضافة سؤال جديد',
+            _editingQuestionId != null ? context.tr('preview.edit_question_title') : context.tr('preview.new_question_title'),
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              const Text('يظهر عند الثانية:', style: TextStyle(fontSize: 12)),
+              Text(context.tr('preview.appears_at_second'), style: const TextStyle(fontSize: 12)),
               const SizedBox(width: 8),
               SizedBox(
                 width: 64,
@@ -918,14 +919,14 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                   _formTimestamp = _controller?.value.position.inSeconds ?? 0;
                   _timestampController.text = '$_formTimestamp';
                 }),
-                child: const Text('استخدام الوقت الحالي', style: TextStyle(fontSize: 12)),
+                child: Text(context.tr('preview.use_current_time'), style: const TextStyle(fontSize: 12)),
               ),
             ],
           ),
           TextField(
             controller: _questionTextController,
             maxLines: 2,
-            decoration: const InputDecoration(hintText: 'نص السؤال', isDense: true),
+            decoration: InputDecoration(hintText: context.tr('preview.question_placeholder'), isDense: true),
           ),
           const SizedBox(height: 8),
           ..._choiceControllers.asMap().entries.map((entry) {
@@ -938,7 +939,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                   Expanded(
                     child: TextField(
                       controller: entry.value,
-                      decoration: const InputDecoration(hintText: 'نص الخيار', isDense: true),
+                      decoration: InputDecoration(hintText: context.tr('preview.choice_placeholder'), isDense: true),
                     ),
                   ),
                   if (_choiceControllers.length > 2)
@@ -953,7 +954,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
               child: TextButton.icon(
                 onPressed: _addChoiceField,
                 icon: const Icon(Icons.add_rounded, size: 16),
-                label: const Text('إضافة خيار'),
+                label: Text(context.tr('preview.add_choice')),
               ),
             ),
           if (_questionFormError != null)
@@ -966,17 +967,17 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
             children: [
               FilledButton(
                 onPressed: _savingQuestion ? null : _submitQuestionForm,
-                child: Text(_editingQuestionId != null ? 'حفظ التعديل' : 'إضافة السؤال'),
+                child: Text(_editingQuestionId != null ? context.tr('preview.save_edit') : context.tr('preview.add_question')),
               ),
               if (_editingQuestionId != null)
-                TextButton(onPressed: () => setState(_resetQuestionForm), child: const Text('إلغاء التعديل')),
+                TextButton(onPressed: () => setState(_resetQuestionForm), child: Text(context.tr('preview.cancel_edit'))),
             ],
           ),
           const Divider(),
           TextButton.icon(
             onPressed: _toggleReport,
             icon: Icon(_showReport ? Icons.expand_less_rounded : Icons.bar_chart_rounded),
-            label: const Text('تقرير النتائج'),
+            label: Text(context.tr('preview.report_title')),
           ),
           if (_showReport) _buildReportSection(),
           const SizedBox(height: 8),
@@ -998,8 +999,10 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: Text(
-            '${report.summary.respondents} مشاهد أجاب على الأسئلة'
-            '${report.summary.averagePercent != null ? ' — متوسط الدرجات ${_percentLabel(report.summary.averagePercent)}' : ''}',
+            context.tr('preview.report_respondents', {'count': report.summary.respondents}) +
+                (report.summary.averagePercent != null
+                    ? ' ${context.tr('preview.report_average', {'percent': _percentLabel(report.summary.averagePercent)})}'
+                    : ''),
             style: const TextStyle(fontSize: 12, color: Colors.grey),
           ),
         ),
@@ -1011,7 +1014,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '${_formatTimestamp(q.timestampSeconds)} — ${q.question} (${q.totalAnswers} إجابة)',
+                    '${_formatTimestamp(q.timestampSeconds)} — ${q.question} ${context.tr('preview.report_answers_count', {'count': q.totalAnswers})}',
                     style: const TextStyle(fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -1053,7 +1056,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
               ),
             )),
         if (report.users.isNotEmpty) ...[
-          const Text('النتائج حسب المستخدم', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(context.tr('preview.report_by_user'), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
           ...report.users.map((u) => Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Row(
@@ -1067,7 +1070,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 ),
               )),
         ] else
-          const Text('لم يجب أحد على الأسئلة بعد.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Text(context.tr('preview.report_no_answers'), style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
   }
@@ -1078,7 +1081,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
       child: TextButton.icon(
         onPressed: () => setState(() => _showComments = !_showComments),
         icon: Icon(_showComments ? Icons.expand_less_rounded : Icons.comment_outlined),
-        label: Text('التعليقات (${_comments.length})'),
+        label: Text(context.tr('preview.comments_title', {'count': _comments.length})),
       ),
     );
   }
@@ -1090,7 +1093,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
         children: [
           Expanded(
             child: _comments.isEmpty
-                ? const Center(child: Text('لا توجد تعليقات بعد.', style: TextStyle(color: Colors.grey)))
+                ? Center(child: Text(context.tr('player.no_comments_yet'), style: const TextStyle(color: Colors.grey)))
                 : ListView.builder(
                     itemCount: _comments.length,
                     itemBuilder: (context, index) {
@@ -1119,11 +1122,11 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
               child: Row(
                 children: [
                   Checkbox(value: _anchorCommentToTime, onChanged: (v) => setState(() => _anchorCommentToTime = v ?? false)),
-                  const Text('ربط بالوقت الحالي', style: TextStyle(fontSize: 12)),
+                  Text(context.tr('player.anchor_current_time'), style: const TextStyle(fontSize: 12)),
                   Expanded(
                     child: TextField(
                       controller: _commentController,
-                      decoration: const InputDecoration(hintText: 'أضف تعليقاً...'),
+                      decoration: InputDecoration(hintText: context.tr('preview.comment_placeholder')),
                       onSubmitted: (_) => _postComment(),
                     ),
                   ),
@@ -1192,7 +1195,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
           children: [
             PopupMenuButton<double>(
               icon: const Icon(Icons.speed_rounded),
-              tooltip: 'السرعة',
+              tooltip: context.tr('preview.speed'),
               initialValue: _playbackSpeed,
               onSelected: _setSpeed,
               itemBuilder: (context) => const [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
@@ -1202,7 +1205,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
             if (_currentFile.videoQualities.length > 1)
               PopupMenuButton<VideoQualityOption>(
                 icon: const Icon(Icons.high_quality_outlined),
-                tooltip: 'الجودة',
+                tooltip: context.tr('player.quality'),
                 onSelected: _switchQuality,
                 itemBuilder: (context) => _currentFile.videoQualities
                     .map((q) => PopupMenuItem(
@@ -1219,17 +1222,17 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
             if (_subtitleTracks.isNotEmpty)
               PopupMenuButton<SubtitleTrack?>(
                 icon: Icon(Icons.subtitles_outlined, color: _selectedSubtitleTrack != null ? Theme.of(context).colorScheme.primary : null),
-                tooltip: 'الترجمة',
+                tooltip: context.tr('preview.subtitles_title'),
                 onSelected: _selectSubtitleTrack,
                 itemBuilder: (context) => [
-                  const PopupMenuItem(value: null, child: Text('بلا ترجمة')),
+                  PopupMenuItem(value: null, child: Text(context.tr('player.no_subtitles'))),
                   ..._subtitleTracks.map((t) => PopupMenuItem(value: t, child: Text(t.label))),
                 ],
               ),
             if (_currentFile.isVideo)
               IconButton(
                 icon: Icon(_isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded),
-                tooltip: 'ملء الشاشة',
+                tooltip: context.tr('player.fullscreen'),
                 onPressed: _toggleFullscreen,
               ),
             if (_hasPlaylist)
@@ -1238,7 +1241,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                   Icons.repeat_one_rounded,
                   color: _autoplayNext ? Theme.of(context).colorScheme.primary : Colors.grey,
                 ),
-                tooltip: 'تشغيل تلقائي للتالي',
+                tooltip: context.tr('preview.autoplay_next'),
                 onPressed: () => setState(() => _autoplayNext = !_autoplayNext),
               ),
           ],

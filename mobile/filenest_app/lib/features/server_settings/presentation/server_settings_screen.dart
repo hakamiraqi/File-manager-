@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/config/api_config.dart';
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/server_config_service.dart';
 
 /// Lets the user configure a local-network address (for a fully offline
@@ -106,8 +107,8 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(active.usedLocal
-          ? 'تم الحفظ — متصل الآن عبر الشبكة المحلية.'
-          : 'تم الحفظ — متصل الآن عبر الاستضافة.'),
+          ? context.tr('server_settings.saved_local')
+          : context.tr('server_settings.saved_hosted')),
     ));
   }
 
@@ -130,24 +131,24 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('إعدادات الخادم')),
+      appBar: AppBar(title: Text(context.tr('nav.server_settings'))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text(
-              'اختر كيف يتصل التطبيق بخادم FileNest: عبر الشبكة المحلية مباشرة (بدون إنترنت، مثلاً في المنزل أو المكتب)، أو عبر الاستضافة على الإنترنت، أو تلقائياً بحيث يجرّب الشبكة المحلية أولاً وينتقل للاستضافة عند تعذّر الوصول إليها.',
-              style: TextStyle(color: Colors.grey),
+            Text(
+              context.tr('server_settings.description'),
+              style: const TextStyle(color: Colors.grey),
             ),
             const SizedBox(height: 20),
 
-            const Text('طريقة الاتصال', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(context.tr('server_settings.connection_mode'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             SegmentedButton<ConnectionMode>(
-              segments: const [
-                ButtonSegment(value: ConnectionMode.auto, label: Text('تلقائي'), icon: Icon(Icons.sync)),
-                ButtonSegment(value: ConnectionMode.local, label: Text('محلي فقط'), icon: Icon(Icons.wifi)),
-                ButtonSegment(value: ConnectionMode.hosted, label: Text('استضافة'), icon: Icon(Icons.cloud)),
+              segments: [
+                ButtonSegment(value: ConnectionMode.auto, label: Text(context.tr('server_settings.mode_auto')), icon: const Icon(Icons.sync)),
+                ButtonSegment(value: ConnectionMode.local, label: Text(context.tr('server_settings.mode_local')), icon: const Icon(Icons.wifi)),
+                ButtonSegment(value: ConnectionMode.hosted, label: Text(context.tr('server_settings.mode_hosted')), icon: const Icon(Icons.cloud)),
               ],
               selected: {_mode},
               onSelectionChanged: (selection) => setState(() => _mode = selection.first),
@@ -155,11 +156,11 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
             const Divider(height: 40),
 
-            const Text('عنوان الشبكة المحلية (بدون إنترنت)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(context.tr('server_settings.local_address_title'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            const Text(
-              'مثال: http://192.168.1.10:8000 — عنوان الجهاز الذي يشغّل FileNest على نفس شبكة WiFi. اتركه فارغاً إن لم يكن لديك خادم محلي.',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+            Text(
+              context.tr('server_settings.local_address_hint'),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
             const SizedBox(height: 12),
             Row(
@@ -168,10 +169,10 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
                   child: TextField(
                     controller: _localController,
                     keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: 'عنوان الشبكة المحلية',
+                    decoration: InputDecoration(
+                      labelText: context.tr('server_settings.local_address_label'),
                       hintText: 'http://192.168.1.10:8000',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -179,7 +180,7 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
                 _statusIcon(_localReachable, _testingLocal),
                 IconButton(
                   icon: const Icon(Icons.wifi_find_rounded),
-                  tooltip: 'اختبار الاتصال',
+                  tooltip: context.tr('server_settings.test_connection'),
                   onPressed: _testingLocal ? null : () => _testConnection(local: true),
                 ),
               ],
@@ -187,11 +188,11 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
             const SizedBox(height: 24),
 
-            const Text('عنوان الاستضافة (الإنترنت)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(context.tr('server_settings.hosted_address_title'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            const Text(
-              'مثال: https://your-domain.com — الخادم الذي يمكن الوصول إليه من أي مكان عبر الإنترنت.',
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+            Text(
+              context.tr('server_settings.hosted_address_hint'),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
             const SizedBox(height: 12),
             Row(
@@ -200,10 +201,10 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
                   child: TextField(
                     controller: _hostedController,
                     keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: 'عنوان الاستضافة',
+                    decoration: InputDecoration(
+                      labelText: context.tr('server_settings.hosted_address_label'),
                       hintText: 'https://your-domain.com',
-                      border: OutlineInputBorder(),
+                      border: const OutlineInputBorder(),
                     ),
                   ),
                 ),
@@ -211,7 +212,7 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
                 _statusIcon(_hostedReachable, _testingHosted),
                 IconButton(
                   icon: const Icon(Icons.wifi_find_rounded),
-                  tooltip: 'اختبار الاتصال',
+                  tooltip: context.tr('server_settings.test_connection'),
                   onPressed: _testingHosted ? null : () => _testConnection(local: false),
                 ),
               ],
@@ -222,7 +223,7 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
               onPressed: _saving ? null : _save,
               child: _saving
                   ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('حفظ وتطبيق'),
+                  : Text(context.tr('server_settings.save_and_apply')),
             ),
 
             if (_active != null) ...[
@@ -239,7 +240,10 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'متصل الآن عبر ${_active!.usedLocal ? "الشبكة المحلية" : "الاستضافة"}: ${_active!.origin}',
+                        context.tr('server_settings.connected_via', {
+                          'type': _active!.usedLocal ? context.tr('server_settings.local_network') : context.tr('server_settings.hosted'),
+                          'origin': _active!.origin,
+                        }),
                       ),
                     ),
                   ],

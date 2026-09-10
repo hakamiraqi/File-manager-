@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/app_strings.dart';
 import '../../../../core/models/folder_item.dart';
 import '../../../../core/network/api_client.dart';
 import '../../data/file_repository.dart';
@@ -86,7 +87,7 @@ class _FolderPickerDialogState extends State<FolderPickerDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('نقل إلى مجلد'),
+      title: Text(context.tr('action.move_to_folder')),
       content: SizedBox(
         width: double.maxFinite,
         height: 400,
@@ -99,7 +100,7 @@ class _FolderPickerDialogState extends State<FolderPickerDialog> {
                     children: [
                       ListTile(
                         leading: const Icon(Icons.home_rounded),
-                        title: const Text('المجلد الرئيسي'),
+                        title: Text(context.tr('move.root')),
                         onTap: () => Navigator.of(context).pop(const _PickResult(null)),
                       ),
                       const Divider(height: 1),
@@ -116,7 +117,7 @@ class _FolderPickerDialogState extends State<FolderPickerDialog> {
                   ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
+        TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('action.cancel'))),
       ],
     );
   }

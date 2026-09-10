@@ -1,6 +1,8 @@
 import 'package:dio/dio.dart';
 
 import '../config/api_config.dart';
+import '../i18n/app_strings.dart';
+import '../i18n/locale_provider.dart';
 import '../storage/token_storage.dart';
 
 /// Thin wrapper around a single Dio instance shared by every service.
@@ -53,9 +55,9 @@ class ApiClient {
       }
       if (error.type == DioExceptionType.connectionTimeout ||
           error.type == DioExceptionType.connectionError) {
-        return 'تعذّر الاتصال بالخادم. تحقّق من الشبكة أو عنوان الخادم.';
+        return AppStrings.of(LocaleProvider.currentLanguageCode, 'error.connection_failed');
       }
     }
-    return 'حدث خطأ غير متوقع.';
+    return AppStrings.of(LocaleProvider.currentLanguageCode, 'error.unexpected');
   }
 }

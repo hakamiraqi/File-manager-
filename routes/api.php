@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\V1\FileController;
 use App\Http\Controllers\Api\V1\FolderController;
 use App\Http\Controllers\Api\V1\GuestBrowseController;
 use App\Http\Controllers\Api\V1\PasswordResetController;
+use App\Http\Controllers\Api\V1\PlaylistController;
 use App\Http\Controllers\Api\V1\ProfileController;
 use App\Http\Controllers\Api\V1\PublicShareController;
 use App\Http\Controllers\Api\V1\ShareController;
@@ -130,6 +131,16 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::put('/shares/{share}', [ShareController::class, 'update'])->name('shares.update');
         Route::delete('/shares/{share}', [ShareController::class, 'destroy'])->name('shares.destroy');
         Route::post('/shares/{share}/email', [ShareController::class, 'sendEmail'])->name('shares.email');
+
+        Route::get('/playlists', [PlaylistController::class, 'index'])->name('playlists.index');
+        Route::get('/playlists/picker', [PlaylistController::class, 'picker'])->name('playlists.picker');
+        Route::post('/playlists', [PlaylistController::class, 'store'])->name('playlists.store');
+        Route::get('/playlists/{playlist}', [PlaylistController::class, 'show'])->name('playlists.show');
+        Route::put('/playlists/{playlist}', [PlaylistController::class, 'update'])->name('playlists.update');
+        Route::delete('/playlists/{playlist}', [PlaylistController::class, 'destroy'])->name('playlists.destroy');
+        Route::put('/playlists/{playlist}/reorder', [PlaylistController::class, 'reorder'])->name('playlists.reorder');
+        Route::post('/playlists/{playlist}/items', [PlaylistController::class, 'addItem'])->name('playlists.items.store');
+        Route::delete('/playlists/{playlist}/items/{item}', [PlaylistController::class, 'removeItem'])->name('playlists.items.destroy');
 
         // Full parity with routes/admin.php: same "admin" gate + per-section
         // capability gates, just returning JSON instead of Inertia pages.

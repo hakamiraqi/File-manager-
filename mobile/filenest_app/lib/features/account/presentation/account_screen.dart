@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../auth/state/auth_provider.dart';
 import '../data/profile_service.dart';
@@ -57,7 +58,7 @@ class _AccountScreenState extends State<AccountScreen> {
       );
       await context.read<AuthProvider>().refreshProfile();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ التغييرات.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('account.profile_saved'))));
       }
     } catch (e) {
       setState(() => _profileError = ApiClient.messageFor(e));
@@ -79,7 +80,7 @@ class _AccountScreenState extends State<AccountScreen> {
       _currentPasswordController.clear();
       _newPasswordController.clear();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تحديث كلمة المرور.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('account.password_updated'))));
       }
     } catch (e) {
       setState(() => _passwordError = ApiClient.messageFor(e));
@@ -105,26 +106,26 @@ class _AccountScreenState extends State<AccountScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('حذف الحساب نهائياً'),
+        title: Text(context.tr('account.delete_title')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('سيتم حذف حسابك وجميع ملفاتك نهائياً. أدخل كلمة المرور للتأكيد.'),
+            Text(context.tr('account.delete_confirm')),
             const SizedBox(height: 12),
             TextField(
               controller: _deletePasswordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'كلمة المرور'),
+              decoration: InputDecoration(labelText: context.tr('auth.password')),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr('action.cancel'))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('حذف نهائياً'),
+            child: Text(context.tr('account.delete_permanently')),
           ),
         ],
       ),
@@ -144,38 +145,38 @@ class _AccountScreenState extends State<AccountScreen> {
     final user = context.watch<AuthProvider>().user;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('الحساب')),
+      appBar: AppBar(title: Text(context.tr('nav.account'))),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            const Text('البيانات الشخصية', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(context.tr('account.personal_info'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             TextField(
               controller: _nameController,
-              decoration: const InputDecoration(labelText: 'الاسم', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: context.tr('auth.name'), border: const OutlineInputBorder()),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _emailController,
               keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(labelText: 'البريد الإلكتروني', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: context.tr('auth.email'), border: const OutlineInputBorder()),
             ),
             if (_profileError != null) ...[
               const SizedBox(height: 8),
               Text(_profileError!, style: const TextStyle(color: Colors.red)),
             ],
             const SizedBox(height: 12),
-            FilledButton(onPressed: _savingProfile ? null : _saveProfile, child: const Text('حفظ')),
+            FilledButton(onPressed: _savingProfile ? null : _saveProfile, child: Text(context.tr('action.save'))),
 
             const Divider(height: 40),
 
-            const Text('اللغة', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(context.tr('settings.language'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'ar', label: Text('العربية')),
-                ButtonSegment(value: 'en', label: Text('English')),
+              segments: [
+                ButtonSegment(value: 'ar', label: Text(context.tr('settings.language_ar'))),
+                const ButtonSegment(value: 'en', label: Text('English')),
               ],
               selected: {user?.locale ?? 'ar'},
               onSelectionChanged: _savingLocale ? null : (selection) => _changeLocale(selection.first),
@@ -183,34 +184,34 @@ class _AccountScreenState extends State<AccountScreen> {
 
             const Divider(height: 40),
 
-            const Text('تغيير كلمة المرور', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(context.tr('account.change_password'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             TextField(
               controller: _currentPasswordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'كلمة المرور الحالية', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: context.tr('password.current'), border: const OutlineInputBorder()),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _newPasswordController,
               obscureText: true,
-              decoration: const InputDecoration(labelText: 'كلمة المرور الجديدة', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: context.tr('password.new'), border: const OutlineInputBorder()),
             ),
             if (_passwordError != null) ...[
               const SizedBox(height: 8),
               Text(_passwordError!, style: const TextStyle(color: Colors.red)),
             ],
             const SizedBox(height: 12),
-            FilledButton(onPressed: _savingPassword ? null : _changePassword, child: const Text('تحديث كلمة المرور')),
+            FilledButton(onPressed: _savingPassword ? null : _changePassword, child: Text(context.tr('account.update_password'))),
 
             const Divider(height: 40),
 
-            const Text('منطقة الخطر', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+            Text(context.tr('account.danger_zone'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
             const SizedBox(height: 12),
             OutlinedButton(
               onPressed: _confirmDeleteAccount,
               style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-              child: const Text('حذف الحساب نهائياً'),
+              child: Text(context.tr('account.delete_permanently')),
             ),
           ],
         ),

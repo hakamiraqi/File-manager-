@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/app_strings.dart';
 import '../../../../core/models/file_item.dart';
 import '../../../../core/models/folder_item.dart';
 import '../../../../core/widgets/authenticated_thumbnail.dart';
@@ -27,8 +28,8 @@ class FolderTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final labels = <String>[
-      if (folder.folderType == 'thesis') 'أطروحة',
-      if (folder.isPublic) 'مجلد عام',
+      if (folder.folderType == 'thesis') context.tr('folder.type_thesis'),
+      if (folder.isPublic) context.tr('folder.public_label'),
     ];
 
     return ListTile(

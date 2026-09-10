@@ -3,7 +3,10 @@ import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
+import { useTrans } from '@/Composables/useTrans';
 import { Link, useForm, usePage } from '@inertiajs/vue3';
+
+const { t } = useTrans();
 
 defineProps({
     mustVerifyEmail: {
@@ -26,11 +29,11 @@ const form = useForm({
     <section>
         <header>
             <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                معلومات الملف الشخصي
+                {{ t('profile.info_title', 'معلومات الملف الشخصي') }}
             </h2>
 
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                تحديث اسمك وبريدك الإلكتروني.
+                {{ t('profile.info_description', 'تحديث اسمك وبريدك الإلكتروني.') }}
             </p>
         </header>
 
@@ -39,7 +42,7 @@ const form = useForm({
             class="mt-6 space-y-6"
         >
             <div>
-                <InputLabel for="name" value="الاسم" />
+                <InputLabel for="name" :value="t('auth.name', 'الاسم')" />
 
                 <TextInput
                     id="name"
@@ -55,7 +58,7 @@ const form = useForm({
             </div>
 
             <div>
-                <InputLabel for="email" value="البريد الإلكتروني" />
+                <InputLabel for="email" :value="t('auth.email', 'البريد الإلكتروني')" />
 
                 <TextInput
                     id="email"
@@ -71,14 +74,14 @@ const form = useForm({
 
             <div v-if="mustVerifyEmail && user.email_verified_at === null">
                 <p class="mt-2 text-sm text-gray-800 dark:text-gray-200">
-                    بريدك الإلكتروني غير مفعّل.
+                    {{ t('profile.email_unverified', 'بريدك الإلكتروني غير مفعّل.') }}
                     <Link
                         :href="route('verification.send')"
                         method="post"
                         as="button"
                         class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:text-gray-100 dark:focus:ring-offset-gray-800"
                     >
-                        اضغط هنا لإعادة إرسال رابط التفعيل.
+                        {{ t('profile.resend_verification', 'اضغط هنا لإعادة إرسال رابط التفعيل.') }}
                     </Link>
                 </p>
 
@@ -86,12 +89,12 @@ const form = useForm({
                     v-show="status === 'verification-link-sent'"
                     class="mt-2 text-sm font-medium text-green-600 dark:text-green-400"
                 >
-                    تم إرسال رابط تفعيل جديد إلى بريدك الإلكتروني.
+                    {{ t('profile.verification_resent', 'تم إرسال رابط تفعيل جديد إلى بريدك الإلكتروني.') }}
                 </div>
             </div>
 
             <div class="flex items-center gap-4">
-                <PrimaryButton :disabled="form.processing">حفظ</PrimaryButton>
+                <PrimaryButton :disabled="form.processing">{{ t('action.save', 'حفظ') }}</PrimaryButton>
 
                 <Transition
                     enter-active-class="transition ease-in-out"
@@ -103,7 +106,7 @@ const form = useForm({
                         v-if="form.recentlySuccessful"
                         class="text-sm text-gray-600 dark:text-gray-400"
                     >
-                        تم الحفظ.
+                        {{ t('preferences.saved', 'تم الحفظ.') }}
                     </p>
                 </Transition>
             </div>

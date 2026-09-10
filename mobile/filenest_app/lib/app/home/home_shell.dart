@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/i18n/app_strings.dart';
 import '../../features/downloads/presentation/downloads_screen.dart';
 import '../../features/files/presentation/browse_screen.dart';
 import '../../features/shares/presentation/shares_screen.dart';
@@ -23,17 +24,17 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _tabIndex = 0;
 
-  static const _titles = ['ملفاتي', 'التنزيلات', 'المشاركة'];
-
   @override
   Widget build(BuildContext context) {
+    final titles = [context.tr('nav.dashboard'), context.tr('nav.downloads'), context.tr('nav.shares')];
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(_titles[_tabIndex]),
+        title: Text(titles[_tabIndex]),
         actions: [
           IconButton(
             icon: const Icon(Icons.more_vert_rounded),
-            tooltip: 'المزيد',
+            tooltip: context.tr('nav.more'),
             onPressed: () => MoreDestinationsSheet.show(context),
           ),
         ],
@@ -50,21 +51,21 @@ class _HomeShellState extends State<HomeShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (index) => setState(() => _tabIndex = index),
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.folder_outlined),
-            selectedIcon: Icon(Icons.folder_rounded),
-            label: 'ملفاتي',
+            icon: const Icon(Icons.folder_outlined),
+            selectedIcon: const Icon(Icons.folder_rounded),
+            label: context.tr('nav.dashboard'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.download_for_offline_outlined),
-            selectedIcon: Icon(Icons.download_for_offline_rounded),
-            label: 'التنزيلات',
+            icon: const Icon(Icons.download_for_offline_outlined),
+            selectedIcon: const Icon(Icons.download_for_offline_rounded),
+            label: context.tr('nav.downloads'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.link_outlined),
-            selectedIcon: Icon(Icons.link_rounded),
-            label: 'المشاركة',
+            icon: const Icon(Icons.link_outlined),
+            selectedIcon: const Icon(Icons.link_rounded),
+            label: context.tr('nav.shares'),
           ),
         ],
       ),

@@ -7,7 +7,9 @@ import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
+import { useTrans } from '@/Composables/useTrans';
 
+const { t } = useTrans();
 const props = defineProps({ settings: Object, skins: Array, locales: Object, roles: Array });
 
 const page = usePage();
@@ -20,7 +22,11 @@ const SKIN_COLORS = {
     orange: '#ea580c', zinc: '#52525b', cyan: '#0891b2', fuchsia: '#c026d3',
 };
 
-const ROLE_LABELS = { user: 'مستخدم', editor: 'محرّر', contributor: 'مساهم' };
+const ROLE_LABELS = {
+    user: t('role.user', 'مستخدم'),
+    editor: t('role.editor', 'محرّر'),
+    contributor: t('role.contributor', 'مساهم'),
+};
 
 const form = useForm({
     site_name: props.settings.site_name,
@@ -53,37 +59,37 @@ function submit() {
 </script>
 
 <template>
-    <Head title="الإعدادات العامة" />
+    <Head :title="t('settings.title', 'الإعدادات العامة')" />
 
     <AdminLayout>
         <template #header>
-            <h2 class="text-lg font-semibold text-gray-800">الإعدادات العامة</h2>
+            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.title', 'الإعدادات العامة') }}</h2>
         </template>
 
         <form @submit.prevent="submit" class="max-w-3xl space-y-8 p-6">
-            <section v-if="canAppearance" class="rounded-xl border border-gray-200 bg-white p-6">
-                <h3 class="mb-4 font-semibold text-gray-800">الهوية والعلامة التجارية</h3>
+            <section v-if="canAppearance" class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.branding_title', 'الهوية والعلامة التجارية') }}</h3>
                 <div class="space-y-4">
                     <div>
-                        <InputLabel value="اسم الموقع" />
+                        <InputLabel :value="t('settings.site_name', 'اسم الموقع')" />
                         <TextInput v-model="form.site_name" class="mt-1 block w-full" />
                         <InputError :message="form.errors.site_name" class="mt-1" />
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <InputLabel value="الشعار (Logo)" />
-                            <input type="file" accept="image/*" class="mt-1 block w-full text-sm" @change="form.logo = $event.target.files[0]" />
+                            <InputLabel :value="t('settings.logo', 'الشعار (Logo)')" />
+                            <input type="file" accept="image/*" class="mt-1 block w-full text-sm dark:text-gray-300" @change="form.logo = $event.target.files[0]" />
                         </div>
                         <div>
-                            <InputLabel value="صورة الترويسة (اختياري)" />
-                            <input type="file" accept="image/*" class="mt-1 block w-full text-sm" @change="form.header_image = $event.target.files[0]" />
+                            <InputLabel :value="t('settings.header_image', 'صورة الترويسة (اختياري)')" />
+                            <input type="file" accept="image/*" class="mt-1 block w-full text-sm dark:text-gray-300" @change="form.header_image = $event.target.files[0]" />
                         </div>
                     </div>
                 </div>
             </section>
 
-            <section v-if="canAppearance" class="rounded-xl border border-gray-200 bg-white p-6">
-                <h3 class="mb-4 font-semibold text-gray-800">المظهر (السكن)</h3>
+            <section v-if="canAppearance" class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.skin_title', 'المظهر (السكن)') }}</h3>
                 <div class="flex flex-wrap gap-3">
                     <button
                         v-for="skin in skins"
@@ -91,159 +97,152 @@ function submit() {
                         type="button"
                         @click="form.active_skin = skin"
                         class="h-10 w-10 rounded-full border-2 transition"
-                        :class="form.active_skin === skin ? 'border-gray-800 ring-2 ring-offset-2' : 'border-transparent'"
+                        :class="form.active_skin === skin ? 'border-gray-800 ring-2 ring-offset-2 dark:border-gray-100' : 'border-transparent'"
                         :style="{ backgroundColor: SKIN_COLORS[skin] }"
                         :title="skin"
                     />
                 </div>
                 <div class="mt-4">
-                    <InputLabel value="CSS مخصص (اختياري، يطبّق فوق التصميم الحالي)" />
-                    <textarea v-model="form.custom_css" rows="4" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-xs" />
+                    <InputLabel :value="t('settings.custom_css', 'CSS مخصص (اختياري، يطبّق فوق التصميم الحالي)')" />
+                    <textarea v-model="form.custom_css" rows="4" class="mt-1 block w-full rounded-md border-gray-300 font-mono text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
                 </div>
             </section>
 
             <template v-if="canSettings">
-                <section class="rounded-xl border border-gray-200 bg-white p-6">
-                    <h3 class="mb-4 font-semibold text-gray-800">التخزين والرفع</h3>
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.storage_title', 'التخزين والرفع') }}</h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <InputLabel value="الحصة الافتراضية للمستخدم الجديد (ميغابايت)" />
+                            <InputLabel :value="t('settings.default_quota', 'الحصة الافتراضية للمستخدم الجديد (ميغابايت)')" />
                             <TextInput type="number" min="1" v-model="form.default_quota_mb" class="mt-1 block w-full" />
                         </div>
                         <div>
-                            <InputLabel value="الحد الأقصى لحجم الملف الواحد (ميغابايت)" />
+                            <InputLabel :value="t('settings.max_upload', 'الحد الأقصى لحجم الملف الواحد (ميغابايت)')" />
                             <TextInput type="number" min="1" v-model="form.max_upload_mb" class="mt-1 block w-full" />
                         </div>
                         <div>
-                            <InputLabel value="الحد الأقصى لعدد الملفات في أرشيف ZIP واحد" />
+                            <InputLabel :value="t('settings.max_zip_files', 'الحد الأقصى لعدد الملفات في أرشيف ZIP واحد')" />
                             <TextInput type="number" min="1" v-model="form.max_zip_files" class="mt-1 block w-full" />
                         </div>
                     </div>
                 </section>
 
-                <section class="rounded-xl border border-gray-200 bg-white p-6">
-                    <h3 class="mb-4 font-semibold text-gray-800">امتدادات الملفات المسموح بها</h3>
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.extensions_title', 'امتدادات الملفات المسموح بها') }}</h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <InputLabel value="نمط التصفية" />
-                            <select v-model="form.extension_filter_mode" class="mt-1 block w-full rounded-md border-gray-300">
-                                <option value="reject">حظر الامتدادات التالية فقط</option>
-                                <option value="allow">السماح بالامتدادات التالية فقط</option>
+                            <InputLabel :value="t('settings.filter_mode', 'نمط التصفية')" />
+                            <select v-model="form.extension_filter_mode" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                                <option value="reject">{{ t('settings.filter_reject', 'حظر الامتدادات التالية فقط') }}</option>
+                                <option value="allow">{{ t('settings.filter_allow', 'السماح بالامتدادات التالية فقط') }}</option>
                             </select>
                         </div>
                         <div>
-                            <InputLabel value="قائمة الامتدادات (مفصولة بفواصل، بدون نقطة)" />
+                            <InputLabel :value="t('settings.extension_list', 'قائمة الامتدادات (مفصولة بفواصل، بدون نقطة)')" />
                             <TextInput v-model="form.extension_list" placeholder="exe, bat, sh" class="mt-1 block w-full" />
                         </div>
                     </div>
-                    <p class="mt-2 text-xs text-gray-500">
-                        هذه القائمة إضافية إلى القائمة الأمنية الثابتة (php, phtml, exe...) التي لا يمكن تعطيلها من هنا.
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('settings.extension_note', 'هذه القائمة إضافية إلى القائمة الأمنية الثابتة (php, phtml, exe...) التي لا يمكن تعطيلها من هنا.') }}
                     </p>
                 </section>
 
-                <section class="rounded-xl border border-gray-200 bg-white p-6">
-                    <h3 class="mb-4 font-semibold text-gray-800">الصور المصغّرة (Thumbnails)</h3>
-                    <p class="mb-4 text-xs text-gray-500">
-                        عرض صورة مصغّرة حقيقية للصور مباشرة، ولمقاطع الفيديو (يتطلب توفّر أداة <code dir="ltr">ffmpeg</code>
-                        على الخادم)، ولأول صفحة من ملفات PDF (يتطلب امتداد <code dir="ltr">Imagick</code>). عند عدم توفّر
-                        الأداة المطلوبة تُعرض الأيقونة العامة بدلاً من ذلك تلقائياً دون أي خطأ.
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.thumbnails_title', 'الصور المصغّرة (Thumbnails)') }}</h3>
+                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('settings.thumbnails_description', 'عرض صورة مصغّرة حقيقية للصور مباشرة، ولمقاطع الفيديو (يتطلب توفّر أداة ffmpeg على الخادم)، ولأول صفحة من ملفات PDF (يتطلب امتداد Imagick). عند عدم توفّر الأداة المطلوبة تُعرض الأيقونة العامة بدلاً من ذلك تلقائياً دون أي خطأ.') }}
                     </p>
                     <div class="grid grid-cols-2 gap-4">
-                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600">
+                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <input type="checkbox" v-model="form.thumbnails_enabled" class="rounded border-gray-300" />
-                            تفعيل توليد الصور المصغّرة تلقائياً عند الرفع
+                            {{ t('settings.thumbnails_enable', 'تفعيل توليد الصور المصغّرة تلقائياً عند الرفع') }}
                         </label>
                         <div>
-                            <InputLabel value="أقصى أبعاد للصورة المصغّرة (بكسل)" />
+                            <InputLabel :value="t('settings.thumbnail_max_px', 'أقصى أبعاد للصورة المصغّرة (بكسل)')" />
                             <TextInput type="number" min="50" v-model="form.thumbnail_max_px" class="mt-1 block w-full" />
                         </div>
                     </div>
                 </section>
 
-                <section class="rounded-xl border border-gray-200 bg-white p-6">
-                    <h3 class="mb-4 font-semibold text-gray-800">جودات تشغيل الفيديو</h3>
-                    <p class="mb-4 text-xs text-gray-500">
-                        عند التفعيل، يُنشئ الخادم نسخاً بدقات أقل من كل فيديو يُرفع تلقائياً (يتطلب توفّر أداة
-                        <code dir="ltr">ffmpeg</code> على الخادم)، فيظهر لمستخدم المعاينة قائمة اختيار الجودة تماماً
-                        كما في يوتيوب. عند عدم توفّر الأداة يبقى تشغيل الفيديو الأصلي يعمل بلا أي تأثير.
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.video_quality_title', 'جودات تشغيل الفيديو') }}</h3>
+                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('settings.video_quality_description', 'عند التفعيل، يُنشئ الخادم نسخاً بدقات أقل من كل فيديو يُرفع تلقائياً (يتطلب توفّر أداة ffmpeg على الخادم)، فيظهر لمستخدم المعاينة قائمة اختيار الجودة تماماً كما في يوتيوب. عند عدم توفّر الأداة يبقى تشغيل الفيديو الأصلي يعمل بلا أي تأثير.') }}
                     </p>
                     <div class="grid grid-cols-2 gap-4">
-                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600">
+                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <input type="checkbox" v-model="form.video_transcoding_enabled" class="rounded border-gray-300" />
-                            تفعيل إنشاء نسخ بجودات مختلفة تلقائياً عند رفع الفيديو
+                            {{ t('settings.video_transcoding_enable', 'تفعيل إنشاء نسخ بجودات مختلفة تلقائياً عند رفع الفيديو') }}
                         </label>
                         <div class="col-span-2">
-                            <InputLabel value="الدقات المستهدفة (بالبكسل، مفصولة بفواصل)" />
+                            <InputLabel :value="t('settings.video_quality_targets', 'الدقات المستهدفة (بالبكسل، مفصولة بفواصل)')" />
                             <TextInput type="text" v-model="form.video_quality_targets" placeholder="360,480,720" class="mt-1 block w-full" />
                         </div>
                     </div>
                 </section>
 
-                <section class="rounded-xl border border-gray-200 bg-white p-6">
-                    <h3 class="mb-4 font-semibold text-gray-800">الفيديو التفاعلي</h3>
-                    <p class="mb-4 text-xs text-gray-500">
-                        عند التفعيل، يمكن لمن يملك صلاحية "إدارة الأسئلة" إضافة أسئلة تظهر وتوقف الفيديو عند لحظة محدَّدة
-                        منه، وتُسجَّل درجة كل مشاهد. عند التعطيل يختفي زر الأسئلة تماماً وتُشغَّل الفيديوهات بلا توقّف،
-                        دون حذف أي أسئلة أو درجات محفوظة مسبقاً.
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.interactive_video_title', 'الفيديو التفاعلي') }}</h3>
+                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('settings.interactive_video_description', 'عند التفعيل، يمكن لمن يملك صلاحية "إدارة الأسئلة" إضافة أسئلة تظهر وتوقف الفيديو عند لحظة محدَّدة منه، وتُسجَّل درجة كل مشاهد. عند التعطيل يختفي زر الأسئلة تماماً وتُشغَّل الفيديوهات بلا توقّف، دون حذف أي أسئلة أو درجات محفوظة مسبقاً.') }}
                     </p>
-                    <label class="flex items-center gap-2 text-sm text-gray-600">
+                    <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                         <input type="checkbox" v-model="form.interactive_video_enabled" class="rounded border-gray-300" />
-                        تفعيل الأسئلة التفاعلية داخل الفيديو
+                        {{ t('settings.interactive_video_enable', 'تفعيل الأسئلة التفاعلية داخل الفيديو') }}
                     </label>
                 </section>
 
-                <section class="rounded-xl border border-gray-200 bg-white p-6">
-                    <h3 class="mb-4 font-semibold text-gray-800">فهرسة محتوى المستندات للبحث</h3>
-                    <p class="mb-4 text-xs text-gray-500">
-                        عند التفعيل، يُستخرَج النص من داخل ملفات Word وPDF وPowerPoint والنصوص عند رفعها، ليصبح البحث
-                        قادراً على إيجاد الملف من محتواه الداخلي وليس فقط من اسمه — تماماً كفهرسة مكتبة أو دار نشر.
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.content_indexing_title', 'فهرسة محتوى المستندات للبحث') }}</h3>
+                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('settings.content_indexing_description', 'عند التفعيل، يُستخرَج النص من داخل ملفات Word وPDF وPowerPoint والنصوص عند رفعها، ليصبح البحث قادراً على إيجاد الملف من محتواه الداخلي وليس فقط من اسمه — تماماً كفهرسة مكتبة أو دار نشر.') }}
                     </p>
                     <div class="grid grid-cols-2 gap-4">
-                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600">
+                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <input type="checkbox" v-model="form.content_indexing_enabled" class="rounded border-gray-300" />
-                            تفعيل استخراج النص وفهرسته تلقائياً عند الرفع (Word, PDF, PowerPoint, نصوص)
+                            {{ t('settings.content_indexing_enable', 'تفعيل استخراج النص وفهرسته تلقائياً عند الرفع (Word, PDF, PowerPoint, نصوص)') }}
                         </label>
                         <div>
-                            <InputLabel value="لا تُفهرس الملفات الأكبر من (ميغابايت)" />
+                            <InputLabel :value="t('settings.content_indexing_max_mb', 'لا تُفهرس الملفات الأكبر من (ميغابايت)')" />
                             <TextInput type="number" min="1" v-model="form.content_indexing_max_mb" class="mt-1 block w-full" />
                         </div>
                     </div>
                 </section>
 
-                <section class="rounded-xl border border-gray-200 bg-white p-6">
-                    <h3 class="mb-4 font-semibold text-gray-800">اللغة والتسجيل</h3>
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.locale_registration_title', 'اللغة والتسجيل') }}</h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <InputLabel value="اللغة الافتراضية" />
-                            <select v-model="form.default_locale" class="mt-1 block w-full rounded-md border-gray-300">
+                            <InputLabel :value="t('settings.default_locale', 'اللغة الافتراضية')" />
+                            <select v-model="form.default_locale" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
                                 <option v-for="(meta, code) in locales" :key="code" :value="code">{{ meta.label }}</option>
                             </select>
                         </div>
                         <div>
-                            <InputLabel value="الدور الافتراضي للمستخدم الجديد" />
-                            <select v-model="form.registration_role" class="mt-1 block w-full rounded-md border-gray-300">
+                            <InputLabel :value="t('settings.default_role', 'الدور الافتراضي للمستخدم الجديد')" />
+                            <select v-model="form.registration_role" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
                                 <option v-for="role in roles.filter((r) => r !== 'admin')" :key="role" :value="role">{{ ROLE_LABELS[role] }}</option>
                             </select>
                         </div>
                     </div>
                     <div class="mt-4 space-y-2">
-                        <label class="flex items-center gap-2 text-sm text-gray-600">
+                        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <input type="checkbox" v-model="form.registration_enabled" class="rounded border-gray-300" />
-                            السماح بإنشاء حسابات جديدة ذاتياً
+                            {{ t('settings.allow_registration', 'السماح بإنشاء حسابات جديدة ذاتياً') }}
                         </label>
-                        <label class="flex items-center gap-2 text-sm text-gray-600">
+                        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <input type="checkbox" v-model="form.enable_pretty_links" class="rounded border-gray-300" />
-                            استخدام روابط مشاركة مختصرة (Pretty Links)
+                            {{ t('settings.pretty_links', 'استخدام روابط مشاركة مختصرة (Pretty Links)') }}
                         </label>
-                        <label class="flex items-center gap-2 text-sm text-gray-600">
+                        <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
                             <input type="checkbox" v-model="form.global_search" class="rounded border-gray-300" />
-                            تفعيل البحث الشامل في كل المجلدات (وليس المجلد الحالي فقط)
+                            {{ t('settings.global_search', 'تفعيل البحث الشامل في كل المجلدات (وليس المجلد الحالي فقط)') }}
                         </label>
                     </div>
                 </section>
             </template>
 
-            <PrimaryButton :disabled="form.processing">حفظ الإعدادات</PrimaryButton>
+            <PrimaryButton :disabled="form.processing">{{ t('settings.save', 'حفظ الإعدادات') }}</PrimaryButton>
         </form>
     </AdminLayout>
 </template>

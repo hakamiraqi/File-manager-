@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/utils/formatters.dart';
 import '../data/admin_repository.dart';
@@ -49,7 +50,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('سجل النشاطات')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.activity'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -64,7 +65,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   Widget _buildList() {
     final page = _page;
     if (page == null || page.logs.isEmpty) {
-      return ListView(children: const [Padding(padding: EdgeInsets.all(24), child: Text('لا توجد نشاطات بعد.'))]);
+      return ListView(children: [Padding(padding: const EdgeInsets.all(24), child: Text(context.tr('admin.activity.none_yet')))]);
     }
 
     return ListView.separated(
@@ -76,7 +77,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
         return ListTile(
           dense: true,
           title: Text(log.description ?? log.action, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${log.userName ?? 'النظام'} · ${log.ipAddress ?? ''}'),
+          subtitle: Text('${log.userName ?? context.tr('admin.dashboard.system')} · ${log.ipAddress ?? ''}'),
           trailing: Text(formatDate(log.createdAt), style: const TextStyle(fontSize: 11, color: Colors.grey)),
         );
       },

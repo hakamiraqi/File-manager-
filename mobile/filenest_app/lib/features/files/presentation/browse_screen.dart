@@ -7,12 +7,14 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/home/more_destinations_sheet.dart';
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/models/file_item.dart';
 import '../../../core/models/folder_item.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../shares/data/share_repository.dart';
 import '../../media_player/presentation/media_player_screen.dart';
+import '../../playlists/presentation/widgets/add_to_playlist_sheet.dart';
 import '../data/file_repository.dart';
 import 'widgets/folder_picker_dialog.dart';
 import 'widgets/item_tiles.dart';
@@ -101,7 +103,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
         'publication_year': _publicationYearController.text,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ معلومات المجلد.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('folder.info_saved'))));
       }
     } catch (e) {
       _showError(e);
@@ -141,11 +143,11 @@ class _BrowseScreenState extends State<BrowseScreen> {
     final name = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('مجلد جديد'),
-        content: TextField(controller: controller, decoration: const InputDecoration(labelText: 'اسم المجلد')),
+        title: Text(context.tr('folder.new')),
+        content: TextField(controller: controller, decoration: InputDecoration(labelText: context.tr('folder.name_label'))),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: const Text('إنشاء')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('action.cancel'))),
+          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: Text(context.tr('action.create'))),
         ],
       ),
     );
@@ -214,8 +216,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
       files = entities.whereType<File>().toList();
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('تعذّر قراءة محتويات هذا المجلد. على بعض أجهزة أندرويد لا يمكن رفع مجلد كامل مباشرة — جرّب اختيار الملفات فرادى باستخدام "رفع ملف".'),
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(context.tr('folder.upload_read_error')),
       ));
       return;
     }
@@ -280,7 +282,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
     final url = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('رفع من رابط'),
+        title: Text(context.tr('action.upload_remote')),
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.url,
@@ -288,8 +290,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
           decoration: const InputDecoration(hintText: 'https://example.com/file.pdf'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: const Text('رفع')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('action.cancel'))),
+          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: Text(context.tr('folder.upload_action'))),
         ],
       ),
     );
@@ -341,14 +343,14 @@ class _BrowseScreenState extends State<BrowseScreen> {
               }
               final text = snapshot.data;
               if (text == null || text.isEmpty) {
-                return const Text('لا يوجد نص مستخرج لهذا الملف.');
+                return Text(context.tr('preview.no_extracted_text'));
               }
               return SingleChildScrollView(child: SelectableText(text));
             },
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إغلاق')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('action.close'))),
         ],
       ),
     );
@@ -378,7 +380,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
   }
 
   Future<void> _renameFile(FileItem file) async {
-    final name = await _promptText('إعادة تسمية', initial: file.name);
+    final name = await _promptText(context.tr('action.rename'), initial: file.name);
     if (name == null || name.trim().isEmpty || name == file.name) return;
     try {
       await _fileRepository.renameFile(file.id, name.trim());
@@ -409,7 +411,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
   }
 
   Future<void> _renameFolder(FolderItem folder) async {
-    final name = await _promptText('إعادة تسمية', initial: folder.name);
+    final name = await _promptText(context.tr('action.rename'), initial: folder.name);
     if (name == null || name.trim().isEmpty || name == folder.name) return;
     try {
       await _fileRepository.renameFolder(folder.id, name.trim());
@@ -463,11 +465,11 @@ class _BrowseScreenState extends State<BrowseScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('نقل إلى سلة المحذوفات'),
-        content: Text('هل تريد نقل $count عنصر إلى سلة المحذوفات؟'),
+        title: Text(context.tr('action.move_to_trash')),
+        content: Text(context.tr('browse.confirm_move_to_trash', {'count': count})),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('نقل')),
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: Text(context.tr('action.cancel'))),
+          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: Text(context.tr('browse.move'))),
         ],
       ),
     );
@@ -511,8 +513,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
         title: Text(title),
         content: TextField(controller: controller, autofocus: true),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('إلغاء')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: const Text('حفظ')),
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: Text(context.tr('action.cancel'))),
+          FilledButton(onPressed: () => Navigator.of(context).pop(controller.text), child: Text(context.tr('action.save'))),
         ],
       ),
     );
@@ -526,38 +528,43 @@ class _BrowseScreenState extends State<BrowseScreen> {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Wrap(children: [
           ListTile(
             leading: Icon(file.isPlayableMedia ? Icons.play_circle_outline_rounded : Icons.visibility_outlined),
-            title: Text(file.isPlayableMedia ? 'تشغيل' : 'معاينة/فتح'),
+            title: Text(file.isPlayableMedia ? context.tr('action.play') : context.tr('action.preview')),
             onTap: () {
-              Navigator.of(context).pop();
+              Navigator.of(sheetContext).pop();
               file.isPlayableMedia ? _playMedia(file) : _previewFile(file);
             },
           ),
-          ListTile(leading: const Icon(Icons.ios_share_rounded), title: const Text('مشاركة'), onTap: () {
-            Navigator.of(context).pop();
+          ListTile(leading: const Icon(Icons.ios_share_rounded), title: Text(context.tr('action.share')), onTap: () {
+            Navigator.of(sheetContext).pop();
             _shareFile(file);
           }),
-          ListTile(leading: const Icon(Icons.drive_file_rename_outline_rounded), title: const Text('إعادة تسمية'), onTap: () {
-            Navigator.of(context).pop();
+          if (file.isPlayableMedia)
+            ListTile(leading: const Icon(Icons.playlist_add_rounded), title: Text(context.tr('action.add_to_playlist')), onTap: () {
+              Navigator.of(sheetContext).pop();
+              AddToPlaylistSheet.show(context, file);
+            }),
+          ListTile(leading: const Icon(Icons.drive_file_rename_outline_rounded), title: Text(context.tr('action.rename')), onTap: () {
+            Navigator.of(sheetContext).pop();
             _renameFile(file);
           }),
           if (file.isIndexed)
-            ListTile(leading: const Icon(Icons.article_outlined), title: const Text('عرض النص المستخرج'), onTap: () {
-              Navigator.of(context).pop();
+            ListTile(leading: const Icon(Icons.article_outlined), title: Text(context.tr('action.view_extracted_text')), onTap: () {
+              Navigator.of(sheetContext).pop();
               _viewExtractedText(file);
             }),
-          ListTile(leading: const Icon(Icons.drive_file_move_outline), title: const Text('نقل إلى مجلد'), onTap: () {
-            Navigator.of(context).pop();
+          ListTile(leading: const Icon(Icons.drive_file_move_outline), title: Text(context.tr('action.move_to_folder')), onTap: () {
+            Navigator.of(sheetContext).pop();
             _moveFile(file);
           }),
           ListTile(
             leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-            title: const Text('نقل إلى سلة المحذوفات', style: TextStyle(color: Colors.red)),
+            title: Text(context.tr('action.move_to_trash'), style: const TextStyle(color: Colors.red)),
             onTap: () {
-              Navigator.of(context).pop();
+              Navigator.of(sheetContext).pop();
               _deleteFile(file);
             },
           ),
@@ -570,21 +577,21 @@ class _BrowseScreenState extends State<BrowseScreen> {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) => SafeArea(
+      builder: (sheetContext) => SafeArea(
         child: Wrap(children: [
-          ListTile(leading: const Icon(Icons.drive_file_rename_outline_rounded), title: const Text('إعادة تسمية'), onTap: () {
-            Navigator.of(context).pop();
+          ListTile(leading: const Icon(Icons.drive_file_rename_outline_rounded), title: Text(context.tr('action.rename')), onTap: () {
+            Navigator.of(sheetContext).pop();
             _renameFolder(folder);
           }),
-          ListTile(leading: const Icon(Icons.drive_file_move_outline), title: const Text('نقل إلى مجلد'), onTap: () {
-            Navigator.of(context).pop();
+          ListTile(leading: const Icon(Icons.drive_file_move_outline), title: Text(context.tr('action.move_to_folder')), onTap: () {
+            Navigator.of(sheetContext).pop();
             _moveFolder(folder);
           }),
           ListTile(
             leading: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-            title: const Text('نقل إلى سلة المحذوفات', style: TextStyle(color: Colors.red)),
+            title: Text(context.tr('action.move_to_trash'), style: const TextStyle(color: Colors.red)),
             onTap: () {
-              Navigator.of(context).pop();
+              Navigator.of(sheetContext).pop();
               _deleteFolder(folder);
             },
           ),
@@ -625,7 +632,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.more_vert_rounded),
-                    tooltip: 'المزيد',
+                    tooltip: context.tr('nav.more'),
                     onPressed: () => MoreDestinationsSheet.show(context),
                   ),
                 ],
@@ -652,7 +659,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'ابحث بالاسم أو محتوى الملف...',
+                hintText: context.tr('browse.search_placeholder'),
                 prefixIcon: const Icon(Icons.search_rounded),
               ),
               onSubmitted: (value) => _load(query: value.trim()),
@@ -678,7 +685,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             child: Text(
-              '${_folders.length} مجلد، ${_files.length} ملف',
+              context.tr('browse.item_count', {'folders': _folders.length, 'files': _files.length}),
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
             ),
           ),
@@ -698,7 +705,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
         children: [
           ListTile(
             leading: const Icon(Icons.info_outline_rounded),
-            title: const Text('معلومات المجلد'),
+            title: Text(context.tr('folder.info')),
             trailing: Icon(_showFolderInfo ? Icons.expand_less_rounded : Icons.expand_more_rounded),
             onTap: () => setState(() => _showFolderInfo = !_showFolderInfo),
           ),
@@ -709,16 +716,16 @@ class _BrowseScreenState extends State<BrowseScreen> {
                 children: [
                   Row(
                     children: [
-                      const Text('نوع المجلد: '),
+                      Text(context.tr('folder.type_label')),
                       const SizedBox(width: 8),
                       ChoiceChip(
-                        label: const Text('ملفات'),
+                        label: Text(context.tr('folder.type_files')),
                         selected: _folderType == 'files',
                         onSelected: (_) => setState(() => _folderType = 'files'),
                       ),
                       const SizedBox(width: 8),
                       ChoiceChip(
-                        label: const Text('أطروحة'),
+                        label: Text(context.tr('folder.type_thesis')),
                         selected: _folderType == 'thesis',
                         onSelected: (_) => setState(() => _folderType = 'thesis'),
                       ),
@@ -726,17 +733,17 @@ class _BrowseScreenState extends State<BrowseScreen> {
                   ),
                   if (_folderType == 'thesis') ...[
                     const SizedBox(height: 12),
-                    TextField(controller: _researcherNameController, decoration: const InputDecoration(labelText: 'اسم الباحث')),
+                    TextField(controller: _researcherNameController, decoration: InputDecoration(labelText: context.tr('folder.researcher_name'))),
                     const SizedBox(height: 8),
-                    TextField(controller: _supervisorNameController, decoration: const InputDecoration(labelText: 'المشرف')),
+                    TextField(controller: _supervisorNameController, decoration: InputDecoration(labelText: context.tr('folder.supervisor_name'))),
                     const SizedBox(height: 8),
-                    TextField(controller: _thesisTitleController, decoration: const InputDecoration(labelText: 'عنوان الرسالة')),
+                    TextField(controller: _thesisTitleController, decoration: InputDecoration(labelText: context.tr('folder.thesis_title'))),
                     const SizedBox(height: 8),
-                    TextField(controller: _publisherController, decoration: const InputDecoration(labelText: 'دار النشر')),
+                    TextField(controller: _publisherController, decoration: InputDecoration(labelText: context.tr('folder.publisher'))),
                     const SizedBox(height: 8),
-                    TextField(controller: _digitalLibraryController, decoration: const InputDecoration(labelText: 'المكتبة الرقمية')),
+                    TextField(controller: _digitalLibraryController, decoration: InputDecoration(labelText: context.tr('folder.digital_library'))),
                     const SizedBox(height: 8),
-                    TextField(controller: _publicationYearController, decoration: const InputDecoration(labelText: 'سنة النشر')),
+                    TextField(controller: _publicationYearController, decoration: InputDecoration(labelText: context.tr('folder.publication_year'))),
                   ],
                   const SizedBox(height: 12),
                   Align(
@@ -745,7 +752,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
                       onPressed: _savingFolderInfo ? null : _saveFolderInfo,
                       child: _savingFolderInfo
                           ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('حفظ'),
+                          : Text(context.tr('action.save')),
                     ),
                   ),
                 ],
@@ -760,7 +767,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text(_error!));
     if (_folders.isEmpty && _files.isEmpty) {
-      return const EmptyState(icon: Icons.folder_open_outlined, message: 'لا توجد ملفات أو مجلدات هنا بعد.');
+      return EmptyState(icon: Icons.folder_open_outlined, message: context.tr('empty.no_files'));
     }
 
     return RefreshIndicator(
@@ -815,14 +822,14 @@ class _SelectionToolbar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(
           children: [
-            IconButton(icon: const Icon(Icons.close_rounded), tooltip: 'إلغاء التحديد', onPressed: onClear),
+            IconButton(icon: const Icon(Icons.close_rounded), tooltip: context.tr('browse.clear_selection'), onPressed: onClear),
             Expanded(
-              child: Text('$count محدد', style: const TextStyle(fontWeight: FontWeight.w600)),
+              child: Text(context.tr('selection.count', {'count': count}), style: const TextStyle(fontWeight: FontWeight.w600)),
             ),
-            IconButton(icon: const Icon(Icons.download_rounded), tooltip: 'تنزيل كملف مضغوط', onPressed: onDownloadZip),
+            IconButton(icon: const Icon(Icons.download_rounded), tooltip: context.tr('action.download_zip'), onPressed: onDownloadZip),
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-              tooltip: 'نقل إلى سلة المحذوفات',
+              tooltip: context.tr('action.move_to_trash'),
               onPressed: onDelete,
             ),
           ],

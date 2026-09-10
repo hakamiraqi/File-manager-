@@ -6,7 +6,10 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import OauthButtons from '@/Components/OauthButtons.vue';
+import { useTrans } from '@/Composables/useTrans';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+
+const { t } = useTrans();
 
 defineProps({
     canResetPassword: {
@@ -36,15 +39,15 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="تسجيل الدخول" />
+        <Head :title="t('auth.login', 'تسجيل الدخول')" />
 
-        <div v-if="status" class="mb-4 text-sm font-medium text-green-600">
+        <div v-if="status" class="mb-4 text-sm font-medium text-green-600 dark:text-green-400">
             {{ status }}
         </div>
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="email" value="البريد الإلكتروني" />
+                <InputLabel for="email" :value="t('auth.email', 'البريد الإلكتروني')" />
 
                 <TextInput
                     id="email"
@@ -60,7 +63,7 @@ const submit = () => {
             </div>
 
             <div class="mt-4">
-                <InputLabel for="password" value="كلمة المرور" />
+                <InputLabel for="password" :value="t('auth.password', 'كلمة المرور')" />
 
                 <TextInput
                     id="password"
@@ -78,7 +81,7 @@ const submit = () => {
                 <label class="flex items-center">
                     <Checkbox name="remember" v-model:checked="form.remember" />
                     <span class="ms-2 text-sm text-gray-600 dark:text-gray-400"
-                        >تذكرني</span
+                        >{{ t('auth.remember_me', 'تذكرني') }}</span
                     >
                 </label>
             </div>
@@ -89,7 +92,7 @@ const submit = () => {
                     :href="route('password.request')"
                     class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:text-gray-100 dark:focus:ring-offset-gray-800"
                 >
-                    نسيت كلمة المرور؟
+                    {{ t('auth.forgot_password', 'نسيت كلمة المرور؟') }}
                 </Link>
 
                 <PrimaryButton
@@ -97,13 +100,13 @@ const submit = () => {
                     :class="{ 'opacity-25': form.processing }"
                     :disabled="form.processing"
                 >
-                    تسجيل الدخول
+                    {{ t('auth.login', 'تسجيل الدخول') }}
                 </PrimaryButton>
             </div>
 
-            <p class="mt-6 text-center text-sm text-gray-500">
-                ليس لديك حساب؟
-                <Link :href="route('register')" class="font-medium text-[var(--accent-600)] hover:underline">إنشاء حساب جديد</Link>
+            <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                {{ t('auth.no_account', 'ليس لديك حساب؟') }}
+                <Link :href="route('register')" class="font-medium text-[var(--accent-600)] hover:underline">{{ t('auth.create_account', 'إنشاء حساب جديد') }}</Link>
             </p>
         </form>
 

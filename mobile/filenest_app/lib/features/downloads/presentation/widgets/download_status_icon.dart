@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/i18n/app_strings.dart';
 import '../../../../core/models/file_item.dart';
 import '../../state/downloads_provider.dart';
 
@@ -32,7 +33,7 @@ class DownloadStatusIcon extends StatelessWidget {
                 CircularProgressIndicator(value: progress == 0 ? null : progress, strokeWidth: 2.5),
                 IconButton(
                   icon: const Icon(Icons.close_rounded, size: 14),
-                  tooltip: 'إلغاء التنزيل',
+                  tooltip: context.tr('downloads.cancel_download'),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                   onPressed: () => downloads.cancelDownload(file.id),
@@ -49,7 +50,7 @@ class DownloadStatusIcon extends StatelessWidget {
             isDownloaded ? Icons.offline_pin_rounded : Icons.download_for_offline_outlined,
             color: isDownloaded ? AppColors.success : null,
           ),
-          tooltip: isDownloaded ? 'متاح بدون إنترنت — اضغط للفتح' : 'تنزيل للعمل بدون إنترنت',
+          tooltip: isDownloaded ? context.tr('downloads.available_offline_tap') : context.tr('downloads.download_for_offline'),
           onPressed: () => isDownloaded ? downloads.openOffline(file.id) : downloads.download(file),
         );
       },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/models/file_item.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/empty_state.dart';
@@ -37,12 +38,11 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
     if (downloads.items.isEmpty) {
       return ListView(
-        children: const [
-          SizedBox(height: 80),
+        children: [
+          const SizedBox(height: 80),
           EmptyState(
             icon: Icons.download_for_offline_outlined,
-            message:
-                'لا توجد ملفات محمّلة للعمل بدون إنترنت بعد.\nاضغط على أيقونة التنزيل بجانب أي ملف في "ملفاتي" لحفظه هنا.',
+            message: context.tr('downloads.empty'),
           ),
         ],
       );
@@ -60,13 +60,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                 Expanded(
                   child: Text(
                     downloads.syncing
-                        ? 'جارٍ مزامنة إجابات الأسئلة التفاعلية...'
-                        : '${downloads.pendingAnswerCount} إجابة بانتظار المزامنة مع الخادم.',
+                        ? context.tr('downloads.syncing')
+                        : context.tr('downloads.pending_answers', {'count': downloads.pendingAnswerCount}),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
                 if (!downloads.syncing)
-                  TextButton(onPressed: () => downloads.syncPendingAnswers(), child: const Text('مزامنة الآن')),
+                  TextButton(onPressed: () => downloads.syncPendingAnswers(), child: Text(context.tr('downloads.sync_now'))),
               ],
             ),
           ),
@@ -111,12 +111,12 @@ class _OfflineFileTile extends StatelessWidget {
       title: Text(record.name),
       subtitle: Text(
         '${formatBytes(record.size)} · ${formatDate(record.downloadedAt)}'
-        '${record.hasQuiz ? ' · أسئلة تفاعلية متاحة بدون إنترنت' : ''}',
+        '${record.hasQuiz ? ' · ${context.tr('downloads.quiz_available_offline')}' : ''}',
       ),
       onTap: () => _open(context),
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline_rounded),
-        tooltip: 'حذف النسخة المحلية',
+        tooltip: context.tr('downloads.delete_local_copy'),
         onPressed: () => downloads.delete(record.fileId),
       ),
     );

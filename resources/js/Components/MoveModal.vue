@@ -4,7 +4,10 @@ import { useForm } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
+import { useTrans } from '@/Composables/useTrans';
 import { FolderIcon } from '@heroicons/vue/24/solid';
+
+const { t } = useTrans();
 
 const props = defineProps({
     show: Boolean,
@@ -54,24 +57,24 @@ function submit() {
 <template>
     <Modal :show="show" @close="$emit('close')">
         <div class="p-6" v-if="item">
-            <h2 class="text-lg font-medium text-gray-900">نقل "{{ item.name }}" إلى</h2>
+            <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ t('move.title', 'نقل ":name" إلى', { name: item.name }) }}</h2>
 
-            <div class="mt-4 max-h-72 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2">
+            <div class="mt-4 max-h-72 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-2 dark:border-gray-700">
                 <button
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-100"
-                    :class="{ 'bg-[var(--accent-50)] text-[var(--accent-700)]': selected === null }"
+                    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    :class="{ 'bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700': selected === null }"
                     @click="selected = null"
                 >
                     <FolderIcon class="h-4 w-4 text-amber-400" />
-                    الجذر الرئيسي (My Files)
+                    {{ t('move.root', 'الجذر الرئيسي (My Files)') }}
                 </button>
                 <button
                     v-for="f in tree"
                     :key="f.id"
                     type="button"
-                    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-100"
-                    :class="{ 'bg-[var(--accent-50)] text-[var(--accent-700)]': selected === f.id }"
+                    class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                    :class="{ 'bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700': selected === f.id }"
                     :style="{ paddingInlineStart: `${8 + f.depth * 16}px` }"
                     @click="selected = f.id"
                 >
@@ -81,8 +84,8 @@ function submit() {
             </div>
 
             <div class="mt-6 flex justify-end gap-3">
-                <SecondaryButton @click="$emit('close')">إلغاء</SecondaryButton>
-                <PrimaryButton :disabled="form.processing" @click="submit">نقل هنا</PrimaryButton>
+                <SecondaryButton @click="$emit('close')">{{ t('action.cancel', 'إلغاء') }}</SecondaryButton>
+                <PrimaryButton :disabled="form.processing" @click="submit">{{ t('move.here', 'نقل هنا') }}</PrimaryButton>
             </div>
         </div>
     </Modal>

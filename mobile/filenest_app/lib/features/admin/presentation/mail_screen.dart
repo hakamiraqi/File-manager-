@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../data/admin_repository.dart';
 
@@ -104,7 +105,7 @@ class _MailScreenState extends State<MailScreen> {
       });
       if (mounted) {
         _passwordController.clear();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ إعدادات البريد.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('mail.saved'))));
       }
     } catch (e) {
       if (mounted) setState(() => _error = ApiClient.messageFor(e));
@@ -118,7 +119,7 @@ class _MailScreenState extends State<MailScreen> {
     setState(() => _sendingTest = true);
     try {
       await _repository.sendTestMail(_testEmailController.text.trim());
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إرسال رسالة الاختبار.')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('mail.test_sent'))));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiClient.messageFor(e))));
     } finally {
@@ -129,7 +130,7 @@ class _MailScreenState extends State<MailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('البريد الإلكتروني')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.mail'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -137,44 +138,44 @@ class _MailScreenState extends State<MailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _Section(title: 'خادم SMTP', children: [
-                    TextField(controller: _hostController, decoration: const InputDecoration(labelText: 'الخادم (Host)'), textDirection: TextDirection.ltr),
+                  _Section(title: context.tr('mail.smtp_server'), children: [
+                    TextField(controller: _hostController, decoration: InputDecoration(labelText: context.tr('mail.host')), textDirection: TextDirection.ltr),
                     const SizedBox(height: 8),
-                    TextField(controller: _portController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'المنفذ (Port)'), textDirection: TextDirection.ltr),
+                    TextField(controller: _portController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('mail.port')), textDirection: TextDirection.ltr),
                     const SizedBox(height: 8),
-                    TextField(controller: _usernameController, decoration: const InputDecoration(labelText: 'اسم المستخدم'), textDirection: TextDirection.ltr),
+                    TextField(controller: _usernameController, decoration: InputDecoration(labelText: context.tr('mail.username')), textDirection: TextDirection.ltr),
                     const SizedBox(height: 8),
-                    TextField(controller: _passwordController, obscureText: true, decoration: const InputDecoration(labelText: 'كلمة المرور (اتركه فارغاً للإبقاء عليها)'), textDirection: TextDirection.ltr),
+                    TextField(controller: _passwordController, obscureText: true, decoration: InputDecoration(labelText: context.tr('mail.password_placeholder')), textDirection: TextDirection.ltr),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: _encryption,
-                      decoration: const InputDecoration(labelText: 'التشفير'),
-                      items: const [
-                        DropdownMenuItem(value: 'tls', child: Text('TLS')),
-                        DropdownMenuItem(value: 'ssl', child: Text('SSL')),
-                        DropdownMenuItem(value: 'none', child: Text('بدون')),
+                      decoration: InputDecoration(labelText: context.tr('mail.encryption')),
+                      items: [
+                        const DropdownMenuItem(value: 'tls', child: Text('TLS')),
+                        const DropdownMenuItem(value: 'ssl', child: Text('SSL')),
+                        DropdownMenuItem(value: 'none', child: Text(context.tr('mail.none'))),
                       ],
                       onChanged: (v) => setState(() => _encryption = v ?? 'tls'),
                     ),
                     const SizedBox(height: 8),
-                    TextField(controller: _fromAddressController, decoration: const InputDecoration(labelText: 'عنوان المرسل'), textDirection: TextDirection.ltr),
+                    TextField(controller: _fromAddressController, decoration: InputDecoration(labelText: context.tr('mail.from_address')), textDirection: TextDirection.ltr),
                     const SizedBox(height: 8),
-                    TextField(controller: _fromNameController, decoration: const InputDecoration(labelText: 'اسم المرسل')),
+                    TextField(controller: _fromNameController, decoration: InputDecoration(labelText: context.tr('mail.from_name'))),
                   ]),
-                  _Section(title: 'إشعارات الأحداث (تُرسل لكل مشرف نشط)', children: [
-                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyUpload, onChanged: (v) => setState(() => _notifyUpload = v), title: const Text('عند رفع ملف')),
-                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyDownload, onChanged: (v) => setState(() => _notifyDownload = v), title: const Text('عند تحميل ملف')),
-                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyLogin, onChanged: (v) => setState(() => _notifyLogin = v), title: const Text('عند تسجيل دخول مستخدم')),
-                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyNewFolder, onChanged: (v) => setState(() => _notifyNewFolder = v), title: const Text('عند إنشاء مجلد جديد')),
-                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyRegistration, onChanged: (v) => setState(() => _notifyRegistration = v), title: const Text('عند انضمام مستخدم جديد')),
+                  _Section(title: context.tr('mail.notifications_title'), children: [
+                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyUpload, onChanged: (v) => setState(() => _notifyUpload = v), title: Text(context.tr('mail.notify_upload'))),
+                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyDownload, onChanged: (v) => setState(() => _notifyDownload = v), title: Text(context.tr('mail.notify_download'))),
+                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyLogin, onChanged: (v) => setState(() => _notifyLogin = v), title: Text(context.tr('mail.notify_login'))),
+                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyNewFolder, onChanged: (v) => setState(() => _notifyNewFolder = v), title: Text(context.tr('mail.notify_newfolder'))),
+                    SwitchListTile(contentPadding: EdgeInsets.zero, value: _notifyRegistration, onChanged: (v) => setState(() => _notifyRegistration = v), title: Text(context.tr('mail.notify_registration'))),
                   ]),
                   if (_error != null) ...[
                     Text(_error!, style: const TextStyle(color: Colors.red)),
                     const SizedBox(height: 8),
                   ],
-                  FilledButton(onPressed: _saving ? null : _submit, child: const Text('حفظ إعدادات البريد')),
+                  FilledButton(onPressed: _saving ? null : _submit, child: Text(context.tr('mail.save'))),
                   const SizedBox(height: 16),
-                  _Section(title: 'إرسال رسالة اختبار', children: [
+                  _Section(title: context.tr('mail.send_test'), children: [
                     Row(children: [
                       Expanded(
                         child: TextField(
@@ -185,7 +186,7 @@ class _MailScreenState extends State<MailScreen> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      OutlinedButton(onPressed: _sendingTest ? null : _sendTest, child: const Text('إرسال')),
+                      OutlinedButton(onPressed: _sendingTest ? null : _sendTest, child: Text(context.tr('share.send'))),
                     ]),
                   ]),
                 ],

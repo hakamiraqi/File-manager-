@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/i18n/app_strings.dart';
+
 /// A minimal "speed dial" (new folder / upload folder / upload file / upload
 /// from URL) without pulling in an extra package just for this.
 class UploadFab extends StatefulWidget {
@@ -36,7 +38,7 @@ class _UploadFabState extends State<UploadFab> {
               widget.onNewFolder();
             },
             icon: const Icon(Icons.create_new_folder_outlined),
-            label: const Text('مجلد جديد'),
+            label: Text(context.tr('folder.new')),
           ),
           const SizedBox(height: 12),
           FloatingActionButton.extended(
@@ -46,7 +48,7 @@ class _UploadFabState extends State<UploadFab> {
               widget.onUploadFolder();
             },
             icon: const Icon(Icons.drive_folder_upload_outlined),
-            label: const Text('رفع مجلد'),
+            label: Text(context.tr('action.upload_folder')),
           ),
           const SizedBox(height: 12),
           FloatingActionButton.extended(
@@ -56,7 +58,7 @@ class _UploadFabState extends State<UploadFab> {
               widget.onUploadFromUrl();
             },
             icon: const Icon(Icons.link_rounded),
-            label: const Text('رفع من رابط'),
+            label: Text(context.tr('action.upload_remote')),
           ),
           const SizedBox(height: 12),
           FloatingActionButton.extended(
@@ -66,7 +68,7 @@ class _UploadFabState extends State<UploadFab> {
               widget.onUpload();
             },
             icon: const Icon(Icons.upload_file_rounded),
-            label: const Text('رفع ملف'),
+            label: Text(context.tr('action.upload')),
           ),
           const SizedBox(height: 12),
         ],

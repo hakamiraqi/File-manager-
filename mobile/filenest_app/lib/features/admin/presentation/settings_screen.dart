@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../auth/state/auth_provider.dart';
 import '../data/admin_repository.dart';
@@ -14,7 +15,7 @@ const _skinColors = {
   'orange': Color(0xFFEA580C), 'zinc': Color(0xFF52525B), 'cyan': Color(0xFF0891B2), 'fuchsia': Color(0xFFC026D3),
 };
 
-const _registrationRoleLabels = {'user': 'مستخدم', 'editor': 'محرّر', 'contributor': 'مساهم'};
+const _registrationRoleLabelKeys = {'user': 'role.user', 'editor': 'role.editor', 'contributor': 'role.contributor'};
 
 /// Mobile counterpart of Admin/Settings.vue — grouped exactly the same way,
 /// with each section's visibility gated by the same appearance/settings
@@ -176,7 +177,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           _logo = null;
           _headerImage = null;
         });
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم حفظ الإعدادات.')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('settings.saved'))));
       }
     } catch (e) {
       if (mounted) setState(() => _error = ApiClient.messageFor(e));
@@ -192,7 +193,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     final canSettings = admin?.settings ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('الإعدادات العامة')),
+      appBar: AppBar(title: Text(context.tr('admin.nav.settings'))),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
@@ -200,32 +201,32 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (canAppearance) ..._buildAppearanceSection(),
-                  if (canSettings) ..._buildSettingsSections(),
+                  if (canAppearance) ..._buildAppearanceSection(context),
+                  if (canSettings) ..._buildSettingsSections(context),
                   if (_error != null) ...[
                     const SizedBox(height: 8),
                     Text(_error!, style: const TextStyle(color: Colors.red)),
                   ],
                   const SizedBox(height: 16),
-                  FilledButton(onPressed: _saving ? null : _submit, child: const Text('حفظ الإعدادات')),
+                  FilledButton(onPressed: _saving ? null : _submit, child: Text(context.tr('settings.save'))),
                 ],
               ),
             ),
     );
   }
 
-  List<Widget> _buildAppearanceSection() {
+  List<Widget> _buildAppearanceSection(BuildContext context) {
     return [
-      _Section(title: 'الهوية والعلامة التجارية', children: [
-        TextField(controller: _siteNameController, decoration: const InputDecoration(labelText: 'اسم الموقع')),
+      _Section(title: context.tr('settings.branding_title'), children: [
+        TextField(controller: _siteNameController, decoration: InputDecoration(labelText: context.tr('settings.site_name'))),
         const SizedBox(height: 12),
         Row(children: [
-          Expanded(child: OutlinedButton(onPressed: () => _pickImage(isHeader: false), child: Text(_logo != null ? 'تم اختيار الشعار' : 'اختيار الشعار (Logo)'))),
+          Expanded(child: OutlinedButton(onPressed: () => _pickImage(isHeader: false), child: Text(_logo != null ? context.tr('settings.logo_chosen') : context.tr('settings.logo')))),
           const SizedBox(width: 8),
-          Expanded(child: OutlinedButton(onPressed: () => _pickImage(isHeader: true), child: Text(_headerImage != null ? 'تم اختيار صورة الترويسة' : 'صورة الترويسة (اختياري)'))),
+          Expanded(child: OutlinedButton(onPressed: () => _pickImage(isHeader: true), child: Text(_headerImage != null ? context.tr('settings.header_image_chosen') : context.tr('settings.header_image')))),
         ]),
       ]),
-      _Section(title: 'المظهر (السكن)', children: [
+      _Section(title: context.tr('settings.skin_title'), children: [
         Wrap(
           spacing: 10,
           children: _skins.map((skin) {
@@ -245,73 +246,73 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           controller: _customCssController,
           maxLines: 4,
           style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          decoration: const InputDecoration(labelText: 'CSS مخصص (اختياري)', alignLabelWithHint: true),
+          decoration: InputDecoration(labelText: context.tr('settings.custom_css'), alignLabelWithHint: true),
         ),
       ]),
     ];
   }
 
-  List<Widget> _buildSettingsSections() {
+  List<Widget> _buildSettingsSections(BuildContext context) {
     return [
-      _Section(title: 'التخزين والرفع', children: [
-        TextField(controller: _defaultQuotaController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'الحصة الافتراضية للمستخدم الجديد (ميغابايت)')),
+      _Section(title: context.tr('settings.storage_title'), children: [
+        TextField(controller: _defaultQuotaController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('settings.default_quota'))),
         const SizedBox(height: 8),
-        TextField(controller: _maxUploadController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'الحد الأقصى لحجم الملف الواحد (ميغابايت)')),
+        TextField(controller: _maxUploadController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('settings.max_upload'))),
         const SizedBox(height: 8),
-        TextField(controller: _maxZipController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'الحد الأقصى لعدد الملفات في أرشيف ZIP')),
+        TextField(controller: _maxZipController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('settings.max_zip_files'))),
       ]),
-      _Section(title: 'امتدادات الملفات المسموح بها', children: [
+      _Section(title: context.tr('settings.extensions_title'), children: [
         DropdownButtonFormField<String>(
           value: _extensionFilterMode,
-          decoration: const InputDecoration(labelText: 'نمط التصفية'),
-          items: const [
-            DropdownMenuItem(value: 'reject', child: Text('حظر الامتدادات التالية فقط')),
-            DropdownMenuItem(value: 'allow', child: Text('السماح بالامتدادات التالية فقط')),
+          decoration: InputDecoration(labelText: context.tr('settings.filter_mode')),
+          items: [
+            DropdownMenuItem(value: 'reject', child: Text(context.tr('settings.filter_reject'))),
+            DropdownMenuItem(value: 'allow', child: Text(context.tr('settings.filter_allow'))),
           ],
           onChanged: (v) => setState(() => _extensionFilterMode = v ?? 'reject'),
         ),
         const SizedBox(height: 8),
-        TextField(controller: _extensionListController, decoration: const InputDecoration(labelText: 'قائمة الامتدادات (مفصولة بفواصل)', hintText: 'exe, bat, sh')),
+        TextField(controller: _extensionListController, decoration: InputDecoration(labelText: context.tr('settings.extension_list'), hintText: 'exe, bat, sh')),
       ]),
-      _Section(title: 'الصور المصغّرة (Thumbnails)', children: [
+      _Section(title: context.tr('settings.thumbnails_title'), children: [
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _thumbnailsEnabled,
           onChanged: (v) => setState(() => _thumbnailsEnabled = v),
-          title: const Text('تفعيل توليد الصور المصغّرة تلقائياً عند الرفع'),
+          title: Text(context.tr('settings.thumbnails_enable')),
         ),
-        TextField(controller: _thumbnailMaxPxController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'أقصى أبعاد للصورة المصغّرة (بكسل)')),
+        TextField(controller: _thumbnailMaxPxController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('settings.thumbnail_max_px'))),
       ]),
-      _Section(title: 'جودات تشغيل الفيديو', children: [
+      _Section(title: context.tr('settings.video_quality_title'), children: [
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _videoTranscodingEnabled,
           onChanged: (v) => setState(() => _videoTranscodingEnabled = v),
-          title: const Text('تفعيل إنشاء نسخ بجودات مختلفة تلقائياً عند رفع الفيديو'),
+          title: Text(context.tr('settings.video_transcoding_enable')),
         ),
-        TextField(controller: _videoQualityTargetsController, decoration: const InputDecoration(labelText: 'الدقات المستهدفة (بالبكسل)', hintText: '360,480,720')),
+        TextField(controller: _videoQualityTargetsController, decoration: InputDecoration(labelText: context.tr('settings.video_quality_targets'), hintText: '360,480,720')),
       ]),
-      _Section(title: 'الفيديو التفاعلي', children: [
+      _Section(title: context.tr('settings.interactive_video_title'), children: [
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _interactiveVideoEnabled,
           onChanged: (v) => setState(() => _interactiveVideoEnabled = v),
-          title: const Text('تفعيل الأسئلة التفاعلية داخل الفيديو'),
+          title: Text(context.tr('settings.interactive_video_enable')),
         ),
       ]),
-      _Section(title: 'فهرسة محتوى المستندات للبحث', children: [
+      _Section(title: context.tr('settings.content_indexing_title'), children: [
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _contentIndexingEnabled,
           onChanged: (v) => setState(() => _contentIndexingEnabled = v),
-          title: const Text('تفعيل استخراج النص وفهرسته تلقائياً عند الرفع'),
+          title: Text(context.tr('settings.content_indexing_enable')),
         ),
-        TextField(controller: _contentIndexingMaxMbController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'لا تُفهرس الملفات الأكبر من (ميغابايت)')),
+        TextField(controller: _contentIndexingMaxMbController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('settings.content_indexing_max_mb'))),
       ]),
-      _Section(title: 'اللغة والتسجيل', children: [
+      _Section(title: context.tr('settings.locale_registration_title'), children: [
         DropdownButtonFormField<String>(
           value: _defaultLocale,
-          decoration: const InputDecoration(labelText: 'اللغة الافتراضية'),
+          decoration: InputDecoration(labelText: context.tr('settings.default_locale')),
           items: _locales.entries
               .map((e) => DropdownMenuItem(value: e.key, child: Text((e.value as Map)['label'] as String? ?? e.key)))
               .toList(),
@@ -320,27 +321,27 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: _registrationRole,
-          decoration: const InputDecoration(labelText: 'الدور الافتراضي للمستخدم الجديد'),
-          items: _registrationRoleLabels.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
+          decoration: InputDecoration(labelText: context.tr('settings.default_role')),
+          items: _registrationRoleLabelKeys.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(context.tr(e.value)))).toList(),
           onChanged: (v) => setState(() => _registrationRole = v ?? 'user'),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _registrationEnabled,
           onChanged: (v) => setState(() => _registrationEnabled = v),
-          title: const Text('السماح بإنشاء حسابات جديدة ذاتياً'),
+          title: Text(context.tr('settings.allow_registration')),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _enablePrettyLinks,
           onChanged: (v) => setState(() => _enablePrettyLinks = v),
-          title: const Text('استخدام روابط مشاركة مختصرة'),
+          title: Text(context.tr('settings.pretty_links')),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           value: _globalSearch,
           onChanged: (v) => setState(() => _globalSearch = v),
-          title: const Text('تفعيل البحث الشامل في كل المجلدات'),
+          title: Text(context.tr('settings.global_search')),
         ),
       ]),
     ];

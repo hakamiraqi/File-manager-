@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../data/share_repository.dart';
@@ -60,7 +61,7 @@ class _SharesScreenState extends State<SharesScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text('روابط المشاركة')),
+      appBar: AppBar(title: Text(context.tr('shares.title'))),
       body: RefreshIndicator(onRefresh: _load, child: body),
     );
   }
@@ -72,9 +73,9 @@ class _SharesScreenState extends State<SharesScreen> {
       return ListView(
         // Wrapped in a scrollable so pull-to-refresh still works on an
         // empty list, not just once items exist.
-        children: const [
-          SizedBox(height: 80),
-          EmptyState(icon: Icons.link_off_rounded, message: 'لا توجد روابط مشاركة بعد.'),
+        children: [
+          const SizedBox(height: 80),
+          EmptyState(icon: Icons.link_off_rounded, message: context.tr('empty.no_shares')),
         ],
       );
     }
@@ -85,7 +86,7 @@ class _SharesScreenState extends State<SharesScreen> {
         final share = _shares[index];
         return ListTile(
           leading: Icon(share.isExpired || share.isRevoked ? Icons.link_off_rounded : Icons.link_rounded),
-          title: Text(share.shareableName ?? '(بدون اسم)'),
+          title: Text(share.shareableName ?? context.tr('share.unnamed')),
           subtitle: Text(share.url, maxLines: 1, overflow: TextOverflow.ellipsis),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,

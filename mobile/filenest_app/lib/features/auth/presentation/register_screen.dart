@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../state/auth_provider.dart';
 
@@ -44,7 +45,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('إنشاء حساب جديد')),
+      appBar: AppBar(title: Text(context.tr('auth.register'))),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
@@ -55,23 +56,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
               children: [
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: 'الاسم', border: OutlineInputBorder()),
-                  validator: (value) => (value == null || value.isEmpty) ? 'الرجاء إدخال الاسم' : null,
+                  decoration: InputDecoration(labelText: context.tr('auth.name'), border: const OutlineInputBorder()),
+                  validator: (value) => (value == null || value.isEmpty) ? context.tr('auth.name_required') : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'البريد الإلكتروني', border: OutlineInputBorder()),
-                  validator: (value) => (value == null || value.isEmpty) ? 'الرجاء إدخال البريد الإلكتروني' : null,
+                  decoration: InputDecoration(labelText: context.tr('auth.email'), border: const OutlineInputBorder()),
+                  validator: (value) => (value == null || value.isEmpty) ? context.tr('auth.email_required') : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'كلمة المرور (8 أحرف على الأقل)', border: OutlineInputBorder()),
+                  decoration: InputDecoration(labelText: context.tr('auth.password_min_length'), border: const OutlineInputBorder()),
                   validator: (value) =>
-                      (value == null || value.length < 8) ? 'يجب أن تتكون كلمة المرور من 8 أحرف على الأقل' : null,
+                      (value == null || value.length < 8) ? context.tr('auth.password_min_length_error') : null,
                 ),
                 if (_error != null) ...[
                   const SizedBox(height: 12),
@@ -82,7 +83,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   onPressed: _isLoading ? null : _submit,
                   child: _isLoading
                       ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('إنشاء الحساب'),
+                      : Text(context.tr('auth.create_account')),
                 ),
               ],
             ),

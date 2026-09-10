@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/i18n/app_strings.dart';
 import '../../features/auth/state/auth_provider.dart';
 import '../theme/app_colors.dart';
 import 'nav_destinations.dart';
@@ -105,7 +106,7 @@ class _DrawerHeader extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            '${usagePercent.toStringAsFixed(1)}% من المساحة المستخدمة',
+            context.tr('storage.usage_percent', {'percent': usagePercent.toStringAsFixed(1)}),
             style: const TextStyle(color: Colors.white70, fontSize: 11),
           ),
         ],

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/models/file_item.dart';
 import '../../../core/models/folder_item.dart';
 import '../../../core/network/api_client.dart';
@@ -57,11 +58,11 @@ class _TrashScreenState extends State<TrashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('سلة المحذوفات'),
+        title: Text(context.tr('nav.trash')),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete_forever_outlined),
-            tooltip: 'إفراغ السلة',
+            tooltip: context.tr('trash.empty_action'),
             onPressed: () async {
               await _trashRepository.empty();
               _load();
@@ -72,7 +73,7 @@ class _TrashScreenState extends State<TrashScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : (_files.isEmpty && _folders.isEmpty)
-              ? const EmptyState(icon: Icons.delete_outline_rounded, message: 'سلة المحذوفات فارغة.')
+              ? EmptyState(icon: Icons.delete_outline_rounded, message: context.tr('empty.trash'))
               : ListView(
                   children: [
                     ..._folders.map((folder) => ListTile(

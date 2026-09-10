@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
 import '../data/auth_service.dart';
 import 'reset_password_screen.dart';
@@ -51,7 +52,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('نسيت كلمة المرور')),
+      appBar: AppBar(title: Text(context.tr('auth.forgot_password'))),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -72,16 +73,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         children: [
           const Icon(Icons.lock_reset_rounded, size: 56, color: Color(0xFF2AABEE)),
           const SizedBox(height: 16),
-          const Text(
-            'أدخل بريدك الإلكتروني وسنرسل لك رابط استعادة كلمة المرور.',
+          Text(
+            context.tr('auth.forgot_password_instructions'),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(labelText: 'البريد الإلكتروني', border: OutlineInputBorder()),
-            validator: (value) => (value == null || value.isEmpty) ? 'الرجاء إدخال البريد الإلكتروني' : null,
+            decoration: InputDecoration(labelText: context.tr('auth.email'), border: const OutlineInputBorder()),
+            validator: (value) => (value == null || value.isEmpty) ? context.tr('auth.email_required') : null,
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -92,7 +93,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             onPressed: _isLoading ? null : _submit,
             child: _isLoading
                 ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('إرسال رابط الاستعادة'),
+                : Text(context.tr('auth.send_reset_link')),
           ),
         ],
       ),
@@ -107,7 +108,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         const Icon(Icons.mark_email_read_outlined, size: 56, color: Colors.green),
         const SizedBox(height: 16),
         Text(
-          'إن كان البريد "${_emailController.text.trim()}" مسجّلاً لدينا، فقد أُرسل إليه رابط استعادة كلمة المرور.',
+          context.tr('auth.reset_link_sent', {'email': _emailController.text.trim()}),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 24),
@@ -115,12 +116,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute(builder: (_) => ResetPasswordScreen(email: _emailController.text.trim())),
           ),
-          child: const Text('لديّ رمز الاستعادة من البريد'),
+          child: Text(context.tr('auth.have_reset_code')),
         ),
         const SizedBox(height: 8),
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('العودة لتسجيل الدخول'),
+          child: Text(context.tr('auth.back_to_login')),
         ),
       ],
     );
