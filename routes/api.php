@@ -21,6 +21,8 @@ use App\Http\Controllers\Api\V1\ShareController;
 use App\Http\Controllers\Api\V1\SubtitleController;
 use App\Http\Controllers\Api\V1\TrashController;
 use App\Http\Controllers\Api\V1\TwoFactorAuthenticationController;
+use App\Http\Controllers\Api\V1\VideoCommentController;
+use App\Http\Controllers\Api\V1\VideoQuestionController;
 use App\Http\Controllers\FileUploadController;
 use App\Http\Controllers\RemoteUploadController;
 use Illuminate\Support\Facades\Route;
@@ -95,6 +97,19 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::post('/files/{file}/subtitles', [SubtitleController::class, 'store'])->name('subtitles.store');
         Route::get('/subtitles/{subtitle}', [SubtitleController::class, 'show'])->name('subtitles.show');
         Route::delete('/subtitles/{subtitle}', [SubtitleController::class, 'destroy'])->name('subtitles.destroy');
+
+        // Interactive video quizzes — index() returns the exact payload the
+        // app caches to let a downloaded video's quiz work offline; answers
+        // recorded while offline are POSTed to answer() once back online.
+        Route::get('/files/{file}/questions', [VideoQuestionController::class, 'index'])->name('questions.index');
+        Route::post('/files/{file}/questions', [VideoQuestionController::class, 'store'])->name('questions.store');
+        Route::put('/questions/{question}', [VideoQuestionController::class, 'update'])->name('questions.update');
+        Route::delete('/questions/{question}', [VideoQuestionController::class, 'destroy'])->name('questions.destroy');
+        Route::post('/questions/{question}/answer', [VideoQuestionController::class, 'answer'])->name('questions.answer');
+
+        Route::get('/files/{file}/comments', [VideoCommentController::class, 'index'])->name('comments.index');
+        Route::post('/files/{file}/comments', [VideoCommentController::class, 'store'])->name('comments.store');
+        Route::delete('/comments/{comment}', [VideoCommentController::class, 'destroy'])->name('comments.destroy');
 
         Route::post('/uploads/init', [FileUploadController::class, 'init'])->name('uploads.init');
         Route::post('/uploads/chunk', [FileUploadController::class, 'chunk'])->name('uploads.chunk');
