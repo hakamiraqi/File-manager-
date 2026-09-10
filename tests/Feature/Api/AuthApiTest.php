@@ -86,6 +86,23 @@ class AuthApiTest extends TestCase
         $this->getJson('/api/v1/auth/me')->assertStatus(401);
     }
 
+    public function test_the_profile_response_exposes_admin_capability_flags_only_for_admins(): void
+    {
+        $user = User::factory()->create();
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.is_admin', false)
+            ->assertJsonPath('user.admin', null);
+
+        $admin = User::factory()->create(['role' => 'admin', 'can_manage_settings' => true, 'can_manage_users' => false]);
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.is_admin', true)
+            ->assertJsonPath('user.admin.settings', true)
+            ->assertJsonPath('user.admin.users', false)
+            ->assertJsonPath('user.admin.settings_page', true);
+    }
+
     public function test_logout_revokes_the_current_token(): void
     {
         $user = User::factory()->create();

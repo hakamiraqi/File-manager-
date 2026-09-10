@@ -163,10 +163,43 @@ class AdminApiTest extends TestCase
             'max_zip_files' => 500,
             'content_indexing_max_mb' => 10,
             'thumbnail_max_px' => 300,
+            'video_quality_targets' => '360,480,720',
         ]);
 
         $response->assertOk();
         $this->assertSame('My Custom Portal', Setting::get('site_name'));
+    }
+
+    public function test_admin_can_toggle_interactive_video_and_transcoding_via_the_settings_api(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/admin/settings')
+            ->assertOk()
+            ->assertJsonPath('settings.interactive_video_enabled', '0')
+            ->assertJsonPath('settings.video_transcoding_enabled', '1')
+            ->assertJsonPath('settings.video_quality_targets', '360,480,720');
+
+        $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/settings', [
+            'site_name' => 'FileNest',
+            'registration_role' => 'user',
+            'default_locale' => 'ar',
+            'active_skin' => 'indigo',
+            'default_quota_mb' => 1024,
+            'max_upload_mb' => 512,
+            'extension_filter_mode' => 'reject',
+            'max_zip_files' => 500,
+            'content_indexing_max_mb' => 10,
+            'thumbnail_max_px' => 300,
+            'video_transcoding_enabled' => false,
+            'video_quality_targets' => '240,480',
+            'interactive_video_enabled' => true,
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('0', Setting::get('video_transcoding_enabled'));
+        $this->assertSame('240,480', Setting::get('video_quality_targets'));
+        $this->assertSame('1', Setting::get('interactive_video_enabled'));
     }
 
     public function test_admin_can_read_and_update_the_role_permission_matrix(): void
