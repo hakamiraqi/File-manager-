@@ -549,10 +549,10 @@ function uploadFromUrl() {
                         أطروحة
                     </span>
 
-                    <div class="absolute end-2 top-2 opacity-0 group-hover:opacity-100">
+                    <div class="absolute end-2 top-2" @click.stop>
                         <Dropdown align="right">
                             <template #trigger>
-                                <button class="rounded-full p-1 hover:bg-gray-100" @click.stop>
+                                <button class="rounded-full p-1 hover:bg-gray-100">
                                     <EllipsisVerticalIcon class="h-5 w-5 text-gray-500" />
                                 </button>
                             </template>
@@ -604,10 +604,10 @@ function uploadFromUrl() {
                         {{ file.content_snippet }}
                     </p>
 
-                    <div class="absolute end-2 top-2 opacity-0 group-hover:opacity-100">
+                    <div class="absolute end-2 top-2" @click.stop>
                         <Dropdown align="right">
                             <template #trigger>
-                                <button class="rounded-full p-1 hover:bg-gray-100" @click.stop>
+                                <button class="rounded-full p-1 hover:bg-gray-100">
                                     <EllipsisVerticalIcon class="h-5 w-5 text-gray-500" />
                                 </button>
                             </template>
