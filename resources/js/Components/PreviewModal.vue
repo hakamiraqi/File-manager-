@@ -124,6 +124,10 @@ const showQuestionManager = ref(false);
 const questionForm = reactive({ editingId: null, timestamp_seconds: 0, question: '', choices: ['', ''], correct_index: 0 });
 const questionFormBusy = ref(false);
 const questionFormError = ref(null);
+const importFileInput = ref(null);
+const importBusy = ref(false);
+const importMessage = ref(null);
+const importError = ref(null);
 
 async function loadQuestions() {
     questions.value = [];
@@ -270,6 +274,41 @@ function deleteQuestion(question) {
     router.delete(route('questions.destroy', question.id), {
         preserveScroll: true,
         onSuccess: loadQuestions,
+    });
+}
+
+function triggerImportPicker() {
+    importMessage.value = null;
+    importError.value = null;
+    importFileInput.value?.click();
+}
+
+async function handleImportFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !props.file) return;
+
+    importBusy.value = true;
+    importMessage.value = null;
+    importError.value = null;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    router.post(route('questions.import', props.file.id), formData, {
+        preserveScroll: true,
+        preserveState: true,
+        forceFormData: true,
+        onSuccess: async (page) => {
+            importMessage.value = page.props.flash?.success ?? 'تم الاستيراد.';
+            await loadQuestions();
+        },
+        onError: (errors) => {
+            importError.value = Object.values(errors)[0] ?? 'تعذّر استيراد الملف.';
+        },
+        onFinish: () => {
+            importBusy.value = false;
+        },
     });
 }
 
@@ -749,6 +788,23 @@ onBeforeUnmount(() => {
                                     <button @click="deleteQuestion(q)" class="shrink-0 text-gray-400 hover:text-red-600">حذف</button>
                                 </li>
                             </ul>
+
+                            <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-gray-300 p-2.5">
+                                <button
+                                    type="button"
+                                    @click="triggerImportPicker"
+                                    :disabled="importBusy"
+                                    class="rounded-md border border-gray-300 px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                                >
+                                    {{ importBusy ? 'جارٍ الاستيراد...' : 'استيراد أسئلة من ملف (JSON/CSV)' }}
+                                </button>
+                                <a :href="route('questions.import-template')" class="text-xs text-[var(--accent-600)] hover:underline">
+                                    تنزيل نموذج CSV
+                                </a>
+                                <input ref="importFileInput" type="file" accept=".json,.csv,.txt" class="hidden" @change="handleImportFile" />
+                            </div>
+                            <p v-if="importMessage" class="text-xs text-green-600">{{ importMessage }}</p>
+                            <p v-if="importError" class="text-xs text-red-600">{{ importError }}</p>
 
                             <form @submit.prevent="submitQuestionForm" class="space-y-2 rounded-lg border border-gray-200 p-3">
                                 <p class="text-xs font-medium text-gray-500">{{ questionForm.editingId ? 'تعديل سؤال' : 'إضافة سؤال جديد' }}</p>

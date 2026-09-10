@@ -9,6 +9,7 @@ use App\Models\VideoComment;
 use App\Models\VideoQuestion;
 use App\Models\VideoQuestionChoice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class InteractiveVideoTest extends TestCase
@@ -182,5 +183,93 @@ class InteractiveVideoTest extends TestCase
         $comment = VideoComment::create(['file_id' => $file->id, 'user_id' => $commenter->id, 'body' => 'تعليق']);
 
         $this->actingAs($intruder)->delete(route('comments.destroy', $comment))->assertForbidden();
+    }
+
+    public function test_manager_can_bulk_import_questions_from_json(): void
+    {
+        Setting::set('interactive_video_enabled', true);
+        $user = User::factory()->create();
+        $file = $this->videoFile($user);
+
+        $json = json_encode([
+            ['timestamp_seconds' => 10, 'question' => 'س1', 'choices' => ['أ', 'ب'], 'correct_index' => 0],
+            ['timestamp_seconds' => 20, 'question' => 'س2', 'choices' => ['أ', 'ب', 'ج'], 'correct_index' => 2],
+        ]);
+        $upload = UploadedFile::fake()->createWithContent('questions.json', $json);
+
+        $this->actingAs($user)->post(route('questions.import', $file), ['file' => $upload])->assertRedirect();
+
+        $this->assertSame(2, VideoQuestion::where('file_id', $file->id)->count());
+        $this->assertDatabaseHas('video_question_choices', ['label' => 'ج', 'is_correct' => true]);
+    }
+
+    public function test_manager_can_bulk_import_questions_from_csv(): void
+    {
+        Setting::set('interactive_video_enabled', true);
+        $user = User::factory()->create();
+        $file = $this->videoFile($user);
+
+        $csv = "timestamp_seconds,question,choice_1,choice_2,choice_3,correct_index\n"
+            ."15,ما نتيجة 2+2؟,3,4,5,1\n";
+        $upload = UploadedFile::fake()->createWithContent('questions.csv', $csv);
+
+        $this->actingAs($user)->post(route('questions.import', $file), ['file' => $upload])->assertRedirect();
+
+        $this->assertSame(1, VideoQuestion::where('file_id', $file->id)->count());
+        $this->assertDatabaseHas('video_question_choices', ['label' => '4', 'is_correct' => true]);
+    }
+
+    public function test_import_skips_invalid_rows_but_keeps_the_valid_ones(): void
+    {
+        Setting::set('interactive_video_enabled', true);
+        $user = User::factory()->create();
+        $file = $this->videoFile($user);
+
+        $json = json_encode([
+            ['timestamp_seconds' => 10, 'question' => 'سؤال صالح', 'choices' => ['أ', 'ب'], 'correct_index' => 0],
+            ['timestamp_seconds' => 10, 'question' => '', 'choices' => ['أ', 'ب'], 'correct_index' => 0],
+            ['timestamp_seconds' => 10, 'question' => 'رقم خاطئ', 'choices' => ['أ', 'ب'], 'correct_index' => 5],
+        ]);
+        $upload = UploadedFile::fake()->createWithContent('questions.json', $json);
+
+        $this->actingAs($user)->post(route('questions.import', $file), ['file' => $upload])->assertRedirect();
+
+        $this->assertSame(1, VideoQuestion::where('file_id', $file->id)->count());
+        $this->assertDatabaseHas('video_questions', ['file_id' => $file->id, 'question' => 'سؤال صالح']);
+    }
+
+    public function test_import_rejects_a_file_with_no_valid_rows(): void
+    {
+        Setting::set('interactive_video_enabled', true);
+        $user = User::factory()->create();
+        $file = $this->videoFile($user);
+
+        $json = json_encode([
+            ['timestamp_seconds' => 10, 'question' => '', 'choices' => ['أ', 'ب'], 'correct_index' => 0],
+        ]);
+        $upload = UploadedFile::fake()->createWithContent('questions.json', $json);
+
+        $this->actingAs($user)->post(route('questions.import', $file), ['file' => $upload])->assertSessionHasErrors('file');
+        $this->assertSame(0, VideoQuestion::where('file_id', $file->id)->count());
+    }
+
+    public function test_a_user_without_manage_questions_cannot_import(): void
+    {
+        Setting::set('interactive_video_enabled', true);
+        $user = User::factory()->create(['role' => 'contributor']);
+        $file = $this->videoFile($user);
+
+        $upload = UploadedFile::fake()->createWithContent('questions.json', '[]');
+
+        $this->actingAs($user)->post(route('questions.import', $file), ['file' => $upload])->assertForbidden();
+    }
+
+    public function test_import_template_download_is_gated_by_manage_questions(): void
+    {
+        $manager = User::factory()->create();
+        $contributor = User::factory()->create(['role' => 'contributor']);
+
+        $this->actingAs($manager)->get(route('questions.import-template'))->assertOk();
+        $this->actingAs($contributor)->get(route('questions.import-template'))->assertForbidden();
     }
 }

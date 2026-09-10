@@ -12,7 +12,10 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -100,6 +103,108 @@ class VideoQuestionController extends Controller
         ActivityLog::record('video_question.created', "أضاف سؤالاً تفاعلياً للفيديو \"{$file->name}\"", $file);
 
         return back()->with('success', 'تمت إضافة السؤال.');
+    }
+
+    /**
+     * Bulk-create questions from an uploaded JSON or CSV file. Rows that
+     * fail validation are skipped (and reported back) rather than aborting
+     * the whole import, so one bad row doesn't cost the rest of a large
+     * batch.
+     */
+    public function import(Request $request, File $file): RedirectResponse
+    {
+        $this->authorize('update', $file);
+        $this->assertEnabled();
+        $this->assertCanManage($request);
+
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:json,csv,txt', 'max:2048'],
+        ]);
+
+        $rows = $this->parseImportFile($request->file('file'));
+
+        if (empty($rows)) {
+            throw ValidationException::withMessages(['file' => 'الملف لا يحتوي على أي أسئلة صالحة.']);
+        }
+
+        $errors = [];
+        $created = 0;
+
+        DB::transaction(function () use ($rows, $file, &$errors, &$created) {
+            $order = $file->questions()->count();
+
+            foreach ($rows as $i => $row) {
+                $validator = Validator::make($row, [
+                    'timestamp_seconds' => ['required', 'integer', 'min:0'],
+                    'question' => ['required', 'string', 'max:2000'],
+                    'choices' => ['required', 'array', 'min:2', 'max:6'],
+                    'choices.*' => ['required', 'string', 'max:255'],
+                    'correct_index' => ['required', 'integer', 'min:0'],
+                ]);
+
+                if ($validator->fails()) {
+                    $errors[] = 'السطر '.($i + 1).': '.$validator->errors()->first();
+
+                    continue;
+                }
+
+                if ((int) $row['correct_index'] >= count($row['choices'])) {
+                    $errors[] = 'السطر '.($i + 1).': رقم الإجابة الصحيحة غير صالح.';
+
+                    continue;
+                }
+
+                $question = VideoQuestion::create([
+                    'file_id' => $file->id,
+                    'timestamp_seconds' => $row['timestamp_seconds'],
+                    'question' => $row['question'],
+                    'order' => $order++,
+                ]);
+
+                foreach ($row['choices'] as $index => $label) {
+                    VideoQuestionChoice::create([
+                        'video_question_id' => $question->id,
+                        'label' => $label,
+                        'is_correct' => $index === (int) $row['correct_index'],
+                        'order' => $index,
+                    ]);
+                }
+
+                $created++;
+            }
+        });
+
+        if ($created === 0) {
+            throw ValidationException::withMessages([
+                'file' => 'فشل استيراد كل الأسئلة: '.implode(' | ', array_slice($errors, 0, 5)),
+            ]);
+        }
+
+        ActivityLog::record('video_question.imported', "استورد {$created} سؤالاً تفاعلياً للفيديو \"{$file->name}\"", $file);
+
+        $message = "تم استيراد {$created} سؤالاً بنجاح.";
+        if (! empty($errors)) {
+            $message .= ' تم تجاوز '.count($errors).' سطر بسبب أخطاء: '.implode(' | ', array_slice($errors, 0, 5));
+        }
+
+        return back()->with('success', $message);
+    }
+
+    /**
+     * A sample CSV a question-author can fill in and re-upload via import().
+     */
+    public function template(Request $request): Response
+    {
+        $this->assertCanManage($request);
+
+        $csv = "timestamp_seconds,question,choice_1,choice_2,choice_3,choice_4,correct_index\n"
+            ."30,\"ما عاصمة العراق؟\",بغداد,القاهرة,الرياض,,0\n"
+            ."90,\"ما نتيجة 2 + 2؟\",3,4,5,6,1\n";
+
+        return response($csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="video-questions-template.csv"',
+        ]);
     }
 
     public function update(Request $request, VideoQuestion $question): RedirectResponse
@@ -203,6 +308,75 @@ class VideoQuestionController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * Normalizes either a JSON array of question objects or a CSV
+     * (timestamp_seconds,question,choice_1..choice_N,correct_index) into a
+     * flat list of raw rows for validateQuestion-style checking.
+     */
+    private function parseImportFile(UploadedFile $upload): array
+    {
+        $extension = strtolower($upload->getClientOriginalExtension());
+        $contents = (string) file_get_contents($upload->getRealPath());
+
+        $looksLikeJson = $extension === 'json' || str_starts_with(trim($contents), '[');
+
+        if ($looksLikeJson) {
+            $decoded = json_decode($contents, true);
+
+            if (! is_array($decoded)) {
+                throw ValidationException::withMessages(['file' => 'ملف JSON غير صالح.']);
+            }
+
+            return array_map(fn ($row) => [
+                'timestamp_seconds' => $row['timestamp_seconds'] ?? null,
+                'question' => $row['question'] ?? null,
+                'choices' => array_values(array_filter(
+                    is_array($row['choices'] ?? null) ? $row['choices'] : [],
+                    fn ($choice) => $choice !== null && $choice !== ''
+                )),
+                'correct_index' => $row['correct_index'] ?? null,
+            ], $decoded);
+        }
+
+        $lines = array_values(array_filter(
+            array_map('trim', explode("\n", str_replace("\r\n", "\n", $contents))),
+            fn ($line) => $line !== ''
+        ));
+
+        $header = null;
+        $rows = [];
+
+        foreach ($lines as $line) {
+            $columns = str_getcsv($line);
+
+            if ($header === null) {
+                $header = array_map(fn ($col) => strtolower(trim($col)), $columns);
+
+                continue;
+            }
+
+            $record = array_combine($header, array_pad(array_slice($columns, 0, count($header)), count($header), ''));
+
+            $choices = [];
+            foreach ($record as $key => $value) {
+                if (str_starts_with($key, 'choice') && trim((string) $value) !== '') {
+                    $choices[] = trim((string) $value);
+                }
+            }
+
+            $rows[] = [
+                'timestamp_seconds' => isset($record['timestamp_seconds']) && $record['timestamp_seconds'] !== ''
+                    ? (int) $record['timestamp_seconds'] : null,
+                'question' => $record['question'] !== '' ? ($record['question'] ?? null) : null,
+                'choices' => $choices,
+                'correct_index' => isset($record['correct_index']) && $record['correct_index'] !== ''
+                    ? (int) $record['correct_index'] : null,
+            ];
+        }
+
+        return $rows;
     }
 
     private function assertCanManage(Request $request): void

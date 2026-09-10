@@ -41,8 +41,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::post('/folders/{folder}/copy', [FolderController::class, 'copy'])->name('folders.copy');
 
+    Route::get('/questions/import/template', [VideoQuestionController::class, 'template'])->name('questions.import-template');
     Route::get('/files/{file}/questions', [VideoQuestionController::class, 'index'])->name('questions.index');
     Route::post('/files/{file}/questions', [VideoQuestionController::class, 'store'])->name('questions.store');
+    Route::post('/files/{file}/questions/import', [VideoQuestionController::class, 'import'])->name('questions.import');
     Route::put('/questions/{question}', [VideoQuestionController::class, 'update'])->name('questions.update');
     Route::delete('/questions/{question}', [VideoQuestionController::class, 'destroy'])->name('questions.destroy');
     Route::post('/questions/{question}/answer', [VideoQuestionController::class, 'answer'])->name('questions.answer');
