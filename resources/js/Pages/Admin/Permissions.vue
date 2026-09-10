@@ -20,6 +20,8 @@ const ACTION_LABELS = {
     new_folder: 'إنشاء مجلدات',
     delete_folder: 'حذف مجلدات',
     rename_folder: 'إعادة تسمية مجلدات',
+    manage_questions: 'إدارة أسئلة الفيديو التفاعلي',
+    comment: 'التعليق على الفيديوهات',
 };
 
 // Guests can only ever view/download/share by design (no drive of their own

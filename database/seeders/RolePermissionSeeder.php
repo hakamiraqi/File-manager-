@@ -16,10 +16,10 @@ class RolePermissionSeeder extends Seeder
     public function run(): void
     {
         $defaults = [
-            'user' => ['view' => true, 'download' => true, 'share' => true, 'upload' => true, 'delete' => true, 'rename' => true, 'move' => true, 'copy' => true, 'new_folder' => true, 'delete_folder' => true, 'rename_folder' => true],
-            'editor' => ['view' => true, 'download' => true, 'share' => true, 'upload' => true, 'delete' => false, 'rename' => true, 'move' => true, 'copy' => false, 'new_folder' => true, 'delete_folder' => false, 'rename_folder' => true],
-            'contributor' => ['view' => true, 'download' => true, 'share' => true, 'upload' => true, 'delete' => false, 'rename' => false, 'move' => false, 'copy' => false, 'new_folder' => true, 'delete_folder' => false, 'rename_folder' => false],
-            'guest' => ['view' => true, 'download' => true, 'share' => false, 'upload' => false, 'delete' => false, 'rename' => false, 'move' => false, 'copy' => false, 'new_folder' => false, 'delete_folder' => false, 'rename_folder' => false],
+            'user' => ['view' => true, 'download' => true, 'share' => true, 'upload' => true, 'delete' => true, 'rename' => true, 'move' => true, 'copy' => true, 'new_folder' => true, 'delete_folder' => true, 'rename_folder' => true, 'manage_questions' => true, 'comment' => true],
+            'editor' => ['view' => true, 'download' => true, 'share' => true, 'upload' => true, 'delete' => false, 'rename' => true, 'move' => true, 'copy' => false, 'new_folder' => true, 'delete_folder' => false, 'rename_folder' => true, 'manage_questions' => true, 'comment' => true],
+            'contributor' => ['view' => true, 'download' => true, 'share' => true, 'upload' => true, 'delete' => false, 'rename' => false, 'move' => false, 'copy' => false, 'new_folder' => true, 'delete_folder' => false, 'rename_folder' => false, 'manage_questions' => false, 'comment' => true],
+            'guest' => ['view' => true, 'download' => true, 'share' => false, 'upload' => false, 'delete' => false, 'rename' => false, 'move' => false, 'copy' => false, 'new_folder' => false, 'delete_folder' => false, 'rename_folder' => false, 'manage_questions' => false, 'comment' => false],
         ];
 
         foreach ($defaults as $role => $actions) {

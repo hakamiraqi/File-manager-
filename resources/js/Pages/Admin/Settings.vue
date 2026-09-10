@@ -42,6 +42,7 @@ const form = useForm({
     thumbnail_max_px: props.settings.thumbnail_max_px,
     video_transcoding_enabled: props.settings.video_transcoding_enabled === '1',
     video_quality_targets: props.settings.video_quality_targets,
+    interactive_video_enabled: props.settings.interactive_video_enabled === '1',
     logo: null,
     header_image: null,
 });
@@ -176,6 +177,19 @@ function submit() {
                             <TextInput type="text" v-model="form.video_quality_targets" placeholder="360,480,720" class="mt-1 block w-full" />
                         </div>
                     </div>
+                </section>
+
+                <section class="rounded-xl border border-gray-200 bg-white p-6">
+                    <h3 class="mb-4 font-semibold text-gray-800">الفيديو التفاعلي</h3>
+                    <p class="mb-4 text-xs text-gray-500">
+                        عند التفعيل، يمكن لمن يملك صلاحية "إدارة الأسئلة" إضافة أسئلة تظهر وتوقف الفيديو عند لحظة محدَّدة
+                        منه، وتُسجَّل درجة كل مشاهد. عند التعطيل يختفي زر الأسئلة تماماً وتُشغَّل الفيديوهات بلا توقّف،
+                        دون حذف أي أسئلة أو درجات محفوظة مسبقاً.
+                    </p>
+                    <label class="flex items-center gap-2 text-sm text-gray-600">
+                        <input type="checkbox" v-model="form.interactive_video_enabled" class="rounded border-gray-300" />
+                        تفعيل الأسئلة التفاعلية داخل الفيديو
+                    </label>
                 </section>
 
                 <section class="rounded-xl border border-gray-200 bg-white p-6">

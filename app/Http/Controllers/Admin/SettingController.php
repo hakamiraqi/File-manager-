@@ -35,6 +35,7 @@ class SettingController extends Controller
         'thumbnail_max_px' => '400',
         'video_transcoding_enabled' => '1',
         'video_quality_targets' => '360,480,720',
+        'interactive_video_enabled' => '0',
     ];
 
     public function index(): Response
@@ -71,6 +72,7 @@ class SettingController extends Controller
             'thumbnail_max_px' => ['required', 'integer', 'min:50', 'max:2000'],
             'video_transcoding_enabled' => ['boolean'],
             'video_quality_targets' => ['required', 'string', 'regex:/^\d+(,\d+)*$/', 'max:100'],
+            'interactive_video_enabled' => ['boolean'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
         ]);
@@ -88,7 +90,7 @@ class SettingController extends Controller
             $data['header_image_path'] = $request->file('header_image')->store('branding', 'public');
         }
 
-        foreach (['registration_enabled', 'enable_pretty_links', 'global_search', 'content_indexing_enabled', 'thumbnails_enabled', 'video_transcoding_enabled'] as $boolField) {
+        foreach (['registration_enabled', 'enable_pretty_links', 'global_search', 'content_indexing_enabled', 'thumbnails_enabled', 'video_transcoding_enabled', 'interactive_video_enabled'] as $boolField) {
             $data[$boolField] = $request->boolean($boolField) ? '1' : '0';
         }
 

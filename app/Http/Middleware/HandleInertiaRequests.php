@@ -58,6 +58,8 @@ class HandleInertiaRequests extends Middleware
                 'new_folder' => $user->canPerform('new_folder'),
                 'delete_folder' => $user->canPerform('delete_folder'),
                 'rename_folder' => $user->canPerform('rename_folder'),
+                'manage_questions' => $user->canPerform('manage_questions'),
+                'comment' => $user->canPerform('comment'),
                 'is_admin' => $user->isAdmin(),
                 'admin' => $user->isAdmin() ? [
                     'appearance' => $user->hasAdminCapability('can_manage_appearance'),
@@ -75,6 +77,7 @@ class HandleInertiaRequests extends Middleware
                 'locale' => $locale,
                 'guestAccessEnabled' => (bool) ($settings['guest_access_enabled'] ?? false),
                 'remoteUploadEnabled' => (bool) ($settings['remote_upload_enabled'] ?? false),
+                'interactiveVideoEnabled' => (bool) ($settings['interactive_video_enabled'] ?? false),
             ],
             'translations' => array_merge(
                 $this->baseTranslations($locale),

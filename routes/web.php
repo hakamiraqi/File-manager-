@@ -8,6 +8,8 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ShareController;
 use App\Http\Controllers\SubtitleController;
 use App\Http\Controllers\TrashController;
+use App\Http\Controllers\VideoCommentController;
+use App\Http\Controllers\VideoQuestionController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -38,6 +40,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/subtitles/{subtitle}', [SubtitleController::class, 'destroy'])->name('subtitles.destroy');
 
     Route::post('/folders/{folder}/copy', [FolderController::class, 'copy'])->name('folders.copy');
+
+    Route::get('/files/{file}/questions', [VideoQuestionController::class, 'index'])->name('questions.index');
+    Route::post('/files/{file}/questions', [VideoQuestionController::class, 'store'])->name('questions.store');
+    Route::put('/questions/{question}', [VideoQuestionController::class, 'update'])->name('questions.update');
+    Route::delete('/questions/{question}', [VideoQuestionController::class, 'destroy'])->name('questions.destroy');
+    Route::post('/questions/{question}/answer', [VideoQuestionController::class, 'answer'])->name('questions.answer');
+
+    Route::get('/files/{file}/comments', [VideoCommentController::class, 'index'])->name('comments.index');
+    Route::post('/files/{file}/comments', [VideoCommentController::class, 'store'])->name('comments.store');
+    Route::delete('/comments/{comment}', [VideoCommentController::class, 'destroy'])->name('comments.destroy');
 
     Route::post('/uploads/init', [FileUploadController::class, 'init'])->name('uploads.init');
     Route::post('/uploads/chunk', [FileUploadController::class, 'chunk'])->name('uploads.chunk');

@@ -14,6 +14,7 @@ class RolePermission extends Model
     public const ACTIONS = [
         'view', 'download', 'share', 'upload', 'delete',
         'rename', 'move', 'copy', 'new_folder', 'delete_folder', 'rename_folder',
+        'manage_questions', 'comment',
     ];
 
     protected function casts(): array

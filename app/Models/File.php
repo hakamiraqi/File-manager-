@@ -106,6 +106,16 @@ class File extends Model
         return $this->hasMany(VideoQuality::class);
     }
 
+    public function questions(): HasMany
+    {
+        return $this->hasMany(VideoQuestion::class);
+    }
+
+    public function comments(): HasMany
+    {
+        return $this->hasMany(VideoComment::class);
+    }
+
     public function isImage(): bool
     {
         return str_starts_with((string) $this->mime_type, 'image/');

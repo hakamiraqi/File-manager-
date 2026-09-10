@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue';
+import { useForm, router, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import {
     XMarkIcon,
@@ -15,6 +15,9 @@ import {
     DocumentMagnifyingGlassIcon,
     ChevronDownIcon,
     ChevronUpIcon,
+    QuestionMarkCircleIcon,
+    ChatBubbleLeftIcon,
+    PlusIcon,
 } from '@heroicons/vue/24/outline';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
@@ -30,6 +33,11 @@ const props = defineProps({
     files: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['close', 'change']);
+
+const page = usePage();
+const can = computed(() => page.props.permissions ?? {});
+const currentUserId = computed(() => page.props.auth?.user?.id);
+const interactiveVideoEnabled = computed(() => page.props.appSettings?.interactiveVideoEnabled ?? false);
 
 function kind(file) {
     if (!file) return null;
@@ -105,6 +113,218 @@ function deleteSubtitle(subtitle) {
     });
 }
 
+// ---- Interactive video: questions that pause playback at a timestamp ----
+const questions = ref([]);
+const score = ref({ answered: 0, correct: 0, total: 0 });
+const activeQuestion = ref(null); // the question currently blocking playback, or null
+const selectedChoiceId = ref(null);
+const answerFeedback = ref(null); // { is_correct, correct_choice_id } once submitted
+const answering = ref(false);
+const showQuestionManager = ref(false);
+const questionForm = reactive({ editingId: null, timestamp_seconds: 0, question: '', choices: ['', ''], correct_index: 0 });
+const questionFormBusy = ref(false);
+const questionFormError = ref(null);
+
+async function loadQuestions() {
+    questions.value = [];
+    score.value = { answered: 0, correct: 0, total: 0 };
+    if (!props.file || kind(props.file) !== 'video' || !interactiveVideoEnabled.value) return;
+    try {
+        const { data } = await window.axios.get(route('questions.index', props.file.id));
+        questions.value = data.questions;
+        score.value = data.score;
+    } catch {
+        questions.value = [];
+    }
+}
+
+/**
+ * Checked on both `timeupdate` (natural playback reaching a question) and
+ * `seeked` (the user dragging the seek bar past one) — a single gate keeps
+ * both paths consistent: any unanswered question at or before the current
+ * time pauses playback and snaps the position back to it, so a question
+ * can never be skipped by seeking forward past it.
+ */
+function enforceQuestionGate() {
+    if (!interactiveVideoEnabled.value || !player || activeQuestion.value) return;
+
+    const current = player.currentTime;
+    const blocking = questions.value.find((q) => q.answered_choice_id == null && current >= q.timestamp_seconds - 0.4);
+    if (!blocking) return;
+
+    player.pause();
+    if (Math.abs(current - blocking.timestamp_seconds) > 1) {
+        player.currentTime = blocking.timestamp_seconds;
+    }
+    activeQuestion.value = blocking;
+    selectedChoiceId.value = null;
+    answerFeedback.value = null;
+}
+
+async function submitAnswer() {
+    if (!activeQuestion.value || selectedChoiceId.value == null) return;
+    answering.value = true;
+    try {
+        const { data } = await window.axios.post(route('questions.answer', activeQuestion.value.id), {
+            choice_id: selectedChoiceId.value,
+        });
+        answerFeedback.value = { is_correct: data.is_correct, correct_choice_id: data.correct_choice_id };
+        score.value = data.score;
+        const q = questions.value.find((x) => x.id === activeQuestion.value.id);
+        if (q) {
+            q.answered_choice_id = selectedChoiceId.value;
+            q.answered_correctly = data.is_correct;
+        }
+    } catch {
+        // Already answered (e.g. a second tab) or a validation error — resume playback either way.
+        continueAfterQuestion();
+    } finally {
+        answering.value = false;
+    }
+}
+
+function continueAfterQuestion() {
+    activeQuestion.value = null;
+    selectedChoiceId.value = null;
+    answerFeedback.value = null;
+    player?.play();
+}
+
+function choiceClasses(choice) {
+    if (!answerFeedback.value) {
+        return selectedChoiceId.value === choice.id
+            ? 'border-[var(--accent-500)] bg-[var(--accent-50)]'
+            : 'border-gray-200';
+    }
+    if (choice.id === answerFeedback.value.correct_choice_id) return 'border-green-500 bg-green-50';
+    if (choice.id === selectedChoiceId.value) return 'border-red-500 bg-red-50';
+    return 'border-gray-200 opacity-60';
+}
+
+function resetQuestionForm() {
+    questionForm.editingId = null;
+    questionForm.timestamp_seconds = Math.floor(player?.currentTime ?? 0);
+    questionForm.question = '';
+    questionForm.choices = ['', ''];
+    questionForm.correct_index = 0;
+    questionFormError.value = null;
+}
+
+function editQuestion(question) {
+    questionForm.editingId = question.id;
+    questionForm.timestamp_seconds = question.timestamp_seconds;
+    questionForm.question = question.question;
+    questionForm.choices = question.choices.map((c) => c.label);
+    questionForm.correct_index = question.choices.findIndex((c) => c.is_correct);
+    if (questionForm.correct_index < 0) questionForm.correct_index = 0;
+    questionFormError.value = null;
+}
+
+function addChoiceField() {
+    if (questionForm.choices.length < 6) questionForm.choices.push('');
+}
+
+function removeChoiceField(index) {
+    if (questionForm.choices.length <= 2) return;
+    questionForm.choices.splice(index, 1);
+    if (questionForm.correct_index >= questionForm.choices.length) {
+        questionForm.correct_index = questionForm.choices.length - 1;
+    }
+}
+
+async function submitQuestionForm() {
+    if (!props.file) return;
+    questionFormBusy.value = true;
+    questionFormError.value = null;
+
+    const payload = {
+        timestamp_seconds: questionForm.timestamp_seconds,
+        question: questionForm.question,
+        choices: questionForm.choices,
+        correct_index: questionForm.correct_index,
+    };
+
+    const options = {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: async () => {
+            resetQuestionForm();
+            await loadQuestions();
+        },
+        onError: (errors) => {
+            questionFormError.value = Object.values(errors)[0] ?? 'تعذّر حفظ السؤال.';
+        },
+        onFinish: () => {
+            questionFormBusy.value = false;
+        },
+    };
+
+    if (questionForm.editingId) {
+        router.put(route('questions.update', questionForm.editingId), payload, options);
+    } else {
+        router.post(route('questions.store', props.file.id), payload, options);
+    }
+}
+
+function deleteQuestion(question) {
+    router.delete(route('questions.destroy', question.id), {
+        preserveScroll: true,
+        onSuccess: loadQuestions,
+    });
+}
+
+function formatTimestamp(seconds) {
+    if (seconds == null) return '';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+}
+
+// ---- Comments ----
+const comments = ref([]);
+const commentForm = useForm({ body: '', timestamp_seconds: null });
+const anchorCommentToTime = ref(false);
+
+async function loadComments() {
+    comments.value = [];
+    if (!props.file || kind(props.file) !== 'video') return;
+    try {
+        const { data } = await window.axios.get(route('comments.index', props.file.id));
+        comments.value = data.comments;
+    } catch {
+        comments.value = [];
+    }
+}
+
+function submitComment() {
+    if (!props.file || !commentForm.body.trim()) return;
+    commentForm
+        .transform((data) => ({
+            body: data.body,
+            timestamp_seconds: anchorCommentToTime.value ? Math.floor(player?.currentTime ?? 0) : null,
+        }))
+        .post(route('comments.store', props.file.id), {
+            preserveScroll: true,
+            onSuccess: async () => {
+                commentForm.reset('body');
+                await loadComments();
+            },
+        });
+}
+
+function deleteComment(comment) {
+    router.delete(route('comments.destroy', comment.id), {
+        preserveScroll: true,
+        onSuccess: loadComments,
+    });
+}
+
+function seekTo(seconds) {
+    if (seconds == null || !player) return;
+    player.currentTime = seconds;
+    player.play();
+}
+
 // ---- Video player (Plyr): speed, volume, fullscreen, PiP, captions, quality ----
 const videoEl = ref(null);
 let player = null;
@@ -147,6 +367,9 @@ function mountPlyr() {
         player.on('ended', () => {
             if (autoplayNext.value && hasNext.value) playNext();
         });
+
+        player.on('timeupdate', enforceQuestionGate);
+        player.on('seeked', enforceQuestionGate);
     });
 }
 
@@ -220,12 +443,17 @@ async function loadForFile(file) {
     destroyWavesurfer();
     showExtractedText.value = false;
     extractedText.value = null;
+    activeQuestion.value = null;
+    answerFeedback.value = null;
+    showQuestionManager.value = false;
+    questions.value = [];
+    comments.value = [];
 
     if (!file) return;
 
     const k = kind(file);
     if (k === 'video') {
-        await loadSubtitles();
+        await Promise.all([loadSubtitles(), loadQuestions(), loadComments()]);
         mountPlyr();
     } else if (k === 'audio') {
         mountWavesurfer(file);
@@ -279,6 +507,9 @@ onBeforeUnmount(() => {
                     <p v-if="playlist.length > 1" class="text-xs text-gray-500">
                         {{ currentIndex + 1 }} من {{ playlist.length }} في قائمة التشغيل
                     </p>
+                    <p v-if="score.answered > 0" class="text-xs font-medium text-[var(--accent-600)]">
+                        درجتك: {{ score.correct }} من {{ score.total }}
+                    </p>
                 </div>
                 <div class="flex items-center gap-2">
                     <button
@@ -304,25 +535,78 @@ onBeforeUnmount(() => {
                     <div class="flex flex-1 items-center justify-center p-4">
                         <img v-if="kind(file) === 'image'" :src="route('files.preview', file.id)" class="max-h-[65vh] rounded" />
 
-                        <video
-                            v-else-if="kind(file) === 'video'"
-                            ref="videoEl"
-                            :poster="file.thumbnail_path ? route('files.thumbnail', file.id) : undefined"
-                            playsinline
-                            controls
-                            class="max-h-[65vh] w-full rounded"
-                        >
-                            <source v-for="src in videoSources(file)" :key="src.src" :src="src.src" :type="src.type" :size="src.size" />
-                            <track
-                                v-for="(subtitle, i) in subtitles"
-                                :key="subtitle.id"
-                                kind="subtitles"
-                                :label="subtitle.label"
-                                :srclang="subtitle.language"
-                                :src="route('subtitles.show', subtitle.id)"
-                                :default="i === 0"
-                            />
-                        </video>
+                        <div v-else-if="kind(file) === 'video'" class="relative w-full max-h-[65vh]">
+                            <video
+                                ref="videoEl"
+                                :poster="file.thumbnail_path ? route('files.thumbnail', file.id) : undefined"
+                                playsinline
+                                controls
+                                class="max-h-[65vh] w-full rounded"
+                            >
+                                <source v-for="src in videoSources(file)" :key="src.src" :src="src.src" :type="src.type" :size="src.size" />
+                                <track
+                                    v-for="(subtitle, i) in subtitles"
+                                    :key="subtitle.id"
+                                    kind="subtitles"
+                                    :label="subtitle.label"
+                                    :srclang="subtitle.language"
+                                    :src="route('subtitles.show', subtitle.id)"
+                                    :default="i === 0"
+                                />
+                            </video>
+
+                            <!-- Interactive question overlay: blocks the video until answered -->
+                            <div v-if="activeQuestion" class="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
+                                <div class="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+                                    <p class="mb-3 flex items-center gap-1.5 text-xs font-medium text-[var(--accent-600)]">
+                                        <QuestionMarkCircleIcon class="h-4 w-4" /> سؤال تفاعلي
+                                    </p>
+                                    <p class="mb-4 font-semibold text-gray-900">{{ activeQuestion.question }}</p>
+                                    <div class="space-y-2">
+                                        <label
+                                            v-for="choice in activeQuestion.choices"
+                                            :key="choice.id"
+                                            class="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm text-gray-700"
+                                            :class="choiceClasses(choice)"
+                                        >
+                                            <input
+                                                type="radio"
+                                                :value="choice.id"
+                                                v-model="selectedChoiceId"
+                                                :disabled="!!answerFeedback"
+                                                class="border-gray-300 text-[var(--accent-600)] focus:ring-[var(--accent-500)]"
+                                            />
+                                            {{ choice.label }}
+                                        </label>
+                                    </div>
+                                    <div class="mt-4 flex items-center justify-between gap-3">
+                                        <p
+                                            v-if="answerFeedback"
+                                            class="text-sm font-medium"
+                                            :class="answerFeedback.is_correct ? 'text-green-600' : 'text-red-600'"
+                                        >
+                                            {{ answerFeedback.is_correct ? 'إجابة صحيحة!' : 'إجابة غير صحيحة.' }}
+                                        </p>
+                                        <span v-else></span>
+                                        <button
+                                            v-if="!answerFeedback"
+                                            @click="submitAnswer"
+                                            :disabled="selectedChoiceId == null || answering"
+                                            class="shrink-0 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50"
+                                        >
+                                            إرسال الإجابة
+                                        </button>
+                                        <button
+                                            v-else
+                                            @click="continueAfterQuestion"
+                                            class="shrink-0 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]"
+                                        >
+                                            متابعة المشاهدة
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
                         <div v-else-if="kind(file) === 'audio'" class="w-full max-w-2xl px-2">
                             <div class="mb-4 flex items-center justify-center gap-2 text-gray-400">
@@ -435,6 +719,117 @@ onBeforeUnmount(() => {
                             </button>
                         </form>
                         <p v-if="subtitleForm.errors.subtitle" class="mt-1 text-xs text-red-600">{{ subtitleForm.errors.subtitle }}</p>
+                    </div>
+
+                    <!-- Interactive video question manager -->
+                    <div v-if="kind(file) === 'video' && interactiveVideoEnabled && can.manage_questions" class="border-t border-gray-200 bg-white p-3">
+                        <button
+                            @click="showQuestionManager = !showQuestionManager; if (showQuestionManager) resetQuestionForm()"
+                            class="flex w-full items-center justify-between text-xs font-medium text-gray-600 hover:text-gray-900"
+                        >
+                            <span class="flex items-center gap-1.5">
+                                <QuestionMarkCircleIcon class="h-4 w-4" /> الأسئلة التفاعلية ({{ questions.length }})
+                            </span>
+                            <ChevronUpIcon v-if="showQuestionManager" class="h-4 w-4" />
+                            <ChevronDownIcon v-else class="h-4 w-4" />
+                        </button>
+
+                        <div v-if="showQuestionManager" class="mt-3 space-y-3">
+                            <ul v-if="questions.length" class="space-y-1">
+                                <li
+                                    v-for="q in questions"
+                                    :key="q.id"
+                                    class="flex items-center justify-between gap-2 rounded-md bg-gray-50 px-2.5 py-1.5 text-xs text-gray-700"
+                                >
+                                    <button @click="seekTo(q.timestamp_seconds)" class="min-w-0 flex-1 truncate text-right hover:text-[var(--accent-600)]">
+                                        <span class="tabular-nums text-gray-400">{{ formatTimestamp(q.timestamp_seconds) }}</span>
+                                        — {{ q.question }}
+                                    </button>
+                                    <button @click="editQuestion(q)" class="shrink-0 text-gray-400 hover:text-[var(--accent-600)]">تعديل</button>
+                                    <button @click="deleteQuestion(q)" class="shrink-0 text-gray-400 hover:text-red-600">حذف</button>
+                                </li>
+                            </ul>
+
+                            <form @submit.prevent="submitQuestionForm" class="space-y-2 rounded-lg border border-gray-200 p-3">
+                                <p class="text-xs font-medium text-gray-500">{{ questionForm.editingId ? 'تعديل سؤال' : 'إضافة سؤال جديد' }}</p>
+                                <div class="flex items-center gap-2">
+                                    <label class="text-xs text-gray-500 shrink-0">يظهر عند الثانية</label>
+                                    <input type="number" min="0" v-model.number="questionForm.timestamp_seconds" class="w-24 rounded-md border-gray-300 text-xs" />
+                                    <button type="button" @click="questionForm.timestamp_seconds = Math.floor(player?.currentTime ?? 0)" class="text-xs text-[var(--accent-600)] hover:underline">
+                                        استخدام الوقت الحالي
+                                    </button>
+                                </div>
+                                <textarea v-model="questionForm.question" rows="2" placeholder="نص السؤال" class="w-full rounded-md border-gray-300 text-sm" required></textarea>
+                                <div v-for="(choice, index) in questionForm.choices" :key="index" class="flex items-center gap-2">
+                                    <input type="radio" :value="index" v-model.number="questionForm.correct_index" class="shrink-0 border-gray-300 text-[var(--accent-600)]" />
+                                    <input v-model="questionForm.choices[index]" placeholder="نص الخيار" class="flex-1 rounded-md border-gray-300 text-sm" required />
+                                    <button v-if="questionForm.choices.length > 2" type="button" @click="removeChoiceField(index)" class="shrink-0 text-gray-400 hover:text-red-600">
+                                        <XMarkIcon class="h-4 w-4" />
+                                    </button>
+                                </div>
+                                <button v-if="questionForm.choices.length < 6" type="button" @click="addChoiceField" class="flex items-center gap-1 text-xs text-[var(--accent-600)] hover:underline">
+                                    <PlusIcon class="h-3.5 w-3.5" /> إضافة خيار
+                                </button>
+                                <p v-if="questionFormError" class="text-xs text-red-600">{{ questionFormError }}</p>
+                                <div class="flex items-center gap-2 pt-1">
+                                    <button
+                                        type="submit"
+                                        :disabled="questionFormBusy"
+                                        class="rounded-md bg-[var(--accent-600)] px-3 py-1.5 text-xs font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50"
+                                    >
+                                        {{ questionForm.editingId ? 'حفظ التعديل' : 'إضافة السؤال' }}
+                                    </button>
+                                    <button v-if="questionForm.editingId" type="button" @click="resetQuestionForm" class="text-xs text-gray-500 hover:underline">
+                                        إلغاء التعديل
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Comments -->
+                    <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-3">
+                        <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-600">
+                            <ChatBubbleLeftIcon class="h-4 w-4" /> التعليقات ({{ comments.length }})
+                        </p>
+                        <ul v-if="comments.length" class="mb-3 max-h-40 space-y-2 overflow-y-auto">
+                            <li v-for="comment in comments" :key="comment.id" class="flex items-start justify-between gap-2 text-sm">
+                                <div class="min-w-0">
+                                    <button
+                                        v-if="comment.timestamp_seconds != null"
+                                        @click="seekTo(comment.timestamp_seconds)"
+                                        class="me-1 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs tabular-nums text-gray-500 hover:bg-gray-200"
+                                    >
+                                        {{ formatTimestamp(comment.timestamp_seconds) }}
+                                    </button>
+                                    <span class="font-medium text-gray-700">{{ comment.user?.name }}:</span>
+                                    <span class="text-gray-600">{{ comment.body }}</span>
+                                </div>
+                                <button
+                                    v-if="comment.user_id === currentUserId"
+                                    @click="deleteComment(comment)"
+                                    class="shrink-0 text-gray-400 hover:text-red-600"
+                                >
+                                    <TrashIcon class="h-3.5 w-3.5" />
+                                </button>
+                            </li>
+                        </ul>
+                        <form v-if="can.comment" @submit.prevent="submitComment" class="space-y-1.5">
+                            <textarea v-model="commentForm.body" rows="2" placeholder="أضف تعليقاً..." class="w-full rounded-md border-gray-300 text-sm"></textarea>
+                            <div class="flex items-center justify-between">
+                                <label class="flex items-center gap-1.5 text-xs text-gray-500">
+                                    <input type="checkbox" v-model="anchorCommentToTime" class="rounded border-gray-300" />
+                                    ربط التعليق بلحظة {{ formatTimestamp(Math.floor(player?.currentTime ?? 0)) }} الحالية
+                                </label>
+                                <button
+                                    type="submit"
+                                    :disabled="commentForm.processing || !commentForm.body.trim()"
+                                    class="rounded-md bg-gray-800 px-3 py-1.5 text-xs text-white hover:bg-gray-900 disabled:opacity-50"
+                                >
+                                    نشر
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
 
