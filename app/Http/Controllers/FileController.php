@@ -172,6 +172,26 @@ class FileController extends Controller
         ]);
     }
 
+    /**
+     * Serves one alternate-resolution rendition produced by VideoTranscoder
+     * (see the file_qualities.quality-selector feature). Same Range-friendly
+     * BinaryFileResponse approach as preview() so seeking still works.
+     */
+    public function previewQuality(Request $request, File $file, int $quality): BinaryFileResponse
+    {
+        $this->authorize('view', $file);
+
+        if (! $request->user()->canPerform('view')) {
+            throw new AuthorizationException('لا تملك صلاحية عرض الملفات.');
+        }
+
+        $variant = $file->qualities()->where('height', $quality)->firstOrFail();
+
+        return response()->file($file->disk()->path($variant->path), [
+            'Content-Type' => 'video/mp4',
+        ]);
+    }
+
     public function thumbnail(Request $request, File $file): BinaryFileResponse
     {
         $this->authorize('view', $file);
@@ -182,6 +202,23 @@ class FileController extends Controller
             'Content-Type' => 'image/jpeg',
             'Cache-Control' => 'private, max-age=604800',
         ]);
+    }
+
+    /**
+     * The full text DocumentTextExtractor pulled from this document (PDF,
+     * Word, PowerPoint, etc.) — deliberately a separate on-demand endpoint
+     * rather than part of the normal file listing, since content_text can
+     * be large and most listings never need it.
+     */
+    public function content(Request $request, File $file): \Illuminate\Http\JsonResponse
+    {
+        $this->authorize('view', $file);
+
+        if (! $request->user()->canPerform('view')) {
+            throw new AuthorizationException('لا تملك صلاحية عرض الملفات.');
+        }
+
+        return response()->json(['content' => $file->content_text]);
     }
 
     public function downloadZip(Request $request, ZipDownloadBuilder $builder): BinaryFileResponse

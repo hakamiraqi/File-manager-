@@ -29,6 +29,134 @@ class GoldenPathTest extends TestCase
         ]);
     }
 
+    public function test_user_can_edit_a_folders_academic_metadata_fields(): void
+    {
+        $user = User::factory()->create();
+        $folder = Folder::factory()->create(['user_id' => $user->id]);
+
+        $this->assertSame('files', $folder->fresh()->folder_type);
+
+        $this->actingAs($user)->put(route('folders.update', $folder), [
+            'folder_type' => 'thesis',
+            'researcher_name' => 'أحمد محمد',
+            'supervisor_name' => 'د. خالد العلي',
+            'thesis_title' => 'أثر التغير المناخي',
+            'publisher' => 'دار المعارف',
+            'digital_library' => 'مكتبة الملك فهد الرقمية',
+            'publication_year' => '2024',
+        ])->assertRedirect();
+
+        $this->assertDatabaseHas('folders', [
+            'id' => $folder->id,
+            'folder_type' => 'thesis',
+            'researcher_name' => 'أحمد محمد',
+            'supervisor_name' => 'د. خالد العلي',
+            'thesis_title' => 'أثر التغير المناخي',
+            'publisher' => 'دار المعارف',
+            'digital_library' => 'مكتبة الملك فهد الرقمية',
+            'publication_year' => '2024',
+        ]);
+    }
+
+    public function test_folder_type_is_rejected_when_not_files_or_thesis(): void
+    {
+        $user = User::factory()->create();
+        $folder = Folder::factory()->create(['user_id' => $user->id]);
+
+        $this->actingAs($user)->put(route('folders.update', $folder), [
+            'folder_type' => 'something-else',
+        ])->assertSessionHasErrors('folder_type');
+    }
+
+    public function test_user_cannot_edit_another_users_folder_metadata(): void
+    {
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $folder = Folder::factory()->create(['user_id' => $owner->id]);
+
+        $this->actingAs($intruder)->put(route('folders.update', $folder), [
+            'researcher_name' => 'محاولة تعديل',
+        ])->assertForbidden();
+    }
+
+    public function test_user_can_view_a_documents_full_extracted_text(): void
+    {
+        $user = User::factory()->create();
+        $file = File::factory()->create([
+            'user_id' => $user->id,
+            'content_text' => 'نص كامل مستخرج من المستند للاختبار.',
+            'content_indexed_at' => now(),
+        ]);
+
+        $this->actingAs($user)->getJson(route('files.content', $file))
+            ->assertOk()
+            ->assertJson(['content' => 'نص كامل مستخرج من المستند للاختبار.']);
+    }
+
+    public function test_user_cannot_view_another_users_document_content(): void
+    {
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $file = File::factory()->create(['user_id' => $owner->id, 'content_text' => 'سري']);
+
+        $this->actingAs($intruder)->getJson(route('files.content', $file))->assertForbidden();
+    }
+
+    public function test_folder_store_returns_json_with_the_new_folder_when_the_client_wants_json(): void
+    {
+        $user = User::factory()->create();
+
+        $response = $this->actingAs($user)->postJson(route('folders.store'), ['name' => 'Photos']);
+
+        $response->assertOk();
+        $folderId = $response->json('folder.id');
+        $this->assertIsInt($folderId);
+        $this->assertDatabaseHas('folders', ['id' => $folderId, 'user_id' => $user->id, 'name' => 'Photos', 'parent_id' => null]);
+    }
+
+    public function test_user_can_upload_a_picked_folder_tree_by_recreating_its_structure(): void
+    {
+        // Mirrors the client-side folder-upload orchestrator: for a picked
+        // directory "Photos/2024/beach.jpg", the frontend creates "Photos"
+        // then "2024" under it (caching each path -> id) before uploading
+        // the file into the resolved leaf folder — exercised here end to
+        // end against the real endpoints instead of just unit-testing JS.
+        Storage::fake(config('filenest.disk'));
+        $user = User::factory()->create();
+
+        $photos = $this->actingAs($user)->postJson(route('folders.store'), ['name' => 'Photos'])
+            ->assertOk()->json('folder.id');
+
+        $year = $this->actingAs($user)->postJson(route('folders.store'), [
+            'name' => '2024',
+            'parent_id' => $photos,
+        ])->assertOk()->json('folder.id');
+
+        $content = str_repeat('b', 512);
+        $init = $this->actingAs($user)->postJson(route('uploads.init'), [
+            'name' => 'beach.jpg',
+            'size' => strlen($content),
+            'folder_id' => $year,
+        ])->assertOk()->json();
+
+        $this->actingAs($user)->post(route('uploads.chunk'), [
+            'identifier' => $init['identifier'],
+            'index' => 0,
+            'chunk' => UploadedFile::fake()->createWithContent('chunk0', $content),
+        ])->assertOk();
+
+        $finalize = $this->actingAs($user)->postJson(route('uploads.finalize'), [
+            'identifier' => $init['identifier'],
+        ])->assertOk()->json();
+
+        $this->assertDatabaseHas('folders', ['id' => $year, 'name' => '2024', 'parent_id' => $photos]);
+        $this->assertDatabaseHas('files', [
+            'id' => $finalize['file']['id'],
+            'name' => 'beach.jpg',
+            'folder_id' => $year,
+        ]);
+    }
+
     public function test_user_can_upload_a_file_in_a_single_chunk_and_see_it_on_the_dashboard(): void
     {
         Storage::fake(config('filenest.disk'));

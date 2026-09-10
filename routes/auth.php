@@ -9,7 +9,9 @@ use App\Http\Controllers\Auth\OauthController;
 use App\Http\Controllers\Auth\PasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\Auth\TwoFactorAuthenticatedSessionController;
 use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\TwoFactorAuthenticationController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest')->group(function () {
@@ -42,6 +44,16 @@ Route::middleware('guest')->group(function () {
 
     Route::post('reset-password', [NewPasswordController::class, 'store'])
         ->name('password.store');
+
+    // Reachable only mid-login (a pending "login.id" session key), between
+    // a correct password and a confirmed 2FA code — see LoginRequest and
+    // TwoFactorAuthenticatedSessionController.
+    Route::get('two-factor-challenge', [TwoFactorAuthenticatedSessionController::class, 'create'])
+        ->name('two-factor.login');
+
+    Route::post('two-factor-challenge', [TwoFactorAuthenticatedSessionController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('two-factor.challenge');
 });
 
 Route::middleware('auth')->group(function () {
@@ -62,6 +74,21 @@ Route::middleware('auth')->group(function () {
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 
     Route::put('password', [PasswordController::class, 'update'])->name('password.update');
+
+    // A stolen/hijacked session must not be enough to silently take over
+    // or reset a user's 2FA — the browser must have confirmed the current
+    // password recently (Laravel's standard password.confirm timeout),
+    // exactly as it would before any other sensitive account change.
+    Route::middleware('password.confirm')->group(function () {
+        Route::post('user/two-factor-authentication', [TwoFactorAuthenticationController::class, 'store'])
+            ->name('two-factor.enable');
+        Route::post('user/confirmed-two-factor-authentication', [TwoFactorAuthenticationController::class, 'confirm'])
+            ->name('two-factor.confirm');
+        Route::delete('user/two-factor-authentication', [TwoFactorAuthenticationController::class, 'destroy'])
+            ->name('two-factor.disable');
+        Route::post('user/two-factor-recovery-codes', [TwoFactorAuthenticationController::class, 'regenerateRecoveryCodes'])
+            ->name('two-factor.recovery-codes');
+    });
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');

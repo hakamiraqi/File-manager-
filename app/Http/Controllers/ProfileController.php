@@ -8,6 +8,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -67,6 +68,11 @@ class ProfileController extends Controller
 
         Auth::logout();
 
+        // Rows cascade-delete at the DB level, but the actual bytes on
+        // disk don't — without this, self-deleting an account (unlike
+        // admin-initiated deletion, which already does this) would leak
+        // the user's storage directory forever.
+        Storage::disk(config('filenest.disk'))->deleteDirectory((string) $user->id);
         $user->delete();
 
         $request->session()->invalidate();

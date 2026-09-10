@@ -51,10 +51,16 @@ class UserController extends Controller
             'can_manage_settings' => ['boolean'],
         ]);
 
-        // Only the master admin may grant admin capabilities to another
-        // admin, so a limited admin (has manage-users but nothing else)
-        // can't create a peer with more power than themselves.
-        if ($data['role'] !== 'admin' || ! $request->user()->is_master_admin) {
+        // Only the master admin may create another admin at all: the
+        // "admin" role itself bypasses every per-file ownership check
+        // (FilePolicy/FolderPolicy let any admin touch any user's files
+        // regardless of capability flags), so letting a merely
+        // "manage-users" sub-admin mint a peer admin would hand that new
+        // account full cross-user file access no matter which capability
+        // fields get stripped below.
+        abort_if($data['role'] === 'admin' && ! $request->user()->is_master_admin, 403, 'إنشاء حساب مشرف يتطلب صلاحية المدير الرئيسي.');
+
+        if (! $request->user()->is_master_admin) {
             foreach (self::CAPABILITY_FIELDS as $field) {
                 unset($data[$field]);
             }
@@ -92,6 +98,11 @@ class UserController extends Controller
             'can_view_statistics' => ['boolean'],
             'can_manage_settings' => ['boolean'],
         ]);
+
+        // Same rule as store(): promoting anyone to "admin" bypasses every
+        // per-file ownership check regardless of capability flags, so only
+        // the master admin may do it.
+        abort_if(($data['role'] ?? null) === 'admin' && $user->role !== 'admin' && ! $request->user()->is_master_admin, 403, 'ترقية مستخدم إلى مشرف يتطلب صلاحية المدير الرئيسي.');
 
         if (! $request->user()->is_master_admin) {
             foreach (self::CAPABILITY_FIELDS as $field) {

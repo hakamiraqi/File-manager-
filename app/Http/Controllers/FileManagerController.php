@@ -37,6 +37,7 @@ class FileManagerController extends Controller
             ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"));
 
         $filesQuery = File::query()
+            ->with('qualities')
             ->where('user_id', $user->id)
             ->whereNull('deleted_at')
             ->when($search === '', fn ($q) => $q->where('folder_id', $currentFolder?->id))

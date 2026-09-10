@@ -6,6 +6,7 @@ use App\Http\Controllers\FileUploadController;
 use App\Http\Controllers\FolderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ShareController;
+use App\Http\Controllers\SubtitleController;
 use App\Http\Controllers\TrashController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,8 +27,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
     Route::get('/files/{file}/preview', [FileController::class, 'preview'])->name('files.preview');
+    Route::get('/files/{file}/preview/{quality}', [FileController::class, 'previewQuality'])->whereNumber('quality')->name('files.preview-quality');
     Route::get('/files/{file}/thumbnail', [FileController::class, 'thumbnail'])->name('files.thumbnail');
+    Route::get('/files/{file}/content', [FileController::class, 'content'])->name('files.content');
     Route::get('/download-zip', [FileController::class, 'downloadZip'])->name('files.download-zip');
+
+    Route::get('/files/{file}/subtitles', [SubtitleController::class, 'index'])->name('subtitles.index');
+    Route::post('/files/{file}/subtitles', [SubtitleController::class, 'store'])->name('subtitles.store');
+    Route::get('/subtitles/{subtitle}', [SubtitleController::class, 'show'])->name('subtitles.show');
+    Route::delete('/subtitles/{subtitle}', [SubtitleController::class, 'destroy'])->name('subtitles.destroy');
 
     Route::post('/folders/{folder}/copy', [FolderController::class, 'copy'])->name('folders.copy');
 

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\ExtractFileText;
 use App\Jobs\GenerateThumbnail;
+use App\Jobs\TranscodeVideoQualities;
 use App\Models\ActivityLog;
 use App\Models\File;
 use App\Models\FileUploadSession;
@@ -58,6 +59,29 @@ class FileUploadController extends Controller
 
         $this->quota->assertHasSpace($user, $data['size']);
 
+        // Resuming: a client that reloaded the page (or retried after a
+        // dropped connection) re-selects the same file and calls init()
+        // again from scratch. Rather than starting over, hand back the
+        // still-uploading session for the identical (name, size, folder)
+        // combination so the client can skip whatever chunks already made
+        // it to the server instead of re-transferring the whole file.
+        $existing = FileUploadSession::where('user_id', $user->id)
+            ->where('folder_id', $data['folder_id'] ?? null)
+            ->where('original_name', $data['name'])
+            ->where('total_size', $data['size'])
+            ->where('status', 'uploading')
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'identifier' => $existing->identifier,
+                'chunk_size' => $existing->chunk_size,
+                'total_chunks' => $existing->total_chunks,
+                'received_chunks' => $existing->received_chunks ?? [],
+                'resumed' => true,
+            ]);
+        }
+
         $chunkSize = config('filenest.chunk_size_mb') * 1024 * 1024;
         $totalChunks = (int) ceil($data['size'] / $chunkSize);
 
@@ -68,6 +92,7 @@ class FileUploadController extends Controller
             'original_name' => $data['name'],
             'total_size' => $data['size'],
             'total_chunks' => max(1, $totalChunks),
+            'chunk_size' => $chunkSize,
             'received_chunks' => [],
         ]);
 
@@ -75,6 +100,8 @@ class FileUploadController extends Controller
             'identifier' => $session->identifier,
             'chunk_size' => $chunkSize,
             'total_chunks' => $session->total_chunks,
+            'received_chunks' => [],
+            'resumed' => false,
         ]);
     }
 
@@ -176,6 +203,9 @@ class FileUploadController extends Controller
         $notifier->uploadOccurred($user, $file->name);
         ExtractFileText::dispatch($file->id);
         GenerateThumbnail::dispatch($file->id);
+        if ($file->isVideo()) {
+            TranscodeVideoQualities::dispatch($file->id);
+        }
 
         return response()->json(['file' => $file]);
     }

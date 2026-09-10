@@ -40,6 +40,8 @@ const form = useForm({
     content_indexing_max_mb: props.settings.content_indexing_max_mb,
     thumbnails_enabled: props.settings.thumbnails_enabled === '1',
     thumbnail_max_px: props.settings.thumbnail_max_px,
+    video_transcoding_enabled: props.settings.video_transcoding_enabled === '1',
+    video_quality_targets: props.settings.video_quality_targets,
     logo: null,
     header_image: null,
 });
@@ -153,6 +155,25 @@ function submit() {
                         <div>
                             <InputLabel value="أقصى أبعاد للصورة المصغّرة (بكسل)" />
                             <TextInput type="number" min="50" v-model="form.thumbnail_max_px" class="mt-1 block w-full" />
+                        </div>
+                    </div>
+                </section>
+
+                <section class="rounded-xl border border-gray-200 bg-white p-6">
+                    <h3 class="mb-4 font-semibold text-gray-800">جودات تشغيل الفيديو</h3>
+                    <p class="mb-4 text-xs text-gray-500">
+                        عند التفعيل، يُنشئ الخادم نسخاً بدقات أقل من كل فيديو يُرفع تلقائياً (يتطلب توفّر أداة
+                        <code dir="ltr">ffmpeg</code> على الخادم)، فيظهر لمستخدم المعاينة قائمة اختيار الجودة تماماً
+                        كما في يوتيوب. عند عدم توفّر الأداة يبقى تشغيل الفيديو الأصلي يعمل بلا أي تأثير.
+                    </p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="col-span-2 flex items-center gap-2 text-sm text-gray-600">
+                            <input type="checkbox" v-model="form.video_transcoding_enabled" class="rounded border-gray-300" />
+                            تفعيل إنشاء نسخ بجودات مختلفة تلقائياً عند رفع الفيديو
+                        </label>
+                        <div class="col-span-2">
+                            <InputLabel value="الدقات المستهدفة (بالبكسل، مفصولة بفواصل)" />
+                            <TextInput type="text" v-model="form.video_quality_targets" placeholder="360,480,720" class="mt-1 block w-full" />
                         </div>
                     </div>
                 </section>

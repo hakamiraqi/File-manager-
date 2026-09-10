@@ -39,6 +39,7 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $user,
+                'twoFactorEnabled' => $user?->hasEnabledTwoFactorAuthentication() ?? false,
             ],
             'quota' => $user ? [
                 'used' => $user->storage_used_bytes,
@@ -83,6 +84,9 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'shareUrl' => fn () => $request->session()->get('shareUrl'),
                 'shareId' => fn () => $request->session()->get('shareId'),
+                'twoFactorSecret' => fn () => $request->session()->get('twoFactorSecret'),
+                'twoFactorQrCodeUri' => fn () => $request->session()->get('twoFactorQrCodeUri'),
+                'twoFactorRecoveryCodes' => fn () => $request->session()->get('twoFactorRecoveryCodes'),
             ],
         ];
     }

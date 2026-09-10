@@ -52,7 +52,9 @@ class TrashController extends Controller
         if ($type === 'file') {
             $file = File::onlyTrashed()->where('user_id', $user->id)->findOrFail($id);
             $file->disk()->delete($file->path);
-            $file->disk()->delete((string) $file->thumbnail_path);
+            if ($file->thumbnail_path) {
+                $file->disk()->delete($file->thumbnail_path);
+            }
             $quota->decrement($user, $file->size);
             $file->forceDelete();
         } else {

@@ -23,7 +23,7 @@ class FolderController extends Controller
         return response()->json($folders);
     }
 
-    public function store(Request $request, NotificationDispatcher $notifier): RedirectResponse
+    public function store(Request $request, NotificationDispatcher $notifier): RedirectResponse|JsonResponse
     {
         if (! $request->user()->canPerform('new_folder')) {
             throw new AuthorizationException('لا تملك صلاحية إنشاء مجلدات جديدة.');
@@ -49,6 +49,15 @@ class FolderController extends Controller
         ActivityLog::record('folder.created', "أنشأ المجلد \"{$folder->name}\"", $folder);
         $notifier->newFolderOccurred($user, $folder->name);
 
+        // The folder-upload feature creates the picked folder tree via
+        // repeated AJAX calls to this same endpoint (rather than a
+        // dedicated bulk endpoint) and needs the new folder's id back to
+        // resolve subfolders/files into it — the classic "new folder"
+        // modal keeps using the Inertia redirect below.
+        if ($request->wantsJson()) {
+            return response()->json(['folder' => $folder]);
+        }
+
         return back()->with('success', 'تم إنشاء المجلد بنجاح.');
     }
 
@@ -61,10 +70,19 @@ class FolderController extends Controller
             'parent_id' => ['sometimes', 'nullable', 'integer', 'exists:folders,id'],
             'color' => ['sometimes', 'nullable', 'string', 'max:20'],
             'is_public' => ['sometimes', 'boolean'],
+            'folder_type' => ['sometimes', 'string', 'in:files,thesis'],
+            'researcher_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'supervisor_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'thesis_title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'publisher' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'digital_library' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'publication_year' => ['sometimes', 'nullable', 'string', 'max:20'],
         ]);
 
         $isMove = array_key_exists('parent_id', $data) && $data['parent_id'] !== $folder->parent_id;
         $isRename = isset($data['name']) && $data['name'] !== $folder->name;
+        $isMetadataUpdate = collect(['folder_type', 'researcher_name', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year'])
+            ->contains(fn ($field) => array_key_exists($field, $data));
 
         if ($isMove && ! $request->user()->canPerform('move')) {
             throw new AuthorizationException('لا تملك صلاحية نقل المجلدات.');
@@ -72,6 +90,10 @@ class FolderController extends Controller
 
         if ($isRename && ! $request->user()->canPerform('rename_folder')) {
             throw new AuthorizationException('لا تملك صلاحية إعادة تسمية المجلدات.');
+        }
+
+        if ($isMetadataUpdate && ! $request->user()->canPerform('rename_folder')) {
+            throw new AuthorizationException('لا تملك صلاحية تعديل معلومات المجلد.');
         }
 
         if (array_key_exists('is_public', $data) && ! $request->user()->isAdmin()) {

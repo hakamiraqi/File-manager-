@@ -24,6 +24,11 @@ class PasswordController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
+        // A stolen Sanctum token (e.g. from a compromised mobile device)
+        // would otherwise stay valid forever, even after the user reacts
+        // to the compromise by changing their password.
+        $request->user()->tokens()->delete();
+
         return back();
     }
 }

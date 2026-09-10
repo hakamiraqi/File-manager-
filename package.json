@@ -25,6 +25,9 @@
     },
     "dependencies": {
         "@heroicons/vue": "^2.2.0",
-        "chart.js": "^4.5.1"
+        "chart.js": "^4.5.1",
+        "plyr": "^3.8.4",
+        "qrcode": "^1.5.4",
+        "wavesurfer.js": "^7.12.11"
     }
 }

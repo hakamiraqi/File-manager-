@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-#[Fillable(['user_id', 'folder_id', 'identifier', 'original_name', 'total_size', 'total_chunks', 'received_chunks', 'status'])]
+#[Fillable(['user_id', 'folder_id', 'identifier', 'original_name', 'total_size', 'total_chunks', 'chunk_size', 'received_chunks', 'status'])]
 class FileUploadSession extends Model
 {
     protected function casts(): array

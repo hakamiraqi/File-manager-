@@ -34,15 +34,21 @@ class LoginRequest extends FormRequest
     }
 
     /**
-     * Attempt to authenticate the request's credentials.
+     * Attempt to authenticate the request's credentials. Returns true when
+     * the password was correct but the account has two-factor
+     * authentication enabled — in that case the session is NOT logged in
+     * yet, only the pending user id is stashed for the 2FA challenge step
+     * to pick up (see TwoFactorAuthenticatedSessionController).
      *
      * @throws ValidationException
      */
-    public function authenticate(): void
+    public function authenticate(): bool
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        $credentials = $this->only('email', 'password');
+
+        if (! Auth::validate($credentials)) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
@@ -51,6 +57,22 @@ class LoginRequest extends FormRequest
         }
 
         RateLimiter::clear($this->throttleKey());
+
+        /** @var \App\Models\User $user */
+        $user = Auth::getProvider()->retrieveByCredentials($credentials);
+
+        if ($user->hasEnabledTwoFactorAuthentication()) {
+            $this->session()->put([
+                'login.id' => $user->getKey(),
+                'login.remember' => $this->boolean('remember'),
+            ]);
+
+            return true;
+        }
+
+        Auth::login($user, $this->boolean('remember'));
+
+        return false;
     }
 
     /**
