@@ -1,3 +1,35 @@
+/// Which admin sections the current user's account can reach — mirrors
+/// HandleInertiaRequests' `permissions.admin.*` on the web, but as a
+/// mobile-side model here. Null (via [FileNestUser.admin]) for a non-admin.
+class AdminCapabilities {
+  final bool appearance;
+  final bool users;
+  final bool translations;
+  final bool statistics;
+  final bool settings;
+  final bool settingsPage;
+
+  const AdminCapabilities({
+    required this.appearance,
+    required this.users,
+    required this.translations,
+    required this.statistics,
+    required this.settings,
+    required this.settingsPage,
+  });
+
+  factory AdminCapabilities.fromJson(Map<String, dynamic> json) {
+    return AdminCapabilities(
+      appearance: json['appearance'] as bool? ?? false,
+      users: json['users'] as bool? ?? false,
+      translations: json['translations'] as bool? ?? false,
+      statistics: json['statistics'] as bool? ?? false,
+      settings: json['settings'] as bool? ?? false,
+      settingsPage: json['settings_page'] as bool? ?? false,
+    );
+  }
+}
+
 class FileNestUser {
   final int id;
   final String name;
@@ -8,6 +40,10 @@ class FileNestUser {
   final int storageQuotaBytes;
   final double storageUsagePercent;
   final bool twoFactorEnabled;
+  final bool isMasterAdmin;
+  final AdminCapabilities? admin;
+
+  bool get isAdmin => admin != null;
 
   FileNestUser({
     required this.id,
@@ -19,6 +55,8 @@ class FileNestUser {
     required this.storageQuotaBytes,
     required this.storageUsagePercent,
     required this.twoFactorEnabled,
+    required this.isMasterAdmin,
+    required this.admin,
   });
 
   factory FileNestUser.fromJson(Map<String, dynamic> json) {
@@ -33,6 +71,10 @@ class FileNestUser {
       storageUsagePercent:
           (json['storage_usage_percent'] as num?)?.toDouble() ?? 0,
       twoFactorEnabled: json['two_factor_enabled'] as bool? ?? false,
+      isMasterAdmin: json['is_master_admin'] as bool? ?? false,
+      admin: json['admin'] is Map
+          ? AdminCapabilities.fromJson(json['admin'] as Map<String, dynamic>)
+          : null,
     );
   }
 }

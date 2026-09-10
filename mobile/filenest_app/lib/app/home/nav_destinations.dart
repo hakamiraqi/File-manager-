@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../features/account/presentation/account_screen.dart';
+import '../../features/admin/presentation/admin_home_screen.dart';
 import '../../features/auth/state/auth_provider.dart';
 import '../../features/security/presentation/security_screen.dart';
 import '../../features/server_settings/presentation/server_settings_screen.dart';
@@ -30,8 +31,15 @@ class NavDestinationItem {
 /// drawer and the "more" sheet automatically.
 List<NavDestinationItem> buildSecondaryDestinations(BuildContext context) {
   void push(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
+  final isAdmin = context.read<AuthProvider>().user?.isAdmin ?? false;
 
   return [
+    if (isAdmin)
+      NavDestinationItem(
+        icon: Icons.admin_panel_settings_outlined,
+        label: 'الإدارة',
+        onTap: () => push(const AdminHomeScreen()),
+      ),
     NavDestinationItem(
       icon: Icons.shield_outlined,
       label: 'الأمان',
