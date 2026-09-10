@@ -80,4 +80,26 @@ class FileItem {
       subtitlesUrl: json['subtitles_url'] as String?,
     );
   }
+
+  /// A minimal stand-in used only to open MediaPlayerScreen for an
+  /// already-downloaded file (see OfflineFileRecord): no preview/quality
+  /// URLs, since offline playback reads the local file directly instead.
+  factory FileItem.fromOfflineName({required int id, required String name, required String? mimeType, required int size}) {
+    return FileItem(
+      id: id,
+      name: name,
+      folderId: null,
+      extension: name.contains('.') ? name.split('.').last : null,
+      mimeType: mimeType,
+      size: size,
+      humanSize: '',
+      isIndexed: false,
+      isPreviewable: false,
+      hasThumbnail: false,
+      contentSnippet: null,
+      downloadUrl: '',
+      previewUrl: '',
+      thumbnailUrl: null,
+    );
+  }
 }

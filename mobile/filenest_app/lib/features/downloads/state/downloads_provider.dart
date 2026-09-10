@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
@@ -16,14 +18,37 @@ class DownloadsProvider extends ChangeNotifier {
 
   bool _loading = true;
   bool get loading => _loading;
+  bool _syncing = false;
+  bool get syncing => _syncing;
 
   /// Most recently downloaded first.
   List<OfflineFileRecord> get items => _service.manifest.reversed.toList();
+
+  int get pendingAnswerCount => _service.pendingAnswers.length;
 
   Future<void> load() async {
     await _service.ensureLoaded();
     _loading = false;
     notifyListeners();
+
+    // Best-effort: confirm any quiz answers recorded while offline. A
+    // failure here (still offline) just leaves them queued for next time.
+    unawaited(syncPendingAnswers());
+  }
+
+  Future<void> syncPendingAnswers() async {
+    if (_syncing || pendingAnswerCount == 0) return;
+    _syncing = true;
+    notifyListeners();
+    try {
+      await _service.syncPendingAnswers();
+    } catch (_) {
+      // Ignored — still offline, or a transient server error; the answers
+      // stay queued and the next opportunistic sync will retry them.
+    } finally {
+      _syncing = false;
+      notifyListeners();
+    }
   }
 
   bool isDownloaded(int fileId) => _service.isDownloaded(fileId);

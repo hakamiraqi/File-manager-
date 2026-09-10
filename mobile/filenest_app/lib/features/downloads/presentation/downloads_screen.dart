@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/models/file_item.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/file_icons.dart';
+import '../../media_player/presentation/media_player_screen.dart';
 import '../models/offline_file.dart';
 import '../state/downloads_provider.dart';
 
@@ -46,9 +48,35 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
       );
     }
 
-    return ListView.builder(
-      itemCount: downloads.items.length,
-      itemBuilder: (context, index) => _OfflineFileTile(record: downloads.items[index]),
+    return Column(
+      children: [
+        if (downloads.pendingAnswerCount > 0)
+          Container(
+            width: double.infinity,
+            color: Theme.of(context).colorScheme.primaryContainer,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    downloads.syncing
+                        ? 'جارٍ مزامنة إجابات الأسئلة التفاعلية...'
+                        : '${downloads.pendingAnswerCount} إجابة بانتظار المزامنة مع الخادم.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                if (!downloads.syncing)
+                  TextButton(onPressed: () => downloads.syncPendingAnswers(), child: const Text('مزامنة الآن')),
+              ],
+            ),
+          ),
+        Expanded(
+          child: ListView.builder(
+            itemCount: downloads.items.length,
+            itemBuilder: (context, index) => _OfflineFileTile(record: downloads.items[index]),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -58,6 +86,21 @@ class _OfflineFileTile extends StatelessWidget {
 
   final OfflineFileRecord record;
 
+  void _open(BuildContext context) {
+    final downloads = context.read<DownloadsProvider>();
+
+    if (!record.isVideo) {
+      downloads.openOffline(record.fileId);
+      return;
+    }
+
+    final file = FileItem.fromOfflineName(id: record.fileId, name: record.name, mimeType: record.mimeType, size: record.size);
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => MediaPlayerScreen(playlist: [file], initialIndex: 0, offlineRecord: record)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final downloads = context.read<DownloadsProvider>();
@@ -66,8 +109,11 @@ class _OfflineFileTile extends StatelessWidget {
     return ListTile(
       leading: Icon(fileIconForExtension(extension), color: Colors.grey.shade700),
       title: Text(record.name),
-      subtitle: Text('${formatBytes(record.size)} · ${formatDate(record.downloadedAt)}'),
-      onTap: () => downloads.openOffline(record.fileId),
+      subtitle: Text(
+        '${formatBytes(record.size)} · ${formatDate(record.downloadedAt)}'
+        '${record.hasQuiz ? ' · أسئلة تفاعلية متاحة بدون إنترنت' : ''}',
+      ),
+      onTap: () => _open(context),
       trailing: IconButton(
         icon: const Icon(Icons.delete_outline_rounded),
         tooltip: 'حذف النسخة المحلية',
