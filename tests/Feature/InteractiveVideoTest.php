@@ -272,4 +272,57 @@ class InteractiveVideoTest extends TestCase
         $this->actingAs($manager)->get(route('questions.import-template'))->assertOk();
         $this->actingAs($contributor)->get(route('questions.import-template'))->assertForbidden();
     }
+
+    public function test_report_aggregates_per_question_and_per_user_results(): void
+    {
+        Setting::set('interactive_video_enabled', true);
+        $owner = User::factory()->create();
+        $file = $this->videoFile($owner);
+
+        $question = VideoQuestion::create(['file_id' => $file->id, 'timestamp_seconds' => 10, 'question' => 'س']);
+        $correct = VideoQuestionChoice::create(['video_question_id' => $question->id, 'label' => 'صح', 'is_correct' => true, 'order' => 0]);
+        $wrong = VideoQuestionChoice::create(['video_question_id' => $question->id, 'label' => 'خطأ', 'is_correct' => false, 'order' => 1]);
+
+        // Only the file's owner or an admin can view/answer its questions
+        // under the current ownership-based FilePolicy, so simulate two
+        // respondents via admin accounts rather than arbitrary users.
+        $alice = User::factory()->create(['name' => 'Alice', 'role' => 'admin']);
+        $bob = User::factory()->create(['name' => 'Bob', 'role' => 'admin']);
+
+        $this->actingAs($alice)->postJson(route('questions.answer', $question), ['choice_id' => $correct->id])->assertOk();
+        $this->actingAs($bob)->postJson(route('questions.answer', $question), ['choice_id' => $wrong->id])->assertOk();
+
+        $response = $this->actingAs($owner)->getJson(route('questions.report', $file))->assertOk()->json();
+
+        $this->assertSame(1, $response['summary']['total_questions']);
+        $this->assertSame(2, $response['summary']['respondents']);
+        $this->assertSame(0.5, $response['summary']['average_percent']);
+
+        $this->assertSame(2, $response['questions'][0]['total_answers']);
+        $this->assertSame(1, $response['questions'][0]['correct_count']);
+        $this->assertSame(0.5, $response['questions'][0]['correct_rate']);
+
+        $names = collect($response['users'])->pluck('name')->all();
+        $this->assertContains('Alice', $names);
+        $this->assertContains('Bob', $names);
+    }
+
+    public function test_report_is_restricted_to_the_file_owner_with_manage_questions(): void
+    {
+        Setting::set('interactive_video_enabled', true);
+        $owner = User::factory()->create();
+        $intruder = User::factory()->create();
+        $file = $this->videoFile($owner);
+
+        $this->actingAs($intruder)->getJson(route('questions.report', $file))->assertForbidden();
+    }
+
+    public function test_report_is_a_404_when_the_feature_is_disabled(): void
+    {
+        Setting::set('interactive_video_enabled', false);
+        $owner = User::factory()->create();
+        $file = $this->videoFile($owner);
+
+        $this->actingAs($owner)->getJson(route('questions.report', $file))->assertNotFound();
+    }
 }

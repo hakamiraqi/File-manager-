@@ -191,6 +191,88 @@ class VideoQuestionController extends Controller
     }
 
     /**
+     * Aggregate results across every respondent for a video's quiz —
+     * per-question correct rates (with the per-choice breakdown a manager
+     * needs to spot a confusing distractor) and a per-user score table.
+     * Restricted the same as authoring: only the file's owner/admin with
+     * manage_questions can see how others answered.
+     */
+    public function report(Request $request, File $file): JsonResponse
+    {
+        $this->authorize('update', $file);
+        $this->assertEnabled();
+        $this->assertCanManage($request);
+
+        $questions = $file->questions()
+            ->with(['choices' => fn ($q) => $q->orderBy('order')])
+            ->orderBy('timestamp_seconds')
+            ->orderBy('order')
+            ->get();
+
+        $answers = VideoQuestionAnswer::whereIn('video_question_id', $questions->pluck('id'))
+            ->with('user:id,name,email')
+            ->get();
+
+        $answersByQuestion = $answers->groupBy('video_question_id');
+        $answersByUser = $answers->groupBy('user_id');
+
+        $questionReports = $questions->map(function (VideoQuestion $question) use ($answersByQuestion) {
+            $questionAnswers = $answersByQuestion->get($question->id, collect());
+            $totalAnswers = $questionAnswers->count();
+
+            return [
+                'id' => $question->id,
+                'timestamp_seconds' => $question->timestamp_seconds,
+                'question' => $question->question,
+                'total_answers' => $totalAnswers,
+                'correct_count' => $questionAnswers->where('is_correct', true)->count(),
+                'correct_rate' => $totalAnswers > 0
+                    ? round($questionAnswers->where('is_correct', true)->count() / $totalAnswers, 4)
+                    : null,
+                'choices' => $question->choices->map(fn (VideoQuestionChoice $choice) => [
+                    'id' => $choice->id,
+                    'label' => $choice->label,
+                    'is_correct' => $choice->is_correct,
+                    'count' => $questionAnswers->where('video_question_choice_id', $choice->id)->count(),
+                    'percent' => $totalAnswers > 0
+                        ? round($questionAnswers->where('video_question_choice_id', $choice->id)->count() / $totalAnswers, 4)
+                        : null,
+                ]),
+            ];
+        });
+
+        $totalQuestions = $questions->count();
+
+        $userReports = $answersByUser->map(function ($userAnswers, $userId) use ($totalQuestions) {
+            $user = $userAnswers->first()->user;
+            $correct = $userAnswers->where('is_correct', true)->count();
+            $answered = $userAnswers->count();
+
+            return [
+                'user_id' => $userId,
+                'name' => $user?->name,
+                'email' => $user?->email,
+                'answered' => $answered,
+                'correct' => $correct,
+                'total_questions' => $totalQuestions,
+                'percent' => $totalQuestions > 0 ? round($correct / $totalQuestions, 4) : null,
+            ];
+        })->sortByDesc('percent')->values();
+
+        return response()->json([
+            'summary' => [
+                'total_questions' => $totalQuestions,
+                'respondents' => $userReports->count(),
+                'average_percent' => $userReports->count() > 0
+                    ? round($userReports->avg('percent'), 4)
+                    : null,
+            ],
+            'questions' => $questionReports,
+            'users' => $userReports,
+        ]);
+    }
+
+    /**
      * A sample CSV a question-author can fill in and re-upload via import().
      */
     public function template(Request $request): Response

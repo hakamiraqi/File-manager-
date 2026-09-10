@@ -128,6 +128,10 @@ const importFileInput = ref(null);
 const importBusy = ref(false);
 const importMessage = ref(null);
 const importError = ref(null);
+const showReport = ref(false);
+const reportData = ref(null);
+const reportLoading = ref(false);
+const reportError = ref(null);
 
 async function loadQuestions() {
     questions.value = [];
@@ -281,6 +285,26 @@ function triggerImportPicker() {
     importMessage.value = null;
     importError.value = null;
     importFileInput.value?.click();
+}
+
+async function toggleReport() {
+    showReport.value = !showReport.value;
+    if (!showReport.value || !props.file) return;
+
+    reportLoading.value = true;
+    reportError.value = null;
+    try {
+        const { data } = await window.axios.get(route('questions.report', props.file.id));
+        reportData.value = data;
+    } catch {
+        reportError.value = 'تعذّر تحميل التقرير.';
+    } finally {
+        reportLoading.value = false;
+    }
+}
+
+function percent(value) {
+    return value == null ? '—' : `${Math.round(value * 100)}%`;
 }
 
 async function handleImportFile(event) {
@@ -788,6 +812,69 @@ onBeforeUnmount(() => {
                                     <button @click="deleteQuestion(q)" class="shrink-0 text-gray-400 hover:text-red-600">حذف</button>
                                 </li>
                             </ul>
+
+                            <div v-if="questions.length" class="rounded-lg border border-gray-200">
+                                <button
+                                    type="button"
+                                    @click="toggleReport"
+                                    class="flex w-full items-center justify-between px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:text-gray-900"
+                                >
+                                    <span>تقرير النتائج</span>
+                                    <ChevronUpIcon v-if="showReport" class="h-3.5 w-3.5" />
+                                    <ChevronDownIcon v-else class="h-3.5 w-3.5" />
+                                </button>
+
+                                <div v-if="showReport" class="border-t border-gray-200 p-3">
+                                    <p v-if="reportLoading" class="text-xs text-gray-500">جارٍ التحميل...</p>
+                                    <p v-else-if="reportError" class="text-xs text-red-600">{{ reportError }}</p>
+                                    <div v-else-if="reportData" class="space-y-4">
+                                        <p class="text-xs text-gray-500">
+                                            {{ reportData.summary.respondents }} مشاهد أجاب على الأسئلة
+                                            <span v-if="reportData.summary.average_percent != null">
+                                                — متوسط الدرجات {{ percent(reportData.summary.average_percent) }}
+                                            </span>
+                                        </p>
+
+                                        <div v-if="reportData.questions.length" class="space-y-2">
+                                            <div v-for="q in reportData.questions" :key="q.id" class="rounded-md bg-gray-50 p-2">
+                                                <p class="mb-1 truncate text-xs text-gray-700">
+                                                    <span class="tabular-nums text-gray-400">{{ formatTimestamp(q.timestamp_seconds) }}</span>
+                                                    — {{ q.question }}
+                                                    <span class="text-gray-400">({{ q.total_answers }} إجابة)</span>
+                                                </p>
+                                                <div v-for="choice in q.choices" :key="choice.id" class="mb-1 flex items-center gap-2">
+                                                    <span
+                                                        class="w-24 shrink-0 truncate text-[11px]"
+                                                        :class="choice.is_correct ? 'font-medium text-green-700' : 'text-gray-500'"
+                                                    >{{ choice.label }}</span>
+                                                    <div class="h-2 flex-1 overflow-hidden rounded-full bg-gray-200">
+                                                        <div
+                                                            class="h-full rounded-full"
+                                                            :class="choice.is_correct ? 'bg-green-500' : 'bg-gray-400'"
+                                                            :style="{ width: percent(choice.percent) === '—' ? '0%' : percent(choice.percent) }"
+                                                        ></div>
+                                                    </div>
+                                                    <span class="w-10 shrink-0 text-left text-[11px] tabular-nums text-gray-500">{{ percent(choice.percent) }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div v-if="reportData.users.length">
+                                            <p class="mb-1 text-xs font-medium text-gray-500">النتائج حسب المستخدم</p>
+                                            <table class="w-full text-xs">
+                                                <tbody>
+                                                    <tr v-for="u in reportData.users" :key="u.user_id" class="border-t border-gray-100">
+                                                        <td class="py-1 pr-2 text-gray-700">{{ u.name ?? u.email }}</td>
+                                                        <td class="py-1 text-gray-400">{{ u.correct }}/{{ u.total_questions }}</td>
+                                                        <td class="py-1 text-left tabular-nums text-gray-600">{{ percent(u.percent) }}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p v-else class="text-xs text-gray-400">لم يجب أحد على الأسئلة بعد.</p>
+                                    </div>
+                                </div>
+                            </div>
 
                             <div class="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-gray-300 p-2.5">
                                 <button
