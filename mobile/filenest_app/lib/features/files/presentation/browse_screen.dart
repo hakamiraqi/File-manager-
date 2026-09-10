@@ -674,6 +674,14 @@ class _BrowseScreenState extends State<BrowseScreen> {
             ),
           ),
         if (widget.folder != null) _buildFolderInfoPanel(),
+        if (!_isLoading && _error == null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+            child: Text(
+              '${_folders.length} مجلد، ${_files.length} ملف',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+          ),
         Expanded(child: _buildBody()),
       ],
     );

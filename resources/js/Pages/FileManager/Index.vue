@@ -501,6 +501,8 @@ function uploadFromUrl() {
                     <option value="size">ترتيب حسب الحجم</option>
                 </select>
 
+                <span class="text-sm text-gray-500">{{ folders.length }} مجلد، {{ files.length }} ملف</span>
+
                 <div v-if="selectionCount" class="ms-auto flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5">
                     <span class="text-sm text-gray-600">{{ selectionCount }} محدد</span>
                     <button v-if="can.download" @click="downloadSelection" class="rounded-md p-1.5 hover:bg-gray-200" title="تنزيل كملف مضغوط">
