@@ -30,6 +30,24 @@ class AdminCapabilities {
   }
 }
 
+/// Per-role capabilities (RolePermission), not admin-only — mirrors
+/// HandleInertiaRequests' `permissions.manage_questions`/`permissions.comment`
+/// on the web, used to hide the interactive-video authoring UI and the
+/// comment box for a role that lacks them.
+class RolePermissions {
+  final bool manageQuestions;
+  final bool comment;
+
+  const RolePermissions({required this.manageQuestions, required this.comment});
+
+  factory RolePermissions.fromJson(Map<String, dynamic>? json) {
+    return RolePermissions(
+      manageQuestions: json?['manage_questions'] as bool? ?? false,
+      comment: json?['comment'] as bool? ?? false,
+    );
+  }
+}
+
 class FileNestUser {
   final int id;
   final String name;
@@ -42,6 +60,7 @@ class FileNestUser {
   final bool twoFactorEnabled;
   final bool isMasterAdmin;
   final AdminCapabilities? admin;
+  final RolePermissions permissions;
 
   bool get isAdmin => admin != null;
 
@@ -57,6 +76,7 @@ class FileNestUser {
     required this.twoFactorEnabled,
     required this.isMasterAdmin,
     required this.admin,
+    required this.permissions,
   });
 
   factory FileNestUser.fromJson(Map<String, dynamic> json) {
@@ -75,6 +95,7 @@ class FileNestUser {
       admin: json['admin'] is Map
           ? AdminCapabilities.fromJson(json['admin'] as Map<String, dynamic>)
           : null,
+      permissions: RolePermissions.fromJson(json['permissions'] as Map<String, dynamic>?),
     );
   }
 }

@@ -103,6 +103,29 @@ class AuthApiTest extends TestCase
             ->assertJsonPath('user.admin.settings_page', true);
     }
 
+    public function test_the_profile_response_exposes_the_role_permission_flags_the_interactive_video_ui_needs(): void
+    {
+        $this->seed(\Database\Seeders\RolePermissionSeeder::class);
+
+        $user = User::factory()->create(['role' => 'user']);
+        $this->actingAs($user, 'sanctum')->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.permissions.manage_questions', true)
+            ->assertJsonPath('user.permissions.comment', true);
+
+        $guest = User::factory()->create(['role' => 'guest']);
+        $this->actingAs($guest, 'sanctum')->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.permissions.manage_questions', false)
+            ->assertJsonPath('user.permissions.comment', false);
+
+        $admin = User::factory()->create(['role' => 'admin']);
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/auth/me')
+            ->assertOk()
+            ->assertJsonPath('user.permissions.manage_questions', true)
+            ->assertJsonPath('user.permissions.comment', true);
+    }
+
     public function test_logout_revokes_the_current_token(): void
     {
         $user = User::factory()->create();

@@ -1,15 +1,21 @@
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../../core/models/file_item.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/token_storage.dart';
+import '../../auth/state/auth_provider.dart';
 import '../../downloads/data/offline_download_service.dart';
 import '../../downloads/models/offline_file.dart';
 import '../data/media_repository.dart';
+import '../models/quiz_report.dart';
 import '../models/subtitle_cue.dart';
 import '../models/subtitle_track.dart';
 import '../models/video_comment.dart';
@@ -79,9 +85,32 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
   bool _postingComment = false;
   bool _showComments = false;
 
+  // Question authoring (manage_questions capability, online only) — the
+  // mobile counterpart of PreviewModal.vue's question-manager panel.
+  bool _showQuestionManager = false;
+  int? _editingQuestionId;
+  int _formTimestamp = 0;
+  final _timestampController = TextEditingController();
+  final _questionTextController = TextEditingController();
+  List<TextEditingController> _choiceControllers = [TextEditingController(), TextEditingController()];
+  int _correctIndex = 0;
+  bool _savingQuestion = false;
+  String? _questionFormError;
+
+  bool _importing = false;
+  String? _importMessage;
+  String? _importError;
+
+  bool _showReport = false;
+  bool _loadingReport = false;
+  QuizReport? _report;
+  String? _reportError;
+
   FileItem get _currentFile => widget.playlist[_currentIndex];
   bool get _hasPlaylist => !_isOffline && widget.playlist.length > 1;
   bool get _isOffline => widget.offlineRecord != null;
+  bool get _canManageQuestions => context.read<AuthProvider>().user?.permissions.manageQuestions ?? false;
+  bool get _canComment => context.read<AuthProvider>().user?.permissions.comment ?? false;
 
   @override
   void initState() {
@@ -95,6 +124,11 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     _controller?.removeListener(_onControllerUpdate);
     _controller?.dispose();
     _commentController.dispose();
+    _timestampController.dispose();
+    _questionTextController.dispose();
+    for (final controller in _choiceControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -115,6 +149,13 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
       _answerFeedback = null;
       _comments = [];
       _showComments = false;
+      _showQuestionManager = false;
+      _showReport = false;
+      _report = null;
+      _reportError = null;
+      _importMessage = null;
+      _importError = null;
+      _resetQuestionForm();
     });
 
     if (file.isVideo) {
@@ -381,6 +422,178 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     }
   }
 
+  /// Clears the add/edit form back to "new question at the current
+  /// playback position" — a plain mutation (no setState of its own) so
+  /// callers can bundle it into their own setState alongside other state.
+  void _resetQuestionForm() {
+    _editingQuestionId = null;
+    _formTimestamp = _controller?.value.position.inSeconds ?? 0;
+    _timestampController.text = '$_formTimestamp';
+    _questionTextController.clear();
+    for (final controller in _choiceControllers) {
+      controller.dispose();
+    }
+    _choiceControllers = [TextEditingController(), TextEditingController()];
+    _correctIndex = 0;
+    _questionFormError = null;
+  }
+
+  void _editQuestion(VideoQuestion question) {
+    setState(() {
+      _editingQuestionId = question.id;
+      _formTimestamp = question.timestampSeconds;
+      _timestampController.text = '$_formTimestamp';
+      _questionTextController.text = question.question;
+      for (final controller in _choiceControllers) {
+        controller.dispose();
+      }
+      _choiceControllers = question.choices.map((c) => TextEditingController(text: c.label)).toList();
+      final correctIndex = question.choices.indexWhere((c) => c.isCorrect == true);
+      _correctIndex = correctIndex >= 0 ? correctIndex : 0;
+      _questionFormError = null;
+    });
+  }
+
+  void _addChoiceField() {
+    if (_choiceControllers.length >= 6) return;
+    setState(() => _choiceControllers.add(TextEditingController()));
+  }
+
+  void _removeChoiceField(int index) {
+    if (_choiceControllers.length <= 2) return;
+    setState(() {
+      _choiceControllers.removeAt(index).dispose();
+      if (_correctIndex >= _choiceControllers.length) _correctIndex = _choiceControllers.length - 1;
+    });
+  }
+
+  Future<void> _submitQuestionForm() async {
+    if (_savingQuestion) return;
+    setState(() {
+      _savingQuestion = true;
+      _questionFormError = null;
+    });
+
+    final choices = _choiceControllers.map((c) => c.text.trim()).toList();
+
+    try {
+      if (_editingQuestionId != null) {
+        await _mediaRepository.updateQuestion(
+          _editingQuestionId!,
+          timestampSeconds: _formTimestamp,
+          question: _questionTextController.text.trim(),
+          choices: choices,
+          correctIndex: _correctIndex,
+        );
+      } else {
+        await _mediaRepository.createQuestion(
+          _currentFile.id,
+          timestampSeconds: _formTimestamp,
+          question: _questionTextController.text.trim(),
+          choices: choices,
+          correctIndex: _correctIndex,
+        );
+      }
+      if (!mounted) return;
+      setState(_resetQuestionForm);
+      await _loadQuestions();
+    } catch (e) {
+      if (mounted) setState(() => _questionFormError = ApiClient.messageFor(e));
+    } finally {
+      if (mounted) setState(() => _savingQuestion = false);
+    }
+  }
+
+  Future<void> _deleteManagedQuestion(VideoQuestion question) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('حذف السؤال'),
+        content: Text('هل تريد حذف السؤال "${question.question}"؟'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('إلغاء')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await _mediaRepository.deleteQuestion(question.id);
+      await _loadQuestions();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiClient.messageFor(e))));
+    }
+  }
+
+  Future<void> _pickAndImportQuestions() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json', 'csv', 'txt'],
+    );
+    if (result == null || result.files.single.path == null) return;
+
+    setState(() {
+      _importing = true;
+      _importMessage = null;
+      _importError = null;
+    });
+
+    try {
+      final outcome = await _mediaRepository.importQuestions(_currentFile.id, File(result.files.single.path!));
+      if (!mounted) return;
+      setState(() {
+        _importMessage = outcome.errors.isEmpty
+            ? 'تم استيراد ${outcome.created} سؤالاً بنجاح.'
+            : 'تم استيراد ${outcome.created} سؤالاً. تم تجاوز ${outcome.errors.length} سطر بسبب أخطاء.';
+      });
+      await _loadQuestions();
+    } catch (e) {
+      if (mounted) setState(() => _importError = ApiClient.messageFor(e));
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
+  /// Writes the template CSV to a temp file and hands it to the OS so the
+  /// user can open/save it with whichever app they prefer — there is no
+  /// browser download prompt to fall back on here like on the web.
+  Future<void> _downloadImportTemplate() async {
+    try {
+      final csv = await _mediaRepository.importTemplateCsv();
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/video-questions-template.csv');
+      await file.writeAsString(csv);
+      await OpenFilex.open(file.path);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiClient.messageFor(e))));
+    }
+  }
+
+  Future<void> _toggleReport() async {
+    setState(() => _showReport = !_showReport);
+    if (!_showReport || _report != null) return;
+
+    setState(() {
+      _loadingReport = true;
+      _reportError = null;
+    });
+    try {
+      final report = await _mediaRepository.report(_currentFile.id);
+      if (mounted) setState(() => _report = report);
+    } catch (e) {
+      if (mounted) setState(() => _reportError = ApiClient.messageFor(e));
+    } finally {
+      if (mounted) setState(() => _loadingReport = false);
+    }
+  }
+
+  String _percentLabel(double? value) => value == null ? '—' : '${(value * 100).round()}%';
+
   String _formatTimestamp(int seconds) {
     final m = seconds ~/ 60;
     final s = (seconds % 60).toString().padLeft(2, '0');
@@ -468,6 +681,8 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
           if (!_isFullscreen || !_currentFile.isVideo) ...[
             _buildTransportControls(),
             if (_hasPlaylist) _buildPlaylist(),
+            if (_currentFile.isVideo && !_isOffline && _canManageQuestions) _buildQuestionManagerToggle(),
+            if (_currentFile.isVideo && !_isOffline && _canManageQuestions && _showQuestionManager) _buildQuestionManagerPanel(),
             if (_currentFile.isVideo && !_isOffline) _buildCommentsToggle(),
             if (_currentFile.isVideo && !_isOffline && _showComments) _buildCommentsPanel(),
           ],
@@ -616,6 +831,247 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     );
   }
 
+  Widget _buildQuestionManagerToggle() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: TextButton.icon(
+        onPressed: () => setState(() {
+          _showQuestionManager = !_showQuestionManager;
+          if (_showQuestionManager) _resetQuestionForm();
+        }),
+        icon: Icon(_showQuestionManager ? Icons.expand_less_rounded : Icons.quiz_outlined),
+        label: Text('الأسئلة التفاعلية (${_questions.length})'),
+      ),
+    );
+  }
+
+  Widget _buildQuestionManagerPanel() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_questions.isNotEmpty)
+            ..._questions.map((q) => ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(q.question, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  subtitle: Text(_formatTimestamp(q.timestampSeconds)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(icon: const Icon(Icons.edit_outlined, size: 20), onPressed: () => _editQuestion(q)),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded, size: 20, color: Colors.red),
+                        onPressed: () => _deleteManagedQuestion(q),
+                      ),
+                    ],
+                  ),
+                )),
+          const Divider(),
+          Wrap(
+            spacing: 8,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _importing ? null : _pickAndImportQuestions,
+                icon: _importing
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.upload_file_outlined, size: 18),
+                label: const Text('استيراد من ملف (JSON/CSV)'),
+              ),
+              TextButton(onPressed: _downloadImportTemplate, child: const Text('تنزيل نموذج CSV')),
+            ],
+          ),
+          if (_importMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_importMessage!, style: const TextStyle(color: Colors.green, fontSize: 12)),
+            ),
+          if (_importError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_importError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ),
+          const Divider(),
+          Text(
+            _editingQuestionId != null ? 'تعديل سؤال' : 'إضافة سؤال جديد',
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Text('يظهر عند الثانية:', style: TextStyle(fontSize: 12)),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 64,
+                child: TextField(
+                  controller: _timestampController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(isDense: true),
+                  onChanged: (v) => _formTimestamp = int.tryParse(v) ?? _formTimestamp,
+                ),
+              ),
+              TextButton(
+                onPressed: () => setState(() {
+                  _formTimestamp = _controller?.value.position.inSeconds ?? 0;
+                  _timestampController.text = '$_formTimestamp';
+                }),
+                child: const Text('استخدام الوقت الحالي', style: TextStyle(fontSize: 12)),
+              ),
+            ],
+          ),
+          TextField(
+            controller: _questionTextController,
+            maxLines: 2,
+            decoration: const InputDecoration(hintText: 'نص السؤال', isDense: true),
+          ),
+          const SizedBox(height: 8),
+          ..._choiceControllers.asMap().entries.map((entry) {
+            final index = entry.key;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Radio<int>(value: index, groupValue: _correctIndex, onChanged: (v) => setState(() => _correctIndex = v ?? 0)),
+                  Expanded(
+                    child: TextField(
+                      controller: entry.value,
+                      decoration: const InputDecoration(hintText: 'نص الخيار', isDense: true),
+                    ),
+                  ),
+                  if (_choiceControllers.length > 2)
+                    IconButton(icon: const Icon(Icons.close_rounded, size: 18), onPressed: () => _removeChoiceField(index)),
+                ],
+              ),
+            );
+          }),
+          if (_choiceControllers.length < 6)
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _addChoiceField,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('إضافة خيار'),
+              ),
+            ),
+          if (_questionFormError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(_questionFormError!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+            ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              FilledButton(
+                onPressed: _savingQuestion ? null : _submitQuestionForm,
+                child: Text(_editingQuestionId != null ? 'حفظ التعديل' : 'إضافة السؤال'),
+              ),
+              if (_editingQuestionId != null)
+                TextButton(onPressed: () => setState(_resetQuestionForm), child: const Text('إلغاء التعديل')),
+            ],
+          ),
+          const Divider(),
+          TextButton.icon(
+            onPressed: _toggleReport,
+            icon: Icon(_showReport ? Icons.expand_less_rounded : Icons.bar_chart_rounded),
+            label: const Text('تقرير النتائج'),
+          ),
+          if (_showReport) _buildReportSection(),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportSection() {
+    if (_loadingReport) return const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()));
+    if (_reportError != null) return Text(_reportError!, style: const TextStyle(color: Colors.red, fontSize: 12));
+
+    final report = _report;
+    if (report == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            '${report.summary.respondents} مشاهد أجاب على الأسئلة'
+            '${report.summary.averagePercent != null ? ' — متوسط الدرجات ${_percentLabel(report.summary.averagePercent)}' : ''}',
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ),
+        ...report.questions.map((q) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.grey.shade100, borderRadius: BorderRadius.circular(8)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${_formatTimestamp(q.timestampSeconds)} — ${q.question} (${q.totalAnswers} إجابة)',
+                    style: const TextStyle(fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  ...q.choices.map((choice) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 70,
+                              child: Text(
+                                choice.label,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: choice.isCorrect ? FontWeight.w600 : FontWeight.normal,
+                                  color: choice.isCorrect ? Colors.green.shade700 : Colors.grey.shade700,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Expanded(
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(4),
+                                child: LinearProgressIndicator(
+                                  value: choice.percent ?? 0,
+                                  minHeight: 8,
+                                  backgroundColor: Colors.grey.shade300,
+                                  valueColor: AlwaysStoppedAnimation(choice.isCorrect ? Colors.green : Colors.grey),
+                                ),
+                              ),
+                            ),
+                            SizedBox(width: 36, child: Text(_percentLabel(choice.percent), style: const TextStyle(fontSize: 11))),
+                          ],
+                        ),
+                      )),
+                ],
+              ),
+            )),
+        if (report.users.isNotEmpty) ...[
+          const Text('النتائج حسب المستخدم', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+          ...report.users.map((u) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(child: Text(u.name ?? u.email ?? '', style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                    Text('${u.correct}/${u.totalQuestions}', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    const SizedBox(width: 8),
+                    Text(_percentLabel(u.percent), style: const TextStyle(fontSize: 12)),
+                  ],
+                ),
+              )),
+        ] else
+          const Text('لم يجب أحد على الأسئلة بعد.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+      ],
+    );
+  }
+
   Widget _buildCommentsToggle() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -657,28 +1113,29 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                     },
                   ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Row(
-              children: [
-                Checkbox(value: _anchorCommentToTime, onChanged: (v) => setState(() => _anchorCommentToTime = v ?? false)),
-                const Text('ربط بالوقت الحالي', style: TextStyle(fontSize: 12)),
-                Expanded(
-                  child: TextField(
-                    controller: _commentController,
-                    decoration: const InputDecoration(hintText: 'أضف تعليقاً...'),
-                    onSubmitted: (_) => _postComment(),
+          if (_canComment)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                children: [
+                  Checkbox(value: _anchorCommentToTime, onChanged: (v) => setState(() => _anchorCommentToTime = v ?? false)),
+                  const Text('ربط بالوقت الحالي', style: TextStyle(fontSize: 12)),
+                  Expanded(
+                    child: TextField(
+                      controller: _commentController,
+                      decoration: const InputDecoration(hintText: 'أضف تعليقاً...'),
+                      onSubmitted: (_) => _postComment(),
+                    ),
                   ),
-                ),
-                IconButton(
-                  icon: _postingComment
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.send_rounded),
-                  onPressed: _postingComment ? null : _postComment,
-                ),
-              ],
+                  IconButton(
+                    icon: _postingComment
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.send_rounded),
+                    onPressed: _postingComment ? null : _postComment,
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

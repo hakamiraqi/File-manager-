@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 import '../../../core/network/api_client.dart';
+import '../models/quiz_report.dart';
 import '../models/subtitle_cue.dart';
 import '../models/subtitle_track.dart';
 import '../models/video_comment.dart';
@@ -47,6 +50,65 @@ class MediaRepository {
   Future<QuizAnswerResult> answerQuestion(int questionId, int choiceId) async {
     final response = await _dio.post('/questions/$questionId/answer', data: {'choice_id': choiceId});
     return QuizAnswerResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  Future<void> createQuestion(
+    int fileId, {
+    required int timestampSeconds,
+    required String question,
+    required List<String> choices,
+    required int correctIndex,
+  }) {
+    return _dio.post('/files/$fileId/questions', data: {
+      'timestamp_seconds': timestampSeconds,
+      'question': question,
+      'choices': choices,
+      'correct_index': correctIndex,
+    });
+  }
+
+  Future<void> updateQuestion(
+    int questionId, {
+    required int timestampSeconds,
+    required String question,
+    required List<String> choices,
+    required int correctIndex,
+  }) {
+    return _dio.put('/questions/$questionId', data: {
+      'timestamp_seconds': timestampSeconds,
+      'question': question,
+      'choices': choices,
+      'correct_index': correctIndex,
+    });
+  }
+
+  Future<void> deleteQuestion(int questionId) => _dio.delete('/questions/$questionId');
+
+  /// Uploads a JSON/CSV file to bulk-create questions — invalid rows are
+  /// skipped server-side and reported back in [QuizImportResult.errors]
+  /// rather than failing the whole batch.
+  Future<QuizImportResult> importQuestions(int fileId, File file) async {
+    final formData = FormData.fromMap({
+      'file': await MultipartFile.fromFile(file.path, filename: file.uri.pathSegments.last),
+    });
+    final response = await _dio.post('/files/$fileId/questions/import', data: formData);
+    return QuizImportResult.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// Raw CSV text of the import template — callers write it to a local
+  /// file and open it (see MediaPlayerScreen) since there is no browser
+  /// download prompt on mobile.
+  Future<String> importTemplateCsv() async {
+    final response = await _dio.get<String>(
+      '/questions/import/template',
+      options: Options(responseType: ResponseType.plain),
+    );
+    return response.data ?? '';
+  }
+
+  Future<QuizReport> report(int fileId) async {
+    final response = await _dio.get('/files/$fileId/questions/report');
+    return QuizReport.fromJson(response.data as Map<String, dynamic>);
   }
 
   Future<List<VideoComment>> commentsFor(int fileId) async {

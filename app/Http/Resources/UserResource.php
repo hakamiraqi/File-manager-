@@ -25,6 +25,15 @@ class UserResource extends JsonResource
             'storage_quota_bytes' => $this->quotaBytes(),
             'storage_usage_percent' => $this->storageUsagePercent(),
             'created_at' => $this->created_at,
+            // Per-role capabilities (RolePermission), not admin-only — the
+            // same values HandleInertiaRequests exposes to the web app as
+            // permissions.manage_questions / permissions.comment, so the
+            // mobile app can hide the question-authoring UI and comment
+            // box for a role that lacks them, exactly like the web player.
+            'permissions' => [
+                'manage_questions' => $this->canPerform('manage_questions'),
+                'comment' => $this->canPerform('comment'),
+            ],
             'is_admin' => $this->isAdmin(),
             'admin' => $this->isAdmin() ? [
                 'appearance' => $this->hasAdminCapability('can_manage_appearance'),
