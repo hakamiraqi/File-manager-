@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -6,7 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import 'package:video_player/video_player.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 import '../../../core/i18n/app_strings.dart';
 import '../../../core/models/file_item.dart';
@@ -66,6 +69,25 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
   bool _autoplayNext = true;
   bool _isFullscreen = false;
 
+  // Manual rotation for videos uploaded in the wrong orientation (portrait
+  // recordings that play sideways) — 0..3, each step is a 90° clockwise turn.
+  // Resets per file (see _loadFile) rather than persisting, since it's a
+  // one-off viewing fix, not a property of the file itself.
+  int _rotationQuarterTurns = 0;
+
+  // YouTube-style gesture controls: vertical drag on the left/right half of
+  // the video adjusts brightness/volume, double-tap seeks ±10s. Overlay
+  // values are 0..1 (brightness/volume) shown briefly while dragging/after a
+  // seek, then auto-hidden — mirrors how YouTube's own player gives instant
+  // feedback without permanent on-screen sliders cluttering the video.
+  double _brightness = 0.5;
+  double _volume = 0.5;
+  double? _dragStartValue;
+  bool _showBrightnessOverlay = false;
+  bool _showVolumeOverlay = false;
+  String? _seekFeedback;
+  Timer? _overlayHideTimer;
+
   List<SubtitleTrack> _subtitleTracks = [];
   SubtitleTrack? _selectedSubtitleTrack;
   List<SubtitleCue> _cues = [];
@@ -117,11 +139,27 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
   void initState() {
     super.initState();
     _loadFileAt(_currentIndex);
+    _initGestureControls();
+  }
+
+  Future<void> _initGestureControls() async {
+    try {
+      _brightness = await ScreenBrightness().current;
+    } catch (_) {
+      // Some platforms (desktop, some emulators) don't expose brightness —
+      // keep the 0.5 default rather than blocking playback on this.
+    }
+    VolumeController().showSystemUI = false;
+    VolumeController().getVolume().then((v) {
+      if (mounted) setState(() => _volume = v);
+    });
   }
 
   @override
   void dispose() {
     _restoreSystemChrome();
+    _overlayHideTimer?.cancel();
+    ScreenBrightness().resetScreenBrightness().catchError((_) {});
     _controller?.removeListener(_onControllerUpdate);
     _controller?.dispose();
     _commentController.dispose();
@@ -138,6 +176,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
 
     setState(() {
       _currentIndex = index;
+      _rotationQuarterTurns = 0;
       _selectedQualityHeight = file.videoQualities.isNotEmpty ? file.videoQualities.first.height : null;
       _selectedSubtitleTrack = null;
       _subtitleTracks = [];
@@ -665,6 +704,71 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
+  void _rotateVideo() {
+    setState(() => _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4);
+  }
+
+  void _scheduleOverlayHide() {
+    _overlayHideTimer?.cancel();
+    _overlayHideTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) return;
+      setState(() {
+        _showBrightnessOverlay = false;
+        _showVolumeOverlay = false;
+        _seekFeedback = null;
+      });
+    });
+  }
+
+  void _onBrightnessDragStart(DragStartDetails details) {
+    _dragStartValue = _brightness;
+  }
+
+  void _onBrightnessDragUpdate(DragUpdateDetails details, double areaHeight) {
+    final start = _dragStartValue ?? _brightness;
+    final delta = -details.delta.dy / areaHeight * 2.5;
+    final next = (start + delta).clamp(0.0, 1.0);
+    _dragStartValue = next;
+    setState(() {
+      _brightness = next;
+      _showBrightnessOverlay = true;
+    });
+    ScreenBrightness().setScreenBrightness(next).catchError((_) {});
+  }
+
+  void _onVolumeDragStart(DragStartDetails details) {
+    _dragStartValue = _volume;
+  }
+
+  void _onVolumeDragUpdate(DragUpdateDetails details, double areaHeight) {
+    final start = _dragStartValue ?? _volume;
+    final delta = -details.delta.dy / areaHeight * 2.5;
+    final next = (start + delta).clamp(0.0, 1.0);
+    _dragStartValue = next;
+    setState(() {
+      _volume = next;
+      _showVolumeOverlay = true;
+    });
+    VolumeController().setVolume(next);
+  }
+
+  void _onGestureDragEnd(DragEndDetails details) {
+    _dragStartValue = null;
+    _scheduleOverlayHide();
+  }
+
+  void _seekRelative(int seconds) {
+    final controller = _controller;
+    if (controller == null) return;
+    final duration = controller.value.duration;
+    var target = controller.value.position + Duration(seconds: seconds);
+    if (target < Duration.zero) target = Duration.zero;
+    if (target > duration) target = duration;
+    controller.seekTo(target);
+    setState(() => _seekFeedback = seconds > 0 ? '+$seconds${context.tr('player.seconds_short')}' : '$seconds${context.tr('player.seconds_short')}');
+    _scheduleOverlayHide();
+  }
+
   String _formatDuration(Duration d) {
     final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -728,31 +832,111 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
       return const Icon(Icons.music_note_rounded, size: 96, color: Colors.grey);
     }
 
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        GestureDetector(
-          onTap: _toggleFullscreen,
-          child: AspectRatio(
-            aspectRatio: _controller!.value.aspectRatio == 0 ? 16 / 9 : _controller!.value.aspectRatio,
-            child: VideoPlayer(_controller!),
-          ),
-        ),
-        if (_currentSubtitleText != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(6)),
-              child: Text(
-                _currentSubtitleText!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white, fontSize: 15),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final areaHeight = constraints.maxHeight;
+        return Stack(
+          alignment: Alignment.bottomCenter,
+          children: [
+            RotatedBox(
+              quarterTurns: _rotationQuarterTurns,
+              child: AspectRatio(
+                aspectRatio: _controller!.value.aspectRatio == 0 ? 16 / 9 : _controller!.value.aspectRatio,
+                child: VideoPlayer(_controller!),
               ),
             ),
-          ),
-        if (_activeQuestion != null) Positioned.fill(child: _buildQuestionOverlay(_activeQuestion!)),
-      ],
+            // YouTube-style split touch zones: left half scrubs brightness,
+            // right half scrubs volume (vertical drag), either half
+            // double-tapped seeks ±10s, single tap toggles fullscreen.
+            // Forced LTR: these zones are defined by physical screen side,
+            // not reading direction — in the app's Arabic (RTL) locale a
+            // plain Row would otherwise mirror them, swapping which side
+            // controls what (caught 2026-09-11 testing on-device: left
+            // swipe moved volume, not brightness).
+            Positioned.fill(
+              child: Directionality(
+                textDirection: TextDirection.ltr,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: _toggleFullscreen,
+                        onDoubleTap: () => _seekRelative(-10),
+                        onVerticalDragStart: _onBrightnessDragStart,
+                        onVerticalDragUpdate: (d) => _onBrightnessDragUpdate(d, areaHeight),
+                        onVerticalDragEnd: _onGestureDragEnd,
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.translucent,
+                        onTap: _toggleFullscreen,
+                        onDoubleTap: () => _seekRelative(10),
+                        onVerticalDragStart: _onVolumeDragStart,
+                        onVerticalDragUpdate: (d) => _onVolumeDragUpdate(d, areaHeight),
+                        onVerticalDragEnd: _onGestureDragEnd,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_showBrightnessOverlay) _buildGestureOverlay(Icons.brightness_6_rounded, _brightness),
+            if (_showVolumeOverlay) _buildGestureOverlay(_volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded, _volume),
+            if (_seekFeedback != null) _buildSeekFeedback(_seekFeedback!),
+            if (_currentSubtitleText != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(6)),
+                  child: Text(
+                    _currentSubtitleText!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 15),
+                  ),
+                ),
+              ),
+            if (_activeQuestion != null) Positioned.fill(child: _buildQuestionOverlay(_activeQuestion!)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildGestureOverlay(IconData icon, double value) {
+    return Align(
+      alignment: Alignment.center,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: Colors.white, size: 28),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: 80,
+              child: LinearProgressIndicator(value: value, backgroundColor: Colors.white24, color: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSeekFeedback(String text) {
+    return Align(
+      alignment: Alignment.center,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w600)),
+        ),
+      ),
     );
   }
 
@@ -1234,6 +1418,12 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 icon: Icon(_isFullscreen ? Icons.fullscreen_exit_rounded : Icons.fullscreen_rounded),
                 tooltip: context.tr('player.fullscreen'),
                 onPressed: _toggleFullscreen,
+              ),
+            if (_currentFile.isVideo)
+              IconButton(
+                icon: const Icon(Icons.rotate_90_degrees_cw_rounded),
+                tooltip: context.tr('player.rotate'),
+                onPressed: _rotateVideo,
               ),
             if (_hasPlaylist)
               IconButton(

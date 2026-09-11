@@ -307,6 +307,8 @@ class AppStrings {
     'player.quality': {'ar': 'الجودة', 'en': 'Quality'},
     'player.no_subtitles': {'ar': 'بلا ترجمة', 'en': 'No subtitles'},
     'player.fullscreen': {'ar': 'ملء الشاشة', 'en': 'Fullscreen'},
+    'player.rotate': {'ar': 'تدوير المقطع', 'en': 'Rotate video'},
+    'player.seconds_short': {'ar': 'ث', 'en': 's'},
 
     'action.confirm': {'ar': 'تأكيد', 'en': 'Confirm'},
     'password.current': {'ar': 'كلمة المرور الحالية', 'en': 'Current password'},
