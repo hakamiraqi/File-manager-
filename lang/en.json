@@ -300,6 +300,7 @@
     "preview.your_score": "Your score: :correct of :total",
     "preview.playlist_title": "Playlist",
     "preview.no_preview": "No preview is available for this file type. Please download it to view it.",
+    "preview.video_unplayable": "This video could not be played in your browser, possibly due to an unsupported format.",
     "preview.extracted_text": "Text extracted from the document",
     "preview.no_extracted_text": "No extracted text for this file.",
     "preview.prev": "Previous",

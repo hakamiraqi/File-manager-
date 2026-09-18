@@ -300,6 +300,7 @@
     "preview.your_score": "درجتك: :correct من :total",
     "preview.playlist_title": "قائمة التشغيل",
     "preview.no_preview": "لا تتوفر معاينة لهذا النوع من الملفات. الرجاء تنزيله للاطلاع عليه.",
+    "preview.video_unplayable": "تعذّر تشغيل هذا الفيديو في متصفحك، ربما بسبب صيغة غير مدعومة.",
     "preview.extracted_text": "النص المستخرج من المستند",
     "preview.no_extracted_text": "لا يوجد نص مستخرج لهذا الملف.",
     "preview.prev": "السابق",

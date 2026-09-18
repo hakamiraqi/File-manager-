@@ -393,15 +393,24 @@ function seekTo(seconds) {
 // ---- Video player (Plyr): speed, volume, fullscreen, PiP, captions, quality ----
 const videoEl = ref(null);
 let player = null;
+const videoLoadError = ref(false);
 
+/**
+ * Transcoded renditions (VideoTranscoder) are always re-encoded to H.264/AAC
+ * in an mp4 container, whatever the original container was — so they must be
+ * declared as "video/mp4", not the original file's mime type. Tagging them
+ * with e.g. "video/quicktime" (a common phone-upload mime type that browsers
+ * other than Safari can't decode) makes the browser skip the <source>
+ * outright before ever requesting it, even though the transcoded bytes are
+ * perfectly playable — the video area then just stays black while Plyr's
+ * controls render fine, since they don't depend on the source loading.
+ * The original file is always appended last as a final fallback source.
+ */
 function videoSources(file) {
     const qualities = file.video_qualities || [];
-
-    if (qualities.length > 1) {
-        return qualities.map((q) => ({ src: q.src, type: file.mime_type, size: q.height }));
-    }
-
-    return [{ src: route('files.preview', file.id), type: file.mime_type }];
+    const sources = qualities.map((q) => ({ src: q.src, type: 'video/mp4', size: q.height }));
+    sources.push({ src: route('files.preview', file.id), type: file.mime_type });
+    return sources;
 }
 
 function destroyPlyr() {
@@ -413,6 +422,7 @@ function destroyPlyr() {
 
 function mountPlyr() {
     destroyPlyr();
+    videoLoadError.value = false;
     nextTick(() => {
         if (!videoEl.value || !props.file || kind(props.file) !== 'video') return;
 
@@ -431,6 +441,13 @@ function mountPlyr() {
 
         player.on('ended', () => {
             if (autoplayNext.value && hasNext.value) playNext();
+        });
+
+        // A genuinely unplayable source (e.g. a codec no installed browser
+        // can decode) fires this instead of throwing — without it the video
+        // area just stays black with no indication anything went wrong.
+        player.on('error', () => {
+            videoLoadError.value = true;
         });
 
         player.on('timeupdate', enforceQuestionGate);
@@ -620,8 +637,16 @@ onBeforeUnmount(() => {
                                 />
                             </video>
 
+                            <!-- Shown when no source the browser has could be decoded, instead of leaving a silent black rectangle -->
+                            <div v-if="videoLoadError" class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/85 p-4 text-center">
+                                <p class="text-sm text-gray-200">{{ t('preview.video_unplayable', 'تعذّر تشغيل هذا الفيديو في متصفحك، ربما بسبب صيغة غير مدعومة.') }}</p>
+                                <a :href="route('files.download', file.id)" class="rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]">
+                                    {{ t('action.download', 'تنزيل') }}
+                                </a>
+                            </div>
+
                             <!-- Interactive question overlay: blocks the video until answered -->
-                            <div v-if="activeQuestion" class="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
+                            <div v-else-if="activeQuestion" class="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
                                 <div class="w-full max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-gray-800">
                                     <p class="mb-3 flex items-center gap-1.5 text-xs font-medium text-[var(--accent-600)]">
                                         <QuestionMarkCircleIcon class="h-4 w-4" /> {{ t('preview.interactive_question_label', 'سؤال تفاعلي') }}
