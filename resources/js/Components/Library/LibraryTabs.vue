@@ -10,8 +10,13 @@ const canManage = computed(() => page.props.permissions?.manage_library);
 // Each later library step adds its tab here.
 const tabs = computed(() => [
     { label: t('library.tab.catalog', 'الفهرس'), href: route('library.index'), active: route().current('library.index') || route().current('library.books.show'), show: true },
+    { label: t('library.tab.my_loans', 'استعاراتي'), name: 'library.my-loans', active: route().current('library.my-loans'), show: true },
+    { label: t('library.tab.counter', 'الإعارة والاسترجاع'), name: 'library.manage.counter', active: route().current('library.manage.counter'), show: canManage.value },
+    { label: t('library.tab.loans', 'الاستعارات'), name: 'library.manage.loans', active: route().current('library.manage.loans'), show: canManage.value },
+    { label: t('library.tab.members', 'القرّاء'), name: 'library.manage.members', active: route().current('library.manage.members'), show: canManage.value },
     { label: t('library.tab.books', 'إدارة الكتب'), name: 'library.manage.books', active: route().current('library.manage.books'), show: canManage.value },
     { label: t('library.tab.sections', 'الأقسام'), name: 'library.manage.sections', active: route().current('library.manage.sections'), show: canManage.value },
+    { label: t('library.tab.settings', 'قواعد الإعارة'), name: 'library.manage.settings', active: route().current('library.manage.settings'), show: canManage.value },
 ].filter((tab) => tab.show).map((tab) => ({ ...tab, href: tab.href ?? route(tab.name) })));
 </script>
 

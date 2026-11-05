@@ -128,6 +128,11 @@ class User extends Authenticatable
             ->where('user_id', $this->id)->pluck('folder_id')->map(fn ($id) => (int) $id)->all();
     }
 
+    public function libraryMember(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Library\LibraryMember::class);
+    }
+
     public function files(): HasMany
     {
         return $this->hasMany(File::class);
