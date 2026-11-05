@@ -45,6 +45,10 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
         Route::get('/translations', [TranslationController::class, 'index'])->name('translations.index');
         Route::post('/translations', [TranslationController::class, 'update'])->name('translations.update');
         Route::delete('/translations', [TranslationController::class, 'reset'])->name('translations.reset');
+        Route::post('/translations/bulk', [TranslationController::class, 'bulk'])->name('translations.bulk');
+        Route::post('/languages', [TranslationController::class, 'storeLanguage'])->name('languages.store');
+        Route::patch('/languages/{language}', [TranslationController::class, 'updateLanguage'])->name('languages.update');
+        Route::delete('/languages/{language}', [TranslationController::class, 'destroyLanguage'])->name('languages.destroy');
     });
 
     Route::middleware('can:view-statistics')->group(function () {

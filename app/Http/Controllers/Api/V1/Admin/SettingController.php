@@ -40,7 +40,7 @@ class SettingController extends Controller
         return response()->json([
             'settings' => array_merge(self::DEFAULTS, Setting::all_settings()),
             'skins' => config('filenest.skins'),
-            'locales' => config('filenest.supported_locales'),
+            'locales' => \App\Support\Locales::active(),
             'roles' => \App\Models\User::ROLES,
         ]);
     }
@@ -51,7 +51,7 @@ class SettingController extends Controller
             'site_name' => ['required', 'string', 'max:100'],
             'registration_enabled' => ['boolean'],
             'registration_role' => ['required', 'in:user,editor,contributor'],
-            'default_locale' => ['required', 'in:ar,en'],
+            'default_locale' => ['required', \Illuminate\Validation\Rule::in(array_keys(\App\Support\Locales::active()))],
             'active_skin' => ['required', 'string', 'in:'.implode(',', config('filenest.skins')).',custom'],
             'custom_css' => ['nullable', 'string', 'max:20000'],
             'default_quota_mb' => ['required', 'integer', 'min:1'],

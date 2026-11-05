@@ -128,7 +128,7 @@ class ProfileController extends Controller
     public function updatePreferences(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'locale' => ['required', 'in:ar,en'],
+            'locale' => ['required', 'string', \Illuminate\Validation\Rule::in(array_keys(\App\Support\Locales::active()))],
         ]);
 
         $request->user()->update($data);

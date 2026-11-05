@@ -80,6 +80,7 @@ class HandleInertiaRequests extends Middleware
                 'activeSkin' => $settings['active_skin'] ?? 'indigo',
                 'customCss' => $settings['custom_css'] ?? '',
                 'locale' => $locale,
+                'locales' => \App\Support\Locales::active(),
                 'guestAccessEnabled' => (bool) ($settings['guest_access_enabled'] ?? false),
                 'remoteUploadEnabled' => (bool) ($settings['remote_upload_enabled'] ?? false),
                 // Word/PowerPoint/Excel previews need LibreOffice on the server (the VPS image has it).

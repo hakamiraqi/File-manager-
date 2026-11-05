@@ -5,7 +5,9 @@ import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { useTrans } from '@/Composables/useTrans';
 
 const { t } = useTrans();
-const user = usePage().props.auth.user;
+const page = usePage();
+const user = page.props.auth.user;
+const locales = page.props.appSettings?.locales ?? { ar: { label: 'العربية' }, en: { label: 'English' } };
 
 const form = useForm({
     locale: user.locale ?? 'ar',
@@ -27,8 +29,7 @@ function submit() {
             <div>
                 <InputLabel :value="t('preferences.language', 'اللغة')" />
                 <select v-model="form.locale" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                    <option value="ar">العربية</option>
-                    <option value="en">English</option>
+                    <option v-for="(meta, code) in locales" :key="code" :value="code">{{ meta.label }}</option>
                 </select>
             </div>
 
