@@ -128,6 +128,8 @@ class CounterController extends Controller
 
     protected function heldFor(BookCopy $copy): ?array
     {
-        return null;
+        $hold = \App\Models\Library\Hold::where('copy_id', $copy->id)->where('status', \App\Models\Library\Hold::READY)->with('member:id,name,card_number')->first();
+
+        return $hold ? ['name' => $hold->member->name, 'card_number' => $hold->member->card_number] : null;
     }
 }

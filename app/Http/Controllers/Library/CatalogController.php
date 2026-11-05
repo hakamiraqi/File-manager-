@@ -55,6 +55,9 @@ class CatalogController extends Controller
                 'status' => $c->status,
                 'rfid_tag' => $canManage ? $c->rfid_tag : null,
             ]),
+            'myHold' => $user ? \App\Models\Library\Hold::open()->where('book_id', $book->id)
+                ->whereHas('member', fn ($m) => $m->where('user_id', $user->id))->first(['id', 'status', 'expires_at']) : null,
+            'queueLength' => \App\Models\Library\Hold::where('book_id', $book->id)->where('status', 'waiting')->count(),
             // The digital copy, when it is a file this reader may open.
             'digitalFile' => $book->file && $user && $user->can('view', $book->file)
                 ? ['id' => $book->file->id, 'name' => $book->file->name] : null,

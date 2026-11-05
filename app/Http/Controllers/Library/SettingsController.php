@@ -15,7 +15,33 @@ class SettingsController extends Controller
 {
     public function index(LibraryRules $rules): Response
     {
-        return Inertia::render('Library/Manage/Settings', ['rules' => $rules->all()]);
+        return Inertia::render('Library/Manage/Settings', [
+            'rules' => $rules->all(),
+            'holidays' => \App\Models\Library\Holiday::where('date', '>=', now()->subMonths(1)->toDateString())->orderBy('date')->get(['id', 'date', 'name']),
+        ]);
+    }
+
+    public function addHoliday(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['nullable', 'date', 'after_or_equal:from'],
+            'name' => ['nullable', 'string', 'max:255'],
+        ]);
+        $day = \Illuminate\Support\Carbon::parse($data['from']);
+        $end = \Illuminate\Support\Carbon::parse($data['to'] ?? $data['from']);
+        for ($i = 0; $day->lte($end) && $i < 120; $i++, $day = $day->addDay()) {
+            \App\Models\Library\Holiday::updateOrCreate(['date' => $day->toDateString()], ['name' => $data['name'] ?? null]);
+        }
+
+        return back()->with('success', 'تمت إضافة العطلة.');
+    }
+
+    public function removeHoliday(\App\Models\Library\Holiday $holiday): RedirectResponse
+    {
+        $holiday->delete();
+
+        return back()->with('success', 'تم حذف العطلة.');
     }
 
     public function update(Request $request): RedirectResponse

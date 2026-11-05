@@ -8,7 +8,8 @@ import { useTrans } from '@/Composables/useTrans';
 import { MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ loans: Object, filters: Object, counts: Object });
+const props = defineProps({ loans: Object, filters: Object, counts: Object, holds: Array });
+const cancelHold = (h) => router.delete(route('library.holds.destroy', h.id), { preserveScroll: true });
 const q = ref(props.filters.q ?? '');
 const money = (n) => `${Number(n || 0).toLocaleString('en-US')} ${t('library.currency', 'د.ع')}`;
 const go = (filter) => router.get(route('library.manage.loans'), { filter, q: q.value || undefined }, { preserveState: true });
@@ -17,6 +18,7 @@ const tabs = [
     ['active', () => t('library.loans.active', 'الحالية'), 'active'],
     ['overdue', () => t('library.loans.overdue', 'المتأخرة'), 'overdue'],
     ['fines', () => t('library.loans.fines', 'غرامات غير مدفوعة'), 'fines'],
+    ['holds', () => t('library.loans.holds', 'الحجوزات'), 'holds'],
     ['returned', () => t('library.loans.returned', 'المُرجعة'), null],
 ];
 </script>
@@ -39,7 +41,17 @@ const tabs = [
                 </div>
             </div>
 
-            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+            <div v-if="filters.filter === 'holds'" class="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white text-sm dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800">
+                <p v-if="!holds.length" class="p-6 text-center text-gray-400">{{ t('library.no_holds', 'لا توجد حجوزات.') }}</p>
+                <div v-for="h in holds" :key="h.id" class="flex flex-wrap items-center gap-3 px-3 py-2.5">
+                    <span class="min-w-0 flex-1"><span class="font-medium" dir="auto">{{ h.book?.title }}</span> — {{ h.member?.name }} <span class="text-xs text-gray-400" dir="ltr">{{ h.member?.card_number }}</span></span>
+                    <span v-if="h.status === 'ready'" class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">{{ t('library.hold_shelf', 'جاهز: النسخة :code حتى :date', { code: h.copy?.barcode, date: h.expires_at?.slice(0, 16).replace('T', ' ') }) }}</span>
+                    <span v-else class="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{{ t('library.hold_waiting_short', 'بالانتظار') }}</span>
+                    <button @click="cancelHold(h)" class="text-xs text-red-600 hover:underline">{{ t('library.cancel_hold', 'إلغاء الحجز') }}</button>
+                </div>
+            </div>
+
+            <div v-else class="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                 <table class="w-full text-sm">
                     <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-gray-900/40">
                         <tr>
@@ -78,7 +90,7 @@ const tabs = [
                     </tbody>
                 </table>
             </div>
-            <Pagination :links="loans.links" />
+            <Pagination v-if="filters.filter !== 'holds'" :links="loans.links" />
         </div>
     </AppLayout>
 </template>

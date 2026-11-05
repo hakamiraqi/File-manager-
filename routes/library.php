@@ -3,6 +3,7 @@
 use App\Http\Controllers\Library\BookController;
 use App\Http\Controllers\Library\CatalogController;
 use App\Http\Controllers\Library\CounterController;
+use App\Http\Controllers\Library\HoldController;
 use App\Http\Controllers\Library\LoanController;
 use App\Http\Controllers\Library\MemberController;
 use App\Http\Controllers\Library\SettingsController;
@@ -19,6 +20,9 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
     Route::get('/books/{book}', [CatalogController::class, 'show'])->name('books.show');
     Route::get('/my-loans', [LoanController::class, 'mine'])->name('my-loans');
     Route::post('/loans/{loan}/renew', [LoanController::class, 'renew'])->name('loans.renew');
+    Route::post('/books/{book}/hold', [HoldController::class, 'store'])->name('holds.store');
+    Route::delete('/holds/{hold}', [HoldController::class, 'destroy'])->name('holds.destroy');
+    Route::post('/notices/read', [LoanController::class, 'readNotices'])->name('notices.read');
 
     Route::middleware('can:manage-library')->prefix('manage')->name('manage.')->group(function () {
         Route::get('/', [BookController::class, 'index'])->name('books');
@@ -54,6 +58,8 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
 
         Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
         Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
+        Route::post('/holidays', [SettingsController::class, 'addHoliday'])->name('holidays.store');
+        Route::delete('/holidays/{holiday}', [SettingsController::class, 'removeHoliday'])->name('holidays.destroy');
 
         Route::get('/import/template', [ImportController::class, 'template'])->name('import.template');
         Route::post('/import', [ImportController::class, 'store'])->name('import');

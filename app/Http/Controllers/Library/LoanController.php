@@ -37,12 +37,19 @@ class LoanController extends Controller
 
         $loans->getCollection()->each(fn (Loan $l) => $l->setAttribute('fine_now', $l->currentFine()));
 
+        $holds = $filter === 'holds'
+            ? \App\Models\Library\Hold::open()->with(['book:id,title', 'member:id,name,card_number', 'copy:id,barcode'])
+                ->orderByRaw("case when status = 'ready' then 0 else 1 end")->orderBy('id')->limit(200)->get()
+            : [];
+
         return Inertia::render('Library/Manage/Loans', [
             'loans' => $loans,
+            'holds' => $holds,
             'filters' => ['filter' => $filter, 'q' => $q],
             'counts' => [
                 'active' => Loan::active()->count(),
                 'overdue' => Loan::overdue()->count(),
+                'holds' => \App\Models\Library\Hold::open()->count(),
                 'fines' => Loan::whereNotNull('returned_at')->where('fine_amount', '>', 0)->whereNull('fine_paid_at')->where('fine_waived', false)->count(),
             ],
         ]);
@@ -83,10 +90,22 @@ class LoanController extends Controller
 
         return Inertia::render('Library/MyLoans', [
             'member' => $member?->only(['id', 'name', 'card_number', 'type']),
+            'holds' => $member ? \App\Models\Library\Hold::open()->where('member_id', $member->id)->with('book:id,title,cover_path,updated_at')->get() : [],
+            'notices' => $member ? \App\Models\Library\Notice::where('member_id', $member->id)->latest()->limit(20)->get() : [],
             'active' => $loans->whereNull('returned_at')->sortBy('due_at')->values(),
             'history' => $loans->whereNotNull('returned_at')->values(),
             'finesDue' => $member?->finesDue() ?? 0,
         ]);
+    }
+
+    public function readNotices(Request $request): RedirectResponse
+    {
+        $member = LibraryMember::where('user_id', $request->user()->id)->first();
+        if ($member) {
+            \App\Models\Library\Notice::where('member_id', $member->id)->whereNull('read_at')->update(['read_at' => now()]);
+        }
+
+        return back();
     }
 
     /** Staff renew any loan; a reader only their own. */

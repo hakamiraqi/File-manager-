@@ -62,6 +62,8 @@ class HandleInertiaRequests extends Middleware
                 'comment' => $user->canPerform('comment'),
                 'is_admin' => $user->isAdmin(),
                 'manage_library' => $user->canManageLibrary(),
+                'library_unread' => \Illuminate\Support\Facades\Schema::hasTable('library_notices')
+                    ? \App\Models\Library\Notice::whereNull('read_at')->whereHas('member', fn ($m) => $m->where('user_id', $user->id))->count() : 0,
                 'admin' => $user->isAdmin() ? [
                     'appearance' => $user->hasAdminCapability('can_manage_appearance'),
                     'users' => $user->hasAdminCapability('can_manage_users'),

@@ -1,11 +1,14 @@
 <script setup>
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import { useTrans } from '@/Composables/useTrans';
 
 const { t } = useTrans();
-const props = defineProps({ rules: Object });
+const props = defineProps({ rules: Object, holidays: Array });
+const holiday = useForm({ from: '', to: '', name: '' });
+const addHoliday = () => holiday.post(route('library.manage.holidays.store'), { preserveScroll: true, onSuccess: () => holiday.reset() });
+const removeHoliday = (h) => router.delete(route('library.manage.holidays.destroy', h.id), { preserveScroll: true });
 const form = useForm(JSON.parse(JSON.stringify(props.rules)));
 const typeLabel = (type) => ({ student: t('library.type.student', 'طالب'), teacher: t('library.type.teacher', 'تدريسي'), staff: t('library.type.staff', 'موظف') })[type] ?? type;
 const rows = [
@@ -50,5 +53,22 @@ const save = () => form.post(route('library.manage.settings.update'), { preserve
             <p class="text-xs text-gray-500">{{ t('library.rule.friday', 'أيام الجمعة لا تُحسب في الغرامة ولا يقع فيها موعد الإرجاع.') }}</p>
             <button :disabled="form.processing" class="rounded-lg bg-[var(--accent-600)] px-5 py-2 text-sm font-medium text-white">{{ t('action.save', 'حفظ') }}</button>
         </form>
+
+        <section class="space-y-3 px-4 pb-8 sm:px-6">
+            <h3 class="font-semibold">{{ t('library.holidays', 'العطل الرسمية') }}</h3>
+            <p class="text-xs text-gray-500">{{ t('library.holidays_hint', 'لا يقع موعد الإرجاع في العطلة ولا تُحسب أيامها في الغرامة.') }}</p>
+            <form @submit.prevent="addHoliday" class="flex flex-wrap items-end gap-2 text-sm">
+                <label>{{ t('library.from', 'من') }}<input v-model="holiday.from" type="date" required class="mt-1 block rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                <label>{{ t('library.to', 'إلى (اختياري)') }}<input v-model="holiday.to" type="date" class="mt-1 block rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                <label class="flex-1">{{ t('library.holiday_name', 'المناسبة') }}<input v-model="holiday.name" class="mt-1 block w-full rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                <button :disabled="holiday.processing" class="rounded-md border border-gray-300 px-3 py-1.5 dark:border-gray-600">{{ t('action.add', 'إضافة') }}</button>
+            </form>
+            <div class="flex flex-wrap gap-2">
+                <span v-for="h in holidays" :key="h.id" class="inline-flex items-center gap-1 rounded-full bg-gray-100 py-0.5 pe-1 ps-3 text-sm dark:bg-gray-700">
+                    <span dir="ltr">{{ h.date }}</span><template v-if="h.name"> · {{ h.name }}</template>
+                    <button @click="removeHoliday(h)" class="rounded-full px-1.5 hover:bg-gray-200 dark:hover:bg-gray-600">×</button>
+                </span>
+            </div>
+        </section>
     </AppLayout>
 </template>

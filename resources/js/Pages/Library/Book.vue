@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
@@ -10,7 +10,10 @@ import { DocumentTextIcon, PencilSquareIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const { statusLabel, statusClass } = useLibrary();
-const props = defineProps({ book: Object, sectionPath: String, copies: Array, digitalFile: Object });
+const props = defineProps({ book: Object, sectionPath: String, copies: Array, digitalFile: Object, myHold: Object, queueLength: Number });
+const errors = computed(() => usePage().props.errors);
+const placeHold = () => router.post(route('library.holds.store', props.book.id), {}, { preserveScroll: true });
+const cancelHold = () => router.delete(route('library.holds.destroy', props.myHold.id), { preserveScroll: true });
 const canManage = computed(() => usePage().props.permissions?.manage_library);
 
 const details = computed(() => [
@@ -53,6 +56,21 @@ const details = computed(() => [
                         {{ t('library.reference_only', 'للقراءة داخل المكتبة') }}
                     </p>
                     <p v-if="book.description" class="whitespace-pre-line text-sm leading-6 text-gray-700 dark:text-gray-300" dir="auto">{{ book.description }}</p>
+                    <p v-if="errors.code" class="rounded-lg bg-red-50 p-2 text-sm text-red-700">{{ errors.code }}</p>
+                    <div v-if="!book.reference_only && copies.length" class="rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-900/40">
+                        <template v-if="myHold">
+                            <p v-if="myHold.status === 'ready'" class="font-medium text-emerald-700">{{ t('library.hold_ready', 'كتابك المحجوز جاهز للاستلام حتى :date', { date: myHold.expires_at?.slice(0, 16).replace('T', ' ') }) }}</p>
+                            <p v-else>{{ t('library.hold_waiting', 'أنت في قائمة الانتظار لهذا الكتاب.') }}</p>
+                            <button @click="cancelHold" class="mt-2 rounded-md border border-gray-300 px-3 py-1 text-sm dark:border-gray-600">{{ t('library.cancel_hold', 'إلغاء الحجز') }}</button>
+                        </template>
+                        <template v-else>
+                            <p class="text-gray-600 dark:text-gray-300">
+                                {{ copies.some((c) => c.status === 'available') ? t('library.hold_now', 'متوفر الآن: احجزه ليُحفظ لك في المكتبة.') : t('library.hold_queue', 'كل النسخ مُعارة: احجزه لتُبلَّغ عند عودة نسخة.') }}
+                                <template v-if="queueLength"> ({{ t('library.queue_n', 'بالانتظار :n', { n: queueLength }) }})</template>
+                            </p>
+                            <button @click="placeHold" class="mt-2 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white">{{ t('library.place_hold', 'احجز الكتاب') }}</button>
+                        </template>
+                    </div>
                     <div class="flex flex-wrap gap-2 pt-1">
                         <a v-if="digitalFile" :href="route('files.preview', digitalFile.id)" target="_blank" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
                             <DocumentTextIcon class="h-5 w-5" /> {{ t('library.digital_copy', 'النسخة الرقمية') }}

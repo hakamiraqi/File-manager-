@@ -4,6 +4,7 @@ namespace App\Services\Library;
 
 use App\Models\ActivityLog;
 use App\Models\Library\BookCopy;
+use App\Models\Library\Hold;
 use App\Models\Library\LibraryMember;
 use App\Models\Library\Loan;
 use App\Models\User;
@@ -95,23 +96,29 @@ class LoanService
         return $loan;
     }
 
-    // Holds arrive in step 3; until then nothing is reserved.
+    /** A copy set aside goes only to the reader it was set aside for. */
     protected function holdIsFor(BookCopy $copy, LibraryMember $member): bool
     {
-        return false;
+        return Hold::where('copy_id', $copy->id)->where('status', Hold::READY)->where('member_id', $member->id)->exists();
     }
 
+    /** Someone is waiting for this book: renewing would keep them waiting. */
     protected function hasWaitingHolds(BookCopy $copy): bool
     {
-        return false;
+        return Hold::where('book_id', $copy->book_id)->where('status', Hold::WAITING)->exists();
     }
 
     protected function statusAfterReturn(BookCopy $copy): string
     {
-        return BookCopy::AVAILABLE;
+        return app(HoldService::class)->nextFor($copy);
     }
 
-    protected function afterIssue(BookCopy $copy, LibraryMember $member): void {}
+    /** Lending closes the reader's hold on that book. */
+    protected function afterIssue(BookCopy $copy, LibraryMember $member): void
+    {
+        Hold::open()->where('book_id', $copy->book_id)->where('member_id', $member->id)
+            ->update(['status' => Hold::FULFILLED, 'copy_id' => $copy->id]);
+    }
 
     private function fail(bool $condition, string $message): void
     {

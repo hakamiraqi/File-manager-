@@ -82,15 +82,23 @@ class LibraryRules
         return $count;
     }
 
-    /** Fridays and the holidays list (filled in step 3). */
+    /** Fridays and the holidays on the library settings page. */
     private function isClosed(CarbonInterface $day, array $holidays): bool
     {
         return $day->isFriday() || in_array($day->toDateString(), $holidays, true);
     }
 
     /** @return array<int, string> Y-m-d */
+    private ?array $holidayCache = null;
+
     protected function holidays(): array
     {
-        return [];
+        return $this->holidayCache ??= \App\Models\Library\Holiday::pluck('date')
+            ->map(fn ($d) => \Illuminate\Support\Carbon::parse($d)->toDateString())->all();
+    }
+
+    public function forgetHolidays(): void
+    {
+        $this->holidayCache = null;
     }
 }
