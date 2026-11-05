@@ -20,6 +20,8 @@ import {
     ArrowUpTrayIcon,
     LinkIcon,
     MagnifyingGlassIcon,
+    HomeIcon,
+    ChevronLeftIcon as CrumbSepIcon,
     EllipsisVerticalIcon,
     ArrowDownTrayIcon,
     TrashIcon,
@@ -355,7 +357,7 @@ function uploadFromUrl() {
     <AppLayout>
         <template #header>
             <div class="flex items-center gap-3">
-                <nav class="flex min-w-0 items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
+                <nav class="hidden min-w-0 items-center gap-1 text-sm text-gray-500 sm:flex dark:text-gray-400">
                     <button
                         @click="goToFolder(null)"
                         @dragover.prevent="onDragOverDropTarget($event, null)"
@@ -401,6 +403,28 @@ function uploadFromUrl() {
             @dragleave.prevent="dragOver = false"
             @drop.prevent="onDrop"
         >
+            <!-- Folder path on phones: الرئيسية / المجلد / ... each part opens that folder -->
+            <nav class="-mx-1 mb-4 flex items-center gap-1 overflow-x-auto whitespace-nowrap rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-600 sm:hidden dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                <button
+                    @click="goToFolder(null)"
+                    class="flex shrink-0 items-center gap-1 rounded px-1 py-0.5"
+                    :class="breadcrumbs.length ? 'text-[var(--accent-600)] hover:underline' : 'font-semibold text-gray-900 dark:text-gray-100'"
+                >
+                    <HomeIcon class="h-4 w-4" />
+                    {{ t('guest.home', 'الرئيسية') }}
+                </button>
+                <template v-for="(crumb, i) in breadcrumbs" :key="'m' + crumb.id">
+                    <CrumbSepIcon class="h-3.5 w-3.5 shrink-0 text-gray-400 ltr:rotate-180" />
+                    <button
+                        @click="goToFolder(crumb.id)"
+                        class="shrink-0 rounded px-1 py-0.5"
+                        :class="i < breadcrumbs.length - 1 ? 'text-[var(--accent-600)] hover:underline' : 'font-semibold text-gray-900 dark:text-gray-100'"
+                    >
+                        {{ crumb.name }}
+                    </button>
+                </template>
+            </nav>
+
             <div v-if="dragOver" class="absolute inset-4 z-10 flex items-center justify-center rounded-xl border-4 border-dashed border-[var(--accent-500)] bg-[var(--accent-50)]/80 text-lg font-medium text-[var(--accent-700)] dark:bg-gray-800/90">
                 {{ t('upload.drop_here', 'أفلت الملفات هنا للرفع') }}
             </div>
@@ -625,7 +649,7 @@ function uploadFromUrl() {
                     :key="`folder-${folder.id}`"
                     class="group relative flex cursor-pointer"
                     :class="[
-                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12 ps-10' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
                         selected.folders.has(folder.id)
                             ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
                             : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
@@ -641,10 +665,10 @@ function uploadFromUrl() {
                 >
                     <button
                         type="button"
-                        class="absolute start-2 top-2 flex h-5 w-5 items-center justify-center rounded border transition"
+                        class="flex h-5 w-5 shrink-0 items-center justify-center rounded border transition"
                         :class="[
                             selected.folders.has(folder.id) ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white' : 'border-gray-300 bg-white dark:border-gray-500 dark:bg-gray-800',
-                            isList ? 'top-1/2 -translate-y-1/2' : '',
+                            isList ? '' : 'absolute start-2 top-2',
                         ]"
                         :aria-label="t('selection.select', 'تحديد')"
                         @click.stop="toggleSelect('folders', folder.id)"
@@ -698,7 +722,7 @@ function uploadFromUrl() {
                     :key="`file-${file.id}`"
                     class="group relative flex cursor-pointer"
                     :class="[
-                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12 ps-10' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
                         selected.files.has(file.id)
                             ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
                             : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
@@ -710,10 +734,10 @@ function uploadFromUrl() {
                 >
                     <button
                         type="button"
-                        class="absolute start-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded border transition"
+                        class="z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded border transition"
                         :class="[
                             selected.files.has(file.id) ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white' : 'border-gray-300 bg-white dark:border-gray-500 dark:bg-gray-800',
-                            isList ? 'top-1/2 -translate-y-1/2' : '',
+                            isList ? '' : 'absolute start-2 top-2',
                         ]"
                         :aria-label="t('selection.select', 'تحديد')"
                         @click.stop="toggleSelect('files', file.id)"
