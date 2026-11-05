@@ -334,6 +334,16 @@ function togglePublic(folder) {
     router.put(route('folders.update', folder.id), { is_public: !folder.is_public }, { preserveScroll: true });
 }
 
+function copyPublicLink(folder) {
+    const url = route('guest.show', folder.id);
+    const done = () => window.alert(t('folder.public_link_copied', 'تم نسخ رابط المجلد العام:') + '\n' + url);
+    if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(url).then(done, () => window.prompt(t('folder.public_link', 'رابط المجلد العام'), url));
+    } else {
+        window.prompt(t('folder.public_link', 'رابط المجلد العام'), url);
+    }
+}
+
 function copyOne(type, id) {
     const url = type === 'file' ? route('files.copy', id) : route('folders.copy', id);
     router.post(url, { folder_id: props.currentFolder?.id ?? null, parent_id: props.currentFolder?.id ?? null }, { preserveScroll: true });
@@ -711,6 +721,9 @@ function uploadFromUrl() {
                                 <DropdownLink v-if="can.is_admin" as="button" @click="togglePublic(folder)">
                                     <GlobeAltIcon class="me-2 inline h-4 w-4" />
                                     {{ folder.is_public ? t('folder.unpublish', 'إلغاء المشاركة العامة') : t('folder.publish', 'جعله مجلداً عاماً (للزوار)') }}
+                                </DropdownLink>
+                                <DropdownLink v-if="folder.is_public" as="button" @click="copyPublicLink(folder)">
+                                    <LinkIcon class="me-2 inline h-4 w-4" /> {{ t('folder.public_link', 'رابط المجلد العام') }}
                                 </DropdownLink>
                             </template>
                         </Dropdown>

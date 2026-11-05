@@ -12,6 +12,9 @@ on:
       - 'package*.json'
       - 'resources/**'
       - 'app/**'
+      - 'routes/**'
+      - 'tests/**'
+      - 'lang/**'
       - '.github/workflows/docker-build.yml'
 
 jobs:
@@ -28,3 +31,23 @@ jobs:
           docker run --rm --entrypoint sh filenest-app:ci -c 'php -v | head -1; which ffmpeg pdftotext soffice; fc-list :lang=ar family | head -3'
           printf 'مرحبا بالعالم\nسطر ثاني\n' > /tmp/t.txt
           docker run --rm --entrypoint sh -v /tmp:/w filenest-app:ci -c 'cd /tmp && HOME=/tmp soffice --headless --convert-to pdf --outdir /tmp /w/t.txt >/dev/null && pdftotext -enc UTF-8 /tmp/t.pdf - | head -3'
+
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: pdo_sqlite, intl, zip, gd
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: |
+          composer install --no-interaction --prefer-dist --no-progress
+          npm ci --no-audit --no-fund && npx vite build
+          cp .env.example .env && php artisan key:generate
+      - name: Guest landing and smoke tests
+        run: php artisan test --filter='GuestLandingTest|ExampleTest'

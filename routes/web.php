@@ -17,7 +17,15 @@ use Illuminate\Support\Facades\Route;
 Route::get('/download', fn () => view('downloads', ['releases' => \App\Support\AppReleases::all()]))->name('downloads');
 
 Route::get('/', function () {
-    return redirect()->to(auth()->check() ? route('dashboard') : route('login'));
+    if (auth()->check()) {
+        return redirect()->route('dashboard');
+    }
+
+    // With guest access on, visitors land on the public folders instead of the login form.
+    $guests = \App\Models\Setting::get('guest_access_enabled', false)
+        && \App\Models\RolePermission::allows('guest', 'view');
+
+    return redirect()->route($guests ? 'guest.index' : 'login');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
