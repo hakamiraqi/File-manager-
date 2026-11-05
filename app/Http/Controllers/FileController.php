@@ -36,8 +36,7 @@ class FileController extends Controller
         }
 
         if (array_key_exists('folder_id', $data) && $data['folder_id']) {
-            $folder = Folder::where('user_id', $file->user_id)->whereNull('deleted_at')->findOrFail($data['folder_id']);
-            $this->authorize('view', $folder);
+            Folder::findAccessible($request->user(), $data['folder_id']);
         }
 
         if (isset($data['name'])) {
@@ -72,8 +71,7 @@ class FileController extends Controller
         $targetFolderId = $data['folder_id'] ?? $file->folder_id;
 
         if ($targetFolderId) {
-            $folder = Folder::where('user_id', $user->id)->whereNull('deleted_at')->findOrFail($targetFolderId);
-            $this->authorize('view', $folder);
+            Folder::findAccessible($user, $targetFolderId);
         }
 
         app(\App\Services\StorageQuotaService::class)->assertHasSpace($user, $file->size);
@@ -273,10 +271,10 @@ class FileController extends Controller
         $user = $request->user();
 
         $files = File::whereIn('id', $data['file_ids'] ?? [])
-            ->where('user_id', $user->id)->whereNull('deleted_at')->get();
+            ->whereNull('deleted_at')->get()->filter(fn (File $f) => $user->can('view', $f))->values();
 
         $folders = Folder::whereIn('id', $data['folder_ids'] ?? [])
-            ->where('user_id', $user->id)->whereNull('deleted_at')->get();
+            ->whereNull('deleted_at')->get()->filter(fn (Folder $f) => $f->isAccessibleBy($user))->values();
 
         abort_if($files->isEmpty() && $folders->isEmpty(), 404);
 

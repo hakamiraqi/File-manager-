@@ -20,15 +20,52 @@ class UserController extends Controller
         $search = trim((string) $request->string('q'));
 
         $users = User::query()
+            ->with('assignedFolders:id')
             ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
 
+        $users->getCollection()->each(function (User $u) {
+            $u->setAttribute('folder_ids', $u->assignedFolders->pluck('id')->all());
+            $u->unsetRelation('assignedFolders');
+        });
+
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,
+            'folderOptions' => $this->folderOptions(),
             'filters' => ['q' => $search],
         ]);
+    }
+
+    /**
+     * Every folder with its full path ("الدراسات الأولية / المرحلة الأولى"), for the
+     * "assigned folders" picker on the user form.
+     *
+     * @return array<int, array{id:int, path:string, owner:string}>
+     */
+    private function folderOptions(): array
+    {
+        $all = \App\Models\Folder::whereNull('deleted_at')->with('user:id,name')->get(['id', 'parent_id', 'name', 'user_id'])->keyBy('id');
+        $path = function ($f) use ($all) {
+            $parts = [];
+            for ($n = $f, $i = 0; $n && $i < 50; $n = $all->get($n->parent_id), $i++) {
+                array_unshift($parts, $n->name);
+            }
+
+            return implode(' / ', $parts);
+        };
+
+        return $all->map(fn ($f) => ['id' => $f->id, 'path' => $path($f), 'owner' => $f->user?->name ?? ''])
+            ->sortBy('path', SORT_NATURAL)->values()->all();
+    }
+
+    private function syncFolders(User $user, ?array $folderIds): void
+    {
+        if ($folderIds === null) {
+            return;
+        }
+        $user->assignedFolders()->sync(\App\Models\Folder::whereIn('id', $folderIds)->whereNull('deleted_at')->pluck('id')->all());
     }
 
     private const CAPABILITY_FIELDS = [
@@ -44,6 +81,9 @@ class UserController extends Controller
             'password' => ['required', Password::defaults()],
             'role' => ['required', 'in:admin,editor,contributor,user'],
             'storage_quota_mb' => ['nullable', 'integer', 'min:1'],
+            'is_librarian' => ['sometimes', 'boolean'],
+            'folder_ids' => ['sometimes', 'array'],
+            'folder_ids.*' => ['integer'],
             'can_manage_appearance' => ['boolean'],
             'can_manage_users' => ['boolean'],
             'can_manage_translations' => ['boolean'],
@@ -66,15 +106,18 @@ class UserController extends Controller
             }
         }
 
-        User::create([
+        $created = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
             'role' => $data['role'],
             'storage_quota_bytes' => isset($data['storage_quota_mb']) ? $data['storage_quota_mb'] * 1024 * 1024 : null,
+            'is_librarian' => (bool) ($data['is_librarian'] ?? false),
             'email_verified_at' => now(),
             ...array_intersect_key($data, array_flip(self::CAPABILITY_FIELDS)),
         ]);
+
+        $this->syncFolders($created, $data['folder_ids'] ?? null);
 
         ActivityLog::record('admin.user_created', "أنشأ المستخدم \"{$data['name']}\"");
 
@@ -92,6 +135,9 @@ class UserController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'storage_quota_mb' => ['nullable', 'integer', 'min:1'],
             'password' => ['nullable', Password::defaults()],
+            'is_librarian' => ['sometimes', 'boolean'],
+            'folder_ids' => ['sometimes', 'array'],
+            'folder_ids.*' => ['integer'],
             'can_manage_appearance' => ['boolean'],
             'can_manage_users' => ['boolean'],
             'can_manage_translations' => ['boolean'],
@@ -121,7 +167,11 @@ class UserController extends Controller
             unset($data['password']);
         }
 
+        $folderIds = array_key_exists('folder_ids', $data) ? $data['folder_ids'] : null;
+        unset($data['folder_ids']);
+
         $user->update($data);
+        $this->syncFolders($user, $folderIds);
 
         ActivityLog::record('admin.user_updated', "حدّث بيانات المستخدم \"{$user->name}\"");
 

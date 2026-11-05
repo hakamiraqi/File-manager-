@@ -64,6 +64,7 @@ class FolderController extends Controller
             'is_public' => ['sometimes', 'boolean'],
             'folder_type' => ['sometimes', 'string', 'in:files,thesis'],
             'researcher_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'degree' => ['sometimes', 'nullable', 'string', 'in:diploma,master,phd'],
             'supervisor_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'thesis_title' => ['sometimes', 'nullable', 'string', 'max:255'],
             'publisher' => ['sometimes', 'nullable', 'string', 'max:255'],
@@ -73,7 +74,7 @@ class FolderController extends Controller
 
         $isMove = array_key_exists('parent_id', $data) && $data['parent_id'] !== $folder->parent_id;
         $isRename = isset($data['name']) && $data['name'] !== $folder->name;
-        $isMetadataUpdate = collect(['folder_type', 'researcher_name', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year'])
+        $isMetadataUpdate = collect(['folder_type', 'researcher_name', 'degree', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year'])
             ->contains(fn ($field) => array_key_exists($field, $data));
 
         if ($isMove && ! $request->user()->canPerform('move')) {

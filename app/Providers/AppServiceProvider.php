@@ -56,6 +56,8 @@ class AppServiceProvider extends ServiceProvider
             Gate::define($ability, fn ($user) => $user->hasAdminCapability($capability));
         }
 
+        Gate::define('manage-library', fn ($user) => $user->canManageLibrary());
+
         Gate::define('access-settings-page', fn ($user) => $user->hasAdminCapability('can_manage_settings')
             || $user->hasAdminCapability('can_manage_appearance'));
 

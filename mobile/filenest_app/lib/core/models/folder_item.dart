@@ -6,6 +6,7 @@ class FolderItem {
   final bool isPublic;
   final String folderType;
   final String? researcherName;
+  final String? degree;
   final String? supervisorName;
   final String? thesisTitle;
   final String? publisher;
@@ -20,6 +21,7 @@ class FolderItem {
     required this.isPublic,
     this.folderType = 'files',
     this.researcherName,
+    this.degree,
     this.supervisorName,
     this.thesisTitle,
     this.publisher,
@@ -36,6 +38,7 @@ class FolderItem {
       isPublic: json['is_public'] as bool? ?? false,
       folderType: json['folder_type'] as String? ?? 'files',
       researcherName: json['researcher_name'] as String?,
+      degree: json['degree'] as String?,
       supervisorName: json['supervisor_name'] as String?,
       thesisTitle: json['thesis_title'] as String?,
       publisher: json['publisher'] as String?,

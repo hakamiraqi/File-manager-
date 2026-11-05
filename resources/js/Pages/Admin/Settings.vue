@@ -5,6 +5,7 @@ import { Head } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
+import TagInput from '@/Components/TagInput.vue';
 import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { useTrans } from '@/Composables/useTrans';
@@ -129,7 +130,7 @@ function submit() {
 
                 <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
                     <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.extensions_title', 'امتدادات الملفات المسموح بها') }}</h3>
-                    <div class="grid grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
                             <InputLabel :value="t('settings.filter_mode', 'نمط التصفية')" />
                             <select v-model="form.extension_filter_mode" class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
@@ -138,8 +139,16 @@ function submit() {
                             </select>
                         </div>
                         <div>
-                            <InputLabel :value="t('settings.extension_list', 'قائمة الامتدادات (مفصولة بفواصل، بدون نقطة)')" />
-                            <TextInput v-model="form.extension_list" placeholder="exe, bat, sh" class="mt-1 block w-full" />
+                            <InputLabel :value="t('settings.extension_list_tags', 'قائمة الامتدادات')" />
+                            <TagInput
+                                v-model="form.extension_list"
+                                class="mt-1"
+                                :placeholder="t('settings.extension_add', 'اكتب امتداداً واضغط Enter')"
+                                :normalize="(v) => v.trim().replace(/^\.+/, '').toLowerCase()"
+                                :suggestions="form.extension_filter_mode === 'allow'
+                                    ? ['pdf', 'docx', 'xlsx', 'pptx', 'jpg', 'png', 'mp4', 'mp3', 'zip']
+                                    : ['exe', 'bat', 'cmd', 'sh', 'msi', 'js', 'vbs', 'apk']"
+                            />
                         </div>
                     </div>
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">

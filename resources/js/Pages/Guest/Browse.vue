@@ -17,7 +17,13 @@ defineProps({ currentFolder: Object, breadcrumbs: Array, folders: Array, files: 
             <div class="mx-auto flex max-w-5xl items-center gap-3 px-4 py-4">
                 <ApplicationLogo class="h-8 w-8 fill-current text-[var(--accent-600)]" />
                 <span class="text-lg font-bold text-gray-800 dark:text-gray-100">{{ $page.props.appSettings.siteName }}</span>
-                <span class="ms-auto text-sm text-gray-400 dark:text-gray-500">{{ t('guest.public_browse', 'تصفح عام (بدون تسجيل دخول)') }}</span>
+                <span class="ms-auto hidden text-sm text-gray-400 sm:inline dark:text-gray-500">{{ t('guest.public_browse', 'تصفح عام (بدون تسجيل دخول)') }}</span>
+                <Link
+                    :href="$page.props.auth?.user ? route('dashboard') : route('login')"
+                    class="ms-auto rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] sm:ms-2"
+                >
+                    {{ $page.props.auth?.user ? t('nav.dashboard', 'ملفاتي') : t('auth.login', 'تسجيل الدخول') }}
+                </Link>
             </div>
         </header>
 

@@ -17,6 +17,7 @@ import {
     XMarkIcon,
     ShieldCheckIcon,
     QueueListIcon,
+    BookOpenIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -27,6 +28,7 @@ const mobileOpen = ref(false);
 
 const nav = computed(() => [
     { label: t('nav.dashboard', 'ملفاتي'), href: route('dashboard'), icon: FolderIcon, active: route().current('dashboard') },
+    { label: t('nav.library', 'المكتبة'), href: page.props.permissions?.library_unread ? route('library.my-loans') : route('library.index'), icon: BookOpenIcon, active: route().current('library.*'), badge: page.props.permissions?.library_unread || 0 },
     { label: t('nav.playlists', 'قوائم التشغيل'), href: route('playlists.index'), icon: QueueListIcon, active: route().current('playlists.*') },
     { label: t('nav.shares', 'الروابط المشتركة'), href: route('shares.index'), icon: ShareIcon, active: route().current('shares.index') },
     { label: t('nav.trash', 'سلة المحذوفات'), href: route('trash.index'), icon: TrashIcon, active: route().current('trash.index') },
@@ -64,6 +66,7 @@ function logout() {
                 >
                     <component :is="item.icon" class="h-5 w-5" />
                     {{ item.label }}
+                    <span v-if="item.badge" class="ms-auto rounded-full bg-red-500 px-1.5 text-xs text-white">{{ item.badge }}</span>
                 </Link>
 
                 <div v-if="user.role === 'admin'" class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">

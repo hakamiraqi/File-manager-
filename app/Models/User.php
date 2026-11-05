@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -15,7 +16,7 @@ use Laravel\Sanctum\HasApiTokens;
 #[Fillable([
     'name', 'email', 'password', 'role', 'is_active', 'storage_quota_bytes', 'locale', 'theme', 'avatar_path',
     'is_master_admin', 'can_manage_appearance', 'can_manage_users', 'can_manage_translations',
-    'can_view_statistics', 'can_manage_settings',
+    'can_view_statistics', 'can_manage_settings', 'is_librarian',
 ])]
 #[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
 class User extends Authenticatable
@@ -38,6 +39,7 @@ class User extends Authenticatable
             'can_manage_translations' => 'boolean',
             'can_view_statistics' => 'boolean',
             'can_manage_settings' => 'boolean',
+            'is_librarian' => 'boolean',
             'two_factor_secret' => 'encrypted',
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'datetime',
@@ -60,6 +62,12 @@ class User extends Authenticatable
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    /** Library staff: lends and receives books, manages the catalogue. Admins always can. */
+    public function canManageLibrary(): bool
+    {
+        return $this->isAdmin() || (bool) $this->is_librarian;
     }
 
     public function isEditor(): bool
@@ -103,6 +111,26 @@ class User extends Authenticatable
     public function folders(): HasMany
     {
         return $this->hasMany(Folder::class);
+    }
+
+    /** Folders an admin assigned to this user (other people's folders they may work in). */
+    public function assignedFolders(): BelongsToMany
+    {
+        return $this->belongsToMany(Folder::class, 'folder_user')->withTimestamps();
+    }
+
+    private ?array $assignedFolderIdsCache = null;
+
+    /** @return array<int, int> */
+    public function assignedFolderIds(): array
+    {
+        return $this->assignedFolderIdsCache ??= \Illuminate\Support\Facades\DB::table('folder_user')
+            ->where('user_id', $this->id)->pluck('folder_id')->map(fn ($id) => (int) $id)->all();
+    }
+
+    public function libraryMember(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Library\LibraryMember::class);
     }
 
     public function files(): HasMany
