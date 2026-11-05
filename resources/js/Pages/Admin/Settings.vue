@@ -50,6 +50,11 @@ const form = useForm({
     video_transcoding_enabled: props.settings.video_transcoding_enabled === '1',
     video_quality_targets: props.settings.video_quality_targets,
     interactive_video_enabled: props.settings.interactive_video_enabled === '1',
+    institution_university: props.settings.institution_university ?? '',
+    institution_college: props.settings.institution_college ?? '',
+    thesis_departments: props.settings.thesis_departments ?? '',
+    thesis_subjects: props.settings.thesis_subjects ?? '',
+    oai_enabled: props.settings.oai_enabled === '1',
     logo: null,
     header_image: null,
 });
@@ -154,6 +159,34 @@ function submit() {
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         {{ t('settings.extension_note', 'هذه القائمة إضافية إلى القائمة الأمنية الثابتة (php, phtml, exe...) التي لا يمكن تعطيلها من هنا.') }}
                     </p>
+                </section>
+
+                <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-1 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.institution_title', 'المؤسسة والرسائل الجامعية') }}</h3>
+                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">{{ t('settings.institution_note', 'تُملأ الجامعة والكلية تلقائياً في كل رسالة جديدة، والأقسام والمواضيع تظهر كخيارات جاهزة، وفق حقول المستودع الرقمي العراقي.') }}</p>
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <InputLabel :value="t('settings.institution_university', 'الجامعة')" />
+                            <TextInput v-model="form.institution_university" class="mt-1 block w-full" :placeholder="t('settings.institution_university_ph', 'مثال: جامعة تكريت')" />
+                        </div>
+                        <div>
+                            <InputLabel :value="t('settings.institution_college', 'الكلية')" />
+                            <TextInput v-model="form.institution_college" class="mt-1 block w-full" :placeholder="t('settings.institution_college_ph', 'مثال: كلية طب الأسنان')" />
+                        </div>
+                        <div>
+                            <InputLabel :value="t('settings.thesis_departments', 'الأقسام العلمية')" />
+                            <TagInput v-model="form.thesis_departments" class="mt-1" multiword :placeholder="t('settings.tag_add', 'اكتب واضغط Enter')" />
+                        </div>
+                        <div>
+                            <InputLabel :value="t('settings.thesis_subjects', 'المواضيع العامة')" />
+                            <TagInput v-model="form.thesis_subjects" class="mt-1" multiword :placeholder="t('settings.tag_add', 'اكتب واضغط Enter')" />
+                        </div>
+                    </div>
+                    <label class="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" v-model="form.oai_enabled" class="rounded border-gray-300 text-[var(--accent-600)]" />
+                        {{ t('settings.oai_enabled', 'إتاحة بيانات الرسائل العامة عبر OAI-PMH (Dublin Core) لحصادها من المستودعات') }}
+                        <code class="text-xs text-gray-400" dir="ltr">/oai</code>
+                    </label>
                 </section>
 
                 <section class="rounded-xl border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">

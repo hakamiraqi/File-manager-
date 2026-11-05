@@ -10,19 +10,22 @@ const props = defineProps({
     // Applied to every new tag, e.g. strip a leading dot and lower-case.
     normalize: { type: Function, default: (v) => v.trim() },
     suggestions: { type: Array, default: () => [] },
+    // Tags of several words (departments, keywords): only Enter / comma / Tab finish a tag.
+    multiword: { type: Boolean, default: false },
 });
 const emit = defineEmits(['update:modelValue']);
 
 const draft = ref('');
 const input = ref(null);
-const tags = computed(() => (props.modelValue || '').split(/[\s,،]+/).map((v) => v.trim()).filter(Boolean));
+const splitter = computed(() => (props.multiword ? /[,،\n]+/ : /[\s,،]+/));
+const tags = computed(() => (props.modelValue || '').split(splitter.value).map((v) => v.trim()).filter(Boolean));
 const unused = computed(() => props.suggestions.filter((s) => !tags.value.includes(s)));
 
 function save(list) {
     emit('update:modelValue', [...new Set(list)].join(', '));
 }
 function add(raw = draft.value) {
-    const parts = raw.split(/[\s,،]+/).map((v) => props.normalize(v)).filter(Boolean);
+    const parts = raw.split(splitter.value).map((v) => props.normalize(v)).filter(Boolean);
     if (parts.length) save([...tags.value, ...parts]);
     draft.value = '';
 }
@@ -30,7 +33,7 @@ function remove(i) {
     save(tags.value.filter((_, j) => j !== i));
 }
 function onKeydown(e) {
-    if (['Enter', ',', '،', ' ', 'Tab'].includes(e.key)) {
+    if (['Enter', ',', '،', 'Tab'].includes(e.key) || (e.key === ' ' && !props.multiword)) {
         if (draft.value.trim()) {
             e.preventDefault();
             add();
@@ -53,7 +56,7 @@ function onKeydown(e) {
                 v-for="(tag, i) in tags"
                 :key="tag"
                 class="inline-flex items-center gap-1 rounded-full bg-[var(--accent-100)] py-0.5 pe-1 ps-2.5 text-sm font-medium text-[var(--accent-700)] dark:bg-gray-600 dark:text-gray-100"
-                dir="ltr"
+                :dir="multiword ? 'auto' : 'ltr'"
             >
                 {{ tag }}
                 <button type="button" class="rounded-full p-0.5 hover:bg-[var(--accent-200)] dark:hover:bg-gray-500" :aria-label="`× ${tag}`" @click.stop="remove(i)">

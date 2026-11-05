@@ -11,6 +11,7 @@ import MoveModal from '@/Components/MoveModal.vue';
 import ShareModal from '@/Components/ShareModal.vue';
 import AddToPlaylistModal from '@/Components/AddToPlaylistModal.vue';
 import PreviewModal from '@/Components/PreviewModal.vue';
+import TagInput from '@/Components/TagInput.vue';
 import { useChunkedUpload } from '@/Composables/useChunkedUpload';
 import { useTrans } from '@/Composables/useTrans';
 import {
@@ -50,6 +51,7 @@ const props = defineProps({
     folders: Array,
     files: Array,
     filters: Object,
+    thesisPresets: { type: Object, default: () => ({ departments: [], subjects: [] }) },
 });
 
 const { t } = useTrans();
@@ -78,7 +80,12 @@ function isMediaFile(file) {
 
 // ---- Folder info panel (type + researcher/supervisor/thesis/publisher/etc.) ----
 const showFolderInfo = ref(false);
-const folderInfoFields = ['researcher_name', 'degree', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year'];
+const folderInfoFields = [
+    'thesis_title', 'researcher_name', 'degree', 'supervisor_name', 'university', 'college', 'department', 'subject',
+    'keywords', 'abstract', 'publication_year', 'defense_date', 'language', 'pages', 'iqdr_receipt', 'publisher', 'digital_library',
+];
+
+
 
 function makeFolderInfoForm(folder) {
     return useForm({
@@ -93,6 +100,32 @@ watch(
     () => props.currentFolder?.id,
     () => {
         folderInfoForm.value = makeFolderInfoForm(props.currentFolder);
+    },
+);
+
+// A folder turned into a thesis starts with the college's university and college.
+watch(
+    () => folderInfoForm.value.folder_type,
+    (type) => {
+        if (type !== 'thesis') return;
+        if (!folderInfoForm.value.university) folderInfoForm.value.university = props.thesisPresets.university ?? '';
+        if (!folderInfoForm.value.college) folderInfoForm.value.college = props.thesisPresets.college ?? '';
+    },
+);
+
+// Warn while typing when another thesis already has (nearly) this title: the repository rejects duplicates.
+const similarTheses = ref([]);
+let similarTimer;
+watch(
+    () => folderInfoForm.value.thesis_title,
+    (title) => {
+        clearTimeout(similarTimer);
+        if (!title || title.trim().length < 8 || folderInfoForm.value.folder_type !== 'thesis') { similarTheses.value = []; return; }
+        similarTimer = setTimeout(async () => {
+            try {
+                similarTheses.value = (await window.axios.get(route('theses.similar'), { params: { title, except: props.currentFolder?.id } })).data;
+            } catch { similarTheses.value = []; }
+        }, 500);
     },
 );
 
@@ -505,6 +538,16 @@ function uploadFromUrl() {
                         </div>
                     </div>
                     <template v-if="folderInfoForm.folder_type === 'thesis'">
+                        <div class="sm:col-span-2 lg:col-span-3">
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.thesis_title', 'عنوان الرسالة') }}</label>
+                            <input v-model="folderInfoForm.thesis_title" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                            <div v-if="similarTheses.length" class="mt-1 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                {{ t('folder.similar_titles', 'يوجد عنوان مشابه (المستودع يرفض التكرار):') }}
+                                <a v-for="s in similarTheses" :key="s.id" :href="route('dashboard', { folder: s.id })" class="mt-0.5 block underline">
+                                    {{ s.title }}<span v-if="s.researcher"> — {{ s.researcher }}</span><span v-if="s.year"> ({{ s.year }})</span> · {{ s.similarity }}%
+                                </a>
+                            </div>
+                        </div>
                         <div>
                             <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.researcher_name', 'اسم الباحث') }}</label>
                             <input v-model="folderInfoForm.researcher_name" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
@@ -523,8 +566,51 @@ function uploadFromUrl() {
                             <input v-model="folderInfoForm.supervisor_name" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
                         </div>
                         <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.thesis_title', 'عنوان الرسالة') }}</label>
-                            <input v-model="folderInfoForm.thesis_title" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.university', 'الجامعة') }}</label>
+                            <input v-model="folderInfoForm.university" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.college', 'الكلية') }}</label>
+                            <input v-model="folderInfoForm.college" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.department', 'القسم') }}</label>
+                            <input v-model="folderInfoForm.department" :disabled="!can.rename_folder" type="text" list="thesis-departments" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.subject', 'الموضوع العام') }}</label>
+                            <input v-model="folderInfoForm.subject" :disabled="!can.rename_folder" type="text" list="thesis-subjects" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.publication_year', 'سنة النشر') }}</label>
+                            <input v-model="folderInfoForm.publication_year" :disabled="!can.rename_folder" type="text" inputmode="numeric" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.defense_date', 'تاريخ المناقشة') }}</label>
+                            <input v-model="folderInfoForm.defense_date" :disabled="!can.rename_folder" type="date" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.language', 'لغة الرسالة') }}</label>
+                            <select v-model="folderInfoForm.language" :disabled="!can.rename_folder" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800">
+                                <option value="">—</option>
+                                <option value="ar">{{ t('folder.lang_ar', 'العربية') }}</option>
+                                <option value="en">{{ t('folder.lang_en', 'الإنكليزية') }}</option>
+                                <option value="ku">{{ t('folder.lang_ku', 'الكردية') }}</option>
+                                <option value="other">{{ t('folder.lang_other', 'أخرى') }}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.pages', 'عدد الصفحات') }}</label>
+                            <input v-model="folderInfoForm.pages" :disabled="!can.rename_folder" type="number" min="1" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div class="sm:col-span-2 lg:col-span-3">
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.keywords', 'الكلمات المفتاحية') }}</label>
+                            <TagInput v-if="can.rename_folder" v-model="folderInfoForm.keywords" multiword :placeholder="t('folder.keywords_ph', 'اكتب كلمة واضغط Enter')" />
+                            <p v-else class="text-sm">{{ folderInfoForm.keywords }}</p>
+                        </div>
+                        <div class="sm:col-span-2 lg:col-span-3">
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.abstract', 'المستخلص') }}</label>
+                            <textarea v-model="folderInfoForm.abstract" :disabled="!can.rename_folder" rows="4" dir="auto" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800"></textarea>
                         </div>
                         <div>
                             <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.publisher', 'دار النشر') }}</label>
@@ -535,9 +621,11 @@ function uploadFromUrl() {
                             <input v-model="folderInfoForm.digital_library" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
                         </div>
                         <div>
-                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.publication_year', 'سنة النشر') }}</label>
-                            <input v-model="folderInfoForm.publication_year" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.iqdr_receipt', 'رقم وصل الإيداع في المستودع الرقمي العراقي') }}</label>
+                            <input v-model="folderInfoForm.iqdr_receipt" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
                         </div>
+                        <datalist id="thesis-departments"><option v-for="d in thesisPresets.departments" :key="d" :value="d" /></datalist>
+                        <datalist id="thesis-subjects"><option v-for="d in thesisPresets.subjects" :key="d" :value="d" /></datalist>
                     </template>
                     <div v-if="can.rename_folder" class="sm:col-span-2 lg:col-span-3">
                         <button

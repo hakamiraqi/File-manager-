@@ -66,6 +66,7 @@ class FileManagerController extends Controller
             'currentFolder' => $currentFolder,
             'breadcrumbs' => $currentFolder?->breadcrumbsFor($user) ?? [],
             'assignedFolderIds' => $assignedIds,
+            'thesisPresets' => app(\App\Services\Theses\ThesisCatalog::class)->presets(),
             'folders' => $folders,
             'files' => $files,
             'filters' => [

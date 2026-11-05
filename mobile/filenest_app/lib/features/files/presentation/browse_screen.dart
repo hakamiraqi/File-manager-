@@ -71,6 +71,16 @@ class _BrowseScreenState extends State<BrowseScreen> {
   late final _publisherController = TextEditingController(text: widget.folder?.publisher);
   late final _digitalLibraryController = TextEditingController(text: widget.folder?.digitalLibrary);
   late final _publicationYearController = TextEditingController(text: widget.folder?.publicationYear);
+  late final _universityController = TextEditingController(text: widget.folder?.university);
+  late final _collegeController = TextEditingController(text: widget.folder?.college);
+  late final _departmentController = TextEditingController(text: widget.folder?.department);
+  late final _subjectController = TextEditingController(text: widget.folder?.subject);
+  late final _keywordsController = TextEditingController(text: widget.folder?.keywords);
+  late final _abstractController = TextEditingController(text: widget.folder?.abstract);
+  late final _defenseDateController = TextEditingController(text: widget.folder?.defenseDate);
+  late final _pagesController = TextEditingController(text: widget.folder?.pages);
+  late final _iqdrReceiptController = TextEditingController(text: widget.folder?.iqdrReceipt);
+  late String? _language = widget.folder?.language;
 
   @override
   void initState() {
@@ -87,6 +97,15 @@ class _BrowseScreenState extends State<BrowseScreen> {
     _publisherController.dispose();
     _digitalLibraryController.dispose();
     _publicationYearController.dispose();
+    _universityController.dispose();
+    _collegeController.dispose();
+    _departmentController.dispose();
+    _subjectController.dispose();
+    _keywordsController.dispose();
+    _abstractController.dispose();
+    _defenseDateController.dispose();
+    _pagesController.dispose();
+    _iqdrReceiptController.dispose();
     super.dispose();
   }
 
@@ -103,6 +122,16 @@ class _BrowseScreenState extends State<BrowseScreen> {
         'publisher': _publisherController.text,
         'digital_library': _digitalLibraryController.text,
         'publication_year': _publicationYearController.text,
+        'university': _universityController.text.trim().isEmpty ? null : _universityController.text.trim(),
+        'college': _collegeController.text.trim().isEmpty ? null : _collegeController.text.trim(),
+        'department': _departmentController.text.trim().isEmpty ? null : _departmentController.text.trim(),
+        'subject': _subjectController.text.trim().isEmpty ? null : _subjectController.text.trim(),
+        'keywords': _keywordsController.text.trim().isEmpty ? null : _keywordsController.text.trim(),
+        'abstract': _abstractController.text.trim().isEmpty ? null : _abstractController.text.trim(),
+        'defense_date': _defenseDateController.text.trim().isEmpty ? null : _defenseDateController.text.trim(),
+        'pages': int.tryParse(_pagesController.text.trim()),
+        'iqdr_receipt': _iqdrReceiptController.text.trim().isEmpty ? null : _iqdrReceiptController.text.trim(),
+        'language': _language,
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('folder.info_saved'))));
@@ -757,6 +786,35 @@ class _BrowseScreenState extends State<BrowseScreen> {
                     TextField(controller: _digitalLibraryController, decoration: InputDecoration(labelText: context.tr('folder.digital_library'))),
                     const SizedBox(height: 8),
                     TextField(controller: _publicationYearController, decoration: InputDecoration(labelText: context.tr('folder.publication_year'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _universityController, decoration: InputDecoration(labelText: context.tr('folder.university'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _collegeController, decoration: InputDecoration(labelText: context.tr('folder.college'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _departmentController, decoration: InputDecoration(labelText: context.tr('folder.department'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _subjectController, decoration: InputDecoration(labelText: context.tr('folder.subject'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _keywordsController, decoration: InputDecoration(labelText: context.tr('folder.keywords'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _abstractController, minLines: 2, maxLines: 6, decoration: InputDecoration(labelText: context.tr('folder.abstract'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _defenseDateController, keyboardType: TextInputType.datetime, decoration: InputDecoration(labelText: context.tr('folder.defense_date'))),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String?>(
+                      value: _language,
+                      decoration: InputDecoration(labelText: context.tr('folder.language')),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('—')),
+                        for (final l in const ['ar', 'en', 'ku', 'other'])
+                          DropdownMenuItem<String?>(value: l, child: Text(context.tr('folder.lang_$l'))),
+                      ],
+                      onChanged: (v) => setState(() => _language = v),
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(controller: _pagesController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: context.tr('folder.pages'))),
+                    const SizedBox(height: 8),
+                    TextField(controller: _iqdrReceiptController, decoration: InputDecoration(labelText: context.tr('folder.iqdr_receipt'))),
                   ],
                   const SizedBox(height: 12),
                   Align(
