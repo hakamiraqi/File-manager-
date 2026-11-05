@@ -37,6 +37,9 @@ import {
     PlayIcon,
     XMarkIcon,
     ArrowPathIcon,
+    Squares2X2Icon,
+    ListBulletIcon,
+    CheckIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -132,6 +135,7 @@ function onResumeFileChosen(event) {
 }
 
 function goToFolder(id) {
+    clearSelection();
     router.get(route('dashboard'), { folder: id }, { preserveState: true });
 }
 
@@ -143,20 +147,66 @@ function changeSort(sort) {
     router.get(route('dashboard'), { ...props.filters, sort, folder: props.currentFolder?.id }, { preserveState: true });
 }
 
-function toggleSelect(type, id, event) {
+// Click opens a folder / previews a file. Once something is selected (tick box, Ctrl/Cmd/Shift
+// click, or "select all"), clicks add and remove items instead, which works the same on phones.
+function toggleSelect(type, id) {
     const set = selected[type];
-    if (!event.ctrlKey && !event.metaKey) {
-        selected.files.clear();
-        selected.folders.clear();
-    }
     set.has(id) ? set.delete(id) : set.add(id);
 }
 
+function onItemClick(type, item, event) {
+    const key = type === 'file' ? 'files' : 'folders';
+    if (selectionCount.value > 0 || event.ctrlKey || event.metaKey || event.shiftKey) {
+        toggleSelect(key, item.id);
+        return;
+    }
+    type === 'file' ? openPreview(item) : goToFolder(item.id);
+}
+
 const selectionCount = computed(() => selected.files.size + selected.folders.size);
+const totalItems = computed(() => props.folders.length + props.files.length);
+const allSelected = computed(() => totalItems.value > 0 && selectionCount.value === totalItems.value);
 
 function clearSelection() {
     selected.files.clear();
     selected.folders.clear();
+}
+
+function toggleSelectAll() {
+    if (allSelected.value) {
+        clearSelection();
+        return;
+    }
+    props.folders.forEach((f) => selected.folders.add(f.id));
+    props.files.forEach((f) => selected.files.add(f.id));
+}
+
+// Folder contents as cards (grid) or as a list; remembered on this device.
+const viewMode = ref((() => {
+    try {
+        return localStorage.getItem('filenest.viewMode') === 'list' ? 'list' : 'grid';
+    } catch {
+        return 'grid';
+    }
+})());
+const isList = computed(() => viewMode.value === 'list');
+
+function setViewMode(mode) {
+    viewMode.value = mode;
+    try {
+        localStorage.setItem('filenest.viewMode', mode);
+    } catch {
+        // Private mode: the choice just isn't remembered.
+    }
+}
+
+function formatDate(value) {
+    if (!value) return '';
+    try {
+        return new Date(value).toLocaleDateString(page.props.appSettings?.locale === 'en' ? 'en-GB' : 'ar-IQ', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+        return '';
+    }
 }
 
 function onFilesChosen(event) {
@@ -512,10 +562,43 @@ function uploadFromUrl() {
 
                 <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('folder.count_summary', ':folders مجلد، :files ملف', { folders: folders.length, files: files.length }) }}</span>
 
-                <div v-if="selectionCount" class="ms-auto flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5 dark:bg-gray-700">
-                    <span class="text-sm text-gray-600 dark:text-gray-300">{{ t('selection.count', ':count محدد', { count: selectionCount }) }}</span>
-                    <button v-if="can.download" @click="downloadSelection" class="rounded-md p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600" :title="t('action.download_zip', 'تنزيل كملف مضغوط')">
-                        <ArrowDownTrayIcon class="h-4 w-4" />
+                <div class="flex items-center gap-2" :class="selectionCount ? '' : 'ms-auto'">
+                    <button
+                        v-if="totalItems"
+                        @click="toggleSelectAll"
+                        class="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                    >
+                        <CheckIcon class="h-4 w-4" />
+                        {{ allSelected ? t('selection.none', 'إلغاء تحديد الكل') : t('selection.all', 'تحديد الكل') }}
+                    </button>
+                    <div class="flex overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600">
+                        <button
+                            @click="setViewMode('grid')"
+                            class="p-1.5"
+                            :class="!isList ? 'bg-[var(--accent-600)] text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'"
+                            :title="t('view.grid', 'عرض كبطاقات')"
+                        >
+                            <Squares2X2Icon class="h-5 w-5" />
+                        </button>
+                        <button
+                            @click="setViewMode('list')"
+                            class="p-1.5"
+                            :class="isList ? 'bg-[var(--accent-600)] text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'"
+                            :title="t('view.list', 'عرض كقائمة')"
+                        >
+                            <ListBulletIcon class="h-5 w-5" />
+                        </button>
+                    </div>
+                </div>
+
+                <div v-if="selectionCount" class="ms-auto flex w-full flex-wrap items-center gap-2 rounded-lg bg-[var(--accent-50)] px-3 py-2 sm:w-auto dark:bg-gray-700">
+                    <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('selection.count', ':count محدد', { count: selectionCount }) }}</span>
+                    <button
+                        v-if="can.download"
+                        @click="downloadSelection"
+                        class="flex items-center gap-1 rounded-md bg-[var(--accent-600)] px-2.5 py-1 text-sm text-white hover:opacity-90"
+                    >
+                        <ArrowDownTrayIcon class="h-4 w-4" /> {{ t('action.download_zip', 'تنزيل كملف مضغوط') }}
                     </button>
                     <button v-if="can.delete || can.delete_folder" @click="deleteSelection" class="rounded-md p-1.5 hover:bg-gray-200 dark:hover:bg-gray-600" :title="t('action.delete', 'حذف')">
                         <TrashIcon class="h-4 w-4 text-red-500" />
@@ -531,26 +614,46 @@ function uploadFromUrl() {
             </div>
 
             <!-- Grid -->
-            <div v-else class="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+            <div
+                v-else
+                :class="isList
+                    ? 'flex flex-col divide-y divide-gray-100 overflow-visible rounded-xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800'
+                    : 'grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6'"
+            >
                 <div
                     v-for="folder in folders"
                     :key="`folder-${folder.id}`"
-                    class="group relative flex cursor-pointer flex-col items-center rounded-xl border p-4 text-center hover:shadow-md"
+                    class="group relative flex cursor-pointer"
                     :class="[
-                        selected.folders.has(folder.id) ? 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800',
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12 ps-10' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        selected.folders.has(folder.id)
+                            ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
+                            : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
                         dropTargetFolderId === folder.id ? 'ring-2 ring-[var(--accent-500)]' : '',
                     ]"
                     :draggable="can.move"
-                    @click="toggleSelect('folders', folder.id, $event)"
-                    @dblclick="goToFolder(folder.id)"
+                    @click="onItemClick('folder', folder, $event)"
                     @dragstart="onDragStartItem($event, 'folder', folder.id)"
                     @dragend="onDragEndItem"
                     @dragover.prevent="onDragOverDropTarget($event, folder.id)"
                     @dragleave="dropTargetFolderId = undefined"
                     @drop.prevent.stop="onDropOnTarget($event, folder.id)"
                 >
-                    <FolderIcon class="h-12 w-12 text-amber-400" />
-                    <p class="mt-2 w-full truncate text-sm font-medium text-gray-700 dark:text-gray-200">{{ folder.name }}</p>
+                    <button
+                        type="button"
+                        class="absolute start-2 top-2 flex h-5 w-5 items-center justify-center rounded border transition"
+                        :class="[
+                            selected.folders.has(folder.id) ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white' : 'border-gray-300 bg-white dark:border-gray-500 dark:bg-gray-800',
+                            isList ? 'top-1/2 -translate-y-1/2' : '',
+                        ]"
+                        :aria-label="t('selection.select', 'تحديد')"
+                        @click.stop="toggleSelect('folders', folder.id)"
+                    >
+                        <CheckIcon v-if="selected.folders.has(folder.id)" class="h-3.5 w-3.5" />
+                    </button>
+                    <FolderIcon class="shrink-0 text-amber-400" :class="isList ? 'h-7 w-7' : 'h-12 w-12'" />
+                    <p class="truncate text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? 'min-w-0 flex-1 text-start' : 'mt-2 w-full'">{{ folder.name }}</p>
+                    <span v-if="isList" class="hidden shrink-0 text-xs text-gray-400 sm:inline">{{ formatDate(folder.created_at) }}</span>
                     <span
                         v-if="folder.folder_type === 'thesis'"
                         class="mt-1 rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"
@@ -558,7 +661,7 @@ function uploadFromUrl() {
                         {{ t('folder.type_thesis', 'أطروحة') }}
                     </span>
 
-                    <div class="absolute end-2 top-2" @click.stop>
+                    <div class="absolute end-2" :class="isList ? 'top-1/2 -translate-y-1/2' : 'top-2'" @click.stop>
                         <Dropdown align="right">
                             <template #trigger>
                                 <button class="rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700">
@@ -593,27 +696,47 @@ function uploadFromUrl() {
                 <div
                     v-for="file in files"
                     :key="`file-${file.id}`"
-                    class="group relative flex cursor-pointer flex-col items-center rounded-xl border p-4 text-center hover:shadow-md"
-                    :class="selected.files.has(file.id) ? 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'"
+                    class="group relative flex cursor-pointer"
+                    :class="[
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12 ps-10' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        selected.files.has(file.id)
+                            ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
+                            : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
+                    ]"
                     :draggable="can.move"
-                    @click="toggleSelect('files', file.id, $event)"
-                    @dblclick="openPreview(file)"
+                    @click="onItemClick('file', file, $event)"
                     @dragstart="onDragStartItem($event, 'file', file.id)"
                     @dragend="onDragEndItem"
                 >
-                    <div class="flex h-16 w-16 items-center justify-center">
-                        <FileThumbnail :file="file" :src="route('files.thumbnail', file.id)" icon-class="h-12 w-12" />
+                    <button
+                        type="button"
+                        class="absolute start-2 top-2 z-10 flex h-5 w-5 items-center justify-center rounded border transition"
+                        :class="[
+                            selected.files.has(file.id) ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white' : 'border-gray-300 bg-white dark:border-gray-500 dark:bg-gray-800',
+                            isList ? 'top-1/2 -translate-y-1/2' : '',
+                        ]"
+                        :aria-label="t('selection.select', 'تحديد')"
+                        @click.stop="toggleSelect('files', file.id)"
+                    >
+                        <CheckIcon v-if="selected.files.has(file.id)" class="h-3.5 w-3.5" />
+                    </button>
+                    <div class="flex shrink-0 items-center justify-center" :class="isList ? 'h-9 w-9' : 'h-16 w-16'">
+                        <FileThumbnail :file="file" :src="route('files.thumbnail', file.id)" :icon-class="isList ? 'h-7 w-7' : 'h-12 w-12'" />
                     </div>
-                    <p class="mt-2 flex w-full items-center justify-center gap-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200">
-                        <DocumentMagnifyingGlassIcon v-if="file.is_indexed" class="h-3.5 w-3.5 shrink-0 text-gray-400" :title="t('file.indexed', 'مفهرس للبحث داخل المحتوى')" />
-                        <span class="truncate">{{ file.name }}</span>
-                    </p>
-                    <p class="text-xs text-gray-400">{{ file.human_size ?? '' }}</p>
-                    <p v-if="file.content_snippet" class="mt-1 line-clamp-2 w-full text-start text-xs text-gray-500 dark:text-gray-400" dir="auto">
-                        {{ file.content_snippet }}
-                    </p>
+                    <div :class="isList ? 'min-w-0 flex-1 text-start' : 'w-full'">
+                        <p class="flex items-center gap-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? '' : 'mt-2 w-full justify-center'">
+                            <DocumentMagnifyingGlassIcon v-if="file.is_indexed" class="h-3.5 w-3.5 shrink-0 text-gray-400" :title="t('file.indexed', 'مفهرس للبحث داخل المحتوى')" />
+                            <span class="truncate">{{ file.name }}</span>
+                        </p>
+                        <p v-if="!isList" class="text-xs text-gray-400">{{ file.human_size ?? '' }}</p>
+                        <p v-if="file.content_snippet" class="mt-1 line-clamp-2 w-full text-start text-xs text-gray-500 dark:text-gray-400" dir="auto">
+                            {{ file.content_snippet }}
+                        </p>
+                    </div>
+                    <span v-if="isList" class="shrink-0 text-xs text-gray-400">{{ file.human_size ?? '' }}</span>
+                    <span v-if="isList" class="hidden w-24 shrink-0 text-xs text-gray-400 sm:inline">{{ formatDate(file.created_at) }}</span>
 
-                    <div class="absolute end-2 top-2" @click.stop>
+                    <div class="absolute end-2" :class="isList ? 'top-1/2 -translate-y-1/2' : 'top-2'" @click.stop>
                         <Dropdown align="right">
                             <template #trigger>
                                 <button class="rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700">

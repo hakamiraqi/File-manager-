@@ -33,6 +33,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
     Route::get('/files/{file}/preview', [FileController::class, 'preview'])->name('files.preview');
+    Route::get('/files/{file}/document-preview', [FileController::class, 'documentPreview'])->name('files.document-preview');
     Route::get('/files/{file}/preview/{quality}', [FileController::class, 'previewQuality'])->whereNumber('quality')->name('files.preview-quality');
     Route::get('/files/{file}/thumbnail', [FileController::class, 'thumbnail'])->name('files.thumbnail');
     Route::get('/files/{file}/content', [FileController::class, 'content'])->name('files.content');

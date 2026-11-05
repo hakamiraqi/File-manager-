@@ -173,6 +173,42 @@ class FileController extends Controller
     }
 
     /**
+     * Word / PowerPoint / Excel shown as PDF (converted once by LibreOffice, then kept next to the
+     * other generated files until the document changes).
+     */
+    public function documentPreview(Request $request, File $file, \App\Services\LibreOfficeConverter $office): BinaryFileResponse
+    {
+        $this->authorize('view', $file);
+
+        if (! $request->user()->canPerform('view')) {
+            throw new AuthorizationException('لا تملك صلاحية عرض الملفات.');
+        }
+
+        abort_unless($office->available() && $office->supports((string) $file->extension), 404);
+
+        $cached = storage_path('app/previews/'.$file->id.'-'.$file->size.'-'.optional($file->updated_at)->timestamp.'.pdf');
+        if (! is_file($cached)) {
+            $source = $file->disk()->path($file->path);
+            abort_unless(is_file($source), 404);
+            // One conversion at a time per file: a second viewer waits for the first one's result.
+            $lock = \Illuminate\Support\Facades\Cache::lock('preview-'.$file->id, 240);
+            $lock->block(200, function () use ($office, $source, $cached, $file) {
+                if (! is_file($cached)) {
+                    foreach (glob(storage_path('app/previews/'.$file->id.'-*.pdf')) ?: [] as $old) {
+                        @unlink($old);
+                    }
+                    abort_unless($office->toPdf($source, $cached, (string) $file->extension), 422, 'تعذّر تحويل المستند للمعاينة.');
+                }
+            });
+        }
+
+        return response()->file($cached, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'inline; filename="preview.pdf"',
+        ]);
+    }
+
+    /**
      * Serves one alternate-resolution rendition produced by VideoTranscoder
      * (see the file_qualities.quality-selector feature). Same Range-friendly
      * BinaryFileResponse approach as preview() so seeking still works.

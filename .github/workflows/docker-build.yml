@@ -1,0 +1,30 @@
+name: Docker image check
+
+# Builds the VPS images on branches and pull requests (no push, no deploy), so a broken
+# Dockerfile or package name shows up before it reaches main and the live site.
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'deploy/**'
+      - 'composer.*'
+      - 'package*.json'
+      - 'resources/**'
+      - 'app/**'
+      - '.github/workflows/docker-build.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build app and web images
+        run: |
+          docker build -f deploy/vps/Dockerfile --target app -t filenest-app:ci .
+          docker build -f deploy/vps/Dockerfile --target web -t filenest-web:ci .
+      - name: Tools inside the image
+        run: |
+          docker run --rm --entrypoint sh filenest-app:ci -c 'php -v | head -1; which ffmpeg pdftotext soffice; fc-list :lang=ar family | head -3'
+          printf 'مرحبا بالعالم\nسطر ثاني\n' > /tmp/t.txt
+          docker run --rm --entrypoint sh -v /tmp:/w filenest-app:ci -c 'cd /tmp && HOME=/tmp soffice --headless --convert-to pdf --outdir /tmp /w/t.txt >/dev/null && pdftotext -enc UTF-8 /tmp/t.pdf - | head -3'
