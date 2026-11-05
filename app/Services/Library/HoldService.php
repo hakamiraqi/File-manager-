@@ -2,6 +2,7 @@
 
 namespace App\Services\Library;
 
+use App\Services\Notify;
 use App\Models\ActivityLog;
 use App\Models\Library\Book;
 use App\Models\Library\BookCopy;
@@ -37,6 +38,8 @@ class HoldService
             }
 
             ActivityLog::record('library.hold', "{$member->name} حجز \"{$book->title}\"");
+            Notify::to(Notify::libraryStaff(), 'library', 'hold_placed', "حجز جديد: «{$book->title}»",
+                "القارئ: {$member->name}".($free ? ' — نسخة متوفرة جُهّزت له.' : ' — بالانتظار حتى تتوفر نسخة.'), route('library.manage.counter', [], false), $member->user);
 
             return $hold->fresh();
         });

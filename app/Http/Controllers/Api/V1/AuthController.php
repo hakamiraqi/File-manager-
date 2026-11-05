@@ -43,6 +43,8 @@ class AuthController extends Controller
         ]);
 
         event(new Registered($user));
+        \App\Services\Notify::to(\App\Services\Notify::admins('can_manage_users'), 'admin', 'user_registered', "مستخدم جديد: {$user->name}",
+            $user->email, route('admin.users.index', ['q' => $user->email], false));
         $notifier->registrationOccurred($user);
 
         $token = $user->createToken($this->deviceName($request))->plainTextToken;

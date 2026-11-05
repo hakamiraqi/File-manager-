@@ -6,6 +6,7 @@ import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import NotificationBell from '@/Components/NotificationBell.vue';
 import UserAvatar from '@/Components/UserAvatar.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
@@ -87,6 +88,7 @@ const nav = computed(() => [
                 <div class="min-w-0 flex-1">
                     <slot name="header" />
                 </div>
+                <NotificationBell />
                 <ThemeToggle />
                 <Dropdown align="right" width="48">
                     <template #trigger>

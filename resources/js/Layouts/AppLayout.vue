@@ -9,6 +9,7 @@ import DropdownLink from '@/Components/DropdownLink.vue';
 import StorageMeter from '@/Components/StorageMeter.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import NotificationBell from '@/Components/NotificationBell.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
     FolderIcon,
@@ -111,6 +112,7 @@ function logout() {
                     <slot name="header" />
                 </div>
 
+                <NotificationBell />
                 <ThemeToggle />
 
                 <Dropdown align="right" width="48">

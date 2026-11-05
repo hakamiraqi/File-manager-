@@ -44,6 +44,8 @@ class VideoCommentController extends Controller
             'body' => $data['body'],
             'timestamp_seconds' => $data['timestamp_seconds'] ?? null,
         ]);
+        \App\Services\Notify::to($file->user, 'files', 'video_comment', "تعليق جديد على «{$file->name}»",
+            $request->user()->name.': '.\Illuminate\Support\Str::limit($data['body'], 140), route('dashboard', $file->folder_id ? ['folder' => $file->folder_id] : [], false), $request->user());
 
         ActivityLog::record('video_comment.created', "علّق على الفيديو \"{$file->name}\"", $file);
 

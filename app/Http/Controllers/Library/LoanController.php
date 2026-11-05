@@ -104,6 +104,9 @@ class LoanController extends Controller
         if ($member) {
             \App\Models\Library\Notice::where('member_id', $member->id)->whereNull('read_at')->update(['read_at' => now()]);
         }
+        // The same notices in the bell count as read once «استعاراتي» is open.
+        \App\Models\UserNotification::where('user_id', $request->user()->id)->where('url', route('library.my-loans', [], false))
+            ->whereNull('read_at')->update(['read_at' => now()]);
 
         return back();
     }
