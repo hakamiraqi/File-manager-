@@ -15,6 +15,7 @@ const tabs = computed(() => [
     { label: t('library.tab.loans', 'الاستعارات'), name: 'library.manage.loans', active: route().current('library.manage.loans'), show: canManage.value },
     { label: t('library.tab.members', 'القرّاء'), name: 'library.manage.members', active: route().current('library.manage.members'), show: canManage.value },
     { label: t('library.tab.books', 'إدارة الكتب'), name: 'library.manage.books', active: route().current('library.manage.books'), show: canManage.value },
+    { label: t('library.tab.reports', 'التقارير'), name: 'library.manage.reports', active: route().current('library.manage.reports'), show: canManage.value },
     { label: t('library.tab.rfid', 'RFID والجرد'), name: 'library.manage.rfid', active: route().current('library.manage.rfid'), show: canManage.value },
     { label: t('library.tab.sections', 'الأقسام'), name: 'library.manage.sections', active: route().current('library.manage.sections'), show: canManage.value },
     { label: t('library.tab.settings', 'قواعد الإعارة'), name: 'library.manage.settings', active: route().current('library.manage.settings'), show: canManage.value },

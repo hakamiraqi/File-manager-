@@ -8,6 +8,7 @@ use App\Http\Controllers\Library\LoanController;
 use App\Http\Controllers\Library\MemberController;
 use App\Http\Controllers\Library\SettingsController;
 use App\Http\Controllers\Library\ImportController;
+use App\Http\Controllers\Library\ReportController;
 use App\Http\Controllers\Library\RfidController;
 use App\Http\Controllers\Library\SectionController;
 use Illuminate\Support\Facades\Route;
@@ -61,6 +62,9 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
         Route::post('/holidays', [SettingsController::class, 'addHoliday'])->name('holidays.store');
         Route::delete('/holidays/{holiday}', [SettingsController::class, 'removeHoliday'])->name('holidays.destroy');
+
+        Route::get('/reports', [ReportController::class, 'index'])->name('reports');
+        Route::get('/reports/export', [ReportController::class, 'export'])->name('reports.export');
 
         Route::get('/rfid', [RfidController::class, 'page'])->name('rfid');
         Route::get('/rfid/untagged', [RfidController::class, 'untagged'])->name('rfid.untagged');
