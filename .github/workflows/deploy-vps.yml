@@ -68,9 +68,10 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
         run: |
           # Containers, memory and the last log lines: shows why the site was down, if it was.
-          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "free -m; df -h / | tail -1; docker ps -a --filter name=filenest --format '{{.Names}}  {{.Status}}'; \
-            for c in filenest-app filenest-web; do echo \"== \$c\"; docker logs --tail 60 \$c 2>&1 | tail -60; done; \
-            echo '== laravel.log'; docker exec filenest-app sh -c 'tail -n 40 storage/logs/laravel.log 2>/dev/null' | cut -c1-400" || true
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "free -m; df -h / | tail -1; sudo docker ps -a --filter name=filenest --format '{{.Names}}  {{.Status}}'; \
+            echo '== app'; sudo docker logs --since 2h filenest-app 2>&1 | grep -v ' 200 ' | tail -40; \
+            echo '== web errors'; sudo docker logs --since 2h filenest-web 2>&1 | grep -E 'error|\" 50[0-9] ' | tail -30 | cut -c1-400; \
+            echo '== laravel.log'; sudo docker exec filenest-app sh -c 'tail -n 30 storage/logs/laravel.log 2>/dev/null' | cut -c1-400" || true
 
       - name: Copy the code and deploy
         env:
@@ -106,4 +107,4 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
           VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
         run: |
-          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "docker ps -a --filter name=filenest --format '{{.Names}}  {{.Status}}'; docker logs --tail 80 filenest-app 2>&1" || true
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo docker ps -a --filter name=filenest --format '{{.Names}}  {{.Status}}'; sudo docker logs --tail 80 filenest-app 2>&1" || true
