@@ -7,6 +7,7 @@ use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -103,6 +104,21 @@ class User extends Authenticatable
     public function folders(): HasMany
     {
         return $this->hasMany(Folder::class);
+    }
+
+    /** Folders an admin assigned to this user (other people's folders they may work in). */
+    public function assignedFolders(): BelongsToMany
+    {
+        return $this->belongsToMany(Folder::class, 'folder_user')->withTimestamps();
+    }
+
+    private ?array $assignedFolderIdsCache = null;
+
+    /** @return array<int, int> */
+    public function assignedFolderIds(): array
+    {
+        return $this->assignedFolderIdsCache ??= \Illuminate\Support\Facades\DB::table('folder_user')
+            ->where('user_id', $this->id)->pluck('folder_id')->map(fn ($id) => (int) $id)->all();
     }
 
     public function files(): HasMany

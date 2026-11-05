@@ -46,8 +46,12 @@ jobs:
           node-version: 22
       - name: Install
         run: |
+          # The app reads settings from the database at boot, so give it SQLite before composer's scripts run.
+          cp .env.example .env
+          sed -i -E 's/^#? *DB_CONNECTION=.*/DB_CONNECTION=sqlite/; s/^#? *DB_(HOST|PORT|DATABASE|USERNAME|PASSWORD)=.*//' .env
+          touch database/database.sqlite
           composer install --no-interaction --prefer-dist --no-progress
+          php artisan key:generate
           npm ci --no-audit --no-fund && npx vite build
-          cp .env.example .env && php artisan key:generate
       - name: Guest landing and smoke tests
-        run: php artisan test --filter='GuestLandingTest|ExampleTest'
+        run: php artisan test --filter='GuestLandingTest|ExampleTest|AssignedFoldersTest|GoldenPathTest'

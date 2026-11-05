@@ -8,7 +8,7 @@ import { useTrans } from '@/Composables/useTrans';
 import { PlusIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ users: Object, filters: Object });
+const props = defineProps({ users: Object, filters: Object, folderOptions: { type: Array, default: () => [] } });
 const page = usePage();
 
 const search = ref(props.filters.q ?? '');
@@ -129,6 +129,6 @@ function humanSize(bytes) {
             </div>
         </div>
 
-        <UserFormModal :show="modalShow" :user="editingUser" @close="modalShow = false" />
+        <UserFormModal :show="modalShow" :user="editingUser" :folder-options="folderOptions" @close="modalShow = false" />
     </AdminLayout>
 </template>

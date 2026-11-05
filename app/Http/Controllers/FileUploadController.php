@@ -53,8 +53,7 @@ class FileUploadController extends Controller
         }
 
         if ($data['folder_id'] ?? null) {
-            $folder = Folder::where('user_id', $user->id)->whereNull('deleted_at')->findOrFail($data['folder_id']);
-            $this->authorize('view', $folder);
+            Folder::findAccessible($user, $data['folder_id']);
         }
 
         $this->quota->assertHasSpace($user, $data['size']);

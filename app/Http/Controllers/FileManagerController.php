@@ -28,20 +28,26 @@ class FileManagerController extends Controller
         $sort = $request->string('sort', 'name')->toString();
         $direction = $request->string('direction', 'asc')->toString() === 'desc' ? 'desc' : 'asc';
 
-        $currentFolder = $folderId ? Folder::where('user_id', $user->id)->whereNull('deleted_at')->findOrFail($folderId) : null;
+        $currentFolder = $folderId ? Folder::findAccessible($user, $folderId) : null;
+        $assignedIds = $user->assignedFolderIds();
 
+        // Inside a folder everything in it is listed, whoever added it (assigned users and the
+        // owner work in the same folder). At the top: the user's own folders + the folders an
+        // admin assigned to them.
         $foldersQuery = Folder::query()
-            ->where('user_id', $user->id)
             ->whereNull('deleted_at')
-            ->when($search === '', fn ($q) => $q->where('parent_id', $currentFolder?->id))
-            ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%"));
+            ->when($search === '' && $currentFolder, fn ($q) => $q->where('parent_id', $currentFolder->id))
+            ->when($search === '' && ! $currentFolder, fn ($q) => $q->where(fn ($w) => $w
+                ->where(fn ($own) => $own->where('user_id', $user->id)->whereNull('parent_id'))
+                ->orWhereIn('id', $assignedIds)))
+            ->when($search !== '', fn ($q) => $q->where('user_id', $user->id)->where('name', 'like', "%{$search}%"));
 
         $filesQuery = File::query()
             ->with('qualities')
-            ->where('user_id', $user->id)
             ->whereNull('deleted_at')
-            ->when($search === '', fn ($q) => $q->where('folder_id', $currentFolder?->id))
-            ->when($search !== '', fn ($q) => $this->applySearch($q, $search));
+            ->when($search === '' && $currentFolder, fn ($q) => $q->where('folder_id', $currentFolder->id))
+            ->when($search === '' && ! $currentFolder, fn ($q) => $q->where('user_id', $user->id)->whereNull('folder_id'))
+            ->when($search !== '', fn ($q) => $this->applySearch($q->where('user_id', $user->id), $search));
 
         $sortColumn = in_array($sort, ['name', 'size', 'created_at'], true) ? $sort : 'name';
 
@@ -58,7 +64,8 @@ class FileManagerController extends Controller
 
         return Inertia::render('FileManager/Index', [
             'currentFolder' => $currentFolder,
-            'breadcrumbs' => $currentFolder?->breadcrumbs() ?? [],
+            'breadcrumbs' => $currentFolder?->breadcrumbsFor($user) ?? [],
+            'assignedFolderIds' => $assignedIds,
             'folders' => $folders,
             'files' => $files,
             'filters' => [

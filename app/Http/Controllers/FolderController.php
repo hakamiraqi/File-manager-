@@ -15,10 +15,24 @@ class FolderController extends Controller
 {
     public function tree(Request $request): JsonResponse
     {
-        $folders = Folder::where('user_id', $request->user()->id)
-            ->whereNull('deleted_at')
+        $user = $request->user();
+        $assigned = $user->assignedFolderIds();
+        $ids = $assigned === [] ? [] : collect($assigned)
+            ->flatMap(fn ($id) => optional(Folder::whereNull('deleted_at')->find($id))->descendantIds() ?? [])
+            ->unique()->all();
+
+        // Own folders + the assigned ones (shown as top-level, so the move dialog can reach them).
+        $folders = Folder::whereNull('deleted_at')
+            ->where(fn ($q) => $q->where('user_id', $user->id)->orWhereIn('id', $ids))
             ->orderBy('name')
-            ->get(['id', 'parent_id', 'name']);
+            ->get(['id', 'parent_id', 'name', 'user_id'])
+            ->map(function (Folder $f) use ($assigned, $user) {
+                if (in_array($f->id, $assigned, true) && $f->user_id !== $user->id) {
+                    $f->parent_id = null;
+                }
+
+                return $f->only(['id', 'parent_id', 'name']);
+            })->values();
 
         return response()->json($folders);
     }
@@ -172,7 +186,6 @@ class FolderController extends Controller
 
     private function authorizeParent(Request $request, int $parentId): void
     {
-        $parent = Folder::where('user_id', $request->user()->id)->whereNull('deleted_at')->findOrFail($parentId);
-        $this->authorize('view', $parent);
+        Folder::findAccessible($request->user(), $parentId);
     }
 }

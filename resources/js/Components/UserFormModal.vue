@@ -1,5 +1,5 @@
 <script setup>
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -14,6 +14,7 @@ const { t } = useTrans();
 const props = defineProps({
     show: Boolean,
     user: { type: Object, default: null }, // null => create mode
+    folderOptions: { type: Array, default: () => [] }, // [{id, path, owner}]
 });
 const emit = defineEmits(['close']);
 
@@ -33,6 +34,7 @@ const form = useForm({
     password: '',
     role: 'user',
     storage_quota_mb: '',
+    folder_ids: [],
     is_active: true,
     can_manage_appearance: false,
     can_manage_users: false,
@@ -56,14 +58,29 @@ watch(
                     ? Math.round(props.user.storage_quota_bytes / (1024 * 1024))
                     : '';
                 CAPABILITIES.forEach((c) => (form[c.key] = !!props.user[c.key]));
+                form.folder_ids = [...(props.user.folder_ids ?? [])];
             } else {
                 form.reset();
+                form.folder_ids = [];
                 form.role = 'user';
                 form.is_active = true;
             }
         }
     },
 );
+
+// Assigned folders: the user works inside them with their role's permissions.
+const folderSearch = ref('');
+const pickedFolders = computed(() => props.folderOptions.filter((f) => form.folder_ids.includes(f.id)));
+const folderMatches = computed(() => {
+    const q = folderSearch.value.trim().toLowerCase();
+    return props.folderOptions
+        .filter((f) => !form.folder_ids.includes(f.id) && (!q || f.path.toLowerCase().includes(q)))
+        .slice(0, 50);
+});
+function toggleFolder(id) {
+    form.folder_ids = form.folder_ids.includes(id) ? form.folder_ids.filter((x) => x !== id) : [...form.folder_ids, id];
+}
 
 function submit() {
     if (props.user) {
@@ -113,6 +130,37 @@ function submit() {
                 <div>
                     <InputLabel :value="t('admin.users.quota', 'حصة التخزين (ميغابايت، اتركه فارغاً للافتراضي)')" />
                     <TextInput type="number" min="1" v-model="form.storage_quota_mb" class="mt-1 block w-full" />
+                </div>
+                <div class="col-span-2 border-t border-gray-100 pt-3 dark:border-gray-700" v-if="form.role !== 'admin'">
+                    <InputLabel :value="t('admin.users.folders', 'المجلدات المخصّصة له')" />
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.users.folders_hint', 'تظهر له هذه المجلدات في ملفاته، ويعمل داخلها حسب صلاحيته (المحرّر يرفع ويعدّل ويضيف).') }}
+                    </p>
+                    <div v-if="pickedFolders.length" class="mt-2 flex flex-wrap gap-1.5">
+                        <span
+                            v-for="f in pickedFolders"
+                            :key="f.id"
+                            class="inline-flex items-center gap-1 rounded-full bg-[var(--accent-100)] py-0.5 pe-1 ps-2.5 text-sm text-[var(--accent-700)] dark:bg-gray-600 dark:text-gray-100"
+                        >
+                            {{ f.path }}
+                            <button type="button" class="rounded-full px-1 hover:bg-[var(--accent-200)] dark:hover:bg-gray-500" @click="toggleFolder(f.id)">×</button>
+                        </span>
+                    </div>
+                    <TextInput v-model="folderSearch" :placeholder="t('admin.users.folders_search', 'ابحث عن مجلد لإضافته...')" class="mt-2 block w-full" />
+                    <div class="mt-1 max-h-44 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
+                        <button
+                            v-for="f in folderMatches"
+                            :key="f.id"
+                            type="button"
+                            class="flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
+                            @click="toggleFolder(f.id)"
+                        >
+                            <span class="truncate">📁 {{ f.path }}</span>
+                            <span class="shrink-0 text-xs text-gray-400">{{ f.owner }}</span>
+                        </button>
+                        <p v-if="!folderMatches.length" class="px-3 py-2 text-sm text-gray-400">{{ t('admin.users.folders_none', 'لا توجد مجلدات مطابقة.') }}</p>
+                    </div>
+                    <InputError :message="form.errors.folder_ids" class="mt-1" />
                 </div>
                 <div class="col-span-2" v-if="user">
                     <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">

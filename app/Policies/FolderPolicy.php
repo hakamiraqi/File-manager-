@@ -9,7 +9,7 @@ class FolderPolicy
 {
     public function view(User $user, Folder $folder): bool
     {
-        return $user->isAdmin() || $user->id === $folder->user_id;
+        return $folder->isAccessibleBy($user);
     }
 
     public function update(User $user, Folder $folder): bool

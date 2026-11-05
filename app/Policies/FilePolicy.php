@@ -9,7 +9,8 @@ class FilePolicy
 {
     public function view(User $user, File $file): bool
     {
-        return $user->isAdmin() || $user->id === $file->user_id;
+        return $user->isAdmin() || $user->id === $file->user_id
+            || ($file->folder_id && $file->folder?->isAccessibleBy($user));
     }
 
     public function update(User $user, File $file): bool
