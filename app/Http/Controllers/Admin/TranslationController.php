@@ -146,7 +146,8 @@ class TranslationController extends Controller
 
     private function isDefault(Language $language): bool
     {
-        return \App\Models\Setting::get('default_locale', config('app.locale')) === $language->code;
+        // Not config('app.locale'): the locale middleware overwrites it with the viewer's language.
+        return (\App\Models\Setting::get('default_locale') ?: 'ar') === $language->code;
     }
 
     /**
