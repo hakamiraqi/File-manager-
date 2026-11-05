@@ -1,3 +1,11 @@
+// Fonts are bundled (no CDN) so the offline server looks the same without internet.
+import '@fontsource/figtree/400.css';
+import '@fontsource/figtree/500.css';
+import '@fontsource/figtree/600.css';
+import '@fontsource/cairo/400.css';
+import '@fontsource/cairo/500.css';
+import '@fontsource/cairo/600.css';
+import '@fontsource/cairo/700.css';
 import '../css/app.css';
 import './bootstrap';
 
