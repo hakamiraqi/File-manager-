@@ -41,7 +41,8 @@ jobs:
           php-version: ${{ env.PHP_MINOR }}
           extensions: gd, intl, zip, mbstring, pdo_mysql, sodium, fileinfo, exif
           tools: composer
-      - run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-install=auto
+      # --no-scripts: package:discover boots the app, which reads settings from a database the runner lacks.
+      - run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-install=auto --no-scripts
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
