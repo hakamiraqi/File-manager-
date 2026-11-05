@@ -91,6 +91,7 @@ class UserController extends Controller
             'password' => ['required', Password::defaults()],
             'role' => ['required', 'in:admin,editor,contributor,user'],
             'storage_quota_mb' => ['nullable', 'integer', 'min:1'],
+            'is_active' => ['sometimes', 'boolean'],
             'is_librarian' => ['sometimes', 'boolean'],
             'folder_ids' => ['sometimes', 'array'],
             'folder_ids.*' => ['integer'],
@@ -123,6 +124,7 @@ class UserController extends Controller
             'role' => $data['role'],
             'storage_quota_bytes' => isset($data['storage_quota_mb']) ? $data['storage_quota_mb'] * 1024 * 1024 : null,
             'is_librarian' => (bool) ($data['is_librarian'] ?? false),
+            'is_active' => (bool) ($data['is_active'] ?? true),
             'email_verified_at' => now(),
             ...array_intersect_key($data, array_flip(self::CAPABILITY_FIELDS)),
         ]);
@@ -165,6 +167,7 @@ class UserController extends Controller
                 unset($data[$field]);
             }
         }
+        $this->guardDeactivation($request, $user, $data['is_active'] ?? null);
 
         if (array_key_exists('storage_quota_mb', $data)) {
             $data['storage_quota_bytes'] = $data['storage_quota_mb'] ? $data['storage_quota_mb'] * 1024 * 1024 : null;
@@ -186,6 +189,33 @@ class UserController extends Controller
         ActivityLog::record('admin.user_updated', "حدّث بيانات المستخدم \"{$user->name}\"");
 
         return back()->with('success', 'تم تحديث بيانات المستخدم.');
+    }
+
+    /** Active / inactive switch on the users list. */
+    public function status(Request $request, User $user): RedirectResponse
+    {
+        abort_if($user->is_master_admin && ! $request->user()->is_master_admin, 403, 'لا يمكن تعديل حساب المدير الرئيسي.');
+        $active = $request->validate(['is_active' => ['required', 'boolean']])['is_active'];
+        $this->guardDeactivation($request, $user, $active);
+
+        $user->update(['is_active' => $active]);
+        if (! $active) {
+            // Signed-in phones lose access at once.
+            $user->tokens()->delete();
+        }
+        ActivityLog::record('admin.user_updated', ($active ? 'فعّل' : 'أوقف')." حساب المستخدم \"{$user->name}\"");
+
+        return back()->with('success', $active ? 'تم تفعيل الحساب.' : 'تم إيقاف الحساب.');
+    }
+
+    /** Nobody switches off their own account or the master admin's. */
+    private function guardDeactivation(Request $request, User $user, $active): void
+    {
+        if ($active === null || (bool) $active) {
+            return;
+        }
+        abort_if($user->id === $request->user()->id, 422, 'لا يمكنك إيقاف حسابك الخاص.');
+        abort_if($user->is_master_admin, 422, 'لا يمكن إيقاف حساب المدير الرئيسي.');
     }
 
     public function destroy(Request $request, User $user): RedirectResponse

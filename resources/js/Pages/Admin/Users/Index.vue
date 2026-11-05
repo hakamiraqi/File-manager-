@@ -6,6 +6,7 @@ import UserFormModal from '@/Components/UserFormModal.vue';
 import Pagination from '@/Components/Pagination.vue';
 import { useTrans } from '@/Composables/useTrans';
 import UserAvatar from '@/Components/UserAvatar.vue';
+import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { PlusIcon, PencilIcon, TrashIcon, MagnifyingGlassIcon, ClipboardDocumentListIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -38,6 +39,14 @@ function pickRole(r) {
 function pickStatus(s) {
     status.value = status.value === s ? '' : s;
     runSearch();
+}
+const me = computed(() => page.props.auth.user?.id);
+function canToggle(user) {
+    return user.id !== me.value && !user.is_master_admin;
+}
+function setActive(user, active) {
+    if (!active && !confirm(t('admin.users.confirm_disable', 'إيقاف حساب ":name"؟ لن يستطيع الدخول حتى تعيد تفعيله.', { name: user.name }))) return;
+    router.patch(route('admin.users.status', user.id), { is_active: active }, { preserveScroll: true, preserveState: true });
 }
 const total = computed(() => Object.values(props.roleCounts).reduce((a, b) => a + Number(b), 0));
 const nf = new Intl.NumberFormat('ar-IQ');
@@ -125,7 +134,7 @@ function humanSize(bytes) {
                     :class="status === s ? (s === 'active' ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-red-600 bg-red-600 text-white') : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200'"
                 >
                     <span class="h-2 w-2 rounded-full" :class="s === 'active' ? 'bg-emerald-500' : 'bg-red-500'" />
-                    {{ s === 'active' ? t('admin.users.active', 'مفعّل') : t('admin.users.suspended', 'معلّق') }}
+                    {{ s === 'active' ? t('admin.users.active_short', 'نشط') : t('admin.users.inactive_short', 'غير نشط') }}
                     <span class="text-xs opacity-75">{{ nf.format(statusCounts[s] ?? 0) }}</span>
                 </button>
             </div>
@@ -150,7 +159,8 @@ function humanSize(bytes) {
                             <span class="text-[11px] text-gray-400">{{ humanSize(user.storage_used_bytes) }}</span>
                         </div>
                     </div>
-                    <div class="flex shrink-0 flex-col gap-1">
+                    <div class="flex shrink-0 flex-col items-center gap-1">
+                        <ToggleSwitch :model-value="user.is_active" tone="green" size="sm" :disabled="!canToggle(user)" :title="user.is_active ? t('admin.users.active', 'نشط') : t('admin.users.suspended', 'غير نشط')" @update:model-value="setActive(user, $event)" />
                         <button @click="openEdit(user)" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.edit', 'تعديل')"><PencilIcon class="h-4 w-4 text-gray-500" /></button>
                         <button v-if="!user.is_master_admin" @click="destroy(user)" class="rounded-lg p-2 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.delete', 'حذف')"><TrashIcon class="h-4 w-4 text-red-500" /></button>
                     </div>
@@ -194,10 +204,12 @@ function humanSize(bytes) {
                             </td>
                             <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{{ lastSeen(user.last_login_at) }}</td>
                             <td class="px-4 py-3">
-                                <span class="inline-flex items-center gap-1.5 text-xs" :class="user.is_active ? 'text-emerald-600' : 'text-red-500'">
-                                    <span class="h-2 w-2 rounded-full" :class="user.is_active ? 'bg-emerald-500' : 'bg-red-500'" />
-                                    {{ user.is_active ? t('admin.users.active', 'مفعّل') : t('admin.users.suspended', 'معلّق') }}
-                                </span>
+                                <div class="flex items-center gap-2">
+                                    <ToggleSwitch :model-value="user.is_active" tone="green" size="sm" :disabled="!canToggle(user)" @update:model-value="setActive(user, $event)" />
+                                    <span class="text-xs" :class="user.is_active ? 'text-emerald-600' : 'text-red-500'">
+                                        {{ user.is_active ? t('admin.users.active_short', 'نشط') : t('admin.users.inactive_short', 'غير نشط') }}
+                                    </span>
+                                </div>
                             </td>
                             <td class="whitespace-nowrap px-4 py-3 text-end">
                                 <a :href="route('admin.activity.index', { user: user.id })" class="inline-flex rounded-md p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('admin.users.activity', 'نشاطاته')">

@@ -151,7 +151,7 @@ function submitImport() {
                                     <p class="whitespace-pre-line text-sm text-gray-600 dark:text-gray-300" :class="open[th.id] ? '' : 'line-clamp-2'" dir="auto">{{ th.abstract }}</p>
                                     <button @click="open[th.id] = !open[th.id]" class="text-xs text-[var(--accent-600)] hover:underline">{{ open[th.id] ? t('thesis.less', 'إخفاء') : t('thesis.abstract_more', 'المستخلص كاملاً') }}</button>
                                 </div>
-                                <p v-if="th.iqdr_receipt" class="mt-2 text-xs text-emerald-700 dark:text-emerald-400">{{ t('thesis.iqdr_deposited', 'مودعة في المستودع الرقمي العراقي') }} · {{ th.iqdr_receipt }}</p>
+                                <p v-if="false && th.iqdr_receipt" class="mt-2 text-xs text-emerald-700 dark:text-emerald-400">{{ t('thesis.iqdr_deposited', 'مودعة في المستودع الرقمي العراقي') }} · {{ th.iqdr_receipt }}</p>
                             </div>
                             <a :href="th.url" class="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700" :title="t('thesis.open_folder', 'فتح المجلد')"><FolderOpenIcon class="h-5 w-5" /></a>
                         </div>
