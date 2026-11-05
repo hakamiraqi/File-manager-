@@ -102,8 +102,8 @@ function logout() {
 
         <!-- Main -->
         <div class="flex min-w-0 flex-1 flex-col">
-            <header class="flex h-16 items-center gap-4 border-b border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-800">
-                <button class="lg:hidden" @click="mobileOpen = true">
+            <header class="flex min-h-16 items-center gap-3 border-b py-2 sm:gap-4 border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-800">
+                <button class="shrink-0 lg:hidden" @click="mobileOpen = true">
                     <Bars3Icon class="h-6 w-6" />
                 </button>
 
