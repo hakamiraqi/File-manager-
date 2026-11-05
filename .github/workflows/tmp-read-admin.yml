@@ -1,0 +1,14 @@
+name: tmp read admin login
+on:
+  push:
+    branches: [tmp-read-admin]
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh; printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/k; chmod 600 ~/.ssh/k
+          ssh-keyscan -H 193.123.83.82 >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/k ubuntu@193.123.83.82 "cat ~/filenest-admin-password.txt" | base64 -w0; echo
