@@ -1,0 +1,9 @@
+# FileNest offline settings. Edit, then run Stop.bat and Start.bat.
+# Web port. Change only if another program (XAMPP, IIS, Skype) already uses 80, e.g. 8080.
+HTTP_PORT=80
+# How many requests are handled at the same time (raise for more users).
+PHP_WORKERS=8
+# Leave empty to detect this computer's network address automatically.
+SERVER_IP=
+# 1 = open the browser after starting.
+OPEN_BROWSER=1

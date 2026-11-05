@@ -13,6 +13,9 @@ use App\Http\Controllers\VideoCommentController;
 use App\Http\Controllers\VideoQuestionController;
 use Illuminate\Support\Facades\Route;
 
+// The apps and the offline server for download (public, no login).
+Route::get('/download', fn () => view('downloads', ['releases' => \App\Support\AppReleases::all()]))->name('downloads');
+
 Route::get('/', function () {
     return redirect()->to(auth()->check() ? route('dashboard') : route('login'));
 });

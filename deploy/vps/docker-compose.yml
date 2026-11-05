@@ -1,0 +1,91 @@
+# FileNest on the VPS: nginx + PHP-FPM + MySQL + queue worker + scheduler.
+# Reached through the existing Caddy (network `headscale_default`) at https://files.azoclinic.duckdns.org .
+# Run from the repo root:  docker compose --env-file .env -f deploy/vps/docker-compose.yml up -d --build
+# Container names start with filenest- so nothing clashes with the dental app or the other services.
+name: filenest
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: filenest-db
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-time-zone=+03:00 --skip-log-bin --performance-schema=OFF --max-connections=100 --innodb-buffer-pool-size=512M
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - filenest_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [default]
+
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      target: app
+    image: filenest-app:latest
+    container_name: filenest-app
+    restart: unless-stopped
+    env_file: ../../.env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - filenest_storage:/var/www/html/storage
+      - ../../public/downloads:/var/www/html/public/downloads:ro
+    networks: [default]
+
+  # Thumbnails, document text extraction and video quality transcoding.
+  queue:
+    image: filenest-app:latest
+    container_name: filenest-queue
+    restart: unless-stopped
+    env_file: ../../.env
+    user: www-data
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=1800", "--sleep=3", "--max-time=3600"]
+    depends_on: [app]
+    volumes:
+      - filenest_storage:/var/www/html/storage
+    networks: [default]
+
+  # Trash purge (daily) and stale upload cleanup (hourly).
+  scheduler:
+    image: filenest-app:latest
+    container_name: filenest-scheduler
+    restart: unless-stopped
+    env_file: ../../.env
+    user: www-data
+    command: ["php", "artisan", "schedule:work"]
+    depends_on: [app]
+    volumes:
+      - filenest_storage:/var/www/html/storage
+    networks: [default]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      target: web
+    image: filenest-web:latest
+    container_name: filenest-web
+    restart: unless-stopped
+    depends_on: [app]
+    volumes:
+      - filenest_storage:/var/www/html/storage:ro
+      - ../../public/downloads:/var/www/html/public/downloads:ro
+    networks: [default, edge]
+
+volumes:
+  filenest_db:
+  filenest_storage:
+
+networks:
+  edge:
+    external: true
+    name: headscale_default
