@@ -756,7 +756,7 @@ function uploadFromUrl() {
                 <div
                     v-for="folder in folders"
                     :key="`folder-${folder.id}`"
-                    class="group relative flex cursor-pointer"
+                    class="group relative flex cursor-pointer [&:has(.dropdown-open)]:z-30"
                     :class="[
                         isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
                         selected.folders.has(folder.id)
@@ -833,7 +833,7 @@ function uploadFromUrl() {
                 <div
                     v-for="file in files"
                     :key="`file-${file.id}`"
-                    class="group relative flex cursor-pointer"
+                    class="group relative flex cursor-pointer [&:has(.dropdown-open)]:z-30"
                     :class="[
                         isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
                         selected.files.has(file.id)
