@@ -83,7 +83,8 @@ class StaffAnalyticsTest extends TestCase
                 ->where('report.quality.score', 75)
                 ->where('report.fileTypes.0.type', 'pdf')
                 ->where('report.fileTypes.0.files', 3)
-                ->where('report.hours.9', 3)
+                ->where('report.hours.9', 4) // 3 uploads + 1 thesis edit (06:xx UTC)
+                ->where('report.hours.10', 3)
                 ->where('report.weekdays.5', 7)
             );
 
