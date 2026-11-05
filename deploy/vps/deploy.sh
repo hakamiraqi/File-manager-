@@ -19,6 +19,9 @@ if [ ! -f .env ]; then
     echo "Created .env with fresh secrets."
 fi
 mkdir -p public/downloads
+# The web and app containers read this folder as another user, so it must stay world-readable.
+chmod 755 public public/downloads
+find public/downloads -maxdepth 1 -type f -exec chmod 644 {} +
 
 # Database backup before every update (last 20 kept in ~/filenest-backups). The uploaded files stay in
 # the filenest_storage volume, which an update never touches. A failed backup stops the deploy.

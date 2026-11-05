@@ -216,7 +216,7 @@ jobs:
           N=${{ github.run_number }}
           f=FileNestOffline-$N.zip
           dir="$APP_DIR/public/downloads"
-          vps "mkdir -p '$dir' && cat > '$dir/$f.tmp' && mv '$dir/$f.tmp' '$dir/$f'" < FileNestOffline-windows.zip
+          vps "mkdir -p '$dir' && chmod 755 '$dir' && cat > '$dir/$f.tmp' && mv '$dir/$f.tmp' '$dir/$f' && chmod 644 '$dir/$f'" < FileNestOffline-windows.zip
           # The VPS has python3 (no jq): merge the offline entry into releases.json.
           vps "cd '$dir' && python3 -c \"import json,os; p='releases.json'; d=json.load(open(p)) if os.path.exists(p) else {}; d['offline_server']={'version':'$N','url':'/downloads/$f'}; json.dump(d,open(p+'.tmp','w'),indent=2); os.replace(p+'.tmp',p)\" \
             && for o in FileNestOffline-*.zip; do [ \"\$o\" = '$f' ] || rm -f -- \"\$o\"; done; cat releases.json; ls -la"
