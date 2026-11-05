@@ -17,6 +17,7 @@ import {
     XMarkIcon,
     ShieldCheckIcon,
     QueueListIcon,
+    BookOpenIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -27,6 +28,7 @@ const mobileOpen = ref(false);
 
 const nav = computed(() => [
     { label: t('nav.dashboard', 'ملفاتي'), href: route('dashboard'), icon: FolderIcon, active: route().current('dashboard') },
+    { label: t('nav.library', 'المكتبة'), href: route('library.index'), icon: BookOpenIcon, active: route().current('library.*') },
     { label: t('nav.playlists', 'قوائم التشغيل'), href: route('playlists.index'), icon: QueueListIcon, active: route().current('playlists.*') },
     { label: t('nav.shares', 'الروابط المشتركة'), href: route('shares.index'), icon: ShareIcon, active: route().current('shares.index') },
     { label: t('nav.trash', 'سلة المحذوفات'), href: route('trash.index'), icon: TrashIcon, active: route().current('trash.index') },

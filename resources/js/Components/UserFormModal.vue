@@ -35,6 +35,7 @@ const form = useForm({
     role: 'user',
     storage_quota_mb: '',
     folder_ids: [],
+    is_librarian: false,
     is_active: true,
     can_manage_appearance: false,
     can_manage_users: false,
@@ -59,6 +60,7 @@ watch(
                     : '';
                 CAPABILITIES.forEach((c) => (form[c.key] = !!props.user[c.key]));
                 form.folder_ids = [...(props.user.folder_ids ?? [])];
+                form.is_librarian = !!props.user.is_librarian;
             } else {
                 form.reset();
                 form.folder_ids = [];
@@ -161,6 +163,12 @@ function submit() {
                         <p v-if="!folderMatches.length" class="px-3 py-2 text-sm text-gray-400">{{ t('admin.users.folders_none', 'لا توجد مجلدات مطابقة.') }}</p>
                     </div>
                     <InputError :message="form.errors.folder_ids" class="mt-1" />
+                </div>
+                <div class="col-span-2" v-if="form.role !== 'admin'">
+                    <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                        <input type="checkbox" v-model="form.is_librarian" class="rounded border-gray-300" />
+                        {{ t('admin.users.librarian', 'أمين مكتبة (يعير ويستلم الكتب ويدير الفهرس)') }}
+                    </label>
                 </div>
                 <div class="col-span-2" v-if="user">
                     <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">

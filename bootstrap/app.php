@@ -20,6 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
             \Illuminate\Support\Facades\Route::middleware('web')
                 ->group(__DIR__.'/../routes/guest-access.php');
+
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(__DIR__.'/../routes/library.php');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

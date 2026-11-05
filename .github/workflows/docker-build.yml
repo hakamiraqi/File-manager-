@@ -54,4 +54,4 @@ jobs:
           php artisan key:generate
           npm ci --no-audit --no-fund && npx vite build
       - name: Guest landing and smoke tests
-        run: php artisan test --filter='GuestLandingTest|ExampleTest|AssignedFoldersTest|GoldenPathTest'
+        run: php artisan test --filter='GuestLandingTest|ExampleTest|AssignedFoldersTest|GoldenPathTest|Library'

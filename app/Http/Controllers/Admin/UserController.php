@@ -81,6 +81,7 @@ class UserController extends Controller
             'password' => ['required', Password::defaults()],
             'role' => ['required', 'in:admin,editor,contributor,user'],
             'storage_quota_mb' => ['nullable', 'integer', 'min:1'],
+            'is_librarian' => ['sometimes', 'boolean'],
             'folder_ids' => ['sometimes', 'array'],
             'folder_ids.*' => ['integer'],
             'can_manage_appearance' => ['boolean'],
@@ -111,6 +112,7 @@ class UserController extends Controller
             'password' => Hash::make($data['password']),
             'role' => $data['role'],
             'storage_quota_bytes' => isset($data['storage_quota_mb']) ? $data['storage_quota_mb'] * 1024 * 1024 : null,
+            'is_librarian' => (bool) ($data['is_librarian'] ?? false),
             'email_verified_at' => now(),
             ...array_intersect_key($data, array_flip(self::CAPABILITY_FIELDS)),
         ]);
@@ -133,6 +135,7 @@ class UserController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'storage_quota_mb' => ['nullable', 'integer', 'min:1'],
             'password' => ['nullable', Password::defaults()],
+            'is_librarian' => ['sometimes', 'boolean'],
             'folder_ids' => ['sometimes', 'array'],
             'folder_ids.*' => ['integer'],
             'can_manage_appearance' => ['boolean'],
