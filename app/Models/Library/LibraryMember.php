@@ -13,6 +13,11 @@ class LibraryMember extends Model
 
     protected $fillable = ['user_id', 'name', 'card_number', 'type', 'stage', 'phone', 'email', 'active', 'notes'];
 
+    /** Defaults mirrored from the migration so a freshly created member is usable before a refresh. */
+    protected $attributes = [
+        'active' => true,
+    ];
+
     protected function casts(): array
     {
         return ['active' => 'boolean'];
