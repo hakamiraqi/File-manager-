@@ -1,6 +1,7 @@
 <script setup>
 import UserAvatar from '@/Components/UserAvatar.vue';
-import { ref, computed } from 'vue';
+import { useSaved } from '@/Composables/useSaved';
+import { ref, computed, watch } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
@@ -20,6 +21,7 @@ import {
     QueueListIcon,
     BookOpenIcon,
     AcademicCapIcon,
+    BookmarkIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -27,11 +29,14 @@ const page = usePage();
 const user = computed(() => page.props.auth.user);
 const quota = computed(() => page.props.quota);
 const mobileOpen = ref(false);
+const saved = useSaved();
+watch(() => page.props.savedIds, (ids) => saved.load(ids), { immediate: true });
 
 const nav = computed(() => [
     { label: t('nav.dashboard', 'ملفاتي'), href: route('dashboard'), icon: FolderIcon, active: route().current('dashboard') },
     { label: t('nav.theses', 'الرسائل والأطاريح'), href: route('theses.index'), icon: AcademicCapIcon, active: route().current('theses.*') },
     { label: t('nav.library', 'المكتبة'), href: page.props.permissions?.library_unread ? route('library.my-loans') : route('library.index'), icon: BookOpenIcon, active: route().current('library.*'), badge: page.props.permissions?.library_unread || 0 },
+    { label: t('nav.saved', 'المحفوظات والتنزيلات'), href: route('saved.index'), icon: BookmarkIcon, active: route().current('saved.*') },
     { label: t('nav.playlists', 'قوائم التشغيل'), href: route('playlists.index'), icon: QueueListIcon, active: route().current('playlists.*') },
     { label: t('nav.shares', 'الروابط المشتركة'), href: route('shares.index'), icon: ShareIcon, active: route().current('shares.index') },
     { label: t('nav.trash', 'سلة المحذوفات'), href: route('trash.index'), icon: TrashIcon, active: route().current('trash.index') },

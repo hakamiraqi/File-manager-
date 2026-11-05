@@ -2,6 +2,7 @@
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useForm, router, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
+import SaveButton from '@/Components/SaveButton.vue';
 import {
     XMarkIcon,
     ArrowDownTrayIcon,
@@ -594,6 +595,7 @@ onBeforeUnmount(() => {
                     >
                         <QueueListIcon class="h-5 w-5 dark:text-gray-300" />
                     </button>
+                    <SaveButton v-if="currentUserId" type="file" :id="file.id" class="!rounded-md !p-2" />
                     <a :href="route('files.download', file.id)" class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.download', 'تنزيل')">
                         <ArrowDownTrayIcon class="h-5 w-5 dark:text-gray-300" />
                     </a>
