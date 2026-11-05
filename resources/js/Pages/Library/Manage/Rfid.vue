@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { useLibrary } from '@/Composables/useLibrary';
-import { SignalIcon, LinkIcon, XMarkIcon, ExclamationTriangleIcon, CheckCircleIcon, PrinterIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
+import { SignalIcon, LinkIcon, XMarkIcon, ExclamationTriangleIcon, CheckCircleIcon, PrinterIcon, ArrowPathIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
     sections: Array,
@@ -182,10 +182,11 @@ const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory())
         <div class="space-y-4 p-4 sm:p-6">
             <LibraryTabs class="print:hidden" />
 
-            <div class="flex gap-2 print:hidden">
-                <button v-for="k in ['link', 'inventory']" :key="k" @click="tab = k"
-                    class="rounded-lg border px-4 py-2 text-sm font-medium"
-                    :class="tab === k ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300'">
+            <div class="grid grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1 print:hidden sm:inline-grid dark:bg-gray-900">
+                <button v-for="k in ['link', 'inventory']" :key="k" type="button" @click="tab = k"
+                    class="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
+                    :class="tab === k ? 'bg-white text-[var(--accent-600)] shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'">
+                    <component :is="k === 'link' ? LinkIcon : ClipboardDocumentCheckIcon" class="h-5 w-5" />
                     {{ k === 'link' ? t('library.rfid_link', 'ربط الشرائح بالنسخ') : t('library.inventory', 'جرد الرفوف') }}
                 </button>
             </div>
