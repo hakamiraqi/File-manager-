@@ -15,7 +15,7 @@ class SetApplicationLocale
         $locale = $request->user()?->locale
             ?? Setting::get('default_locale', config('app.locale'));
 
-        if (array_key_exists($locale, config('filenest.supported_locales'))) {
+        if (\App\Support\Locales::isActive($locale)) {
             App::setLocale($locale);
         }
 

@@ -13,7 +13,7 @@ class TranslationController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $locale = in_array($request->string('locale')->toString(), array_keys(config('filenest.supported_locales')), true)
+        $locale = in_array($request->string('locale')->toString(), array_keys(\App\Support\Locales::all()), true)
             ? $request->string('locale')->toString()
             : 'ar';
 
@@ -30,7 +30,7 @@ class TranslationController extends Controller
 
         return response()->json([
             'locale' => $locale,
-            'locales' => config('filenest.supported_locales'),
+            'locales' => \App\Support\Locales::all(),
             'rows' => $rows,
         ]);
     }

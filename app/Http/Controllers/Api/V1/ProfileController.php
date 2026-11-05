@@ -38,7 +38,7 @@ class ProfileController extends Controller
     public function updatePreferences(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'locale' => ['required', 'in:ar,en'],
+            'locale' => ['required', \Illuminate\Validation\Rule::in(array_keys(\App\Support\Locales::active()))],
         ]);
 
         $user = $request->user();

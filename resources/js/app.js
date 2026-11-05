@@ -21,7 +21,8 @@ const RTL_LOCALES = ['ar'];
 function applyDirection(page) {
     const locale = page.props.auth?.user?.locale ?? page.props.appSettings?.locale ?? 'ar';
     document.documentElement.lang = locale;
-    document.documentElement.dir = RTL_LOCALES.includes(locale) ? 'rtl' : 'ltr';
+    const dir = page.props.appSettings?.locales?.[locale]?.dir;
+    document.documentElement.dir = dir ?? (RTL_LOCALES.includes(locale) ? 'rtl' : 'ltr');
 }
 
 router.on('success', (event) => applyDirection(event.detail.page));
