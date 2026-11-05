@@ -1,4 +1,5 @@
 <script setup>
+import UserAvatar from '@/Components/UserAvatar.vue';
 import { ref, computed } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
@@ -110,10 +111,8 @@ function logout() {
                 <Dropdown align="right" width="48">
                     <template #trigger>
                         <button class="flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
-                            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-600)] text-xs text-white">
-                                {{ user.name?.charAt(0) }}
-                            </span>
-                            {{ user.name }}
+                            <UserAvatar :user="user" />
+                            <span class="hidden max-w-[10rem] truncate sm:inline">{{ user.name }}</span>
                         </button>
                     </template>
                     <template #content>
