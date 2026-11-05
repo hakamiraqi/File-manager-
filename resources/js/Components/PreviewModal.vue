@@ -427,6 +427,9 @@ function mountPlyr() {
 
         player = new Plyr(videoEl.value, {
             iconUrl: plyrIconUrl,
+            // Plyr's default points at its CDN; nothing must load from the
+            // internet on the offline server.
+            blankVideo: '',
             settings,
             captions: { active: subtitles.value.length > 0, update: true },
             ...(qualities.length > 1

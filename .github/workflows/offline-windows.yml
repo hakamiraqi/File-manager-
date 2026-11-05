@@ -1,10 +1,11 @@
 name: Offline server (Windows)
 
-# Builds a self-contained Windows folder of the whole site (PHP, MariaDB, Caddy, the app with
-# vendor/ and built assets, plus the Windows/Android/iPhone apps) that runs on one computer with
-# no internet; phones and PCs on the same Wi-Fi use it. See offline/README.md. A Windows runner
-# starts it and checks the login page before anything is published. Builds from main go to
-# /download on the VPS.
+# Builds a self-contained Windows folder of the whole site (PHP, MariaDB, Caddy, CoreDNS,
+# cloudflared, the app with vendor/ and built assets, plus the Windows/Android/iPhone apps) that
+# runs on one computer with no internet, run by the FileNest.exe control panel (the same panel as
+# the clinic system's offline server). See offline/README.md. A Windows runner starts it and checks
+# it before anything is published. Builds from main go to /download on the VPS, with
+# downloads/offline-latest.json for the panels' updates.
 on:
   push:
     paths:
@@ -29,10 +30,50 @@ env:
   PHP_MINOR: '8.4'
   MARIADB_VERSION: '10.11.10'
   CADDY_VERSION: '2.8.4'
+  COREDNS_VERSION: '1.12.3'
+  CLOUDFLARED_VERSION: '2026.9.3'
   SITE: https://files.azoclinic.duckdns.org
 
 jobs:
+  panel:
+    # The control panel (FileNest.exe), compiled with the .NET Framework compiler that ships with Windows.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile FileNest.exe
+        shell: pwsh
+        working-directory: offline/windows/panel
+        run: |
+          & "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe" /nologo /target:winexe /codepage:65001 /optimize+ `
+            /out:FileNest.exe /win32icon:icon.ico /win32manifest:app.manifest `
+            /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll /r:System.Core.dll `
+            /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll FileNest.cs
+          if ($LASTEXITCODE -ne 0) { throw 'Compile failed.' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panel
+          path: offline/windows/panel/FileNest.exe
+          retention-days: 3
+      # Pictures of every page of the panel, to check the look and that nothing is cut off.
+      - name: Pictures of the panel
+        shell: pwsh
+        working-directory: offline/windows/panel
+        run: |
+          Copy-Item ..\config.txt .\config.txt
+          $p = Start-Process -FilePath .\FileNest.exe -ArgumentList '--screenshots','shots' -PassThru
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); throw 'The screenshots did not finish.' }
+          Get-ChildItem shots | Format-Table Name,Length | Out-String | Write-Host
+          if (Test-Path shots\errors.txt) { Get-Content shots\errors.txt; throw 'Some pages failed to draw.' }
+          if ((Get-ChildItem shots\*.png).Count -lt 6) { throw 'Pictures are missing.' }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: panel-screens
+          path: offline/windows/panel/shots
+          retention-days: 7
+
   package:
+    needs: panel
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,6 +90,13 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - run: npm run build
+      - name: Everything the pages load is in the package (no CDN)
+        run: |
+          # Plyr's built-in defaults (cdn.plyr.io) stay in its code but are
+          # overridden in PreviewModal.vue, so they are not counted.
+          if grep -rEo 'https?://(fonts\.(googleapis|bunny|gstatic)|cdn\.|unpkg\.com|cdnjs\.)[^"'"'"'` ]*' resources/views public/build | grep -v 'cdn\.plyr\.io'; then
+            echo "::error::A page loads something from the internet; the offline server must work without it."; exit 1
+          fi
 
       - name: Assemble the app
         run: |
@@ -62,12 +110,17 @@ jobs:
           mkdir -p $OUT/app/storage/app/filemanager $OUT/app/storage/app/public $OUT/app/storage/logs \
             $OUT/app/storage/framework/cache $OUT/app/storage/framework/sessions $OUT/app/storage/framework/views
           cp offline/windows/env.offline $OUT/app/.env.offline
-          cp -r offline/windows/scripts $OUT/scripts
-          cp offline/windows/*.bat offline/windows/config.txt $OUT/
+          cp offline/windows/prepare.ps1 offline/windows/config.txt $OUT/
+          cp -r offline/windows/setup $OUT/setup
           cp offline/README.md $OUT/README.md
+          # The panel compares this with offline-latest.json to offer updates.
           echo ${{ github.run_number }} > $OUT/version.txt
-          # Windows line endings for the scripts.
-          sed -i 's/\r*$/\r/' $OUT/*.bat $OUT/config.txt $OUT/scripts/*.ps1 $OUT/README.md
+          sed -i 's/\r*$/\r/' $OUT/*.ps1 $OUT/config.txt $OUT/README.md
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: panel
+          path: dist/FileNestOffline
 
       - name: Apps for phones and computers (served at /apps on the LAN)
         run: |
@@ -107,13 +160,18 @@ jobs:
           find $OUT/mariadb -name '*.pdb' -delete
           test -f $OUT/mariadb/bin/mariadbd.exe && test -f $OUT/mariadb/bin/mariadb-install-db.exe
 
-      - name: Caddy (web server)
+      - name: Caddy (web server), CoreDNS (local name) and cloudflared (online access)
         run: |
           OUT=dist/FileNestOffline
-          mkdir -p $OUT/caddy
+          mkdir -p $OUT/caddy $OUT/coredns $OUT/cloudflared
           curl -fsSL --retry 5 -o caddy.zip "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_windows_amd64.zip"
           unzip -q -o caddy.zip caddy.exe -d $OUT/caddy
-          test -f $OUT/caddy/caddy.exe
+          curl -fsSL --retry 5 -o coredns.tgz "https://github.com/coredns/coredns/releases/download/v${COREDNS_VERSION}/coredns_${COREDNS_VERSION}_windows_amd64.tgz"
+          tar -xzf coredns.tgz -C $OUT/coredns
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o $OUT/cloudflared/cloudflared.exe \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-windows-amd64.exe"
+          test -f $OUT/caddy/caddy.exe && test -f $OUT/coredns/coredns.exe && test -f $OUT/FileNest.exe
+          test "$(stat -c %s $OUT/cloudflared/cloudflared.exe)" -gt 20000000
 
       - name: Zip
         run: |
@@ -126,70 +184,103 @@ jobs:
           retention-days: 14
 
   smoke-test:
-    # Unzip on a real Windows machine, start it, and check the site works, so a broken package is never published.
+    # Unzip on a real Windows machine, start it through the panel and check it, so a broken package
+    # is never published.
     needs: package
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: offline
-      - name: Start and check
+      - name: Start through FileNest.exe and check the site
         shell: pwsh
         run: |
+          # The checks below run without activation; the next step checks the gate itself.
+          $env:OFFLINE_ACTIVATION = 'false'
           Expand-Archive FileNestOffline-windows.zip -DestinationPath C:\
           $root = 'C:\FileNestOffline'
-          # Port 80 is taken on the runner.
-          (Get-Content "$root\config.txt") -replace '^HTTP_PORT=80$', 'HTTP_PORT=8080' -replace '^OPEN_BROWSER=1$', 'OPEN_BROWSER=0' | Set-Content "$root\config.txt"
-          Start-Process -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$root\scripts\start.ps1", '-Headless' -WorkingDirectory $root -RedirectStandardOutput C:\start.out -RedirectStandardError C:\start.err
+          # Port 80 is reserved on the runner; exercise the port settings instead.
+          (Get-Content "$root\config.txt") -replace '^HTTP_PORT=80$', 'HTTP_PORT=8080' -replace '^HTTPS_PORT=443$', 'HTTPS_PORT=8443' | Set-Content "$root\config.txt"
+          Start-Process -FilePath "$root\FileNest.exe" -ArgumentList '--headless' -WorkingDirectory $root
           $ok = $false
           for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
             Start-Sleep -Seconds 5
             $ok = (curl.exe -s -o NUL -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/login) -eq '200'
           }
-          Write-Host '== start output'; Get-Content C:\start.out, C:\start.err -ErrorAction SilentlyContinue | Select-Object -Last 60
+          Write-Host '== panel.log'; Get-Content "$root\app\storage\logs\panel.log" -Encoding UTF8 -ErrorAction SilentlyContinue | Select-Object -Last 40
           if (-not $ok) {
             Get-ChildItem "$root\app\storage\logs" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "== $($_.Name)"; Get-Content $_.FullName -Tail 40 }
-            Get-Content "$root\data\mariadb.err" -Tail 30 -ErrorAction SilentlyContinue
+            Write-Host '== Caddyfile'; Get-Content "$root\Caddyfile" -ErrorAction SilentlyContinue
+            Write-Host '== caddy validate'; & "$root\caddy\caddy.exe" validate --config "$root\Caddyfile" --adapter caddyfile 2>&1 | Select-Object -Last 10
+            Write-Host '== processes'; Get-Process php*,caddy,coredns,mariadbd -ErrorAction SilentlyContinue | Format-Table Name,Id,Path | Out-String | Write-Host
             throw 'The offline server did not serve the login page.'
-          }
-          $ip = (Get-Content "$root\lan-ip.txt").Trim()
-          Write-Host "LAN IP: $ip"
-          foreach ($path in '/login', '/download', '/up', '/build/manifest.json') {
-            $code = curl.exe -s -o NUL -w '%{http_code}' --max-time 30 "http://${ip}:8080$path"
-            Write-Host "$path -> $code"
-            if ($code -ne '200') { throw "$path answered $code on the LAN address" }
           }
           $admin = & "$root\mariadb\bin\mariadb.exe" --user=root --host=127.0.0.1 --port=3308 -N -e "select email from filenest.users where email='admin@filenest.test'"
           if ($admin -ne 'admin@filenest.test') { throw 'The admin account was not created.' }
 
+          Write-Host 'DNS:'
+          $dns = Resolve-DnsName -Name files.lan -Server 127.0.0.1 -DnsOnly -Type A
+          if (-not $dns.IPAddress) { throw 'files.lan did not resolve.' }
+
+          $ip = (Get-Content "$root\lan-ip.txt").Trim()
+          Write-Host "LAN IP: $ip"
+          foreach ($path in '/login', '/download', '/up', '/build/manifest.json', '/brand.json', '/favicon.svg') {
+            $code = curl.exe -s -o NUL -w '%{http_code}' --max-time 30 "http://${ip}:8080$path"
+            Write-Host "$path -> $code"
+            if ($code -ne '200') { throw "$path answered $code on the LAN address" }
+          }
+          $https = curl.exe -sk -o NUL -w '%{http_code}' --max-time 30 "https://${ip}:8443/login"
+          if ($https -ne '200') { throw "HTTPS login page failed ($https)." }
+          $ca = Invoke-WebRequest -Uri "http://${ip}:8080/ca.crt" -UseBasicParsing -TimeoutSec 30
+          if ($ca.StatusCode -ne 200 -or $ca.RawContentLength -lt 300) { throw 'Certificate download failed.' }
+          $setup = Invoke-WebRequest -Uri "http://${ip}:8080/setup" -UseBasicParsing -TimeoutSec 30
+          if ($setup.Content -notmatch 'cert.html') { throw 'Setup page failed.' }
+          $apps = curl.exe -s -o NUL -w '%{http_code}' --max-time 30 "http://${ip}:8080/apps/"
+          Write-Host "/apps/ -> $apps"
+
           Write-Host 'API login (the apps use it)'
           $body = '{"email":"admin@filenest.test","password":"password","device_name":"ci"}'
           $login = curl.exe -s --max-time 30 -H 'Content-Type: application/json' -H 'Accept: application/json' -d $body "http://${ip}:8080/api/v1/auth/login"
-          Write-Host ($login -join '').Substring(0, [Math]::Min(200, ($login -join '').Length))
-          if (($login -join '') -notmatch 'token') { Write-Host '::warning::API login did not return a token (check the route name).' }
+          if (($login -join '') -notmatch 'token') { Write-Host '::warning::API login did not return a token.' }
 
-          Write-Host 'Self-healing: kill the web server, the watchdog must restart it'
+          Write-Host 'Backup now (the panel button runs this)'
+          & "$root\php\php.exe" -c "$root\php\php.ini" "$root\app\artisan" backup:run --force
+          if ($LASTEXITCODE -ne 0) { throw 'backup:run failed.' }
+          if (-not (Get-ChildItem C:\FileNestBackups\*.zip -ErrorAction SilentlyContinue)) { throw 'No backup zip was made in C:\FileNestBackups.' }
+
+          Write-Host 'Self-healing: kill the web server, the panel must restart it'
           Get-Process caddy | Stop-Process -Force
-          Start-Sleep -Seconds 12
+          Start-Sleep -Seconds 15
           $back = curl.exe -s -o NUL -w '%{http_code}' --max-time 30 http://127.0.0.1:8080/login
           if ($back -ne '200') { throw "The web server was not restarted, got $back" }
 
-          Write-Host 'Stop: everything must exit'
-          & powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\stop.ps1"
+          Start-Process -FilePath "$root\FileNest.exe" -ArgumentList '--stop' -Wait
           Start-Sleep -Seconds 3
-          $left = Get-Process php-cgi, php, caddy, mariadbd -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root*" }
-          if ($left) { $left | Format-Table Name, Id | Out-String | Write-Host; throw 'Processes were left running after Stop.' }
+          $left = Get-Process php-cgi, php, caddy, mariadbd, coredns -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root*" }
+          if ($left) { $left | Format-Table Name, Id | Out-String | Write-Host; throw 'Processes were left running after --stop.' }
 
-          Write-Host 'Second start keeps the data'
-          Start-Process -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$root\scripts\start.ps1", '-Headless' -WorkingDirectory $root
-          $ok = $false
-          for ($i = 0; $i -lt 40 -and -not $ok; $i++) {
+      - name: Without an activation code every page leads to the activation page
+        shell: pwsh
+        run: |
+          $root = 'C:\FileNestOffline'
+          Start-Process -FilePath "$root\FileNest.exe" -ArgumentList '--headless' -WorkingDirectory $root
+          $code = ''
+          for ($i = 0; $i -lt 60; $i++) {
             Start-Sleep -Seconds 5
-            $ok = (curl.exe -s -o NUL -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/login) -eq '200'
+            $code = curl.exe -s -o NUL -w '%{http_code} %{redirect_url}' --max-time 10 http://127.0.0.1:8080/login
+            if ($code -match '^30') { break }
           }
-          if (-not $ok) { throw 'The second start failed.' }
-          & powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\stop.ps1"
+          Write-Host "login: $code"
+          if ($code -notmatch '^302 .*/activate$') { Get-Content "$root\app\storage\logs\panel.log" -Encoding UTF8 -Tail 30; throw "Before activation /login should lead to /activate, got $code" }
+          $page = Invoke-WebRequest -Uri http://127.0.0.1:8080/activate -UseBasicParsing -TimeoutSec 30
+          if ($page.Content -notmatch '[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}') { throw 'The activation page does not show the machine id.' }
+          & "$root\php\php.exe" -r "exit(function_exists('sodium_crypto_sign_verify_detached') ? 0 : 1);"
+          if ($LASTEXITCODE -ne 0) { throw 'sodium is missing from the bundled PHP.' }
+          # Activation calls the licensing server over HTTPS; this fails without a CA list.
+          & "$root\php\php.exe" -c "$root\php\php.ini" -r "`$c = curl_init('https://dental.azoclinic.duckdns.org/up'); curl_setopt(`$c, CURLOPT_RETURNTRANSFER, true); curl_setopt(`$c, CURLOPT_NOBODY, true); curl_exec(`$c); `$e = curl_error(`$c); echo `$e; exit(`$e === '' ? 0 : 1);"
+          if ($LASTEXITCODE -ne 0) { throw 'The bundled PHP cannot make HTTPS calls (activation would fail).' }
+          Start-Process -FilePath "$root\FileNest.exe" -ArgumentList '--stop' -Wait
 
   publish:
     needs: smoke-test
@@ -216,7 +307,11 @@ jobs:
           N=${{ github.run_number }}
           f=FileNestOffline-$N.zip
           dir="$APP_DIR/public/downloads"
-          vps "mkdir -p '$dir' && cat > '$dir/$f.tmp' && mv '$dir/$f.tmp' '$dir/$f'" < FileNestOffline-windows.zip
+          vps "mkdir -p '$dir' && chmod 755 '$dir' && cat > '$dir/$f.tmp' && mv '$dir/$f.tmp' '$dir/$f' && chmod 644 '$dir/$f'" < FileNestOffline-windows.zip
           # The VPS has python3 (no jq): merge the offline entry into releases.json.
+          # The panels' update manifest: build, url, size and SHA-256 of the package.
+          printf '{"build": %s, "url": "/downloads/%s", "size": %s, "sha256": "%s"}\n' $N $f $(stat -c %s FileNestOffline-windows.zip) $(sha256sum FileNestOffline-windows.zip | cut -d' ' -f1) > offline-latest.json
+          cat offline-latest.json
+          vps "cat > '$dir/offline-latest.json.tmp' && mv '$dir/offline-latest.json.tmp' '$dir/offline-latest.json' && chmod 644 '$dir/offline-latest.json'" < offline-latest.json
           vps "cd '$dir' && python3 -c \"import json,os; p='releases.json'; d=json.load(open(p)) if os.path.exists(p) else {}; d['offline_server']={'version':'$N','url':'/downloads/$f'}; json.dump(d,open(p+'.tmp','w'),indent=2); os.replace(p+'.tmp',p)\" \
             && for o in FileNestOffline-*.zip; do [ \"\$o\" = '$f' ] || rm -f -- \"\$o\"; done; cat releases.json; ls -la"

@@ -16,13 +16,15 @@
 
         <title inertia>{{ \App\Models\Setting::get('site_name', config('app.name', 'FileNest')) }}</title>
 
+        <meta name="app-name" content="{{ \App\Models\Setting::get('site_name', config('app.name', 'FileNest')) }}">
         @if($logo = \App\Models\Setting::get('logo_path'))
             <link rel="icon" href="{{ asset('storage/'.$logo) }}">
+        @else
+            <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
+            <link rel="alternate icon" href="{{ asset('favicon.ico') }}">
         @endif
+        <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
 
-        <!-- Fonts -->
-        <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&family=cairo:400,500,600,700&display=swap" rel="stylesheet" />
 
         <!-- Scripts -->
         @routes

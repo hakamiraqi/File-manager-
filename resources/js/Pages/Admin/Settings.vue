@@ -55,6 +55,7 @@ const form = useForm({
     thesis_departments: props.settings.thesis_departments ?? '',
     thesis_subjects: props.settings.thesis_subjects ?? '',
     oai_enabled: props.settings.oai_enabled === '1',
+    work_day_start: props.settings.work_day_start ?? '08:00',
     logo: null,
     header_image: null,
 });
@@ -181,6 +182,11 @@ function submit() {
                             <InputLabel :value="t('settings.thesis_subjects', 'المواضيع العامة')" />
                             <TagInput v-model="form.thesis_subjects" class="mt-1" multiword :placeholder="t('settings.tag_add', 'اكتب واضغط Enter')" />
                         </div>
+                    </div>
+                    <div class="mt-4 max-w-xs">
+                        <InputLabel :value="t('settings.work_day_start', 'بداية الدوام الرسمي')" />
+                        <input v-model="form.work_day_start" type="time" dir="ltr" class="mt-1 block w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('settings.work_day_start_hint', 'يُستخدم في فلتر «من بداية الدوام» بصفحة التحليلات (بتوقيت بغداد).') }}</p>
                     </div>
                     <label class="mt-4 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
                         <input type="checkbox" v-model="form.oai_enabled" class="rounded border-gray-300 text-[var(--accent-600)]" />

@@ -62,6 +62,17 @@ jobs:
           ssh-keygen -y -f ~/.ssh/vps_key >/dev/null && echo "key reads OK" || echo "::error::VPS_SSH_KEY is not a valid private key (paste the whole .key file, including the BEGIN and END lines)."
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
+      - name: Server state before deploying
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          # Containers, memory and the last log lines: shows why the site was down, if it was.
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "free -m; df -h / | tail -1; sudo docker ps -a --filter name=filenest --format '{{.Names}}  {{.Status}}'; \
+            echo '== app'; sudo docker logs --since 2h filenest-app 2>&1 | grep -v ' 200 ' | tail -40; \
+            echo '== web errors'; sudo docker logs --since 2h filenest-web 2>&1 | grep -E 'error|\" 50[0-9] ' | tail -30 | cut -c1-400; \
+            echo '== laravel.log'; sudo docker exec filenest-app sh -c 'tail -n 30 storage/logs/laravel.log 2>/dev/null' | cut -c1-400" || true
+
       - name: Copy the code and deploy
         env:
           VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
@@ -89,3 +100,11 @@ jobs:
             sleep 6
           done
           echo "Login page did not answer 200 (last: $code)."; exit 1
+
+      - name: Server state after a failed deploy
+        if: failure()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo docker ps -a --filter name=filenest --format '{{.Names}}  {{.Status}}'; sudo docker logs --tail 80 filenest-app 2>&1" || true

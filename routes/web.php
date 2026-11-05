@@ -110,3 +110,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 require __DIR__.'/auth.php';
+
+// The offline server's activation page (2026-11-05); see EnsureOfflineActivated.
+Route::get('/activate', [\App\Http\Controllers\Offline\ActivationController::class, 'show']);
+Route::post('/activate', [\App\Http\Controllers\Offline\ActivationController::class, 'store'])->middleware('throttle:10,1');
+
+// The site name and logo for the offline server's Wi-Fi pages (/setup).
+Route::get('/brand.json', function () {
+    $logo = \App\Models\Setting::get('logo_path');
+
+    return response()->json([
+        'name' => \App\Models\Setting::get('site_name', config('app.name', 'FileNest')),
+        'logo' => $logo ? asset('storage/'.$logo) : null,
+    ]);
+});

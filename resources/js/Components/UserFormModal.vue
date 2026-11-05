@@ -1,4 +1,5 @@
 <script setup>
+import { FolderIcon } from '@heroicons/vue/24/outline';
 import { computed, ref, watch } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
@@ -157,7 +158,7 @@ function submit() {
                             class="flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700"
                             @click="toggleFolder(f.id)"
                         >
-                            <span class="truncate">📁 {{ f.path }}</span>
+                            <span class="flex min-w-0 items-center gap-1"><FolderIcon class="h-4 w-4 shrink-0 text-amber-500" /><span class="truncate">{{ f.path }}</span></span>
                             <span class="shrink-0 text-xs text-gray-400">{{ f.owner }}</span>
                         </button>
                         <p v-if="!folderMatches.length" class="px-3 py-2 text-sm text-gray-400">{{ t('admin.users.folders_none', 'لا توجد مجلدات مطابقة.') }}</p>

@@ -27,12 +27,15 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->web(append: [
+            \App\Http\Middleware\EnsureOfflineActivated::class,
             \App\Http\Middleware\IpAccessControl::class,
             \App\Http\Middleware\SetApplicationLocale::class,
             \App\Http\Middleware\HandleInertiaRequests::class,
             \Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets::class,
             \App\Http\Middleware\EnsureUserIsActive::class,
         ]);
+
+        $middleware->api(append: [\App\Http\Middleware\EnsureOfflineActivated::class]);
 
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,

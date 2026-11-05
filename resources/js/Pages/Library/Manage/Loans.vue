@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Pagination from '@/Components/Pagination.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
+import { CheckCircleIcon, MagnifyingGlassIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const props = defineProps({ loans: Object, filters: Object, counts: Object, holds: Array });
@@ -75,7 +75,7 @@ const tabs = [
                             </td>
                             <td class="px-3 py-2 whitespace-nowrap">
                                 <template v-if="l.fine_waived">{{ t('library.waived', 'مُعفى') }}</template>
-                                <template v-else-if="l.fine_paid_at">{{ money(l.fine_amount) }} ✓</template>
+                                <span v-else-if="l.fine_paid_at" class="inline-flex items-center gap-1">{{ money(l.fine_amount) }} <CheckCircleIcon class="h-4 w-4 text-emerald-600" /></span>
                                 <template v-else-if="l.fine_now">{{ money(l.fine_now) }}</template>
                                 <template v-else>—</template>
                             </td>
