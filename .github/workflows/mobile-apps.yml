@@ -51,6 +51,7 @@ jobs:
           chmod 600 ~/.ssh/vps_key
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           vps() { ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "$@"; }
+          if ! vps true; then echo "::warning::Cannot reach the VPS with VPS_SSH_KEY: the APK is signed with a throwaway debug key."; exit 0; fi
           dir='~/filenest-android-signing'
           if ! vps "test -s $dir/release.jks && test -s $dir/password"; then
             pass=$(openssl rand -hex 16)
