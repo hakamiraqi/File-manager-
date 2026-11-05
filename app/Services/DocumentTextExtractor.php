@@ -26,9 +26,15 @@ class DocumentTextExtractor
 
     private const PLAIN_TEXT_EXTENSIONS = ['txt', 'md', 'csv', 'json', 'log'];
 
+    public function __construct(private readonly LibreOfficeConverter $office = new LibreOfficeConverter) {}
+
     public function supports(string $extension): bool
     {
         $extension = strtolower($extension);
+
+        if ($this->office->available() && $this->office->supports($extension)) {
+            return true;
+        }
 
         return in_array($extension, [...self::PLAIN_TEXT_EXTENSIONS, 'pdf', 'docx', 'doc', 'pptx'], true);
     }
@@ -51,7 +57,13 @@ class DocumentTextExtractor
         $extension = strtolower($extension);
 
         try {
-            $text = match (true) {
+            // LibreOffice first when installed: it reads Word/PowerPoint/Excel the way Office does
+            // (tables, text boxes, Arabic), which PhpWord often gets wrong.
+            $text = null;
+            if ($this->office->available() && $this->office->supports($extension)) {
+                $text = $this->office->toText($absolutePath, $extension);
+            }
+            $text ??= match (true) {
                 in_array($extension, self::PLAIN_TEXT_EXTENSIONS, true) => $this->extractPlainText($absolutePath),
                 $extension === 'pdf' => $this->extractPdf($absolutePath),
                 $extension === 'docx' => $this->extractDocx($absolutePath),
@@ -67,8 +79,12 @@ class DocumentTextExtractor
             return null;
         }
 
-        $text = mb_scrub(preg_replace('/\s+/u', ' ', $text) ?? $text, 'UTF-8');
-        $text = trim($text);
+        // Keep paragraph breaks (the preview shows this text); only tidy spaces and blank lines.
+        $text = str_replace(["\r\n", "\r", "\f"], "\n", $text);
+        $text = preg_replace('/[^\S\n]+/u', ' ', $text) ?? $text;
+        $text = preg_replace('/ *\n */u', "\n", $text) ?? $text;
+        $text = preg_replace('/\n{3,}/u', "\n\n", $text) ?? $text;
+        $text = trim(mb_scrub($text, 'UTF-8'));
 
         if ($text === '') {
             return null;
@@ -86,6 +102,11 @@ class DocumentTextExtractor
 
     private function extractPdf(string $path): ?string
     {
+        $text = LibreOfficeConverter::pdfToText($path);
+        if ($text !== null && trim($text) !== '') {
+            return $text;
+        }
+
         $parser = new PdfParser;
         $document = $parser->parseFile($path);
 
@@ -94,6 +115,13 @@ class DocumentTextExtractor
 
     private function extractDocx(string $path): ?string
     {
+        // The document XML read directly: every paragraph, table cell and text box in order,
+        // one paragraph per line. PhpWord's reader drops text boxes, fields and some tables.
+        $text = $this->extractDocxXml($path);
+        if ($text !== null && trim($text) !== '') {
+            return $text;
+        }
+
         $phpWord = WordIOFactory::load($path, 'Word2007');
         $parts = [];
 
@@ -180,5 +208,43 @@ class DocumentTextExtractor
         $zip->close();
 
         return $parts === [] ? null : implode(' ', $parts);
+    }
+
+    private function extractDocxXml(string $path): ?string
+    {
+        $zip = new ZipArchive;
+        if ($zip->open($path) !== true) {
+            return null;
+        }
+        $xml = $zip->getFromName('word/document.xml');
+        $zip->close();
+        if ($xml === false) {
+            return null;
+        }
+
+        // Paragraph and row ends become line breaks, tabs and cell ends become spaces.
+        $xml = preg_replace('#>[\r\n]+\s*<#', '><', $xml);
+        $xml = preg_replace('#</w:p>\s*</w:tc>#', "\t", $xml);
+        $xml = preg_replace('#</w:p>|</w:tr>|<w:(br|cr)\b[^>]*/>#', "\n", $xml);
+        $xml = preg_replace('#<w:tab\b[^>]*/>#', "\t", $xml);
+        // Skip deleted (tracked-change) text and field instructions.
+        $xml = preg_replace('#<w:delText\b[^>]*>.*?</w:delText>#s', '', $xml);
+        $xml = preg_replace('#<w:instrText\b[^>]*>.*?</w:instrText>#s', '', $xml);
+
+        if (! preg_match_all('#<w:t(?:\s[^>]*)?>(.*?)</w:t>|(\n)|(\t)#s', $xml, $m, PREG_SET_ORDER)) {
+            return null;
+        }
+        $out = '';
+        foreach ($m as $part) {
+            if (isset($part[3]) && $part[3] !== '') {
+                $out .= ' ';
+            } elseif (isset($part[2]) && $part[2] !== '') {
+                $out .= "\n";
+            } else {
+                $out .= html_entity_decode($part[1], ENT_QUOTES | ENT_XML1, 'UTF-8');
+            }
+        }
+
+        return $out;
     }
 }

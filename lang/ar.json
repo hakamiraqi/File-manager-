@@ -365,5 +365,12 @@
     "twofactor.disable": "تعطيل",
     "twofactor.disable_title": "تعطيل المصادقة الثنائية",
     "twofactor.disable_description": "أدخل كلمة المرور الحالية لتأكيد تعطيل المصادقة الثنائية عن حسابك.",
-    "twofactor.disable_confirm": "تعطيل المصادقة الثنائية"
+    "twofactor.disable_confirm": "تعطيل المصادقة الثنائية",
+    "selection.all": "تحديد الكل",
+    "selection.none": "إلغاء تحديد الكل",
+    "selection.select": "تحديد",
+    "view.grid": "عرض كبطاقات",
+    "view.list": "عرض كقائمة",
+    "preview.document_loading": "جارِ تجهيز معاينة المستند...",
+    "preview.document_failed": "تعذّر عرض هذا المستند هنا. نزّله لفتحه."
 }

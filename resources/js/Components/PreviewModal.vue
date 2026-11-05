@@ -41,6 +41,10 @@ const can = computed(() => page.props.permissions ?? {});
 const currentUserId = computed(() => page.props.auth?.user?.id);
 const interactiveVideoEnabled = computed(() => page.props.appSettings?.interactiveVideoEnabled ?? false);
 
+// Shown as PDF converted on the server by LibreOffice (FileController::documentPreview).
+const OFFICE_EXTENSIONS = ['doc', 'docx', 'odt', 'rtf', 'ppt', 'pptx', 'odp', 'xls', 'xlsx', 'ods'];
+const officePreviewEnabled = computed(() => page.props.appSettings?.officePreviewEnabled ?? false);
+
 function kind(file) {
     if (!file) return null;
     if (file.mime_type?.startsWith('image/')) return 'image';
@@ -48,6 +52,7 @@ function kind(file) {
     if (file.mime_type?.startsWith('audio/')) return 'audio';
     if (file.mime_type === 'application/pdf') return 'pdf';
     if (['text/plain', 'text/csv', 'application/json'].includes(file.mime_type)) return 'text';
+    if (officePreviewEnabled.value && OFFICE_EXTENSIONS.includes((file.extension ?? file.name?.split('.').pop() ?? '').toLowerCase())) return 'document';
     return 'unsupported';
 }
 
@@ -706,6 +711,7 @@ onBeforeUnmount(() => {
                         </div>
 
                         <iframe v-else-if="kind(file) === 'pdf'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
+                        <iframe v-else-if="kind(file) === 'document'" :src="route('files.document-preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
                         <iframe v-else-if="kind(file) === 'text'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
                         <p v-else-if="!file.is_indexed" class="text-sm text-gray-500 dark:text-gray-400">{{ t('preview.no_preview', 'لا تتوفر معاينة لهذا النوع من الملفات. الرجاء تنزيله للاطلاع عليه.') }}</p>
                     </div>
@@ -724,7 +730,7 @@ onBeforeUnmount(() => {
                         <div v-if="showExtractedText" class="mt-2">
                             <p v-if="extractedTextLoading" class="text-xs text-gray-400">{{ t('common.loading', 'جارِ التحميل...') }}</p>
                             <p v-else-if="!extractedText" class="text-xs text-gray-400">{{ t('preview.no_extracted_text', 'لا يوجد نص مستخرج لهذا الملف.') }}</p>
-                            <pre v-else class="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-gray-50 p-3 text-xs leading-relaxed text-gray-700 dark:bg-gray-900 dark:text-gray-300">{{ extractedText }}</pre>
+                            <pre v-else dir="auto" class="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-gray-50 p-3 text-xs leading-relaxed text-gray-700 dark:bg-gray-900 dark:text-gray-300">{{ extractedText }}</pre>
                         </div>
                     </div>
 

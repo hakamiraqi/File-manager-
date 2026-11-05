@@ -365,5 +365,12 @@
     "twofactor.disable": "Disable",
     "twofactor.disable_title": "Disable two-factor authentication",
     "twofactor.disable_description": "Enter your current password to confirm disabling two-factor authentication on your account.",
-    "twofactor.disable_confirm": "Disable two-factor authentication"
+    "twofactor.disable_confirm": "Disable two-factor authentication",
+    "selection.all": "Select all",
+    "selection.none": "Deselect all",
+    "selection.select": "Select",
+    "view.grid": "Cards",
+    "view.list": "List",
+    "preview.document_loading": "Preparing the document preview...",
+    "preview.document_failed": "This document could not be shown here. Download it to open it."
 }
