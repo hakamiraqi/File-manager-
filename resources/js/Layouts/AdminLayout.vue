@@ -6,6 +6,7 @@ import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import UserAvatar from '@/Components/UserAvatar.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
     Squares2X2Icon,
@@ -79,8 +80,8 @@ const nav = computed(() => [
         <div v-if="mobileOpen" class="fixed inset-0 z-20 bg-black/30 lg:hidden" @click="mobileOpen = false" />
 
         <div class="flex min-w-0 flex-1 flex-col">
-            <header class="flex h-16 items-center gap-4 border-b border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-800">
-                <button class="lg:hidden" @click="mobileOpen = true">
+            <header class="flex min-h-16 items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 sm:gap-4 dark:border-gray-700 dark:bg-gray-800">
+                <button class="shrink-0 lg:hidden" @click="mobileOpen = true">
                     <Bars3Icon class="h-6 w-6" />
                 </button>
                 <div class="min-w-0 flex-1">
@@ -89,8 +90,9 @@ const nav = computed(() => [
                 <ThemeToggle />
                 <Dropdown align="right" width="48">
                     <template #trigger>
-                        <button class="flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
-                            {{ user.name }}
+                        <button class="flex shrink-0 items-center gap-2 rounded-full bg-gray-100 p-1 text-sm font-medium text-gray-700 hover:bg-gray-200 sm:pe-3 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
+                            <UserAvatar :user="user" />
+                            <span class="hidden max-w-[10rem] truncate sm:inline">{{ user.name }}</span>
                         </button>
                     </template>
                     <template #content>
