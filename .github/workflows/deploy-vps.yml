@@ -38,11 +38,28 @@ jobs:
 
       - name: Set up SSH
         env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/vps_key
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          # A key pasted on one line (line breaks turned into spaces) is put back into PEM shape.
+          if [ "$(grep -c . ~/.ssh/vps_key)" -le 2 ] && grep -q -- '-----BEGIN' ~/.ssh/vps_key; then
+            python3 - <<'PY'
+          import os, re
+          p = os.path.expanduser('~/.ssh/vps_key')
+          t = open(p).read().strip()
+          m = re.match(r'(-----BEGIN [A-Z ]+-----)(.*?)(-----END [A-Z ]+-----)', t, re.S)
+          if m:
+              body = ''.join(m.group(2).split())
+              lines = [body[i:i+64] for i in range(0, len(body), 64)]
+              open(p, 'w').write(m.group(1) + '\n' + '\n'.join(lines) + '\n' + m.group(3) + '\n')
+          PY
+          fi
           chmod 600 ~/.ssh/vps_key
+          # Shape only (never the key): helps when the secret was pasted wrong.
+          echo "key lines: $(grep -c . ~/.ssh/vps_key); first: $(head -1 ~/.ssh/vps_key | cut -c1-40)"
+          ssh-keygen -y -f ~/.ssh/vps_key >/dev/null && echo "key reads OK" || echo "::error::VPS_SSH_KEY is not a valid private key (paste the whole .key file, including the BEGIN and END lines)."
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
       - name: Copy the code and deploy
