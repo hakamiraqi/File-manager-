@@ -1,0 +1,28 @@
+
+; --- FileNest offline overrides ---
+extension_dir = "__EXT_DIR__"
+extension=curl
+extension=fileinfo
+extension=gd
+extension=intl
+extension=mbstring
+extension=openssl
+extension=pdo_mysql
+extension=sodium
+extension=zip
+extension=exif
+curl.cainfo = "__CA_FILE__"
+openssl.cafile = "__CA_FILE__"
+memory_limit = 512M
+; Uploads arrive in 20 MB chunks (FILENEST_CHUNK_SIZE_MB).
+upload_max_filesize = 32M
+post_max_size = 34M
+max_execution_time = 3600
+date.timezone = Asia/Baghdad
+zend_extension=opcache
+opcache.enable = 1
+opcache.enable_cli = 0
+opcache.memory_consumption = 192
+opcache.max_accelerated_files = 20000
+cgi.force_redirect = 0
+cgi.fix_pathinfo = 1

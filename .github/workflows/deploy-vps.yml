@@ -1,0 +1,74 @@
+name: Deploy to VPS
+
+# Ships the site to https://files.azoclinic.duckdns.org on the Oracle VPS (the same server as the
+# dental app, in its own folder and containers). Copies the repo over SSH and runs
+# deploy/vps/deploy.sh, which backs up the database, rebuilds the Docker images, migrates, and
+# adds the site to the shared Caddy the first time.
+#
+# Repository secret: VPS_SSH_KEY (private key of the ubuntu user, no passphrase).
+# Optional: VPS_HOST (default 193.123.83.82), VPS_USER (default ubuntu).
+on:
+  push:
+    branches: [main, claude/project-thread-2madpm]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
+env:
+  APP_DIR: /home/ubuntu/filenest
+  SITE: https://files.azoclinic.duckdns.org
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the VPS key
+        id: cfg
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Secret VPS_SSH_KEY is not set on this repository (Settings > Secrets and variables > Actions)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" | tr -d '\r' > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copy the code and deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          # .env, storage and the app downloads on the server are left alone.
+          tar czf /tmp/app.tgz \
+            --exclude='./.git' --exclude='./.github' --exclude='./node_modules' --exclude='./vendor' \
+            --exclude='./.env' --exclude='./storage' --exclude='./public/build' --exclude='./public/downloads' \
+            --exclude='./public/storage' --exclude='./mobile' --exclude='./offline' --exclude='./tests' .
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "mkdir -p '$APP_DIR' && tar xzf - -C '$APP_DIR'" < /tmp/app.tgz
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "cd '$APP_DIR' && sh deploy/vps/deploy.sh" | tee /tmp/deploy.log
+          # First install only: the generated admin password goes to this run's summary (private repo),
+          # so it can be read without SSH. Change it after the first login.
+          if grep -q 'Admin password saved' /tmp/deploy.log; then
+            pw=$(ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "cat ~/filenest-admin-password.txt")
+            { echo '### First admin login'; echo '```'; echo "$pw"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check the site answers
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/login" || true)
+            [ "$code" = 200 ] && { echo "Login page answers 200."; curl -s -o /dev/null -w "/download -> %{http_code}\n" "$SITE/download"; exit 0; }
+            sleep 6
+          done
+          echo "Login page did not answer 200 (last: $code)."; exit 1

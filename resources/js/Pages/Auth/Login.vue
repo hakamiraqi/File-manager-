@@ -113,5 +113,9 @@ const submit = () => {
         <div class="mt-6">
             <OauthButtons :oauth="oauth" />
         </div>
+
+        <p class="mt-6 text-center text-sm">
+            <a href="/download" class="font-medium text-[var(--accent-600)] hover:underline">{{ t('auth.download_apps', 'تنزيل التطبيقات (ويندوز، أندرويد، آيفون)') }}</a>
+        </p>
     </GuestLayout>
 </template>

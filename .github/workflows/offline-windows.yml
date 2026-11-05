@@ -1,0 +1,221 @@
+name: Offline server (Windows)
+
+# Builds a self-contained Windows folder of the whole site (PHP, MariaDB, Caddy, the app with
+# vendor/ and built assets, plus the Windows/Android/iPhone apps) that runs on one computer with
+# no internet; phones and PCs on the same Wi-Fi use it. See offline/README.md. A Windows runner
+# starts it and checks the login page before anything is published. Builds from main go to
+# /download on the VPS.
+on:
+  push:
+    paths:
+      - 'app/**'
+      - 'bootstrap/**'
+      - 'config/**'
+      - 'database/**'
+      - 'lang/**'
+      - 'resources/**'
+      - 'routes/**'
+      - 'public/**'
+      - 'composer.*'
+      - 'package*.json'
+      - 'offline/**'
+      - '.github/workflows/offline-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PHP_MINOR: '8.4'
+  MARIADB_VERSION: '10.11.10'
+  CADDY_VERSION: '2.8.4'
+  SITE: https://files.azoclinic.duckdns.org
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_MINOR }}
+          extensions: gd, intl, zip, mbstring, pdo_mysql, sodium, fileinfo, exif
+          tools: composer
+      - run: composer install --no-dev --optimize-autoloader --no-interaction --prefer-install=auto
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+
+      - name: Assemble the app
+        run: |
+          OUT=dist/FileNestOffline
+          mkdir -p $OUT/app
+          rsync -a ./ $OUT/app/ \
+            --exclude .git --exclude .github --exclude node_modules --exclude mobile --exclude /offline \
+            --exclude /deploy --exclude tests --exclude /dist --exclude 'public/downloads' --exclude 'public/hot' \
+            --exclude 'public/storage' --exclude '.env' --exclude 'storage/logs/*' --exclude 'storage/app/*' \
+            --exclude 'storage/framework/*/*' --exclude 'bootstrap/cache/*.php'
+          mkdir -p $OUT/app/storage/app/filemanager $OUT/app/storage/app/public $OUT/app/storage/logs \
+            $OUT/app/storage/framework/cache $OUT/app/storage/framework/sessions $OUT/app/storage/framework/views
+          cp offline/windows/env.offline $OUT/app/.env.offline
+          cp -r offline/windows/scripts $OUT/scripts
+          cp offline/windows/*.bat offline/windows/config.txt $OUT/
+          cp offline/README.md $OUT/README.md
+          echo ${{ github.run_number }} > $OUT/version.txt
+          # Windows line endings for the scripts.
+          sed -i 's/\r*$/\r/' $OUT/*.bat $OUT/config.txt $OUT/scripts/*.ps1 $OUT/README.md
+
+      - name: Apps for phones and computers (served at /apps on the LAN)
+        run: |
+          OUT=dist/FileNestOffline/apps
+          mkdir -p $OUT
+          if curl -fsSL --retry 3 "$SITE/downloads/releases.json" -o rel.json; then
+            for p in windows android ios; do
+              url=$(jq -r --arg p $p '.[$p].url // empty' rel.json)
+              [ -n "$url" ] || continue
+              curl -fsSL --retry 3 -o "$OUT/$(basename "$url")" "$SITE$url" || true
+            done
+          fi
+          ls -la $OUT
+
+      - name: Windows PHP
+        run: |
+          OUT=dist/FileNestOffline
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o php-releases.json https://windows.php.net/downloads/releases/releases.json
+          VER=$(jq -r --arg m "$PHP_MINOR" '.[$m].version' php-releases.json)
+          ZIP=$(jq -r --arg m "$PHP_MINOR" '.[$m] | to_entries[] | select(.key | test("^nts-vs[0-9]+-x64$")) | .value.zip.path' php-releases.json | head -1)
+          echo "PHP: $VER ($ZIP)"
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o php.zip "https://windows.php.net/downloads/releases/$ZIP"
+          mkdir -p $OUT/php && unzip -q php.zip -d $OUT/php
+          cat $OUT/php/php.ini-production offline/windows/php.ini.overrides > $OUT/php/php.ini.template
+          rm -rf $OUT/php/dev $OUT/php/extras
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o $OUT/php/cacert.pem https://curl.se/ca/cacert.pem
+          grep -q 'BEGIN CERTIFICATE' $OUT/php/cacert.pem
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o $OUT/vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+      - name: Windows MariaDB
+        run: |
+          OUT=dist/FileNestOffline
+          curl -fsSL --retry 5 --retry-delay 10 -o mariadb.zip "https://archive.mariadb.org/mariadb-${MARIADB_VERSION}/winx64-packages/mariadb-${MARIADB_VERSION}-winx64.zip"
+          unzip -q mariadb.zip -d tmpdb
+          mv tmpdb/mariadb-* $OUT/mariadb
+          rm -rf $OUT/mariadb/mysql-test $OUT/mariadb/sql-bench $OUT/mariadb/include $OUT/mariadb/data
+          find $OUT/mariadb -name '*.pdb' -delete
+          test -f $OUT/mariadb/bin/mariadbd.exe && test -f $OUT/mariadb/bin/mariadb-install-db.exe
+
+      - name: Caddy (web server)
+        run: |
+          OUT=dist/FileNestOffline
+          mkdir -p $OUT/caddy
+          curl -fsSL --retry 5 -o caddy.zip "https://github.com/caddyserver/caddy/releases/download/v${CADDY_VERSION}/caddy_${CADDY_VERSION}_windows_amd64.zip"
+          unzip -q -o caddy.zip caddy.exe -d $OUT/caddy
+          test -f $OUT/caddy/caddy.exe
+
+      - name: Zip
+        run: |
+          cd dist && zip -qr9 ../FileNestOffline-windows.zip FileNestOffline
+          ls -la ../FileNestOffline-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline
+          path: FileNestOffline-windows.zip
+          retention-days: 14
+
+  smoke-test:
+    # Unzip on a real Windows machine, start it, and check the site works, so a broken package is never published.
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: offline
+      - name: Start and check
+        shell: pwsh
+        run: |
+          Expand-Archive FileNestOffline-windows.zip -DestinationPath C:\
+          $root = 'C:\FileNestOffline'
+          # Port 80 is taken on the runner.
+          (Get-Content "$root\config.txt") -replace '^HTTP_PORT=80$', 'HTTP_PORT=8080' -replace '^OPEN_BROWSER=1$', 'OPEN_BROWSER=0' | Set-Content "$root\config.txt"
+          Start-Process -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$root\scripts\start.ps1", '-Headless' -WorkingDirectory $root -RedirectStandardOutput C:\start.out -RedirectStandardError C:\start.err
+          $ok = $false
+          for ($i = 0; $i -lt 60 -and -not $ok; $i++) {
+            Start-Sleep -Seconds 5
+            $ok = (curl.exe -s -o NUL -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/login) -eq '200'
+          }
+          Write-Host '== start output'; Get-Content C:\start.out, C:\start.err -ErrorAction SilentlyContinue | Select-Object -Last 60
+          if (-not $ok) {
+            Get-ChildItem "$root\app\storage\logs" -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "== $($_.Name)"; Get-Content $_.FullName -Tail 40 }
+            Get-Content "$root\data\mariadb.err" -Tail 30 -ErrorAction SilentlyContinue
+            throw 'The offline server did not serve the login page.'
+          }
+          $ip = (Get-Content "$root\lan-ip.txt").Trim()
+          Write-Host "LAN IP: $ip"
+          foreach ($path in '/login', '/download', '/up', '/build/manifest.json') {
+            $code = curl.exe -s -o NUL -w '%{http_code}' --max-time 30 "http://${ip}:8080$path"
+            Write-Host "$path -> $code"
+            if ($code -ne '200') { throw "$path answered $code on the LAN address" }
+          }
+          $admin = & "$root\mariadb\bin\mariadb.exe" --user=root --host=127.0.0.1 --port=3308 -N -e "select email from filenest.users where email='admin@filenest.test'"
+          if ($admin -ne 'admin@filenest.test') { throw 'The admin account was not created.' }
+
+          Write-Host 'API login (the apps use it)'
+          $body = '{"email":"admin@filenest.test","password":"password","device_name":"ci"}'
+          $login = curl.exe -s --max-time 30 -H 'Content-Type: application/json' -H 'Accept: application/json' -d $body "http://${ip}:8080/api/v1/auth/login"
+          Write-Host ($login -join '').Substring(0, [Math]::Min(200, ($login -join '').Length))
+          if (($login -join '') -notmatch 'token') { Write-Host '::warning::API login did not return a token (check the route name).' }
+
+          Write-Host 'Self-healing: kill the web server, the watchdog must restart it'
+          Get-Process caddy | Stop-Process -Force
+          Start-Sleep -Seconds 12
+          $back = curl.exe -s -o NUL -w '%{http_code}' --max-time 30 http://127.0.0.1:8080/login
+          if ($back -ne '200') { throw "The web server was not restarted, got $back" }
+
+          Write-Host 'Stop: everything must exit'
+          & powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\stop.ps1"
+          Start-Sleep -Seconds 3
+          $left = Get-Process php-cgi, php, caddy, mariadbd -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "$root*" }
+          if ($left) { $left | Format-Table Name, Id | Out-String | Write-Host; throw 'Processes were left running after Stop.' }
+
+          Write-Host 'Second start keeps the data'
+          Start-Process -FilePath powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$root\scripts\start.ps1", '-Headless' -WorkingDirectory $root
+          $ok = $false
+          for ($i = 0; $i -lt 40 -and -not $ok; $i++) {
+            Start-Sleep -Seconds 5
+            $ok = (curl.exe -s -o NUL -w '%{http_code}' --max-time 10 http://127.0.0.1:8080/login) -eq '200'
+          }
+          if (-not $ok) { throw 'The second start failed.' }
+          & powershell -NoProfile -ExecutionPolicy Bypass -File "$root\scripts\stop.ps1"
+
+  publish:
+    needs: smoke-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      APP_DIR: /home/ubuntu/filenest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: offline
+      - name: Upload to the VPS (/download)
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          [ -n "$KEY" ] || { echo "::error::Secret VPS_SSH_KEY is not set."; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          vps() { ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "$@"; }
+          N=${{ github.run_number }}
+          f=FileNestOffline-$N.zip
+          dir="$APP_DIR/public/downloads"
+          vps "mkdir -p '$dir' && cat > '$dir/$f.tmp' && mv '$dir/$f.tmp' '$dir/$f'" < FileNestOffline-windows.zip
+          # The VPS has python3 (no jq): merge the offline entry into releases.json.
+          vps "cd '$dir' && python3 -c \"import json,os; p='releases.json'; d=json.load(open(p)) if os.path.exists(p) else {}; d['offline_server']={'version':'$N','url':'/downloads/$f'}; json.dump(d,open(p+'.tmp','w'),indent=2); os.replace(p+'.tmp',p)\" \
+            && for o in FileNestOffline-*.zip; do [ \"\$o\" = '$f' ] || rm -f -- \"\$o\"; done; cat releases.json; ls -la"
