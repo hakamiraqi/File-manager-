@@ -15,6 +15,12 @@ class BookCopy extends Model
 
     public const STATUSES = [self::AVAILABLE, self::LOANED, self::ON_HOLD, self::DAMAGED, self::LOST];
 
+    /** Defaults mirrored from the migration so a new copy reads correctly before a refresh. */
+    protected $attributes = [
+        'status' => self::AVAILABLE,
+        'condition' => 'good',
+    ];
+
     protected $fillable = ['book_id', 'barcode', 'rfid_tag', 'shelf', 'status', 'condition', 'notes'];
 
     protected static function booted(): void

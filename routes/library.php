@@ -8,6 +8,7 @@ use App\Http\Controllers\Library\LoanController;
 use App\Http\Controllers\Library\MemberController;
 use App\Http\Controllers\Library\SettingsController;
 use App\Http\Controllers\Library\ImportController;
+use App\Http\Controllers\Library\RfidController;
 use App\Http\Controllers\Library\SectionController;
 use Illuminate\Support\Facades\Route;
 
@@ -60,6 +61,14 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::post('/settings', [SettingsController::class, 'update'])->name('settings.update');
         Route::post('/holidays', [SettingsController::class, 'addHoliday'])->name('holidays.store');
         Route::delete('/holidays/{holiday}', [SettingsController::class, 'removeHoliday'])->name('holidays.destroy');
+
+        Route::get('/rfid', [RfidController::class, 'page'])->name('rfid');
+        Route::get('/rfid/untagged', [RfidController::class, 'untagged'])->name('rfid.untagged');
+        Route::post('/rfid/lookup', [RfidController::class, 'lookup'])->name('rfid.lookup');
+        Route::post('/rfid/link', [RfidController::class, 'link'])->name('rfid.link');
+        Route::delete('/rfid/{copy}', [RfidController::class, 'unlink'])->name('rfid.unlink');
+        Route::post('/rfid/inventory', [RfidController::class, 'inventory'])->name('rfid.inventory');
+        Route::post('/rfid/mark', [RfidController::class, 'mark'])->name('rfid.mark');
 
         Route::get('/import/template', [ImportController::class, 'template'])->name('import.template');
         Route::post('/import', [ImportController::class, 'store'])->name('import');
