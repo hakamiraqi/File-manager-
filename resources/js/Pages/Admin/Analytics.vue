@@ -213,17 +213,18 @@ const presetLabel = computed(() => PRESETS.find(([p]) => p === props.filters.pre
 
     <AdminLayout>
         <template #header>
-            <div class="flex w-full flex-wrap items-center justify-between gap-2">
-                <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-800 dark:text-gray-100">
-                    <ChartBarIcon class="h-5 w-5 text-gray-500" />
-                    {{ t('analytics.title', 'التحليلات وأداء الموظفين') }}
+            <div class="flex w-full items-center justify-between gap-2">
+                <h2 class="flex min-w-0 items-center gap-2 text-base font-semibold text-gray-800 sm:text-lg dark:text-gray-100">
+                    <ChartBarIcon class="h-5 w-5 shrink-0 text-gray-500" />
+                    <span class="truncate sm:hidden">{{ t('analytics.short_title', 'التحليلات') }}</span>
+                    <span class="hidden truncate sm:inline">{{ t('analytics.title', 'التحليلات وأداء الموظفين') }}</span>
                 </h2>
-                <div class="flex gap-2 print:hidden">
-                    <a :href="exportUrl" class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
-                        <ArrowDownTrayIcon class="h-4 w-4" /> {{ t('analytics.export', 'تصدير Excel') }}
+                <div class="flex shrink-0 gap-1.5 print:hidden sm:gap-2">
+                    <a :href="exportUrl" :title="t('analytics.export', 'تصدير Excel')" :aria-label="t('analytics.export', 'تصدير Excel')" class="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 text-sm text-gray-700 hover:bg-gray-50 sm:px-3 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
+                        <ArrowDownTrayIcon class="h-4 w-4 shrink-0" /> <span class="hidden sm:inline">{{ t('analytics.export', 'تصدير Excel') }}</span>
                     </a>
-                    <button type="button" @click="printPage" class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
-                        <PrinterIcon class="h-4 w-4" /> {{ t('analytics.print', 'طباعة') }}
+                    <button type="button" @click="printPage" :title="t('analytics.print', 'طباعة')" :aria-label="t('analytics.print', 'طباعة')" class="inline-flex h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 px-2.5 text-sm text-gray-700 hover:bg-gray-50 sm:px-3 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
+                        <PrinterIcon class="h-4 w-4 shrink-0" /> <span class="hidden sm:inline">{{ t('analytics.print', 'طباعة') }}</span>
                     </button>
                 </div>
             </div>
