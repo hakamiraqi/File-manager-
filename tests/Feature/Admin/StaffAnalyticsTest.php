@@ -23,7 +23,7 @@ class StaffAnalyticsTest extends TestCase
 
     private function log(User $user, string $action, string $at, $subject = null): void
     {
-        ActivityLog::create([
+        ActivityLog::forceCreate([
             'user_id' => $user->id, 'action' => $action, 'created_at' => Carbon::parse($at),
             'subject_type' => $subject?->getMorphClass(), 'subject_id' => $subject?->getKey(),
         ]);
