@@ -12,6 +12,16 @@ class FolderItem {
   final String? publisher;
   final String? digitalLibrary;
   final String? publicationYear;
+  final String? university;
+  final String? college;
+  final String? department;
+  final String? subject;
+  final String? keywords;
+  final String? abstract;
+  final String? defenseDate;
+  final String? pages;
+  final String? iqdrReceipt;
+  final String? language;
 
   FolderItem({
     required this.id,
@@ -27,6 +37,16 @@ class FolderItem {
     this.publisher,
     this.digitalLibrary,
     this.publicationYear,
+    this.university,
+    this.college,
+    this.department,
+    this.subject,
+    this.keywords,
+    this.abstract,
+    this.defenseDate,
+    this.pages,
+    this.iqdrReceipt,
+    this.language,
   });
 
   factory FolderItem.fromJson(Map<String, dynamic> json) {
@@ -44,6 +64,16 @@ class FolderItem {
       publisher: json['publisher'] as String?,
       digitalLibrary: json['digital_library'] as String?,
       publicationYear: json['publication_year'] as String?,
+      university: json['university']?.toString(),
+      college: json['college']?.toString(),
+      department: json['department']?.toString(),
+      subject: json['subject']?.toString(),
+      keywords: json['keywords']?.toString(),
+      abstract: json['abstract']?.toString(),
+      defenseDate: json['defense_date']?.toString(),
+      pages: json['pages']?.toString(),
+      iqdrReceipt: json['iqdr_receipt']?.toString(),
+      language: json['language'] as String?,
     );
   }
 }

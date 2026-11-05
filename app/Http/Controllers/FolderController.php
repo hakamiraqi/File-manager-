@@ -84,19 +84,11 @@ class FolderController extends Controller
             'parent_id' => ['sometimes', 'nullable', 'integer', 'exists:folders,id'],
             'color' => ['sometimes', 'nullable', 'string', 'max:20'],
             'is_public' => ['sometimes', 'boolean'],
-            'folder_type' => ['sometimes', 'string', 'in:files,thesis'],
-            'researcher_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'degree' => ['sometimes', 'nullable', 'string', 'in:diploma,master,phd'],
-            'supervisor_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'thesis_title' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'publisher' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'digital_library' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'publication_year' => ['sometimes', 'nullable', 'string', 'max:20'],
-        ]);
+        ] + Folder::metadataRules());
 
         $isMove = array_key_exists('parent_id', $data) && $data['parent_id'] !== $folder->parent_id;
         $isRename = isset($data['name']) && $data['name'] !== $folder->name;
-        $isMetadataUpdate = collect(['folder_type', 'researcher_name', 'degree', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year'])
+        $isMetadataUpdate = collect(Folder::THESIS_FIELDS)
             ->contains(fn ($field) => array_key_exists($field, $data));
 
         if ($isMove && ! $request->user()->canPerform('move')) {
@@ -132,6 +124,10 @@ class FolderController extends Controller
                 $data['name'],
                 $folder->id,
             );
+        }
+
+        if ($isMetadataUpdate) {
+            $data = Folder::withInstitutionDefaults($data, $folder);
         }
 
         $folder->update($data);

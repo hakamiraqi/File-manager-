@@ -18,6 +18,7 @@ import {
     ShieldCheckIcon,
     QueueListIcon,
     BookOpenIcon,
+    AcademicCapIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -28,6 +29,7 @@ const mobileOpen = ref(false);
 
 const nav = computed(() => [
     { label: t('nav.dashboard', 'ملفاتي'), href: route('dashboard'), icon: FolderIcon, active: route().current('dashboard') },
+    { label: t('nav.theses', 'الرسائل والأطاريح'), href: route('theses.index'), icon: AcademicCapIcon, active: route().current('theses.*') },
     { label: t('nav.library', 'المكتبة'), href: page.props.permissions?.library_unread ? route('library.my-loans') : route('library.index'), icon: BookOpenIcon, active: route().current('library.*'), badge: page.props.permissions?.library_unread || 0 },
     { label: t('nav.playlists', 'قوائم التشغيل'), href: route('playlists.index'), icon: QueueListIcon, active: route().current('playlists.*') },
     { label: t('nav.shares', 'الروابط المشتركة'), href: route('shares.index'), icon: ShareIcon, active: route().current('shares.index') },

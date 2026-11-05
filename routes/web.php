@@ -28,7 +28,16 @@ Route::get('/', function () {
     return redirect()->route($guests ? 'guest.index' : 'login');
 });
 
+// Thesis catalogue: guests see the public theses when guest access is on.
+Route::get('/theses', [\App\Http\Controllers\ThesisController::class, 'index'])->name('theses.index');
+Route::get('/oai', \App\Http\Controllers\OaiController::class)->middleware('throttle:60,1')->name('oai');
+
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/theses/similar', [\App\Http\Controllers\ThesisController::class, 'similar'])->name('theses.similar');
+    Route::get('/theses/export', [\App\Http\Controllers\ThesisController::class, 'export'])->name('theses.export');
+    Route::get('/theses/template', [\App\Http\Controllers\ThesisController::class, 'template'])->name('theses.template');
+    Route::post('/theses/import', [\App\Http\Controllers\ThesisController::class, 'import'])->name('theses.import');
+
     Route::get('/dashboard', [FileManagerController::class, 'index'])->name('dashboard');
 
     Route::get('/folders/tree', [FolderController::class, 'tree'])->name('folders.tree');

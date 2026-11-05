@@ -73,7 +73,7 @@ class FileRepository {
   /// supervisor, thesis title, publisher, digital library, publication
   /// year) — shown/edited on the folder's own screen. Any field omitted
   /// from [fields] is left untouched server-side.
-  Future<FolderItem> updateFolderInfo(int folderId, Map<String, String?> fields) async {
+  Future<FolderItem> updateFolderInfo(int folderId, Map<String, dynamic> fields) async {
     final response = await _dio.put('/folders/$folderId', data: fields);
     return FolderItem.fromJson(response.data['folder']);
   }

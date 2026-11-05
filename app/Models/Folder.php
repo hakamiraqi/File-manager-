@@ -14,15 +14,77 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 #[Fillable([
     'user_id', 'parent_id', 'name', 'color', 'is_public', 'folder_type',
     'researcher_name', 'degree', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year',
+    'university', 'college', 'department', 'subject', 'keywords', 'abstract', 'defense_date', 'language', 'pages', 'iqdr_receipt',
 ])]
 class Folder extends Model
 {
     use HasFactory, SoftDeletes;
 
+    public const DEGREES = ['diploma', 'master', 'phd'];
+
+    public const LANGUAGES = ['ar', 'en', 'ku', 'other'];
+
+    /** The bibliographic fields of a thesis folder (the Iraqi Digital Repository record). */
+    public const THESIS_FIELDS = [
+        'folder_type', 'thesis_title', 'researcher_name', 'degree', 'supervisor_name',
+        'university', 'college', 'department', 'subject', 'keywords', 'abstract',
+        'publication_year', 'defense_date', 'language', 'pages', 'iqdr_receipt',
+        'publisher', 'digital_library',
+    ];
+
+    /** Validation for those fields; shared by the web and API controllers. */
+    public static function metadataRules(): array
+    {
+        $text = ['sometimes', 'nullable', 'string', 'max:255'];
+
+        return [
+            'folder_type' => ['sometimes', 'string', 'in:files,thesis'],
+            'researcher_name' => $text,
+            'degree' => ['sometimes', 'nullable', 'string', 'in:'.implode(',', self::DEGREES)],
+            'supervisor_name' => $text,
+            'thesis_title' => $text,
+            'publisher' => $text,
+            'digital_library' => $text,
+            'publication_year' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'university' => $text,
+            'college' => $text,
+            'department' => $text,
+            'subject' => $text,
+            'keywords' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'abstract' => ['sometimes', 'nullable', 'string', 'max:20000'],
+            'defense_date' => ['sometimes', 'nullable', 'date'],
+            'language' => ['sometimes', 'nullable', 'string', 'in:'.implode(',', self::LANGUAGES)],
+            'pages' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:100000'],
+            'iqdr_receipt' => ['sometimes', 'nullable', 'string', 'max:100'],
+        ];
+    }
+
+    /**
+     * A folder turned into a thesis takes the institution from the settings
+     * (FileNest serves one college) unless it was typed.
+     */
+    public static function withInstitutionDefaults(array $data, ?self $folder = null): array
+    {
+        $isThesis = ($data['folder_type'] ?? $folder?->folder_type) === 'thesis';
+        if (! $isThesis) {
+            return $data;
+        }
+        foreach (['university' => 'institution_university', 'college' => 'institution_college'] as $field => $setting) {
+            $current = array_key_exists($field, $data) ? $data[$field] : $folder?->{$field};
+            if (blank($current) && filled($value = Setting::get($setting))) {
+                $data[$field] = $value;
+            }
+        }
+
+        return $data;
+    }
+
     protected function casts(): array
     {
         return [
             'is_public' => 'boolean',
+            'defense_date' => 'date:Y-m-d',
+            'pages' => 'integer',
         ];
     }
 
