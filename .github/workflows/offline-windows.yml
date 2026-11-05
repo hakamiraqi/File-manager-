@@ -92,7 +92,9 @@ jobs:
       - run: npm run build
       - name: Everything the pages load is in the package (no CDN)
         run: |
-          if grep -rEl 'https?://(fonts\.(googleapis|bunny|gstatic)|cdn\.|unpkg\.com|cdnjs\.)' resources/views public/build; then
+          # Plyr's built-in defaults (cdn.plyr.io) stay in its code but are
+          # overridden in PreviewModal.vue, so they are not counted.
+          if grep -rEo 'https?://(fonts\.(googleapis|bunny|gstatic)|cdn\.|unpkg\.com|cdnjs\.)[^"'"'"'` ]*' resources/views public/build | grep -v 'cdn\.plyr\.io'; then
             echo "::error::A page loads something from the internet; the offline server must work without it."; exit 1
           fi
 
