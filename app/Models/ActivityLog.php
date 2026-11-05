@@ -25,6 +25,12 @@ class ActivityLog extends Model
         ];
     }
 
+    /** The file, folder, book… the activity was about (null once deleted). */
+    public function subject(): \Illuminate\Database\Eloquent\Relations\MorphTo
+    {
+        return $this->morphTo();
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);

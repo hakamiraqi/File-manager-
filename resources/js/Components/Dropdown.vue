@@ -45,7 +45,8 @@ const open = ref(false);
 </script>
 
 <template>
-    <div class="relative">
+    <!-- dropdown-open lets a list row lift itself above the rows after it. -->
+    <div class="relative" :class="{ 'dropdown-open z-50': open }">
         <div @click="open = !open">
             <slot name="trigger" />
         </div>

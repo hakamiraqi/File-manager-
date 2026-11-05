@@ -756,9 +756,9 @@ function uploadFromUrl() {
                 <div
                     v-for="folder in folders"
                     :key="`folder-${folder.id}`"
-                    class="group relative flex cursor-pointer"
+                    class="group relative flex cursor-pointer [&:has(.dropdown-open)]:z-30"
                     :class="[
-                        isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border px-4 pb-4 pt-10 text-center hover:shadow-md',
                         selected.folders.has(folder.id)
                             ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
                             : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
@@ -833,9 +833,9 @@ function uploadFromUrl() {
                 <div
                     v-for="file in files"
                     :key="`file-${file.id}`"
-                    class="group relative flex cursor-pointer"
+                    class="group relative flex cursor-pointer [&:has(.dropdown-open)]:z-30"
                     :class="[
-                        isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border px-4 pb-4 pt-10 text-center hover:shadow-md',
                         selected.files.has(file.id)
                             ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
                             : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
