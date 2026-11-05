@@ -48,6 +48,7 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
 
     Route::middleware('can:view-statistics')->group(function () {
         Route::get('/activity', [ActivityLogController::class, 'index'])->name('activity.index');
+        Route::get('/activity/export', [ActivityLogController::class, 'export'])->name('activity.export');
         Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
         Route::get('/analytics/export', [AnalyticsController::class, 'export'])->name('analytics.export');
     });

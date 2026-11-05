@@ -18,10 +18,15 @@ class UserController extends Controller
     public function index(Request $request): Response
     {
         $search = trim((string) $request->string('q'));
+        $role = in_array($request->query('role'), User::ROLES, true) ? $request->query('role') : null;
+        $status = in_array($request->query('status'), ['active', 'suspended'], true) ? $request->query('status') : null;
 
         $users = User::query()
             ->with('assignedFolders:id')
-            ->when($search !== '', fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%"))
+            // Grouped, so the role/status filters apply to both name and email matches.
+            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")))
+            ->when($role, fn ($q) => $q->where('role', $role))
+            ->when($status, fn ($q) => $q->where('is_active', $status === 'active'))
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
@@ -34,7 +39,12 @@ class UserController extends Controller
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,
             'folderOptions' => $this->folderOptions(),
-            'filters' => ['q' => $search],
+            'filters' => ['q' => $search, 'role' => $role, 'status' => $status],
+            'roleCounts' => User::query()->selectRaw('role, COUNT(*) as c')->groupBy('role')->pluck('c', 'role'),
+            'statusCounts' => [
+                'active' => User::where('is_active', true)->count(),
+                'suspended' => User::where('is_active', false)->count(),
+            ],
         ]);
     }
 
