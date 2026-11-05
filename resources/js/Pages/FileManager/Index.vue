@@ -622,7 +622,8 @@ function uploadFromUrl() {
                             <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.digital_library', 'المكتبة الرقمية') }}</label>
                             <input v-model="folderInfoForm.digital_library" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
                         </div>
-                        <div>
+                        <!-- Hidden for now (by request, 2026-11-05); the value is kept and saved as before. -->
+                        <div v-if="false">
                             <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.iqdr_receipt', 'رقم وصل الإيداع في المستودع الرقمي العراقي') }}</label>
                             <input v-model="folderInfoForm.iqdr_receipt" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
                         </div>
