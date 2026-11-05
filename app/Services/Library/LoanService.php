@@ -2,6 +2,7 @@
 
 namespace App\Services\Library;
 
+use App\Services\Notify;
 use App\Models\ActivityLog;
 use App\Models\Library\BookCopy;
 use App\Models\Library\Hold;
@@ -43,6 +44,8 @@ class LoanService
             $this->afterIssue($copy, $member);
 
             ActivityLog::record('library.loan', "أعار \"{$copy->book?->title}\" ({$copy->barcode}) إلى {$member->name}");
+            Notify::to($member->user, 'library', 'loan_issued', "استعرت «{$copy->book?->title}»",
+                'موعد الإرجاع: '.$loan->due_at->timezone('Asia/Baghdad')->format('Y-m-d'), route('library.my-loans', [], false));
 
             return $loan->load('copy.book', 'member');
         });
@@ -70,6 +73,8 @@ class LoanService
             $copy->update(['status' => $status, 'condition' => $condition === 'damaged' ? 'damaged' : $copy->condition]);
 
             ActivityLog::record('library.return', "استلم \"{$copy->book?->title}\" ({$copy->barcode}) من {$loan->member->name}");
+            Notify::to($loan->member->user, 'library', $fine > 0 ? 'returned_fine' : 'returned', "تم استلام «{$copy->book?->title}»",
+                $fine > 0 ? 'عليك غرامة تأخير: '.number_format($fine).' د.ع' : 'شكراً لإرجاع الكتاب في موعده.', route('library.my-loans', [], false));
 
             return $loan->fresh(['copy.book', 'member']);
         });
@@ -92,6 +97,8 @@ class LoanService
         ]);
 
         ActivityLog::record('library.renew', "جدّد إعارة {$loan->copy->barcode} لـ {$loan->member->name}");
+        Notify::to($loan->member->user, 'library', 'renewed', 'تم تجديد إعارة كتاب',
+            'موعد الإرجاع الجديد: '.$loan->due_at->timezone('Asia/Baghdad')->format('Y-m-d'), route('library.my-loans', [], false));
 
         return $loan;
     }

@@ -41,6 +41,8 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 'twoFactorEnabled' => $user?->hasEnabledTwoFactorAuthentication() ?? false,
             ],
+            // The bell counter in the top bar.
+            'notificationsUnread' => fn () => \App\Models\UserNotification::unreadCount($user),
             // Bookmark state for every page that shows files (لمحفوظات).
             'savedIds' => fn () => $user && \Illuminate\Support\Facades\Schema::hasTable('saved_items') ? \App\Models\SavedItem::idsFor($user) : ['files' => [], 'folders' => []],
             'quota' => $user ? [

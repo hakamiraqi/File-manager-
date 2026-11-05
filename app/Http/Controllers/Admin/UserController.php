@@ -75,7 +75,11 @@ class UserController extends Controller
         if ($folderIds === null) {
             return;
         }
-        $user->assignedFolders()->sync(\App\Models\Folder::whereIn('id', $folderIds)->whereNull('deleted_at')->pluck('id')->all());
+        $result = $user->assignedFolders()->sync(\App\Models\Folder::whereIn('id', $folderIds)->whereNull('deleted_at')->pluck('id')->all());
+        foreach (\App\Models\Folder::whereIn('id', $result['attached'] ?? [])->get() as $folder) {
+            \App\Services\Notify::to($user, 'files', 'folder_assigned', "أُضيف لك مجلد «{$folder->name}»",
+                'صار بإمكانك العمل في هذا المجلد.', route('dashboard', ['folder' => $folder->id], false));
+        }
     }
 
     private const CAPABILITY_FIELDS = [
