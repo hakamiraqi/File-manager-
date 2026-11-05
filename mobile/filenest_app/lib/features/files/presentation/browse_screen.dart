@@ -64,6 +64,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
   bool _showFolderInfo = false;
   bool _savingFolderInfo = false;
   late String _folderType = widget.folder?.folderType ?? 'files';
+  late String? _degree = widget.folder?.degree;
   late final _researcherNameController = TextEditingController(text: widget.folder?.researcherName);
   late final _supervisorNameController = TextEditingController(text: widget.folder?.supervisorName);
   late final _thesisTitleController = TextEditingController(text: widget.folder?.thesisTitle);
@@ -96,6 +97,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       await _fileRepository.updateFolderInfo(widget.folder!.id, {
         'folder_type': _folderType,
         'researcher_name': _researcherNameController.text,
+        'degree': _degree,
         'supervisor_name': _supervisorNameController.text,
         'thesis_title': _thesisTitleController.text,
         'publisher': _publisherController.text,
@@ -734,6 +736,17 @@ class _BrowseScreenState extends State<BrowseScreen> {
                   if (_folderType == 'thesis') ...[
                     const SizedBox(height: 12),
                     TextField(controller: _researcherNameController, decoration: InputDecoration(labelText: context.tr('folder.researcher_name'))),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String?>(
+                      value: _degree,
+                      decoration: InputDecoration(labelText: context.tr('folder.degree')),
+                      items: [
+                        DropdownMenuItem<String?>(value: null, child: Text(context.tr('folder.degree_none'))),
+                        for (final d in const ['diploma', 'master', 'phd'])
+                          DropdownMenuItem<String?>(value: d, child: Text(context.tr('folder.degree_$d'))),
+                      ],
+                      onChanged: (v) => setState(() => _degree = v),
+                    ),
                     const SizedBox(height: 8),
                     TextField(controller: _supervisorNameController, decoration: InputDecoration(labelText: context.tr('folder.supervisor_name'))),
                     const SizedBox(height: 8),

@@ -21,6 +21,7 @@ class FolderResource extends JsonResource
             'is_public' => (bool) $this->is_public,
             'folder_type' => $this->folder_type,
             'researcher_name' => $this->researcher_name,
+            'degree' => $this->degree,
             'supervisor_name' => $this->supervisor_name,
             'thesis_title' => $this->thesis_title,
             'publisher' => $this->publisher,

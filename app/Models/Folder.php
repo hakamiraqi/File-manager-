@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'user_id', 'parent_id', 'name', 'color', 'is_public', 'folder_type',
-    'researcher_name', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year',
+    'researcher_name', 'degree', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year',
 ])]
 class Folder extends Model
 {

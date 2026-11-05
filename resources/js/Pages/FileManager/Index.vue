@@ -78,7 +78,7 @@ function isMediaFile(file) {
 
 // ---- Folder info panel (type + researcher/supervisor/thesis/publisher/etc.) ----
 const showFolderInfo = ref(false);
-const folderInfoFields = ['researcher_name', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year'];
+const folderInfoFields = ['researcher_name', 'degree', 'supervisor_name', 'thesis_title', 'publisher', 'digital_library', 'publication_year'];
 
 function makeFolderInfoForm(folder) {
     return useForm({
@@ -508,6 +508,15 @@ function uploadFromUrl() {
                         <div>
                             <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.researcher_name', 'اسم الباحث') }}</label>
                             <input v-model="folderInfoForm.researcher_name" :disabled="!can.rename_folder" type="text" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800" />
+                        </div>
+                        <div>
+                            <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.degree', 'الدرجة') }}</label>
+                            <select v-model="folderInfoForm.degree" :disabled="!can.rename_folder" class="w-full rounded-md border-gray-300 text-sm disabled:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 dark:disabled:bg-gray-800">
+                                <option value="">{{ t('folder.degree_none', '— غير محددة —') }}</option>
+                                <option value="diploma">{{ t('folder.degree_diploma', 'دبلوم عالي') }}</option>
+                                <option value="master">{{ t('folder.degree_master', 'ماجستير') }}</option>
+                                <option value="phd">{{ t('folder.degree_phd', 'دكتوراه') }}</option>
+                            </select>
                         </div>
                         <div>
                             <label class="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('folder.supervisor_name', 'المشرف') }}</label>
