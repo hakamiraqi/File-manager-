@@ -33,7 +33,7 @@ class StaffAnalyticsTest extends TestCase
     {
         // 2026-11-05 12:00 Baghdad = 09:00 UTC (Thursday).
         Carbon::setTestNow('2026-11-05 09:00:00');
-        $admin = User::factory()->create(['role' => 'admin', 'name' => 'المدير']);
+        $admin = User::factory()->create(['role' => 'admin', 'name' => 'المدير', 'can_view_statistics' => true]);
         $sara = User::factory()->create(['role' => 'editor', 'name' => 'سارة']);
         $ali = User::factory()->create(['role' => 'editor', 'name' => 'علي']);
 
