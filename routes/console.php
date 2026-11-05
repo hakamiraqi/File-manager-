@@ -14,3 +14,6 @@ Schedule::command('filenest:purge-stale-uploads')->hourly();
 // Library: reminders at 09:00 Baghdad time; set-aside copies not collected in time move on.
 Schedule::command('library:remind')->dailyAt('09:00')->timezone('Asia/Baghdad');
 Schedule::command('library:expire-holds')->everyFifteenMinutes();
+
+// Offline server: a daily backup (does nothing unless BACKUP_DAILY is on).
+Schedule::command('backup:run')->hourly();
