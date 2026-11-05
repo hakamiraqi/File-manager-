@@ -11,6 +11,7 @@ import MoveModal from '@/Components/MoveModal.vue';
 import ShareModal from '@/Components/ShareModal.vue';
 import AddToPlaylistModal from '@/Components/AddToPlaylistModal.vue';
 import PreviewModal from '@/Components/PreviewModal.vue';
+import SaveButton from '@/Components/SaveButton.vue';
 import TagInput from '@/Components/TagInput.vue';
 import { useChunkedUpload } from '@/Composables/useChunkedUpload';
 import { useTrans } from '@/Composables/useTrans';
@@ -56,6 +57,7 @@ const props = defineProps({
 
 const { t } = useTrans();
 const page = usePage();
+
 const can = computed(() => page.props.permissions ?? {});
 const remoteUploadEnabled = computed(() => page.props.appSettings?.remoteUploadEnabled ?? false);
 
@@ -756,7 +758,7 @@ function uploadFromUrl() {
                     :key="`folder-${folder.id}`"
                     class="group relative flex cursor-pointer"
                     :class="[
-                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
                         selected.folders.has(folder.id)
                             ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
                             : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
@@ -792,7 +794,8 @@ function uploadFromUrl() {
                         {{ t('folder.type_thesis', 'أطروحة') }}
                     </span>
 
-                    <div class="absolute end-2" :class="isList ? 'top-1/2 -translate-y-1/2' : 'top-2'" @click.stop>
+                    <div class="absolute end-2 flex items-center gap-0.5" :class="isList ? 'top-1/2 -translate-y-1/2' : 'top-2'" @click.stop>
+                        <SaveButton type="folder" :id="folder.id" />
                         <Dropdown align="right">
                             <template #trigger>
                                 <button class="rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700">
@@ -832,7 +835,7 @@ function uploadFromUrl() {
                     :key="`file-${file.id}`"
                     class="group relative flex cursor-pointer"
                     :class="[
-                        isList ? 'items-center gap-3 px-3 py-2.5 pe-12' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
+                        isList ? 'items-center gap-3 px-3 py-2.5 pe-20' : 'flex-col items-center rounded-xl border p-4 text-center hover:shadow-md',
                         selected.files.has(file.id)
                             ? (isList ? 'bg-[var(--accent-50)] dark:bg-gray-700' : 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700')
                             : (isList ? 'hover:bg-gray-50 dark:hover:bg-gray-700/50' : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'),
@@ -870,7 +873,8 @@ function uploadFromUrl() {
                     <span v-if="isList" class="shrink-0 text-xs text-gray-400">{{ file.human_size ?? '' }}</span>
                     <span v-if="isList" class="hidden w-24 shrink-0 text-xs text-gray-400 sm:inline">{{ formatDate(file.created_at) }}</span>
 
-                    <div class="absolute end-2" :class="isList ? 'top-1/2 -translate-y-1/2' : 'top-2'" @click.stop>
+                    <div class="absolute end-2 flex items-center gap-0.5" :class="isList ? 'top-1/2 -translate-y-1/2' : 'top-2'" @click.stop>
+                        <SaveButton type="file" :id="file.id" />
                         <Dropdown align="right">
                             <template #trigger>
                                 <button class="rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700">

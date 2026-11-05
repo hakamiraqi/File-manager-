@@ -1,5 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue';
+import UserAvatar from '@/Components/UserAvatar.vue';
+import { useSaved } from '@/Composables/useSaved';
+import { ref, computed, watch } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
@@ -19,6 +21,7 @@ import {
     QueueListIcon,
     BookOpenIcon,
     AcademicCapIcon,
+    BookmarkIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -26,11 +29,14 @@ const page = usePage();
 const user = computed(() => page.props.auth.user);
 const quota = computed(() => page.props.quota);
 const mobileOpen = ref(false);
+const saved = useSaved();
+watch(() => page.props.savedIds, (ids) => saved.load(ids), { immediate: true });
 
 const nav = computed(() => [
     { label: t('nav.dashboard', 'ملفاتي'), href: route('dashboard'), icon: FolderIcon, active: route().current('dashboard') },
     { label: t('nav.theses', 'الرسائل والأطاريح'), href: route('theses.index'), icon: AcademicCapIcon, active: route().current('theses.*') },
     { label: t('nav.library', 'المكتبة'), href: page.props.permissions?.library_unread ? route('library.my-loans') : route('library.index'), icon: BookOpenIcon, active: route().current('library.*'), badge: page.props.permissions?.library_unread || 0 },
+    { label: t('nav.saved', 'المحفوظات والتنزيلات'), href: route('saved.index'), icon: BookmarkIcon, active: route().current('saved.*') },
     { label: t('nav.playlists', 'قوائم التشغيل'), href: route('playlists.index'), icon: QueueListIcon, active: route().current('playlists.*') },
     { label: t('nav.shares', 'الروابط المشتركة'), href: route('shares.index'), icon: ShareIcon, active: route().current('shares.index') },
     { label: t('nav.trash', 'سلة المحذوفات'), href: route('trash.index'), icon: TrashIcon, active: route().current('trash.index') },
@@ -110,10 +116,8 @@ function logout() {
                 <Dropdown align="right" width="48">
                     <template #trigger>
                         <button class="flex items-center gap-2 rounded-full bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">
-                            <span class="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-600)] text-xs text-white">
-                                {{ user.name?.charAt(0) }}
-                            </span>
-                            {{ user.name }}
+                            <UserAvatar :user="user" />
+                            <span class="hidden max-w-[10rem] truncate sm:inline">{{ user.name }}</span>
                         </button>
                     </template>
                     <template #content>

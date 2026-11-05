@@ -26,6 +26,16 @@ class User extends Authenticatable
 
     public const ROLES = ['admin', 'editor', 'contributor', 'user'];
 
+    /** The profile picture's address, shown in the header and on the profile page. */
+    protected $appends = ['avatar_url'];
+
+    protected function avatarUrl(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(
+            fn () => $this->avatar_path ? asset('storage/'.$this->avatar_path) : null
+        );
+    }
+
     protected function casts(): array
     {
         return [

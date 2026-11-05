@@ -41,6 +41,8 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user,
                 'twoFactorEnabled' => $user?->hasEnabledTwoFactorAuthentication() ?? false,
             ],
+            // Bookmark state for every page that shows files (لمحفوظات).
+            'savedIds' => fn () => $user && \Illuminate\Support\Facades\Schema::hasTable('saved_items') ? \App\Models\SavedItem::idsFor($user) : ['files' => [], 'folders' => []],
             'quota' => $user ? [
                 'used' => $user->storage_used_bytes,
                 'total' => $user->quotaBytes(),

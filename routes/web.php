@@ -93,6 +93,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('/shares/{share}', [ShareController::class, 'destroy'])->name('shares.destroy');
     Route::post('/shares/{share}/email', [ShareController::class, 'sendEmail'])->name('shares.email');
 
+    Route::get('/saved', [\App\Http\Controllers\SavedController::class, 'index'])->name('saved.index');
+    Route::post('/saved/toggle', [\App\Http\Controllers\SavedController::class, 'toggle'])->name('saved.toggle');
+    Route::delete('/saved/downloads', [\App\Http\Controllers\SavedController::class, 'forgetDownload'])->name('saved.downloads.forget');
     Route::get('/playlists', [PlaylistController::class, 'index'])->name('playlists.index');
     Route::get('/playlists/picker', [PlaylistController::class, 'picker'])->name('playlists.picker');
     Route::post('/playlists', [PlaylistController::class, 'store'])->name('playlists.store');
@@ -106,6 +109,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::patch('/profile/preferences', [ProfileController::class, 'updatePreferences'])->name('profile.preferences');
+    Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar');
+    Route::delete('/profile/avatar', [ProfileController::class, 'destroyAvatar'])->name('profile.avatar.destroy');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
