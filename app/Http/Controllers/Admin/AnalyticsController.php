@@ -3,69 +3,80 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\ActivityLog;
+use App\Models\User;
+use App\Services\Analytics\StaffAnalytics;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AnalyticsController extends Controller
 {
-    private const TRACKED_ACTIONS = [
-        'file.uploaded' => 'رفع ملفات',
-        'file.downloaded' => 'تحميل ملفات',
-        'file.bulk_download' => 'تحميل أرشيفات',
-        'share.created' => 'روابط مشاركة',
-        'share.downloaded' => 'تحميلات المشاركة العامة',
-        'folder.created' => 'مجلدات جديدة',
-    ];
-
-    public function index(Request $request): Response
+    public function index(Request $request, StaffAnalytics $analytics): Response
     {
-        $days = max(7, min(90, (int) $request->integer('days', 30)));
-        $since = Carbon::now()->subDays($days - 1)->startOfDay();
-
-        $driver = DB::connection()->getDriverName();
-        $dateExpr = $driver === 'sqlite' ? "strftime('%Y-%m-%d', created_at)" : 'DATE(created_at)';
-
-        $rows = ActivityLog::query()
-            ->selectRaw("{$dateExpr} as day, action, COUNT(*) as total")
-            ->whereIn('action', array_keys(self::TRACKED_ACTIONS))
-            ->where('created_at', '>=', $since)
-            ->groupBy('day', 'action')
-            ->orderBy('day')
-            ->get();
-
-        $labels = [];
-        for ($i = 0; $i < $days; $i++) {
-            $labels[] = $since->copy()->addDays($i)->toDateString();
-        }
-
-        $series = [];
-        foreach (self::TRACKED_ACTIONS as $action => $label) {
-            $byDay = $rows->where('action', $action)->pluck('total', 'day');
-            $series[] = [
-                'label' => $label,
-                'action' => $action,
-                'data' => array_map(fn ($day) => (int) ($byDay[$day] ?? 0), $labels),
-            ];
-        }
-
-        $totals = ActivityLog::query()
-            ->selectRaw('action, COUNT(*) as total')
-            ->whereIn('action', array_keys(self::TRACKED_ACTIONS))
-            ->groupBy('action')
-            ->pluck('total', 'action');
+        [$period, $filters] = $this->resolve($request, $analytics);
 
         return Inertia::render('Admin/Analytics', [
-            'days' => $days,
-            'labels' => $labels,
-            'series' => $series,
-            'totals' => collect(self::TRACKED_ACTIONS)->map(fn ($label, $action) => [
-                'label' => $label,
-                'total' => (int) ($totals[$action] ?? 0),
-            ])->values(),
+            'filters' => $filters + [
+                'preset' => $period['preset'],
+                'from' => $period['from']->toDateString(),
+                'to' => $period['to']->subSecond()->toDateString(),
+            ],
+            'period' => [
+                'from' => $period['from']->format('Y-m-d H:i'),
+                'to' => $period['to']->format('Y-m-d H:i'),
+                'prevFrom' => $period['prevFrom']->format('Y-m-d H:i'),
+                'prevTo' => $period['prevTo']->format('Y-m-d H:i'),
+            ],
+            'shiftStart' => $analytics->shiftStartTime(),
+            'report' => $analytics->report($period, $filters),
+            'users' => User::query()->orderBy('name')->limit(1000)->get(['id', 'name', 'role']),
+            'roles' => User::query()->distinct()->orderBy('role')->pluck('role'),
         ]);
+    }
+
+    /** The employee comparison as CSV (opens in Excel). */
+    public function export(Request $request, StaffAnalytics $analytics): StreamedResponse
+    {
+        [$period, $filters] = $this->resolve($request, $analytics);
+        $report = $analytics->report($period, $filters);
+        $name = 'staff-performance-'.$period['from']->format('Ymd').'-'.$period['to']->subSecond()->format('Ymd').'.csv';
+
+        return response()->streamDownload(function () use ($report, $period) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['الفترة', $period['from']->format('Y-m-d H:i').' → '.$period['to']->format('Y-m-d H:i').' (بتوقيت بغداد)']);
+            fputcsv($out, []);
+            fputcsv($out, [
+                'الترتيب', 'الموظف', 'البريد', 'الدور', 'الملفات المرفوعة', 'حجم المرفوع (MB)', 'عمليات الرفع',
+                'إدخال البيانات', 'الإعارة', 'المشاركة', 'التحميل', 'الحذف', 'مجموع النشاط', 'الفترة السابقة',
+                'نسبة المساهمة %', 'مؤشر الأداء', 'جودة البيانات %', 'السجلات المُدخلة', 'أيام النشاط', 'آخر نشاط',
+            ]);
+            foreach ($report['staff'] as $s) {
+                fputcsv($out, [
+                    $s['rank'], $s['name'], $s['email'], $s['role'], $s['files'], round($s['bytes'] / 1048576, 1), $s['uploads'],
+                    $s['data_entry'], $s['circulation'], $s['sharing'], $s['downloads'], $s['deletions'], $s['total'], $s['previous'],
+                    $s['share'], $s['index'], $s['quality'] ?? '', $s['records'], $s['active_days'], $s['last_at'],
+                ]);
+            }
+            fclose($out);
+        }, $name, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** @return array{0: array, 1: array{user: ?int, role: ?string}} */
+    private function resolve(Request $request, StaffAnalytics $analytics): array
+    {
+        $data = $request->validate([
+            'preset' => ['nullable', 'string', 'in:'.implode(',', StaffAnalytics::PRESETS)],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'user' => ['nullable', 'integer'],
+            'role' => ['nullable', 'string', 'max:40'],
+        ]);
+
+        return [
+            $analytics->period($data['preset'] ?? 'last_30', $data['from'] ?? null, $data['to'] ?? null),
+            ['user' => isset($data['user']) ? (int) $data['user'] : null, 'role' => $data['role'] ?? null],
+        ];
     }
 }

@@ -53,7 +53,7 @@ class BookController extends Controller
         $this->applyCover($request, $book, $data);
         $this->createCopies($book, (int) ($data['copies'] ?? 1), $data['shelf'] ?? null);
 
-        ActivityLog::record('library.book_created', "أضاف الكتاب \"{$book->title}\" إلى المكتبة");
+        ActivityLog::record('library.book_created', "أضاف الكتاب \"{$book->title}\" إلى المكتبة", $book);
 
         return back()->with('success', 'تمت إضافة الكتاب.');
     }
@@ -65,7 +65,7 @@ class BookController extends Controller
         $book->update($this->bookFields($data));
         $this->applyCover($request, $book, $data);
 
-        ActivityLog::record('library.book_updated', "حدّث الكتاب \"{$book->title}\"");
+        ActivityLog::record('library.book_updated', "حدّث الكتاب \"{$book->title}\"", $book);
 
         return back()->with('success', 'تم حفظ الكتاب.');
     }

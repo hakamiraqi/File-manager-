@@ -41,6 +41,7 @@ class SettingController extends Controller
         'thesis_departments' => '',
         'thesis_subjects' => '',
         'oai_enabled' => '1',
+        'work_day_start' => '08:00',
     ];
 
     public function index(): Response
@@ -83,6 +84,7 @@ class SettingController extends Controller
             'thesis_departments' => ['nullable', 'string', 'max:5000'],
             'thesis_subjects' => ['nullable', 'string', 'max:5000'],
             'oai_enabled' => ['boolean'],
+            'work_day_start' => ['nullable', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
         ]);
