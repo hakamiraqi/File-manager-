@@ -9,7 +9,7 @@ name: Deploy to VPS
 # Optional: VPS_HOST (default 193.123.83.82), VPS_USER (default ubuntu).
 on:
   push:
-    branches: [main, claude/project-thread-2madpm]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
