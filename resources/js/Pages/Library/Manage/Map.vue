@@ -13,7 +13,7 @@ import { sectionColor } from '@/Components/Library/Map/colors.js';
 import { useTrans } from '@/Composables/useTrans';
 import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
-    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon,
+    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -49,13 +49,15 @@ const KIND_DEFAULTS = {
     desk: { width: 2.4, depth: 0.8, levels: 1, double_sided: false },
     table: { width: 1.8, depth: 1, levels: 1, double_sided: false },
     wall: { width: 4, depth: 0.15, levels: 1, double_sided: false },
+    gate: { width: 1.4, depth: 0.5, levels: 1, double_sided: false },
 };
-const kindLabel = (k) => ({ shelf: t('library.map.kind.shelf', 'رف كتب'), desk: t('library.map.kind.desk', 'مكتب الإعارة'), table: t('library.map.kind.table', 'طاولة قراءة'), wall: t('library.map.kind.wall', 'جدار') })[k] ?? k;
+const kindLabel = (k) => ({ shelf: t('library.map.kind.shelf', 'رف كتب'), desk: t('library.map.kind.desk', 'مكتب الإعارة'), table: t('library.map.kind.table', 'طاولة قراءة'), wall: t('library.map.kind.wall', 'جدار'), gate: t('library.map.kind.gate', 'بوابة مانعة للسرقة') })[k] ?? k;
 
 function nextCode(kind) {
     if (kind === 'desk') return uniqueCode(t('library.map.kind.desk_short', 'مكتب'));
     if (kind === 'table') return uniqueCode(t('library.map.kind.table_short', 'طاولة'));
     if (kind === 'wall') return uniqueCode(t('library.map.kind.wall', 'جدار'));
+    if (kind === 'gate') return uniqueCode(t('library.map.kind.gate_short', 'بوابة'));
     const last = [...items.value].reverse().find((i) => i.kind === 'shelf' && /\d+$/.test(i.code));
     if (!last) return uniqueCode('A', 1);
     const [, prefix, n] = last.code.match(/^(.*?)(\d+)$/);
@@ -155,7 +157,7 @@ onMounted(() => window.addEventListener('keydown', onKey));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
 const corners = (s) => `translate(${s.x} ${s.y}) rotate(${s.rotation})`;
-const fill = (s) => (s.kind === 'shelf' ? s.color || sectionColor(s.section_id) : s.kind === 'wall' ? '#94a3b8' : s.kind === 'desk' ? '#0f766e' : '#a16207');
+const fill = (s) => (s.kind === 'shelf' ? s.color || sectionColor(s.section_id) : s.kind === 'wall' ? '#94a3b8' : s.kind === 'gate' ? '#dc2626' : s.kind === 'desk' ? '#0f766e' : '#a16207');
 const gridLines = computed(() => {
     const out = [];
     for (let x = 0; x <= floor.width; x++) out.push({ x1: x, y1: 0, x2: x, y2: floor.depth, major: x % 5 === 0 });
@@ -254,6 +256,7 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                 <button @click="add('desk')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.desk', 'مكتب الإعارة') }}</button>
                 <button @click="add('table')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.table', 'طاولة قراءة') }}</button>
                 <button @click="add('wall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.wall', 'جدار') }}</button>
+                <button @click="add('gate')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ShieldCheckIcon class="h-4 w-4" /> {{ t('library.map.kind.gate', 'بوابة مانعة للسرقة') }}</button>
                 <button @click="placingEntrance = !placingEntrance; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="placingEntrance ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><MapPinIcon class="h-4 w-4" /> {{ t('library.map.entrance', 'المدخل') }}</button>
                 <button @click="gen.open = true" class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-50)] px-3 py-1.5 text-sm font-medium text-[var(--accent-700)] hover:brightness-95 dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</button>
             </div>
@@ -272,13 +275,19 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                             <rect x="0" y="0" :width="floor.width" :height="floor.depth" fill="none" stroke-width="0.12" class="stroke-gray-400 dark:stroke-gray-500" />
 
                             <g v-for="s in items" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" @pointerdown.stop="startDrag($event, s)">
-                                <rect :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" :rx="s.kind === 'table' ? 0.1 : 0.04"
+                                <template v-if="s.kind === 'gate'">
+                                    <!-- Two posts; the dashed line is the passage readers walk through. -->
+                                    <rect :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" fill="transparent" :stroke="s._key === selectedKey ? '#f59e0b' : 'none'" :stroke-width="0.06" />
+                                    <rect v-for="side in [1, -1]" :key="side" :x="side * (s.width / 2 - 0.075) - 0.075" :y="-s.depth / 2" width="0.15" :height="s.depth" rx="0.03" fill="#dc2626" />
+                                    <line :x1="-s.width / 2 + 0.2" y1="0" :x2="s.width / 2 - 0.2" y2="0" stroke="#dc2626" stroke-width="0.04" stroke-dasharray="0.1 0.08" />
+                                </template>
+                                <rect v-else :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" :rx="s.kind === 'table' ? 0.1 : 0.04"
                                     :fill="fill(s)" :fill-opacity="s.kind === 'shelf' ? 0.85 : 0.7"
                                     :stroke="s._key === selectedKey ? '#f59e0b' : 'rgba(0,0,0,0.25)'" :stroke-width="s._key === selectedKey ? 0.09 : 0.025" />
                                 <!-- Front face: where readers stand. -->
                                 <line v-if="s.kind === 'shelf'" :x1="-s.width / 2 + 0.05" :y1="s.depth / 2" :x2="s.width / 2 - 0.05" :y2="s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
                                 <line v-if="s.kind === 'shelf' && s.double_sided" :x1="-s.width / 2 + 0.05" :y1="-s.depth / 2" :x2="s.width / 2 - 0.05" :y2="-s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
-                                <text v-if="s.kind !== 'wall'" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
+                                <text v-if="s.kind !== 'wall' && s.kind !== 'gate'" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
                             </g>
 
                             <g :transform="`translate(${floor.entrance.x} ${floor.entrance.y})`" class="cursor-grab" @pointerdown.stop="startEntranceDrag">

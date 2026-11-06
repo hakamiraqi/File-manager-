@@ -32,14 +32,15 @@ export function buildGrid(floor, items) {
     const rows = Math.max(1, Math.ceil(floor.depth / CELL));
     const blocked = new Uint8Array(cols * rows);
     for (const it of items) {
-        const pts = footprint(it, CLEARANCE);
+        const grow = it.grow ?? CLEARANCE;
+        const pts = footprint(it, grow);
         const minX = Math.max(0, Math.floor(Math.min(...pts.map((p) => p.x)) / CELL));
         const maxX = Math.min(cols - 1, Math.ceil(Math.max(...pts.map((p) => p.x)) / CELL));
         const minY = Math.max(0, Math.floor(Math.min(...pts.map((p) => p.y)) / CELL));
         const maxY = Math.min(rows - 1, Math.ceil(Math.max(...pts.map((p) => p.y)) / CELL));
         for (let r = minY; r <= maxY; r++) {
             for (let c = minX; c <= maxX; c++) {
-                if (inside((c + 0.5) * CELL, (r + 0.5) * CELL, it, CLEARANCE)) blocked[r * cols + c] = 1;
+                if (inside((c + 0.5) * CELL, (r + 0.5) * CELL, it, grow)) blocked[r * cols + c] = 1;
             }
         }
     }
@@ -137,6 +138,18 @@ function simplify(g, pts) {
 const length = (pts) => pts.reduce((s, p, i) => (i ? s + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y) : 0), 0);
 
 /** Where a reader stands to take a book from this bookcase (each usable face). */
+// «بوابة مانعة للسرقة» (2026-11-06, by request): only its two posts block the walk; readers
+// pass between them, so the posts keep a smaller clearance than furniture.
+export const GATE_POST = 0.15;
+export function gatePillars(gate) {
+    const a = ((gate.rotation || 0) * Math.PI) / 180;
+    const off = gate.width / 2 - GATE_POST / 2;
+    return [1, -1].map((side) => ({
+        x: gate.x + Math.cos(a) * off * side, y: gate.y + Math.sin(a) * off * side,
+        width: GATE_POST, depth: gate.depth, rotation: gate.rotation, grow: 0.1,
+    }));
+}
+
 export function standingPoints(shelf) {
     const n = frontNormal(shelf);
     const off = shelf.depth / 2 + CLEARANCE + CELL;
@@ -150,7 +163,7 @@ export function standingPoints(shelf) {
  * @returns {{points: {x:number,y:number}[], length: number}|null}
  */
 export function findRoute(floor, items, start, shelf) {
-    const obstacles = items.filter((it) => it.kind !== 'floor');
+    const obstacles = items.flatMap((it) => (it.kind === 'gate' ? gatePillars(it) : [it]));
     const g = buildGrid(floor, obstacles);
     const from = nearestFree(g, toCell(g, start));
     if (!from) return null;

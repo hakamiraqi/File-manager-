@@ -11,6 +11,7 @@ export function shelfHeight(item) {
     if (item.kind === 'desk') return 0.8;
     if (item.kind === 'table') return 0.75;
     if (item.kind === 'wall') return 2.6;
+    if (item.kind === 'gate') return 1.6;
     return item.levels * LEVEL_H + 0.12;
 }
 
@@ -337,7 +338,7 @@ export class LibraryScene {
         group.position.copy(this.world(item.x, item.y));
         group.rotation.y = -((item.rotation || 0) * Math.PI) / 180;
         group.updateMatrixWorld(true);
-        const accent = item.color || sectionColor(item.section_id);
+        const accent = item.color || (kind === 'gate' ? '#dc2626' : sectionColor(item.section_id));
         const h = shelfHeight(item);
         const wood = new THREE.MeshStandardMaterial({ color: kind === 'wall' ? (this.dark ? '#475569' : '#e5e7eb') : this.dark ? '#7c5a3a' : '#a47148', roughness: 0.75 });
         const accentMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5, emissive: new THREE.Color(accent), emissiveIntensity: 0 });
@@ -369,6 +370,16 @@ export class LibraryScene {
         } else if (kind === 'table') {
             box(W, 0.05, D, 0, h - 0.025, 0);
             for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) box(0.05, h - 0.05, 0.05, sx * (W / 2 - 0.08), (h - 0.05) / 2, sz * (D / 2 - 0.08));
+        } else if (kind === 'gate') {
+            // Two slim posts with a light strip on top; the passage between them stays open.
+            const post = new THREE.MeshStandardMaterial({ color: this.dark ? '#cbd5e1' : '#f1f5f9', roughness: 0.35, metalness: 0.3, transparent: true, opacity: 0.92 });
+            const light = new THREE.MeshStandardMaterial({ color: '#ef4444', emissive: '#ef4444', emissiveIntensity: 0.8 });
+            for (const side of [1, -1]) {
+                const px = side * (W / 2 - 0.075);
+                box(0.15, 0.06, D + 0.05, px, 0.03, 0, wood);
+                box(0.08, h, D, px, h / 2, 0, post);
+                box(0.1, 0.06, D + 0.02, px, h - 0.03, 0, light);
+            }
         } else {
             box(W, h, D, 0, h / 2, 0);
         }

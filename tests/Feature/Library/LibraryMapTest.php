@@ -35,9 +35,11 @@ class LibraryMapTest extends TestCase
             ['code' => 'A1', 'section_id' => $section->id],
             ['code' => 'A2', 'x' => 7, 'double_sided' => true, 'depth' => 0.9],
             ['code' => 'مكتب1', 'kind' => 'desk'],
+            ['code' => 'بوابة1', 'kind' => 'gate', 'width' => 1.4, 'levels' => 1],
         ]))->assertRedirect()->assertSessionHasNoErrors();
 
-        $this->assertSame(3, LibraryShelf::count());
+        $this->assertSame(4, LibraryShelf::count());
+        $this->assertSame('gate', LibraryShelf::where('code', 'بوابة1')->value('kind'));
         $this->assertSame(14.0, app(LibraryMap::class)->floor()['entrance']['y']);
 
         // Saving again updates by id and removes what was taken off the plan.
