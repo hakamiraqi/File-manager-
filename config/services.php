@@ -14,6 +14,12 @@ return [
     |
     */
 
+    // Text recognition: leave empty to use the bundled copy or the one on PATH.
+    'ocr' => [
+        'tesseract' => env('OCR_TESSERACT_BIN'),
+        'pdftoppm' => env('OCR_PDFTOPPM_BIN'),
+    ],
+
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
     ],

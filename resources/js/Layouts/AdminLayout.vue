@@ -23,6 +23,7 @@ import {
     ChartBarIcon,
     LanguageIcon,
     ChatBubbleLeftRightIcon,
+    DocumentMagnifyingGlassIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -38,6 +39,7 @@ const nav = computed(() => [
     { label: t('admin.nav.settings', 'الإعدادات العامة'), href: () => route('admin.settings.index'), icon: Cog6ToothIcon, active: () => route().current('admin.settings.*'), show: admin.value.settings || admin.value.appearance },
     { label: t('admin.nav.security', 'الأمان وتسجيل الدخول'), href: () => route('admin.security.index'), icon: LockClosedIcon, active: () => route().current('admin.security.*'), show: admin.value.settings },
     { label: t('nav.contact_inbox', 'التواصل معنا'), href: () => route('contact.inbox'), icon: ChatBubbleLeftRightIcon, active: () => route().current('contact.inbox'), show: admin.value.settings },
+    { label: t('admin.nav.ocr', 'التعرف على النصوص'), href: () => route('admin.ocr.index'), icon: DocumentMagnifyingGlassIcon, active: () => route().current('admin.ocr.*'), show: admin.value.settings },
     { label: t('admin.nav.mail', 'البريد الإلكتروني'), href: () => route('admin.mail.index'), icon: EnvelopeIcon, active: () => route().current('admin.mail.*'), show: admin.value.settings },
     { label: t('admin.nav.analytics', 'التحليلات'), href: () => route('admin.analytics.index'), icon: ChartBarIcon, active: () => route().current('admin.analytics.*'), show: admin.value.statistics },
     { label: t('admin.nav.translations', 'الترجمات'), href: () => route('admin.translations.index'), icon: LanguageIcon, active: () => route().current('admin.translations.*'), show: admin.value.translations },

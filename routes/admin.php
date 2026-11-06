@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\MailController;
+use App\Http\Controllers\Admin\OcrController;
 use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\SecurityController;
 use App\Http\Controllers\Admin\SettingController;
@@ -39,6 +40,13 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
         Route::get('/mail', [MailController::class, 'index'])->name('mail.index');
         Route::post('/mail', [MailController::class, 'update'])->name('mail.update');
         Route::post('/mail/test', [MailController::class, 'sendTest'])->name('mail.test');
+
+        Route::get('/ocr', [OcrController::class, 'index'])->name('ocr.index');
+        Route::post('/ocr', [OcrController::class, 'update'])->name('ocr.update');
+        Route::post('/ocr/queue', [OcrController::class, 'queue'])->name('ocr.queue');
+        Route::post('/ocr/run', [OcrController::class, 'runNow'])->name('ocr.run');
+        Route::post('/ocr/retry-failed', [OcrController::class, 'retryFailed'])->name('ocr.retry-failed');
+        Route::post('/ocr/files/{file}/{action}', [OcrController::class, 'file'])->whereIn('action', ['retry', 'skip', 'prioritize'])->name('ocr.file');
     });
 
     Route::middleware('can:manage-translations')->group(function () {
