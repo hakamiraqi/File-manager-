@@ -61,6 +61,14 @@ class ProfileController extends Controller
      */
     public function updateAvatar(Request $request): RedirectResponse
     {
+        $this->saveAvatar($request);
+
+        return back()->with('success', 'تم تحديث الصورة الشخصية.');
+    }
+
+    /** Checks and stores the uploaded picture; the mobile API uses it too. */
+    public function saveAvatar(Request $request): void
+    {
         $request->validate([
             'avatar' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120', 'dimensions:max_width=6000,max_height=6000'],
         ]);
@@ -81,19 +89,22 @@ class ProfileController extends Controller
             $disk->delete($user->avatar_path);
         }
         $user->forceFill(['avatar_path' => $path])->save();
-
-        return back()->with('success', 'تم تحديث الصورة الشخصية.');
     }
 
     public function destroyAvatar(Request $request): RedirectResponse
+    {
+        $this->removeAvatar($request);
+
+        return back()->with('success', 'تم حذف الصورة الشخصية.');
+    }
+
+    public function removeAvatar(Request $request): void
     {
         $user = $request->user();
         if ($user->avatar_path) {
             Storage::disk('public')->delete($user->avatar_path);
             $user->forceFill(['avatar_path' => null])->save();
         }
-
-        return back()->with('success', 'تم حذف الصورة الشخصية.');
     }
 
     /** Centre-crops an image to a square of $size px as JPEG; null without GD. */

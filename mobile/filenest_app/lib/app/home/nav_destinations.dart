@@ -6,7 +6,11 @@ import '../../features/account/presentation/account_screen.dart';
 import '../../features/admin/presentation/admin_home_screen.dart';
 import '../../features/app_settings/presentation/app_settings_screen.dart';
 import '../../features/auth/state/auth_provider.dart';
+import '../../features/contact/presentation/contact_screen.dart';
+import '../../features/library/presentation/my_loans_screen.dart';
 import '../../features/playlists/presentation/playlists_screen.dart';
+import '../../features/saved/presentation/saved_screen.dart';
+import '../../core/widgets/ui_kit.dart';
 import '../../features/security/presentation/security_screen.dart';
 import '../../features/server_settings/presentation/server_settings_screen.dart';
 import '../../features/trash/presentation/trash_screen.dart';
@@ -43,6 +47,21 @@ List<NavDestinationItem> buildSecondaryDestinations(BuildContext context) {
         label: context.tr('nav.admin'),
         onTap: () => push(const AdminHomeScreen()),
       ),
+    NavDestinationItem(
+      icon: Icons.bookmark_border_rounded,
+      label: context.l('المحفوظات والتنزيلات', 'Saved & downloads'),
+      onTap: () => push(const SavedScreen()),
+    ),
+    NavDestinationItem(
+      icon: Icons.bookmark_added_outlined,
+      label: context.l('استعاراتي', 'My loans'),
+      onTap: () => push(const MyLoansScreen()),
+    ),
+    NavDestinationItem(
+      icon: Icons.forum_outlined,
+      label: context.l('تواصل معنا', 'Contact us'),
+      onTap: () => push(const ContactScreen()),
+    ),
     NavDestinationItem(
       icon: Icons.queue_music_rounded,
       label: context.tr('nav.playlists'),

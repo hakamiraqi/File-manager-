@@ -12,7 +12,9 @@ import '../../../core/models/file_item.dart';
 import '../../../core/models/folder_item.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/ui_kit.dart';
 import '../../shares/data/share_repository.dart';
+import '../../site/site_api.dart';
 import '../../media_player/presentation/media_player_screen.dart';
 import '../../playlists/presentation/widgets/add_to_playlist_sheet.dart';
 import '../data/file_repository.dart';
@@ -555,6 +557,15 @@ class _BrowseScreenState extends State<BrowseScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiClient.messageFor(e))));
   }
 
+  Future<void> _toggleSaved(String type, int id) async {
+    try {
+      final saved = await SiteApi.instance.toggleSaved(type, id);
+      if (mounted) context.toast(saved ? context.l('حُفظ في «المحفوظات».', 'Saved.') : context.l('أُزيل من المحفوظات.', 'Removed from saved.'));
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
   void _showFileMenu(FileItem file) {
     showModalBottomSheet(
       context: context,
@@ -572,6 +583,10 @@ class _BrowseScreenState extends State<BrowseScreen> {
           ListTile(leading: const Icon(Icons.ios_share_rounded), title: Text(context.tr('action.share')), onTap: () {
             Navigator.of(sheetContext).pop();
             _shareFile(file);
+          }),
+          ListTile(leading: const Icon(Icons.bookmark_border_rounded), title: Text(context.l('حفظ / إزالة من المحفوظات', 'Save / unsave')), onTap: () {
+            Navigator.of(sheetContext).pop();
+            _toggleSaved('file', file.id);
           }),
           if (file.isPlayableMedia)
             ListTile(leading: const Icon(Icons.playlist_add_rounded), title: Text(context.tr('action.add_to_playlist')), onTap: () {
@@ -610,6 +625,10 @@ class _BrowseScreenState extends State<BrowseScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheetContext) => SafeArea(
         child: Wrap(children: [
+          ListTile(leading: const Icon(Icons.bookmark_border_rounded), title: Text(context.l('حفظ / إزالة من المحفوظات', 'Save / unsave')), onTap: () {
+            Navigator.of(sheetContext).pop();
+            _toggleSaved('folder', folder.id);
+          }),
           ListTile(leading: const Icon(Icons.drive_file_rename_outline_rounded), title: Text(context.tr('action.rename')), onTap: () {
             Navigator.of(sheetContext).pop();
             _renameFolder(folder);

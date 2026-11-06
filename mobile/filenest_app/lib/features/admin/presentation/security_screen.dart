@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/i18n/app_strings.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/widgets/ui_kit.dart';
 import '../data/admin_repository.dart';
 import '../models/ip_rule.dart';
 
@@ -26,6 +27,10 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
 
   bool _guestAccessEnabled = false;
   bool _remoteUploadEnabled = false;
+  bool _publicFiles = true;
+  bool _publicLibrary = true;
+  bool _publicTheses = true;
+  bool _contactEnabled = true;
   bool _showCaptchaRegister = false;
   bool _showCaptchaReset = false;
   bool _showCaptchaDownload = false;
@@ -86,6 +91,10 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
 
         _guestAccessEnabled = _isTrue(settings['guest_access_enabled']);
         _remoteUploadEnabled = _isTrue(settings['remote_upload_enabled']);
+        _publicFiles = settings['public_files_enabled'] == null || _isTrue(settings['public_files_enabled']);
+        _publicLibrary = settings['public_library_enabled'] == null || _isTrue(settings['public_library_enabled']);
+        _publicTheses = settings['public_theses_enabled'] == null || _isTrue(settings['public_theses_enabled']);
+        _contactEnabled = settings['contact_enabled'] == null || _isTrue(settings['contact_enabled']);
         _showCaptchaRegister = _isTrue(settings['show_captcha_register']);
         _showCaptchaReset = _isTrue(settings['show_captcha_reset']);
         _showCaptchaDownload = _isTrue(settings['show_captcha_download']);
@@ -119,6 +128,10 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
       await _repository.updateSecurity({
         'guest_access_enabled': _guestAccessEnabled,
         'remote_upload_enabled': _remoteUploadEnabled,
+        'public_files_enabled': _publicFiles,
+        'public_library_enabled': _publicLibrary,
+        'public_theses_enabled': _publicTheses,
+        'contact_enabled': _contactEnabled,
         'show_captcha_register': _showCaptchaRegister,
         'show_captcha_reset': _showCaptchaReset,
         'show_captcha_download': _showCaptchaDownload,
@@ -205,6 +218,35 @@ class _AdminSecurityScreenState extends State<AdminSecurityScreen> {
                       value: _remoteUploadEnabled,
                       onChanged: (v) => setState(() => _remoteUploadEnabled = v),
                       title: Text(context.tr('security.remote_upload')),
+                    ),
+                  ]),
+                  _Section(title: context.l('واجهة الزوار', "Visitors' site"), children: [
+                    if (!_guestAccessEnabled)
+                      Text(context.l('فعّل «وصول الزوار» أعلاه حتى تظهر الأقسام للزوار.', 'Turn on guest access above to show these to visitors.'),
+                          style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _publicFiles,
+                      onChanged: (v) => setState(() => _publicFiles = v),
+                      title: Text(context.l('الملفات العامة', 'Public files')),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _publicLibrary,
+                      onChanged: (v) => setState(() => _publicLibrary = v),
+                      title: Text(context.l('المكتبة (تصفح الكتب وتوفرها)', 'Library (browse books and availability)')),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _publicTheses,
+                      onChanged: (v) => setState(() => _publicTheses = v),
+                      title: Text(context.l('الرسائل والأطاريح', 'Theses')),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      value: _contactEnabled,
+                      onChanged: (v) => setState(() => _contactEnabled = v),
+                      title: Text(context.l('تواصل معنا', 'Contact us')),
                     ),
                   ]),
                   _Section(title: context.tr('security.captcha_title'), children: [
