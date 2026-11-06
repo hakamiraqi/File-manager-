@@ -28,7 +28,8 @@ dependencies:
   webview_flutter_android: ^4.14.1
   webview_flutter_wkwebview: ^3.27.2
   webview_windows: ^0.4.0
-  permission_handler: ^13.0.2
+  # 12+ needs an Android SDK newer than the CI Flutter ships with.
+  permission_handler: ">=11.3.1 <12.0.0"
 
 dev_dependencies:
   flutter_test:
