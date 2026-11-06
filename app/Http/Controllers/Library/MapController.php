@@ -36,6 +36,8 @@ class MapController extends Controller
             'shelves' => $this->map->shelves(),
             'target' => $book ? $this->bookPayload($book) : null,
             'canEdit' => (bool) $request->user()?->canManageLibrary(),
+            // ?at=12 comes from the QR sticker on bookcase 12: «أنت هنا».
+            'startAt' => $request->integer('at') ?: null,
         ]);
     }
 
@@ -58,6 +60,18 @@ class MapController extends Controller
             'floor' => $this->map->floor(),
             'shelves' => $this->map->shelves(),
             'sections' => LibrarySection::options(),
+        ]);
+    }
+
+    /** Printable QR stickers: one per bookcase, scanned to say «أنت هنا». */
+    public function labels(): Response
+    {
+        return Inertia::render('Library/Manage/MapLabels', [
+            'shelves' => $this->map->shelves()->where('kind', 'shelf')->values()->map(fn ($s) => [
+                'id' => $s['id'], 'code' => $s['code'], 'section' => $s['section'], 'color' => $s['color'], 'section_id' => $s['section_id'],
+                'url' => route('library.map', ['at' => $s['id']]),
+            ]),
+            'mapUrl' => route('library.map'),
         ]);
     }
 

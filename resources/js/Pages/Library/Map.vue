@@ -1,6 +1,8 @@
 <script setup>
 // «خريطة المكتبة» (2026-11-06, by request): search a book, see its bookcase in a 3D model of the
-// reading room and follow the walk from the entrance, Waze style.
+// reading room and follow the walk from the entrance, Waze style. Since 2026-11-06 (by request)
+// the reader can also say where they are by scanning the QR sticker on the nearest bookcase,
+// and «ابدأ المشي» moves the arrow with their real steps (motion sensor + compass).
 import { Head, Link, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import axios from 'axios';
@@ -10,16 +12,18 @@ import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
 import Maneuver from '@/Components/Library/Map/Maneuver.vue';
-import { findRoute, directions, pointAt } from '@/Components/Library/Map/route.js';
+import { findRoute, directions, pointAt, standingPoints } from '@/Components/Library/Map/route.js';
+import { createStepTracker, requestSensors, sensorsSupported, stepLength as stepLengthStore, compassOffset, planBearing, angleDiff, circularMean } from '@/Components/Library/Map/stepTracker.js';
+import QrScanner from '@/Components/Library/Map/QrScanner.vue';
 import { sectionColor } from '@/Components/Library/Map/colors.js';
 import { useTrans } from '@/Composables/useTrans';
 import {
     MagnifyingGlassIcon, XMarkIcon, PlayIcon, PauseIcon, ArrowPathIcon, MapIcon, PencilSquareIcon,
-    ViewfinderCircleIcon, ChevronLeftIcon, ChevronRightIcon, BookOpenIcon, CheckCircleIcon,
+    ViewfinderCircleIcon, ChevronLeftIcon, ChevronRightIcon, BookOpenIcon, CheckCircleIcon, QrCodeIcon, MapPinIcon, ExclamationTriangleIcon, MinusIcon, PlusIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ floor: Object, shelves: Array, target: Object, canEdit: Boolean });
+const props = defineProps({ floor: Object, shelves: Array, target: Object, canEdit: Boolean, startAt: { type: Number, default: null } });
 const page = usePage();
 const signedIn = computed(() => !!page.props.auth?.user);
 const Layout = computed(() => (signedIn.value ? AppLayout : GuestShell));
@@ -69,6 +73,7 @@ function chooseBook(b) {
 // Opened from a book page (/library/map?book=12): fly straight to its bookcase.
 function onReady(api) {
     if (spot.value) setTimeout(() => api.focusShelf(spot.value.shelf_id), 400);
+    else if (here.value) setTimeout(() => api.focusShelf(here.value.shelfId), 400);
 }
 function clearSelection() {
     book.value = null;
@@ -86,8 +91,22 @@ function onPick(id) {
     stop();
 }
 
+// «أنت هنا»: the entrance, or the bookcase whose QR sticker was scanned. ------------------------
+const here = ref(null); // { x, y, shelfId, code }
+function placeAt(shelf) {
+    const p = standingPoints(shelf)[0];
+    here.value = { x: p.x, y: p.y, shelfId: shelf.id, code: shelf.code };
+}
+if (props.startAt && shelfById.value[props.startAt]) placeAt(shelfById.value[props.startAt]);
+const origin = computed(() => here.value ?? props.floor.entrance);
+function resetHere() {
+    here.value = null;
+    stop();
+    try { const u = new URL(window.location.href); u.searchParams.delete('at'); window.history.replaceState(window.history.state, '', u); } catch {}
+}
+
 // Route & directions ------------------------------------------------------------------------
-const walkRoute = computed(() => (targetShelf.value?.kind === 'shelf' ? findRoute(props.floor, props.shelves, props.floor.entrance, targetShelf.value) : null));
+const walkRoute = computed(() => (targetShelf.value?.kind === 'shelf' ? findRoute(props.floor, props.shelves, origin.value, targetShelf.value) : null));
 const steps = computed(() => (walkRoute.value ? directions(walkRoute.value, targetShelf.value) : []));
 const WALK_SPEED = 1.2; // m/s, an easy indoor pace
 const metres = (m) => (m < 10 ? Math.max(1, Math.round(m)) : Math.round(m));
@@ -123,7 +142,12 @@ const walked = ref(0);
 const arrived = ref(false);
 let raf = null;
 let lastT = 0;
-const avatar = computed(() => (walkRoute.value && (walking.value || arrived.value) ? pointAt(walkRoute.value, walked.value) : null));
+const avatar = computed(() => {
+    if (walkRoute.value && (walking.value || arrived.value)) return pointAt(walkRoute.value, walked.value);
+    // Standing still at a scanned sticker: show «أنت هنا», facing the way to go.
+    if (here.value) return { x: here.value.x, y: here.value.y, heading: walkRoute.value ? pointAt(walkRoute.value, 0.01).heading : -Math.PI / 2 };
+    return null;
+});
 const currentStep = computed(() => {
     if (!steps.value.length) return null;
     let idx = 0;
@@ -136,6 +160,7 @@ const currentStep = computed(() => {
 
 function start() {
     if (!walkRoute.value) return;
+    live.value = false;
     walked.value = 0;
     arrived.value = false;
     walking.value = true;
@@ -158,6 +183,7 @@ function step(now) {
 }
 function stop() {
     cancelAnimationFrame(raf);
+    stopLive();
     walking.value = false;
     arrived.value = false;
     paused.value = false;
@@ -167,7 +193,117 @@ function jump(delta) {
     const i = Math.min(steps.value.length - 1, Math.max(0, (currentStep.value?.index ?? 0) + delta));
     walked.value = steps.value[i].at;
 }
-onBeforeUnmount(() => cancelAnimationFrame(raf));
+onBeforeUnmount(() => { cancelAnimationFrame(raf); stopLive(); });
+
+// Live walking: each real step moves the reader along the route. ------------------------------
+const canLive = typeof window !== 'undefined' && window.isSecureContext && sensorsSupported();
+const live = ref(false);
+const stepCount = ref(0);
+const stepLen = ref(stepLengthStore.get());
+const wrongWay = ref(false);
+const sensorError = ref('');
+let tracker = null;
+let wrongSteps = 0;
+let samples = [];
+let liveStartedFrom = null;
+
+async function startLive() {
+    if (!walkRoute.value) return;
+    sensorError.value = '';
+    if (!(await requestSensors())) {
+        sensorError.value = t('library.map.no_sensors', 'لم يُسمح باستخدام حساس الحركة. جرّب «معاينة الطريق» أو اسمح للموقع من إعدادات المتصفح.');
+        return;
+    }
+    cancelAnimationFrame(raf);
+    tracker?.stop();
+    walked.value = 0;
+    arrived.value = false;
+    paused.value = false;
+    walking.value = true;
+    live.value = true;
+    stepCount.value = 0;
+    wrongWay.value = false;
+    wrongSteps = 0;
+    samples = [];
+    liveStartedFrom = { ...origin.value };
+    tracker = createStepTracker({ onStep });
+}
+function stopLive() {
+    tracker?.stop();
+    tracker = null;
+    live.value = false;
+    wrongWay.value = false;
+}
+function onStep({ heading }) {
+    if (!walking.value || paused.value || !walkRoute.value) return;
+    const pos = pointAt(walkRoute.value, walked.value + 0.05);
+    const segBearing = planBearing(Math.cos(pos.heading), Math.sin(pos.heading));
+    let offset = compassOffset.get();
+    if (heading !== null && heading !== undefined) {
+        // Learn how the plan sits against north from the first straight stretch.
+        if (offset === null && walked.value < (steps.value[1]?.at ?? walkRoute.value.length) - 0.5) {
+            samples.push(heading);
+            if (samples.length >= 5) { offset = (circularMean(samples) - segBearing + 360) % 360; compassOffset.set(offset); }
+        }
+        if (offset !== null) {
+            const facing = (heading - offset + 360) % 360;
+            if (Math.abs(angleDiff(facing, segBearing)) > 110) {
+                wrongSteps++;
+                if (wrongSteps >= 3) wrongWay.value = true;
+                return;
+            }
+        }
+    }
+    wrongSteps = 0;
+    wrongWay.value = false;
+    stepCount.value++;
+    walked.value = Math.min(walkRoute.value.length, walked.value + stepLen.value);
+    if (walked.value >= walkRoute.value.length - 0.4) {
+        walked.value = walkRoute.value.length;
+        stopLive();
+        walking.value = false;
+        arrived.value = true;
+        navigator.vibrate?.([80, 60, 80]);
+        setTimeout(() => targetShelf.value && map.value?.focusShelf(targetShelf.value.id), 600);
+    }
+}
+function changeStep(delta) {
+    stepLen.value = Math.round(Math.min(0.95, Math.max(0.4, stepLen.value + delta)) * 100) / 100;
+    stepLengthStore.set(stepLen.value);
+}
+
+// Scanning a sticker: «أنت هنا» (and, while walking, a correction of the step length). ---------
+const scanning = ref(false);
+const scanNote = ref('');
+function onScan(text) {
+    scanning.value = false;
+    let id = null;
+    try { id = Number(new URL(text, window.location.origin).searchParams.get('at')) || null; } catch {}
+    const shelf = id ? shelfById.value[id] : null;
+    if (!shelf) { scanNote.value = t('library.map.scan_unknown', 'هذا الرمز ليس من ملصقات خريطة المكتبة.'); return; }
+    navigator.vibrate?.(60);
+    const wasLive = live.value && walking.value;
+    if (wasLive && stepCount.value >= 8 && liveStartedFrom) {
+        // We now know how far they really walked: tune the step length to it.
+        const real = findRoute(props.floor, props.shelves, liveStartedFrom, shelf)?.length;
+        const len = real ? real / stepCount.value : null;
+        if (len && len >= 0.4 && len <= 0.95) { stepLen.value = Math.round(len * 100) / 100; stepLengthStore.set(stepLen.value); }
+    }
+    placeAt(shelf);
+    scanNote.value = t('library.map.you_are_at', 'أنت الآن عند الرف :code', { code: shelf.code });
+    setTimeout(() => (scanNote.value = ''), 3500);
+    try { const u = new URL(window.location.href); u.searchParams.set('at', shelf.id); window.history.replaceState(window.history.state, '', u); } catch {}
+    if (wasLive) {
+        // Carry on from the sticker, with the route redrawn from here.
+        walked.value = 0;
+        stepCount.value = 0;
+        liveStartedFrom = { ...origin.value };
+        if (targetShelf.value?.id === shelf.id) { stopLive(); walking.value = false; arrived.value = true; }
+    } else {
+        stop();
+        map.value?.focusShelf(shelf.id);
+    }
+}
 
 function availability(b) {
     if (b.reference_only) return { text: t('library.reference_only', 'للقراءة داخل المكتبة'), cls: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200' };
@@ -176,6 +312,7 @@ function availability(b) {
         ? { text: t('library.available_n', 'متاح :n من :m', { n: b.available_count, m: b.copies_count }), cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' }
         : { text: t('library.all_loaned', 'كل النسخ مُعارة'), cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
 }
+const fromText = computed(() => (here.value ? t('library.map.from_here', ':d م من موقعك', { d: metres(walkRoute.value?.length ?? 0) }) : t('library.map.distance', ':d م مشياً من المدخل', { d: metres(walkRoute.value?.length ?? 0) })));
 const spotLabel = (s) => [t('library.shelf', 'الرف') + ' ' + s.code, levelText(s.level)].filter(Boolean).join(' · ');
 const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id, level: spot.value?.level ?? null } : null));
 </script>
@@ -220,17 +357,31 @@ const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id
                             <template v-else>
                                 <p v-if="currentStep && !currentStep.type.startsWith('arrive')" class="text-2xl font-extrabold leading-none">{{ metres(currentStep.toNext) }} م</p>
                                 <p class="mt-0.5 truncate text-sm font-medium opacity-95">{{ currentStep ? stepText(currentStep) : '' }}</p>
+                                <p v-if="live" class="mt-1 flex items-center gap-1.5 text-[11px] opacity-80">
+                                    <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                                    {{ t('library.map.live_on', 'يتابع خطواتك · :n خطوة', { n: stepCount }) }}
+                                </p>
                             </template>
                         </div>
                         <button @click="stop" class="rounded-full bg-white/15 p-2 hover:bg-white/25" :aria-label="t('common.close', 'إغلاق')"><XMarkIcon class="h-5 w-5" /></button>
                     </div>
+                    <div v-if="wrongWay" class="pointer-events-auto mx-auto mt-2 flex max-w-xl items-center gap-2 rounded-xl bg-amber-500 px-3 py-2 text-sm font-semibold text-white shadow">
+                        <ExclamationTriangleIcon class="h-5 w-5 shrink-0" /> {{ t('library.map.wrong_way', 'يبدو أنك تمشي بالاتجاه المعاكس. استدر واتبع السهم.') }}
+                    </div>
 
-                    <div v-else class="pointer-events-auto relative mx-auto max-w-xl">
+                    <div v-if="!(walking || arrived)" class="pointer-events-auto relative mx-auto max-w-xl">
                         <div class="flex items-center gap-2 rounded-2xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-gray-800/95 dark:ring-white/10">
                             <MagnifyingGlassIcon class="h-5 w-5 shrink-0 text-gray-400" />
                             <input v-model="q" @focus="showResults = true" type="search" :placeholder="t('library.map.search', 'ابحث عن كتاب لتعرف مكانه…')"
                                 class="min-w-0 flex-1 border-0 bg-transparent p-1 text-sm focus:ring-0 dark:text-gray-100" />
                             <ArrowPathIcon v-if="searching" class="h-4 w-4 animate-spin text-gray-400" />
+                            <button @click="scanning = true" class="-me-1 inline-flex items-center gap-1 rounded-xl bg-gray-100 px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200" :title="t('library.map.scan', 'امسح ملصق الرف لتحديد موقعك')">
+                                <QrCodeIcon class="h-4 w-4" /> <span class="hidden sm:inline">{{ t('library.map.where_am_i', 'أين أنا؟') }}</span>
+                            </button>
+                        </div>
+                        <div v-if="here && !(showResults && q.trim().length >= 2)" class="mt-2 flex w-fit items-center gap-2 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow">
+                            <MapPinIcon class="h-4 w-4" /> {{ t('library.map.you_are_at', 'أنت الآن عند الرف :code', { code: here.code }) }}
+                            <button @click="resetHere" class="-me-1 rounded-full p-0.5 hover:bg-white/20" :aria-label="t('library.map.from_entrance', 'من المدخل')"><XMarkIcon class="h-4 w-4" /></button>
                         </div>
                         <div v-if="showResults && q.trim().length >= 2" class="absolute inset-x-0 top-full mt-2 max-h-[50vh] overflow-y-auto rounded-2xl bg-white shadow-xl ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/10">
                             <p v-if="!searching && !results.length" class="p-4 text-center text-sm text-gray-500">{{ t('library.no_results', 'لا توجد نتائج') }}</p>
@@ -249,6 +400,9 @@ const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id
                         </div>
                     </div>
                 </div>
+
+                <p v-if="scanNote" class="absolute inset-x-0 top-28 z-10 mx-auto w-fit rounded-full bg-gray-900/90 px-4 py-2 text-sm text-white shadow-lg">{{ scanNote }}</p>
+                <QrScanner v-if="scanning" @result="onScan" @close="scanning = false" />
 
                 <!-- Camera buttons. -->
                 <div class="absolute end-3 top-24 flex flex-col gap-2">
@@ -290,18 +444,38 @@ const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id
 
                         <div v-if="walkRoute" class="flex items-center gap-3" :class="walking ? '' : 'mt-3 border-t border-gray-100 pt-3 dark:border-gray-700'">
                             <div class="min-w-0 flex-1">
-                                <p class="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">{{ eta }}</p>
-                                <p class="text-xs text-gray-500">{{ t('library.map.distance', ':d م مشياً من المدخل', { d: metres(walkRoute.length) }) }}</p>
+                                <template v-if="walking && live">
+                                    <p class="whitespace-nowrap text-lg font-extrabold text-emerald-600 dark:text-emerald-400">{{ metres(Math.max(0, walkRoute.length - walked)) }} م</p>
+                                    <p class="whitespace-nowrap text-xs text-gray-500">{{ t('library.map.remaining', 'متبقٍ') }}</p>
+                                </template>
+                                <template v-else>
+                                    <p class="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">{{ eta }}</p>
+                                    <p class="text-xs text-gray-500">{{ fromText }}</p>
+                                </template>
                             </div>
-                            <template v-if="walking">
+                            <template v-if="walking && live">
+                                <div class="flex items-center rounded-full border border-gray-300 text-xs dark:border-gray-600" :title="t('library.map.step_length', 'طول خطوتك')">
+                                    <button @click="changeStep(-0.05)" class="p-1.5"><MinusIcon class="h-3.5 w-3.5" /></button>
+                                    <span dir="ltr" class="tabular-nums">{{ stepLen.toFixed(2) }} m</span>
+                                    <button @click="changeStep(0.05)" class="p-1.5"><PlusIcon class="h-3.5 w-3.5" /></button>
+                                </div>
+                                <button @click="scanning = true" class="rounded-full border border-gray-300 p-2 dark:border-gray-600" :title="t('library.map.scan', 'امسح ملصق الرف لتحديد موقعك')"><QrCodeIcon class="h-5 w-5" /></button>
+                                <button @click="jump(1)" class="rounded-full bg-[#1f2a44] px-3 py-2 text-xs font-semibold text-white">{{ t('library.map.at_turn', 'وصلت للانعطاف') }}</button>
+                            </template>
+                            <template v-else-if="walking">
                                 <button @click="jump(-1)" class="rounded-full border border-gray-300 p-2 dark:border-gray-600" :aria-label="t('library.map.prev', 'الخطوة السابقة')"><ChevronRightIcon class="h-5 w-5 ltr:rotate-180" /></button>
                                 <button @click="paused = !paused" class="rounded-full bg-[#1f2a44] p-2.5 text-white"><component :is="paused ? PlayIcon : PauseIcon" class="h-5 w-5" /></button>
                                 <button @click="jump(1)" class="rounded-full border border-gray-300 p-2 dark:border-gray-600" :aria-label="t('library.map.next', 'الخطوة التالية')"><ChevronLeftIcon class="h-5 w-5 ltr:rotate-180" /></button>
                             </template>
-                            <button v-else @click="start" class="inline-flex items-center gap-2 rounded-full bg-[#33ccff] px-5 py-2.5 text-sm font-bold text-[#0b1f33] shadow hover:brightness-105">
-                                <component :is="arrived ? ArrowPathIcon : PlayIcon" class="h-5 w-5" /> {{ arrived ? t('library.map.again', 'أعد الطريق') : t('library.map.go', 'خذني إليه') }}
-                            </button>
+                            <template v-else>
+                                <button v-if="canLive" @click="start" class="rounded-full border border-gray-300 px-3 py-2 text-xs font-medium dark:border-gray-600">{{ t('library.map.preview', 'معاينة') }}</button>
+                                <button @click="canLive ? startLive() : start()" class="inline-flex items-center gap-2 rounded-full bg-[#33ccff] px-5 py-2.5 text-sm font-bold text-[#0b1f33] shadow hover:brightness-105">
+                                    <component :is="arrived ? ArrowPathIcon : PlayIcon" class="h-5 w-5" /> {{ arrived ? t('library.map.again', 'أعد الطريق') : canLive ? t('library.map.walk', 'ابدأ المشي') : t('library.map.go', 'خذني إليه') }}
+                                </button>
+                            </template>
                         </div>
+                        <p v-if="sensorError" class="mt-2 text-xs text-red-600">{{ sensorError }}</p>
+                        <p v-if="walkRoute && !walking && !arrived && canLive" class="mt-2 text-[11px] leading-5 text-gray-500">{{ t('library.map.live_hint', 'امسك الهاتف أمامك وامشِ: السهم يتقدم مع خطواتك. للدقة امسح ملصق QR على أي رف تمر به.') }}</p>
 
                         <!-- All the steps, Waze's list view. -->
                         <button v-if="walkRoute && !walking" @click="showSteps = !showSteps" class="mt-2 text-xs font-medium text-blue-600 sm:hidden dark:text-blue-400">{{ showSteps ? t('library.map.hide_steps', 'إخفاء الخطوات') : t('library.map.show_steps', 'عرض الخطوات (:n)', { n: steps.length }) }}</button>
