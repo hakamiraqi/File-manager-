@@ -15,6 +15,7 @@ import Maneuver from '@/Components/Library/Map/Maneuver.vue';
 import { findRoute, directions, pointAt, standingPoints, hallAt, isHall, storeyOf, routeOnStorey, outline } from '@/Components/Library/Map/route.js';
 import { createStepTracker, requestSensors, sensorsSupported, stepLength as stepLengthStore, compassOffset, planBearing, angleDiff, circularMean } from '@/Components/Library/Map/stepTracker.js';
 import QrScanner from '@/Components/Library/Map/QrScanner.vue';
+import { isSticker, nearestStickers } from '@/Components/Library/Map/stickers.js';
 import { sectionColor } from '@/Components/Library/Map/colors.js';
 import { useTrans } from '@/Composables/useTrans';
 import {
@@ -297,8 +298,35 @@ function changeStep(delta) {
 // Scanning a sticker: «أنت هنا» (and, while walking, a correction of the step length). ---------
 const scanning = ref(false);
 const scanNote = ref('');
+/** «أنت الآن عند الرف A3» or, for a wall sticker, «أنت الآن عند ملصق QR5 (بجانب باب 2)». */
+const atText = (s) => (s.kind === 'qr'
+    ? t('library.map.you_are_at_sticker', 'أنت الآن عند :code', { code: [s.code, s.name].filter(Boolean).join(' · ') })
+    : t('library.map.you_are_at', 'أنت الآن عند الرف :code', { code: s.code }));
+
+// «أين أقرب ملصق؟» (2026-11-06, by request): the stickers around you light up on the map, the
+// nearest one with a bouncing arrow and «امسحني», so you know where to point the camera.
+const findQr = ref(false);
+const qrFrom = computed(() => {
+    const a = viewAvatar.value;
+    if (a) return a;
+    const h = here.value;
+    if (h && storeyOf(h) === viewStorey.value) return h;
+    if (viewStorey.value === 0) return props.floor.entrance;
+    return { x: props.floor.width / 2, y: props.floor.depth / 2 };
+});
+const qrNearby = computed(() => (findQr.value ? nearestStickers(viewShelves.value.filter(isSticker), qrFrom.value).slice(0, 6) : []));
+const beacons = computed(() => (qrNearby.value.length ? { ids: qrNearby.value.map((n) => n.s.id), nearest: qrNearby.value[0].s.id } : null));
+function showStickers() {
+    scanning.value = false;
+    findQr.value = true;
+    const n = qrNearby.value[0];
+    if (n && !walking.value) setTimeout(() => map.value?.focusShelf(n.s.id), 60);
+}
+const stickerName = (s) => (s.kind === 'qr' ? [s.code, s.name].filter(Boolean).join(' · ') : t('library.map.shelf_sticker', 'ملصق الرف :code', { code: s.code }));
+
 function onScan(text) {
     scanning.value = false;
+    findQr.value = false;
     let id = null;
     try { id = Number(new URL(text, window.location.origin).searchParams.get('at')) || null; } catch {}
     const shelf = id ? shelfById.value[id] : null;
@@ -312,7 +340,7 @@ function onScan(text) {
         if (len && len >= 0.4 && len <= 0.95) { stepLen.value = Math.round(len * 100) / 100; stepLengthStore.set(stepLen.value); }
     }
     placeAt(shelf);
-    scanNote.value = t('library.map.you_are_at', 'أنت الآن عند الرف :code', { code: shelf.code });
+    scanNote.value = atText(shelf);
     setTimeout(() => (scanNote.value = ''), 3500);
     try { const u = new URL(window.location.href); u.searchParams.set('at', shelf.id); window.history.replaceState(window.history.state, '', u); } catch {}
     if (wasLive) {
@@ -408,7 +436,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
             </div>
 
             <div v-else class="relative overflow-hidden bg-gray-100 dark:bg-gray-900" :class="embedded ? 'h-dvh' : 'h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
-                <LibraryMap3D ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
+                <LibraryMap3D ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
 
                 <!-- Search, or the Waze-style instruction banner while walking. -->
                 <div class="pointer-events-none absolute inset-x-0 top-0 p-3">
@@ -445,7 +473,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                             </button>
                         </div>
                         <div v-if="here && !(showResults && q.trim().length >= 2)" class="mt-2 flex w-fit items-center gap-2 rounded-full bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow">
-                            <MapPinIcon class="h-4 w-4" /> {{ t('library.map.you_are_at', 'أنت الآن عند الرف :code', { code: here.code }) }}
+                            <MapPinIcon class="h-4 w-4" /> {{ atText(shelfById[here.shelfId] ?? { code: here.code }) }}
                             <button @click="resetHere" class="-me-1 rounded-full p-0.5 hover:bg-white/20" :aria-label="t('library.map.from_entrance', 'من المدخل')"><XMarkIcon class="h-4 w-4" /></button>
                         </div>
                         <div v-if="showResults && q.trim().length >= 2" class="absolute inset-x-0 top-full mt-2 max-h-[50vh] overflow-y-auto rounded-2xl bg-white shadow-xl ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/10">
@@ -467,7 +495,25 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                 </div>
 
                 <p v-if="scanNote" class="absolute inset-x-0 top-28 z-10 mx-auto w-fit rounded-full bg-gray-900/90 px-4 py-2 text-sm text-white shadow-lg">{{ scanNote }}</p>
-                <QrScanner v-if="scanning" @result="onScan" @close="scanning = false" />
+                <QrScanner v-if="scanning" @result="onScan" @close="scanning = false" @where="showStickers" />
+                <!-- «أين أقرب ملصق؟» -->
+                <div v-if="findQr" class="absolute inset-x-0 z-10 mx-auto max-w-xl px-3" :class="walking || arrived ? 'top-36' : 'top-20'">
+                    <div class="flex items-center gap-3 rounded-2xl bg-orange-500 px-3 py-2.5 text-white shadow-lg">
+                        <span class="relative flex h-9 w-9 shrink-0 items-center justify-center">
+                            <span class="absolute inset-0 animate-ping rounded-full bg-white/40" />
+                            <QrCodeIcon class="relative h-6 w-6" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <template v-if="qrNearby.length">
+                                <p class="text-sm font-bold leading-tight">{{ t('library.map.nearest_sticker', 'أقرب ملصق: :name', { name: stickerName(qrNearby[0].s) }) }}</p>
+                                <p class="text-xs opacity-90">{{ t('library.map.nearest_sticker_hint', 'حوالي :d م · المكان المضيء بالبرتقالي على الخريطة، والدائرة على الأرض حيث تقف.', { d: metres(qrNearby[0].d) }) }}</p>
+                            </template>
+                            <p v-else class="text-sm">{{ t('library.map.no_stickers_here', 'لا توجد ملصقات في هذا الجزء من الخريطة.') }}</p>
+                        </div>
+                        <button v-if="qrNearby.length" @click="scanning = true" class="shrink-0 rounded-full bg-white px-3 py-2 text-xs font-bold text-orange-600">{{ t('library.map.open_camera', 'امسح') }}</button>
+                        <button @click="findQr = false" class="shrink-0 rounded-full bg-white/20 p-1.5" :aria-label="t('common.close', 'إغلاق')"><XMarkIcon class="h-4 w-4" /></button>
+                    </div>
+                </div>
 
                 <!-- Floor of the building and, with «كل قاعة مستقلة», the hall shown. -->
                 <div v-if="(multiStorey || separate) && !walking" class="absolute start-3 top-24 flex max-w-[45%] flex-col items-start gap-1.5">

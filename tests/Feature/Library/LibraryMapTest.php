@@ -220,4 +220,20 @@ class LibraryMapTest extends TestCase
         $this->actingAs(User::factory()->create())->get(route('library.map', ['at' => $shelf->id]))->assertOk()
             ->assertInertia(fn (Assert $page) => $page->where('startAt', $shelf->id));
     }
+
+    public function test_wall_stickers_are_saved_and_printed_after_the_bookcases(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'QR1', 'name' => 'بجانب باب 1', 'kind' => 'qr', 'x' => 3, 'y' => 0.06, 'rotation' => 0, 'width' => 0.3, 'depth' => 0.1, 'levels' => 1],
+            ['code' => 'A1', 'kind' => 'shelf', 'x' => 5, 'y' => 5, 'rotation' => 0, 'width' => 2, 'depth' => 0.5, 'levels' => 5],
+        ]))->assertSessionHasNoErrors();
+        $sticker = LibraryShelf::where('kind', 'qr')->firstOrFail();
+
+        $this->get(route('library.manage.map.labels'))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->has('shelves', 2)
+                ->where('shelves.0.code', 'A1')
+                ->where('shelves.1.kind', 'qr')->where('shelves.1.name', 'بجانب باب 1')
+                ->where('shelves.1.url', route('library.map', ['at' => $sticker->id])));
+    }
 }

@@ -281,7 +281,7 @@ function storeyGrid(floor, items, storey) {
     const halls = here.filter(isHall);
     const doors = here.filter((it) => it.kind === 'door');
     const obstacles = here
-        .filter((it) => !HALL_KINDS.includes(it.kind) && it.kind !== 'door' && it.kind !== 'stairs')
+        .filter((it) => !HALL_KINDS.includes(it.kind) && !['door', 'stairs', 'qr'].includes(it.kind))
         .flatMap((it) => (it.kind === 'gate' ? gatePillars(it) : [it]));
     const g = buildGrid(floor, obstacles, halls, doors);
     byStorey.set(key, g);

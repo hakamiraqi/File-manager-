@@ -16,7 +16,7 @@ class LibraryShelf extends Model
     /** Kinds drawn as an outline (points). */
     public const SHAPED = ['obstacle', 'hall', 'corridor'];
 
-    public const KINDS = ['shelf', 'desk', 'table', 'wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs'];
+    public const KINDS = ['shelf', 'desk', 'table', 'wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs', 'qr'];
 
     protected $fillable = ['code', 'name', 'kind', 'storey', 'section_id', 'x', 'y', 'rotation', 'width', 'depth', 'levels', 'double_sided', 'color', 'points', 'height'];
 
