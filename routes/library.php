@@ -46,6 +46,7 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
 
         Route::get('/map', [MapController::class, 'edit'])->name('map');
         Route::put('/map', [MapController::class, 'update'])->name('map.update');
+        Route::get('/map/labels', [MapController::class, 'labels'])->name('map.labels');
 
         Route::get('/sections', [SectionController::class, 'index'])->name('sections');
         Route::post('/sections', [SectionController::class, 'store'])->name('sections.store');

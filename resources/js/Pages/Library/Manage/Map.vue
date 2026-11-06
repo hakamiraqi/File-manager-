@@ -13,7 +13,7 @@ import { sectionColor } from '@/Components/Library/Map/colors.js';
 import { useTrans } from '@/Composables/useTrans';
 import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
-    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon,
+    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -230,7 +230,10 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
             <div class="flex flex-wrap items-center gap-2">
                 <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ t('library.map.edit', 'ترتيب الرفوف') }}</h2>
                 <span class="text-sm text-gray-500">{{ t('library.map.count', ':n رف', { n: shelfCount }) }}</span>
-                <Link :href="route('library.map')" class="ms-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
+                <a :href="route('library.manage.map.labels')" target="_blank" class="ms-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
+                    <QrCodeIcon class="h-4 w-4" /> {{ t('library.map.qr_labels', 'ملصقات QR للرفوف') }}
+                </a>
+                <Link :href="route('library.map')" class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
                     <EyeIcon class="h-4 w-4" /> {{ t('library.map.as_reader', 'كما يراها القارئ') }}
                 </Link>
             </div>

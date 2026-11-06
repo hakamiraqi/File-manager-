@@ -111,4 +111,19 @@ class LibraryMapTest extends TestCase
         $this->actingAs($reader)->get(route('library.books.show', $book))
             ->assertInertia(fn (Assert $page) => $page->where('spots.0.code', 'B2'));
     }
+
+    public function test_qr_stickers_open_the_map_at_their_bookcase(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $shelf = LibraryShelf::create(['code' => 'A3', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        LibraryShelf::create(['code' => 'مكتب1', 'kind' => 'desk', 'x' => 9, 'y' => 9, 'width' => 2, 'depth' => 0.8, 'levels' => 1]);
+
+        $this->actingAs($librarian)->get(route('library.manage.map.labels'))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Library/Manage/MapLabels')
+                ->has('shelves', 1)->where('shelves.0.url', route('library.map', ['at' => $shelf->id])));
+        $this->actingAs(User::factory()->create())->get(route('library.manage.map.labels'))->assertForbidden();
+
+        $this->actingAs(User::factory()->create())->get(route('library.map', ['at' => $shelf->id]))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->where('startAt', $shelf->id));
+    }
 }
