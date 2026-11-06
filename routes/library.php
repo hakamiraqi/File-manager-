@@ -5,6 +5,7 @@ use App\Http\Controllers\Library\CatalogController;
 use App\Http\Controllers\Library\CounterController;
 use App\Http\Controllers\Library\HoldController;
 use App\Http\Controllers\Library\LoanController;
+use App\Http\Controllers\Library\MapController;
 use App\Http\Controllers\Library\MemberController;
 use App\Http\Controllers\Library\SettingsController;
 use App\Http\Controllers\Library\ImportController;
@@ -20,6 +21,10 @@ Route::get('/library/cover/{type}/{id}', [CatalogController::class, 'cover'])
 // The catalogue: visitors may browse it too when the admin switches the public library on.
 Route::get('/library', [CatalogController::class, 'index'])->name('library.index');
 Route::get('/library/books/{book}', [CatalogController::class, 'show'])->whereNumber('book')->name('library.books.show');
+
+// «خريطة المكتبة»: the 3D room and the walk to a book's bookcase.
+Route::get('/library/map', [MapController::class, 'show'])->name('library.map');
+Route::get('/library/map/search', [MapController::class, 'search'])->middleware('throttle:60,1')->name('library.map.search');
 
 Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->group(function () {
     Route::get('/my-loans', [LoanController::class, 'mine'])->name('my-loans');
@@ -38,6 +43,9 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::put('/copies/{copy}', [BookController::class, 'updateCopy'])->name('copies.update');
         Route::delete('/copies/{copy}', [BookController::class, 'destroyCopy'])->name('copies.destroy');
         Route::get('/labels', [BookController::class, 'labels'])->name('labels');
+
+        Route::get('/map', [MapController::class, 'edit'])->name('map');
+        Route::put('/map', [MapController::class, 'update'])->name('map.update');
 
         Route::get('/sections', [SectionController::class, 'index'])->name('sections');
         Route::post('/sections', [SectionController::class, 'store'])->name('sections.store');

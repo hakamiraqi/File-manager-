@@ -65,6 +65,7 @@ class CatalogController extends Controller
                 'rfid_tag' => $canManage ? $c->rfid_tag : null,
             ]),
             'contactEnabled' => PublicSite::contact(),
+            'spots' => app(\App\Services\Library\LibraryMap::class)->locate($book),
             'myHold' => $user ? \App\Models\Library\Hold::open()->where('book_id', $book->id)
                 ->whereHas('member', fn ($m) => $m->where('user_id', $user->id))->first(['id', 'status', 'expires_at']) : null,
             'queueLength' => \App\Models\Library\Hold::where('book_id', $book->id)->where('status', 'waiting')->count(),

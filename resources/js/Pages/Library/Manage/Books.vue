@@ -16,7 +16,7 @@ import {
 
 const { t } = useTrans();
 const { statusLabel, statusClass } = useLibrary();
-const props = defineProps({ books: Object, sections: Array, filters: Object, statuses: Array });
+const props = defineProps({ books: Object, sections: Array, filters: Object, statuses: Array, shelfCodes: { type: Array, default: () => [] } });
 
 const q = ref(props.filters.q ?? '');
 const section = ref(props.filters.section ?? '');
@@ -146,7 +146,7 @@ function runImport() {
                             <div v-else class="grid grid-cols-2 gap-2 sm:grid-cols-5">
                                 <input v-model="copyEdits[c.id].barcode" dir="ltr" :placeholder="t('library.barcode', 'الباركود')" class="rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
                                 <input v-model="copyEdits[c.id].rfid_tag" dir="ltr" placeholder="RFID" class="rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
-                                <input v-model="copyEdits[c.id].shelf" :placeholder="t('library.shelf', 'الرف')" class="rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                                <input v-model="copyEdits[c.id].shelf" list="shelf-codes" :placeholder="t('library.shelf', 'الرف')" class="rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
                                 <select v-model="copyEdits[c.id].status" :disabled="['loaned', 'on_hold'].includes(c.status)" class="rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700">
                                     <option v-for="s in statuses" :key="s" :value="s" :disabled="['loaned', 'on_hold'].includes(s)">{{ statusLabel(s) }}</option>
                                 </select>
@@ -161,7 +161,7 @@ function runImport() {
                             <span class="text-gray-500">{{ t('library.add_copies', 'إضافة نسخ') }}:</span>
                             <input type="number" min="1" max="100" :value="addForm[book.id]?.count ?? 1" @input="addForm[book.id] = { ...(addForm[book.id] ?? { shelf: '' }), count: $event.target.value }"
                                 class="w-20 rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
-                            <input :value="addForm[book.id]?.shelf ?? ''" @input="addForm[book.id] = { ...(addForm[book.id] ?? { count: 1 }), shelf: $event.target.value }"
+                            <input :value="addForm[book.id]?.shelf ?? ''" list="shelf-codes" @input="addForm[book.id] = { ...(addForm[book.id] ?? { count: 1 }), shelf: $event.target.value }"
                                 :placeholder="t('library.shelf', 'الرف')" class="w-28 rounded-md border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
                             <button @click="addCopies(book)" class="rounded-md border border-gray-300 px-3 py-1 hover:bg-white dark:border-gray-600 dark:hover:bg-gray-700">{{ t('action.add', 'إضافة') }}</button>
                             <button @click="printLabels({ books: [book.id] })" class="ms-auto flex items-center gap-1 rounded-md border border-gray-300 px-3 py-1 hover:bg-white dark:border-gray-600 dark:hover:bg-gray-700">
@@ -192,5 +192,8 @@ function runImport() {
                 </div>
             </form>
         </Modal>
+        <datalist id="shelf-codes">
+            <option v-for="code in shelfCodes" :key="code" :value="code" />
+        </datalist>
     </AppLayout>
 </template>

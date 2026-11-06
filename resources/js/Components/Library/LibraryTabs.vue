@@ -6,7 +6,7 @@ import { Link, usePage } from '@inertiajs/vue3';
 import { useTrans } from '@/Composables/useTrans';
 import {
     BookOpenIcon, BookmarkIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, UserGroupIcon,
-    RectangleStackIcon, ChartBarIcon, SignalIcon, FolderIcon, ScaleIcon,
+    RectangleStackIcon, ChartBarIcon, SignalIcon, FolderIcon, ScaleIcon, MapIcon, MapPinIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -18,6 +18,7 @@ const make = (list) => list.map((tab) => ({ ...tab, href: tab.href ?? route(tab.
 
 const readerTabs = computed(() => make([
     { label: t('library.tab.catalog', 'الفهرس'), href: route('library.index'), icon: BookOpenIcon, match: ['library.index', 'library.books.show'] },
+    { label: t('library.tab.map', 'خريطة المكتبة'), name: 'library.map', icon: MapIcon, match: ['library.map'] },
     { label: t('library.tab.my_loans', 'استعاراتي'), name: 'library.my-loans', icon: BookmarkIcon, match: ['library.my-loans'], badge: unread.value },
 ]));
 
@@ -29,6 +30,7 @@ const staffTabs = computed(() => (canManage.value ? make([
     { label: t('library.tab.reports', 'التقارير'), name: 'library.manage.reports', icon: ChartBarIcon, match: ['library.manage.reports'] },
     { label: t('library.tab.rfid', 'RFID والجرد'), name: 'library.manage.rfid', icon: SignalIcon, match: ['library.manage.rfid'] },
     { label: t('library.tab.sections', 'الأقسام'), name: 'library.manage.sections', icon: FolderIcon, match: ['library.manage.sections'] },
+    { label: t('library.tab.map_edit', 'ترتيب الرفوف'), name: 'library.manage.map', icon: MapPinIcon, match: ['library.manage.map'] },
     { label: t('library.tab.settings', 'قواعد الإعارة'), name: 'library.manage.settings', icon: ScaleIcon, match: ['library.manage.settings'] },
 ]) : []));
 

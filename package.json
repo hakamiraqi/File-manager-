@@ -32,6 +32,7 @@
         "jsbarcode": "^3.11.6",
         "plyr": "^3.8.4",
         "qrcode": "^1.5.4",
+        "three": "^0.170.0",
         "wavesurfer.js": "^7.12.11"
     }
 }

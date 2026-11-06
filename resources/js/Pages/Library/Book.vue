@@ -7,11 +7,11 @@ import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { useLibrary } from '@/Composables/useLibrary';
-import { DocumentTextIcon, PencilSquareIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftRightIcon, ArrowLeftEndOnRectangleIcon, ChevronLeftIcon } from '@heroicons/vue/24/outline';
+import { DocumentTextIcon, PencilSquareIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftRightIcon, ArrowLeftEndOnRectangleIcon, ChevronLeftIcon, MapPinIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const { statusLabel, statusClass } = useLibrary();
-const props = defineProps({ book: Object, sectionPath: String, copies: Array, digitalFile: Object, myHold: Object, queueLength: Number, contactEnabled: Boolean });
+const props = defineProps({ book: Object, sectionPath: String, copies: Array, digitalFile: Object, myHold: Object, queueLength: Number, contactEnabled: Boolean, spots: { type: Array, default: () => [] } });
 const signedIn = computed(() => !!usePage().props.auth?.user);
 const Layout = computed(() => (signedIn.value ? AppLayout : GuestShell));
 
@@ -98,6 +98,14 @@ const details = computed(() => [
                             <button @click="placeHold" class="mt-2 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white">{{ t('library.place_hold', 'احجز الكتاب') }}</button>
                         </template>
                     </div>
+                    <Link v-if="spots.length" :href="route('library.map', { book: book.id })" class="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-900 transition hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-200 dark:hover:bg-blue-900/50">
+                        <MapPinIcon class="h-6 w-6 shrink-0" />
+                        <span class="min-w-0 flex-1 text-sm">
+                            <span class="block font-semibold">{{ t('library.map.where', 'أين الكتاب؟') }} {{ t('library.shelf', 'الرف') }} {{ spots[0].code }}<template v-if="spots[0].level"> · {{ t('library.map.level_n', 'الطبقة :n من الأسفل', { n: spots[0].level }) }}</template></span>
+                            <span class="block opacity-80">{{ t('library.map.open_route', 'اعرض الطريق إليه على خريطة المكتبة') }}</span>
+                        </span>
+                        <ChevronLeftIcon class="h-5 w-5 shrink-0 ltr:rotate-180" />
+                    </Link>
                     <div class="flex flex-wrap gap-2 pt-1">
                         <a v-if="digitalFile" :href="route('files.preview', digitalFile.id)" target="_blank" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
                             <DocumentTextIcon class="h-5 w-5" /> {{ t('library.digital_copy', 'النسخة الرقمية') }}
