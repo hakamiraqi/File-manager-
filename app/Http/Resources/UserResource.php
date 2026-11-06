@@ -35,6 +35,10 @@ class UserResource extends JsonResource
                 'comment' => $this->canPerform('comment'),
             ],
             'is_admin' => $this->isAdmin(),
+            'avatar_url' => $this->avatar_url,
+            // Library staff tools and the «التواصل معنا» inbox in the app.
+            'manage_library' => $this->canManageLibrary(),
+            'manage_contact' => $this->can('manage-contact'),
             'admin' => $this->isAdmin() ? [
                 'appearance' => $this->hasAdminCapability('can_manage_appearance'),
                 'users' => $this->hasAdminCapability('can_manage_users'),

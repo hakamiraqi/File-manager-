@@ -61,6 +61,9 @@ class FileNestUser {
   final bool isMasterAdmin;
   final AdminCapabilities? admin;
   final RolePermissions permissions;
+  final String? avatarUrl;
+  final bool manageLibrary;
+  final bool manageContact;
 
   bool get isAdmin => admin != null;
 
@@ -77,6 +80,9 @@ class FileNestUser {
     required this.isMasterAdmin,
     required this.admin,
     required this.permissions,
+    this.avatarUrl,
+    this.manageLibrary = false,
+    this.manageContact = false,
   });
 
   factory FileNestUser.fromJson(Map<String, dynamic> json) {
@@ -96,6 +102,9 @@ class FileNestUser {
           ? AdminCapabilities.fromJson(json['admin'] as Map<String, dynamic>)
           : null,
       permissions: RolePermissions.fromJson(json['permissions'] as Map<String, dynamic>?),
+      avatarUrl: json['avatar_url'] as String?,
+      manageLibrary: json['manage_library'] as bool? ?? false,
+      manageContact: json['manage_contact'] as bool? ?? false,
     );
   }
 }

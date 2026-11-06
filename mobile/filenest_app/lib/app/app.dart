@@ -7,6 +7,7 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/auth/presentation/splash_screen.dart';
 import '../features/auth/state/auth_provider.dart';
 import '../features/downloads/state/downloads_provider.dart';
+import '../features/site/badges_provider.dart';
 import 'home/home_shell.dart';
 import 'state/theme_provider.dart';
 import 'theme/app_theme.dart';
@@ -22,6 +23,7 @@ class FileNestApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DownloadsProvider()),
         ChangeNotifierProvider(create: (_) => LocaleProvider()..bootstrap()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()..bootstrap()),
+        ChangeNotifierProvider(create: (_) => BadgesProvider()),
       ],
       child: Consumer2<LocaleProvider, ThemeProvider>(
         builder: (context, localeProvider, themeProvider, _) {

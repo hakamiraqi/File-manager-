@@ -58,6 +58,15 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
 
         Route::get('/folders', [GuestBrowseController::class, 'index'])->name('guest.index');
         Route::get('/folders/{folder}', [GuestBrowseController::class, 'show'])->name('guest.show');
+
+        // The visitors' site in the app: which sections are on, the library, theses and «تواصل معنا».
+        // A signed-in app sends its token here too, so these read the user when there is one.
+        Route::get('/site', [\App\Http\Controllers\Api\V1\MobileController::class, 'site'])->name('site');
+        Route::get('/library', [\App\Http\Controllers\Api\V1\LibraryController::class, 'index'])->name('library.index');
+        Route::get('/library/books/{book}', [\App\Http\Controllers\Api\V1\LibraryController::class, 'show'])->name('library.show');
+        Route::get('/theses', [\App\Http\Controllers\Api\V1\MobileController::class, 'theses'])->name('theses');
+        Route::get('/contact', [\App\Http\Controllers\Api\V1\MobileController::class, 'contactInfo'])->name('contact.info');
+        Route::post('/contact', [\App\Http\Controllers\Api\V1\MobileController::class, 'contactStore'])->middleware('throttle:6,1')->name('contact.store');
         Route::get('/files/{file}/download', [GuestBrowseController::class, 'download'])->name('guest.download');
         Route::get('/files/{file}/thumbnail', [GuestBrowseController::class, 'thumbnail'])->name('guest.thumbnail');
     });
@@ -131,6 +140,38 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::put('/shares/{share}', [ShareController::class, 'update'])->name('shares.update');
         Route::delete('/shares/{share}', [ShareController::class, 'destroy'])->name('shares.destroy');
         Route::post('/shares/{share}/email', [ShareController::class, 'sendEmail'])->name('shares.email');
+
+        // Website features in the app (2026-11-06): library, notifications, saved, inbox, picture.
+        Route::get('/me/badges', [\App\Http\Controllers\Api\V1\MobileController::class, 'badges'])->name('me.badges');
+        Route::post('/profile/avatar', [\App\Http\Controllers\Api\V1\MobileController::class, 'avatar'])->name('profile.avatar');
+        Route::delete('/profile/avatar', [\App\Http\Controllers\Api\V1\MobileController::class, 'deleteAvatar'])->name('profile.avatar.destroy');
+        Route::get('/notifications', [\App\Http\Controllers\Api\V1\MobileController::class, 'notifications'])->name('notifications.index');
+        Route::post('/notifications/read-all', [\App\Http\Controllers\Api\V1\MobileController::class, 'readAllNotifications'])->name('notifications.read-all');
+        Route::post('/notifications/{notification}/read', [\App\Http\Controllers\Api\V1\MobileController::class, 'readNotification'])->name('notifications.read');
+        Route::delete('/notifications/{notification}', [\App\Http\Controllers\Api\V1\MobileController::class, 'deleteNotification'])->name('notifications.destroy');
+        Route::get('/saved', [\App\Http\Controllers\Api\V1\MobileController::class, 'saved'])->name('saved.index');
+        Route::post('/saved/toggle', [\App\Http\Controllers\Api\V1\MobileController::class, 'toggleSaved'])->name('saved.toggle');
+        Route::post('/saved/forget-download', [\App\Http\Controllers\Api\V1\MobileController::class, 'forgetDownload'])->name('saved.forget');
+        Route::get('/library/mine', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mine'])->name('library.mine');
+        Route::post('/library/books/{book}/hold', [\App\Http\Controllers\Api\V1\LibraryController::class, 'hold'])->name('library.hold');
+        Route::delete('/library/holds/{hold}', [\App\Http\Controllers\Api\V1\LibraryController::class, 'cancelHold'])->name('library.hold.cancel');
+        Route::post('/library/loans/{loan}/renew', [\App\Http\Controllers\Api\V1\LibraryController::class, 'renew'])->name('library.renew');
+        Route::middleware('can:manage-library')->prefix('library/manage')->name('library.manage.')->group(function () {
+            Route::get('/stats', [\App\Http\Controllers\Api\V1\LibraryController::class, 'stats'])->name('stats');
+            Route::get('/loans', [\App\Http\Controllers\Api\V1\LibraryController::class, 'loans'])->name('loans');
+            Route::get('/holds', [\App\Http\Controllers\Api\V1\LibraryController::class, 'holdsQueue'])->name('holds');
+            Route::post('/loans/{loan}/pay', [\App\Http\Controllers\Api\V1\LibraryController::class, 'payFine'])->name('loans.pay');
+            Route::post('/loans/{loan}/waive', [\App\Http\Controllers\Api\V1\LibraryController::class, 'waiveFine'])->name('loans.waive');
+            // The lending desk: the same JSON endpoints the website's counter uses.
+            Route::post('/counter/scan', [\App\Http\Controllers\Library\CounterController::class, 'scan'])->name('counter.scan');
+            Route::get('/counter/members', [\App\Http\Controllers\Library\CounterController::class, 'members'])->name('counter.members');
+            Route::post('/counter/member', [\App\Http\Controllers\Library\CounterController::class, 'member'])->name('counter.member');
+        });
+        Route::middleware('can:manage-contact')->group(function () {
+            Route::get('/inbox', [\App\Http\Controllers\Api\V1\MobileController::class, 'inbox'])->name('inbox.index');
+            Route::patch('/inbox/{message}', [\App\Http\Controllers\Api\V1\MobileController::class, 'inboxUpdate'])->name('inbox.update');
+            Route::delete('/inbox/{message}', [\App\Http\Controllers\Api\V1\MobileController::class, 'inboxDestroy'])->name('inbox.destroy');
+        });
 
         Route::get('/playlists', [PlaylistController::class, 'index'])->name('playlists.index');
         Route::get('/playlists/picker', [PlaylistController::class, 'picker'])->name('playlists.picker');
