@@ -75,6 +75,20 @@ class LibraryMapTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->component('Library/Manage/Map')->has('shelves', 1));
     }
 
+    public function test_catalogue_search_results_show_each_books_bookcase(): void
+    {
+        LibraryShelf::create(['code' => 'A3', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        $book = Book::create(['title' => 'Oral Surgery']);
+        $book->copies()->create(['barcode' => 'X1', 'shelf' => 'A3-2']);
+        Book::create(['title' => 'Oral Medicine']);
+
+        $this->actingAs(User::factory()->create())->get(route('library.index', ['q' => 'Oral']))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Library/Index')
+                ->where('books.data.0.title', 'Oral Medicine')->where('books.data.0.map_spot', null)
+                ->where('books.data.1.map_spot', ['code' => 'A3', 'level' => 2])
+                ->missing('books.data.1.copies'));
+    }
+
     public function test_readers_cannot_edit_the_map(): void
     {
         $reader = User::factory()->create();

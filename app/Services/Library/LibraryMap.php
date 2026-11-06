@@ -89,9 +89,9 @@ class LibraryMap
      *
      * @return list<array{shelf_id:int, code:string, level:?int, available:int, total:int, by_section:bool, barcodes:list<string>}>
      */
-    public function locate(Book $book): array
+    public function locate(Book $book, ?Collection $shelves = null): array
     {
-        $shelves = LibraryShelf::where('kind', 'shelf')->get();
+        $shelves ??= LibraryShelf::where('kind', 'shelf')->get();
         if ($shelves->isEmpty()) {
             return [];
         }
@@ -120,6 +120,22 @@ class LibraryMap
         }
 
         return collect($spots)->sortByDesc('available')->values()->all();
+    }
+
+    /**
+     * Search results: the best spot of each book on one page (one bookcase query for all of them),
+     * so the list can show «على الخريطة» with the bookcase code.
+     *
+     * @param  iterable<Book>  $books
+     */
+    public function attachSpots(iterable $books): void
+    {
+        $shelves = LibraryShelf::where('kind', 'shelf')->get();
+        foreach ($books as $book) {
+            $spot = $shelves->isEmpty() ? null : ($this->locate($book, $shelves)[0] ?? null);
+            $book->setAttribute('map_spot', $spot ? ['code' => $spot['code'], 'level' => $spot['level']] : null);
+            $book->unsetRelation('copies');
+        }
     }
 
     private function shelfForSection(?int $sectionId, Collection $shelves): ?LibraryShelf

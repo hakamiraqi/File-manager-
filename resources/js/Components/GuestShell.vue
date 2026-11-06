@@ -6,7 +6,7 @@ import ThemeToggle from '@/Components/ThemeToggle.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
-    HomeIcon, FolderIcon, BookOpenIcon, AcademicCapIcon, ChatBubbleLeftRightIcon,
+    HomeIcon, FolderIcon, BookOpenIcon, AcademicCapIcon, ChatBubbleLeftRightIcon, MapIcon,
     Bars3Icon, XMarkIcon, ArrowLeftEndOnRectangleIcon, UserCircleIcon,
 } from '@heroicons/vue/24/outline';
 
@@ -20,7 +20,8 @@ watch(() => page.url, () => (open.value = false));
 
 const nav = computed(() => [
     site.value.enabled && { label: t('guest.home', 'الرئيسية'), href: route('guest.index'), icon: HomeIcon, active: route().current('guest.index') },
-    site.value.library && { label: t('nav.library', 'المكتبة'), href: route('library.index'), icon: BookOpenIcon, active: route().current('library.*') },
+    site.value.library && { label: t('nav.library', 'المكتبة'), href: route('library.index'), icon: BookOpenIcon, active: route().current('library.*') && !route().current('library.map') },
+    site.value.library && { label: t('library.tab.map', 'خريطة المكتبة'), href: route('library.map'), icon: MapIcon, active: route().current('library.map') },
     site.value.theses && { label: t('nav.theses', 'الرسائل والأطاريح'), href: route('theses.index'), icon: AcademicCapIcon, active: route().current('theses.*') },
     site.value.files && { label: t('guest.files', 'الملفات العامة'), href: route('guest.files'), icon: FolderIcon, active: route().current('guest.files') || route().current('guest.show') },
     site.value.contact && { label: t('nav.contact', 'تواصل معنا'), href: route('contact.create'), icon: ChatBubbleLeftRightIcon, active: route().current('contact.*') },
