@@ -83,29 +83,34 @@ class MapController extends Controller
             'floor.name' => ['nullable', 'string', 'max:100'],
             'floor.entrance.x' => ['required', 'numeric', 'min:0', 'max:200'],
             'floor.entrance.y' => ['required', 'numeric', 'min:0', 'max:200'],
+            'floor.storeys' => ['nullable', 'array', 'max:20'],
+            'floor.storeys.*' => ['nullable', 'string', 'max:60'],
+            'floor.separate_halls' => ['boolean'],
             'shelves' => ['present', 'array', 'max:500'],
             'shelves.*.id' => ['nullable', 'integer'],
             'shelves.*.code' => ['required', 'string', 'max:30', 'distinct:ignore_case'],
             'shelves.*.name' => ['nullable', 'string', 'max:255'],
             'shelves.*.kind' => ['required', 'in:'.implode(',', LibraryShelf::KINDS)],
+            'shelves.*.storey' => ['nullable', 'integer', 'min:0', 'max:19'],
             'shelves.*.section_id' => ['nullable', 'integer', 'exists:library_sections,id'],
             'shelves.*.x' => ['required', 'numeric', 'min:0', 'max:200'],
             'shelves.*.y' => ['required', 'numeric', 'min:0', 'max:200'],
-            'shelves.*.rotation' => ['required', 'integer', 'in:0,90,180,270'],
-            'shelves.*.width' => ['required', 'numeric', 'min:0.3', 'max:30'],
-            'shelves.*.depth' => ['required', 'numeric', 'min:0.1', 'max:10'],
+            // Any angle (2026-11-06): halls and rooms can face any direction.
+            'shelves.*.rotation' => ['required', 'integer', 'min:-359', 'max:359'],
+            'shelves.*.width' => ['required', 'numeric', 'min:0.3', 'max:200'],
+            'shelves.*.depth' => ['required', 'numeric', 'min:0.1', 'max:200'],
             'shelves.*.levels' => ['required', 'integer', 'min:1', 'max:10'],
             'shelves.*.double_sided' => ['boolean'],
             'shelves.*.color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
-            // An obstacle's outline: 3 to 64 corners, metres from its centre.
-            'shelves.*.points' => ['nullable', 'required_if:shelves.*.kind,obstacle', 'array', 'min:3', 'max:64'],
+            // An obstacle's or a hall's outline: 3 to 64 corners, metres from its centre.
+            'shelves.*.points' => ['nullable', 'required_if:shelves.*.kind,obstacle,hall', 'array', 'min:3', 'max:64'],
             'shelves.*.points.*' => ['array', 'size:2'],
-            'shelves.*.points.*.*' => ['numeric', 'min:-30', 'max:30'],
+            'shelves.*.points.*.*' => ['numeric', 'min:-200', 'max:200'],
             'shelves.*.height' => ['nullable', 'numeric', 'min:0.1', 'max:6'],
         ], [
             'shelves.*.code.distinct' => 'رمز الرف مكرر: كل رف يحتاج رمزاً مختلفاً.',
-            'shelves.*.points.required_if' => 'ارسم شكل العائق: 3 نقاط على الأقل.',
-            'shelves.*.points.min' => 'ارسم شكل العائق: 3 نقاط على الأقل.',
+            'shelves.*.points.required_if' => 'ارسم الشكل: 3 نقاط على الأقل.',
+            'shelves.*.points.min' => 'ارسم الشكل: 3 نقاط على الأقل.',
         ]);
 
         DB::transaction(function () use ($data) {
@@ -115,7 +120,9 @@ class MapController extends Controller
                 $fields = collect($row)->only((new LibraryShelf)->getFillable())->all();
                 $fields['double_sided'] = (bool) ($row['double_sided'] ?? false);
                 $obstacle = $row['kind'] === 'obstacle';
-                $fields['points'] = $obstacle ? array_map(fn ($p) => [round((float) $p[0], 2), round((float) $p[1], 2)], $row['points']) : null;
+                $fields['storey'] = (int) ($row['storey'] ?? 0);
+                $fields['rotation'] = (((int) $row['rotation']) % 360 + 360) % 360;
+                $fields['points'] = in_array($row['kind'], LibraryShelf::SHAPED, true) ? array_map(fn ($p) => [round((float) $p[0], 2), round((float) $p[1], 2)], $row['points']) : null;
                 $fields['height'] = $obstacle ? (float) ($row['height'] ?? 1) : null;
                 $shelf = ! empty($row['id']) ? LibraryShelf::find($row['id']) : null;
                 $shelf ? $shelf->update($fields) : $shelf = LibraryShelf::create($fields);

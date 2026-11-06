@@ -8,12 +8,12 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
-import { frontNormal } from '@/Components/Library/Map/route.js';
+import { frontNormal, snapToWall, outline, HALL_KINDS, storeyOf } from '@/Components/Library/Map/route.js';
 import { sectionColor } from '@/Components/Library/Map/colors.js';
 import { useTrans } from '@/Composables/useTrans';
 import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
-    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon,
+    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon, HomeModernIcon, BuildingOffice2Icon, ArrowsRightLeftIcon, ChevronDoubleUpIcon, RectangleGroupIcon, Square2StackIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -23,14 +23,15 @@ const page = usePage();
 let keySeq = 0;
 const withKeys = (list) => list.map((s) => ({ ...s, _key: s.id ? `id${s.id}` : `n${++keySeq}` }));
 const strip = (list) => list.map(({ _key, section, ...rest }) => rest);
-const floor = reactive(JSON.parse(JSON.stringify(props.floor)));
+const withFloorDefaults = (f) => ({ storeys: ['الطابق الأرضي'], separate_halls: false, ...JSON.parse(JSON.stringify(f)) });
+const floor = reactive(withFloorDefaults(props.floor));
 const items = ref(withKeys(props.shelves));
 const snapshot = (f, list) => JSON.stringify({ f, list: strip(list) });
-const original = ref(snapshot(props.floor, props.shelves));
+const original = ref(snapshot(withFloorDefaults(props.floor), props.shelves));
 watch(() => [props.floor, props.shelves], () => {
-    Object.assign(floor, JSON.parse(JSON.stringify(props.floor)));
+    Object.assign(floor, withFloorDefaults(props.floor));
     items.value = withKeys(props.shelves);
-    original.value = snapshot(props.floor, props.shelves);
+    original.value = snapshot(withFloorDefaults(props.floor), props.shelves);
     selectedKey.value = null;
 });
 const dirty = computed(() => snapshot(floor, items.value) !== original.value);
@@ -43,6 +44,115 @@ const snap = ref(true);
 const zoom = ref(1);
 const placingEntrance = ref(false);
 
+// «قاعات وممرات وطوابق» (2026-11-06, by request): a library of several halls, rooms and
+// corridors in any direction, on one floor or several. The plan shows one floor at a time.
+const storey = ref(0);
+const onStorey = computed(() => items.value.filter((i) => storeyOf(i) === storey.value));
+const isHallKind = (i) => HALL_KINDS.includes(i.kind) && i.points?.length >= 3;
+const storeyHalls = computed(() => onStorey.value.filter(isHallKind));
+// Halls and corridors underneath, everything else on top.
+const planItems = computed(() => [...onStorey.value].sort((a, b) => isHallKind(b) - isHallKind(a) || (a.kind === 'corridor') - (b.kind === 'corridor')));
+const storeyLabel = (n) => floor.storeys[n] || t('library.map.storey_n', 'الطابق :n', { n });
+function inOutline(p, hall) {
+    const poly = outline(hall);
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i], b = poly[j];
+        if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+    }
+    return hit;
+}
+/** The smallest hall or corridor a point is in, on the floor shown. */
+function hallAtPoint(p) {
+    return storeyHalls.value.filter((h) => inOutline(p, h)).sort((a, b) => a.width * a.depth - b.width * b.depth)[0] ?? null;
+}
+/** What moves and turns with a hall: what stands inside it and the doors on its walls. */
+function contents(hall) {
+    return onStorey.value.filter((i) => i !== hall && (i.kind === 'door' ? (snapToWall([hall], i)?.distance ?? 9) < 0.4 : inOutline(i, hall)));
+}
+function addStorey() {
+    floor.storeys.push(t('library.map.storey_n', 'الطابق :n', { n: floor.storeys.length }));
+    storey.value = floor.storeys.length - 1;
+}
+function removeStorey(n) {
+    if (floor.storeys.length < 2) return;
+    if (items.value.some((i) => storeyOf(i) === n) && !confirm(t('library.map.remove_storey_confirm', 'سيُحذف كل ما في هذا الطابق من المخطط. متابعة؟'))) return;
+    items.value = items.value.filter((i) => storeyOf(i) !== n).map((i) => (storeyOf(i) > n ? { ...i, storey: storeyOf(i) - 1 } : i));
+    floor.storeys.splice(n, 1);
+    storey.value = Math.min(storey.value, floor.storeys.length - 1);
+    selectedKey.value = null;
+}
+/** «درج فوق درج»: the same stairs on every other floor, so the floors are joined. */
+function stairsToAllFloors() {
+    const s = selected.value;
+    floor.storeys.forEach((_, n) => {
+        if (n === storeyOf(s) || items.value.some((i) => i.kind === 'stairs' && storeyOf(i) === n && Math.hypot(i.x - s.x, i.y - s.y) < 2.5)) return;
+        items.value.push({ ...s, id: null, _key: `n${++keySeq}`, storey: n, code: uniqueCode(t('library.map.kind.stairs_short', 'درج') + ' ') });
+    });
+}
+
+// Tools: «قاعة» / «ممر» by dragging a rectangle, «باب» by clicking a wall. ---------------------
+const tool = ref(null); // 'hall' | 'corridor' | 'door' | null
+const rect = ref(null); // { kind, a: {x, y}, b: {x, y} } while dragging
+function pickTool(name) {
+    placingEntrance.value = false;
+    drawing.value = null;
+    view.value = 'plan';
+    tool.value = tool.value === name ? null : name;
+    if (tool.value) selectedKey.value = null;
+}
+/** Corners stick to the corners and walls of halls already drawn, so rooms share a wall. */
+function snapToHalls(p) {
+    let { x, y } = p;
+    for (const h of storeyHalls.value) {
+        for (const q of outline(h)) {
+            if (Math.abs(q.x - x) < 0.4) x = +q.x.toFixed(2);
+            if (Math.abs(q.y - y) < 0.4) y = +q.y.toFixed(2);
+        }
+    }
+    return { x, y };
+}
+function onPlanDown(e) {
+    if (tool.value !== 'hall' && tool.value !== 'corridor') return;
+    const p = snapToHalls(snapPoint(toPlan(e)));
+    rect.value = { kind: tool.value, a: p, b: p };
+    e.target.setPointerCapture?.(e.pointerId);
+}
+function finishRect() {
+    const r = rect.value;
+    rect.value = null;
+    if (!r) return;
+    const x0 = Math.min(r.a.x, r.b.x), x1 = Math.max(r.a.x, r.b.x), y0 = Math.min(r.a.y, r.b.y), y1 = Math.max(r.a.y, r.b.y);
+    if (x1 - x0 < 1 || y1 - y0 < 1) return; // a click, not a drag
+    addHall(r.kind, x0, y0, x1, y1);
+    tool.value = null;
+}
+function addHall(kind, x0, y0, x1, y1, code = null) {
+    const w = +(x1 - x0).toFixed(2), d = +(y1 - y0).toFixed(2);
+    const item = {
+        id: null, _key: `n${++keySeq}`, code: code ?? nextCode(kind), name: '', kind, storey: storey.value, section_id: null,
+        x: +((x0 + x1) / 2).toFixed(2), y: +((y0 + y1) / 2).toFixed(2), rotation: 0, color: null, levels: 1, double_sided: false, height: null,
+        width: w, depth: d, points: [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([a, b]) => [+a.toFixed(2), +b.toFixed(2)]),
+    };
+    items.value.push(item);
+    selectedKey.value = item._key;
+    return item;
+}
+const rectBox = computed(() => {
+    const r = rect.value;
+    return r ? { x: Math.min(r.a.x, r.b.x), y: Math.min(r.a.y, r.b.y), width: Math.abs(r.b.x - r.a.x), height: Math.abs(r.b.y - r.a.y) } : null;
+});
+/** A door goes on the nearest wall, along it. */
+function placeDoor(p) {
+    const at = snapToWall(storeyHalls.value, p);
+    if (!at || at.distance > 1.5) return false;
+    const item = { id: null, _key: `n${++keySeq}`, code: nextCode('door'), name: '', kind: 'door', storey: storey.value, section_id: null, color: null, ...KIND_DEFAULTS.door, x: at.x, y: at.y, rotation: at.rotation };
+    items.value.push(item);
+    selectedKey.value = item._key;
+    return true;
+}
+const doorHint = ref(false);
+
 const KIND_DEFAULTS = {
     shelf: { width: 2, depth: 0.5, levels: 5, double_sided: false },
     double: { width: 2, depth: 0.9, levels: 5, double_sided: true },
@@ -50,8 +160,10 @@ const KIND_DEFAULTS = {
     table: { width: 1.8, depth: 1, levels: 1, double_sided: false },
     wall: { width: 4, depth: 0.15, levels: 1, double_sided: false },
     gate: { width: 1.4, depth: 0.5, levels: 1, double_sided: false },
+    door: { width: 1.2, depth: 0.2, levels: 1, double_sided: false },
+    stairs: { width: 2, depth: 3, levels: 1, double_sided: false },
 };
-const kindLabel = (k) => ({ shelf: t('library.map.kind.shelf', 'رف كتب'), desk: t('library.map.kind.desk', 'مكتب الإعارة'), table: t('library.map.kind.table', 'طاولة قراءة'), wall: t('library.map.kind.wall', 'جدار'), gate: t('library.map.kind.gate', 'بوابة مانعة للسرقة'), obstacle: t('library.map.kind.obstacle', 'عائق') })[k] ?? k;
+const kindLabel = (k) => ({ shelf: t('library.map.kind.shelf', 'رف كتب'), desk: t('library.map.kind.desk', 'مكتب الإعارة'), table: t('library.map.kind.table', 'طاولة قراءة'), wall: t('library.map.kind.wall', 'جدار'), gate: t('library.map.kind.gate', 'بوابة مانعة للسرقة'), obstacle: t('library.map.kind.obstacle', 'عائق'), hall: t('library.map.kind.hall', 'قاعة / غرفة'), corridor: t('library.map.kind.corridor', 'ممر'), door: t('library.map.kind.door', 'باب'), stairs: t('library.map.kind.stairs', 'درج / مصعد') })[k] ?? k;
 
 function nextCode(kind) {
     if (kind === 'desk') return uniqueCode(t('library.map.kind.desk_short', 'مكتب'));
@@ -59,6 +171,10 @@ function nextCode(kind) {
     if (kind === 'wall') return uniqueCode(t('library.map.kind.wall', 'جدار'));
     if (kind === 'gate') return uniqueCode(t('library.map.kind.gate_short', 'بوابة'));
     if (kind === 'obstacle') return uniqueCode(t('library.map.kind.obstacle', 'عائق'));
+    if (kind === 'hall') return uniqueCode(t('library.map.kind.hall_short', 'قاعة') + ' ', storey.value ? storey.value * 100 + 1 : 1);
+    if (kind === 'corridor') return uniqueCode(t('library.map.kind.corridor', 'ممر') + ' ');
+    if (kind === 'door') return uniqueCode(t('library.map.kind.door', 'باب') + ' ');
+    if (kind === 'stairs') return uniqueCode(t('library.map.kind.stairs_short', 'درج') + ' ');
     const last = [...items.value].reverse().find((i) => i.kind === 'shelf' && /\d+$/.test(i.code));
     if (!last) return uniqueCode('A', 1);
     const [, prefix, n] = last.code.match(/^(.*?)(\d+)$/);
@@ -72,10 +188,12 @@ function uniqueCode(prefix, start = 1) {
 function add(type) {
     const kind = type === 'double' ? 'shelf' : type;
     const d = KIND_DEFAULTS[type];
-    // Drop it in the middle of what is on screen, a little off any item already there.
-    let x = floor.width / 2, y = floor.depth / 2;
-    while (items.value.some((i) => Math.abs(i.x - x) < 0.5 && Math.abs(i.y - y) < 0.5)) { x += 0.5; y += 0.5; }
-    const item = { id: null, _key: `n${++keySeq}`, code: nextCode(kind), name: '', kind, section_id: null, x, y, rotation: 0, color: null, ...d };
+    // Drop it in the middle of the selected hall (turned like it), or of the plan, a little off
+    // any item already there.
+    const hall = selected.value && isHallKind(selected.value) ? selected.value : (selected.value ? hallAtPoint(selected.value) : null);
+    let x = hall ? hall.x : floor.width / 2, y = hall ? hall.y : floor.depth / 2;
+    while (onStorey.value.some((i) => !isHallKind(i) && Math.abs(i.x - x) < 0.5 && Math.abs(i.y - y) < 0.5)) { x += 0.5; y += 0.5; }
+    const item = { id: null, _key: `n${++keySeq}`, code: nextCode(kind), name: '', kind, storey: storey.value, section_id: null, x, y, rotation: hall?.rotation ?? 0, color: null, ...d };
     items.value.push(item);
     selectedKey.value = item._key;
 }
@@ -91,11 +209,29 @@ function duplicate() {
 }
 function remove() {
     if (!selected.value) return;
-    items.value = items.value.filter((i) => i._key !== selectedKey.value);
+    // A hall goes with its doors (what stands inside it stays, ready to be moved).
+    const doors = isHallKind(selected.value) ? new Set(contents(selected.value).filter((o) => o.kind === 'door')) : new Set();
+    items.value = items.value.filter((i) => i._key !== selectedKey.value && !doors.has(i));
     selectedKey.value = null;
 }
 function rotate() {
-    if (selected.value) selected.value.rotation = (selected.value.rotation + 90) % 360;
+    if (selected.value) setRotation(selected.value, (selected.value.rotation || 0) + 90);
+}
+/** Any angle. A hall turns round its middle with everything in it. */
+function setRotation(it, value) {
+    const next = ((Math.round(Number(value) || 0) % 360) + 360) % 360;
+    const delta = next - (it.rotation || 0);
+    if (!delta) return;
+    if (isHallKind(it)) {
+        const a = (delta * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+        for (const o of contents(it)) {
+            const dx = o.x - it.x, dy = o.y - it.y;
+            o.x = +(it.x + dx * c - dy * s).toFixed(2);
+            o.y = +(it.y + dx * s + dy * c).toFixed(2);
+            o.rotation = ((((o.rotation || 0) + delta) % 360) + 360) % 360;
+        }
+    }
+    it.rotation = next;
 }
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const round = (v) => (snap.value ? Math.round(v * 4) / 4 : Math.round(v * 100) / 100);
@@ -111,9 +247,11 @@ function toPlan(e) {
     return { x: p.x, y: p.y };
 }
 function startDrag(e, item) {
+    if (tool.value === 'hall' || tool.value === 'corridor') return onPlanDown(e);
+    if (tool.value === 'door') return;
     selectedKey.value = item._key;
     const p = toPlan(e);
-    drag = { item, dx: item.x - p.x, dy: item.y - p.y, moved: false };
+    drag = { item, dx: item.x - p.x, dy: item.y - p.y, moved: false, children: isHallKind(item) ? contents(item).map((o) => ({ o, dx: o.x - item.x, dy: o.y - item.y })) : null };
     e.target.setPointerCapture?.(e.pointerId);
 }
 function startEntranceDrag(e) {
@@ -123,6 +261,7 @@ function startEntranceDrag(e) {
 }
 function onMove(e) {
     if (drawing.value) { drawing.value.hover = snapPoint(toPlan(e)); return; }
+    if (rect.value) { rect.value.b = snapToHalls(snapPoint(toPlan(e))); return; }
     if (!drag) return;
     const p = toPlan(e);
     if (drag.vertex !== undefined) {
@@ -137,15 +276,27 @@ function onMove(e) {
         floor.entrance.y = clamp(round(p.y + drag.dy), 0, floor.depth);
         return;
     }
+    if (drag.item.kind === 'door') {
+        // A door slides along the walls and never leaves them.
+        const at = snapToWall(storeyHalls.value, p);
+        if (at && at.distance < 2) Object.assign(drag.item, { x: at.x, y: at.y, rotation: at.rotation });
+        return;
+    }
     drag.item.x = clamp(round(p.x + drag.dx), 0, floor.width);
     drag.item.y = clamp(round(p.y + drag.dy), 0, floor.depth);
+    for (const c of drag.children ?? []) { c.o.x = +(drag.item.x + c.dx).toFixed(2); c.o.y = +(drag.item.y + c.dy).toFixed(2); }
 }
 function endDrag() {
+    if (rect.value) finishRect();
     if (drag?.vertex !== undefined) recentre(drag.item);
     drag = null;
 }
 function onPlanClick(e) {
     if (drawing.value) { addDrawPoint(toPlan(e)); return; }
+    if (tool.value === 'door') {
+        doorHint.value = !placeDoor(toPlan(e));
+        return;
+    }
     if (placingEntrance.value) {
         const p = toPlan(e);
         floor.entrance.x = clamp(round(p.x), 0, floor.width);
@@ -161,14 +312,15 @@ function onPlanClick(e) {
 // faint dot in the middle of each side adds a corner there.
 const drawing = ref(null); // { points: [{x, y}], hover }
 const snapPoint = (p) => ({ x: clamp(round(p.x), 0, floor.width), y: clamp(round(p.y), 0, floor.depth) });
-function startDrawing() {
+function startDrawing(kind = 'obstacle') {
     placingEntrance.value = false;
+    tool.value = null;
     view.value = 'plan';
     selectedKey.value = null;
-    drawing.value = { points: [], hover: null };
+    drawing.value = { kind, points: [], hover: null };
 }
 function addDrawPoint(p) {
-    const d = drawing.value, q = snapPoint(p), first = d.points[0], last = d.points[d.points.length - 1];
+    const d = drawing.value, q = d.kind === 'obstacle' ? snapPoint(p) : snapToHalls(snapPoint(p)), first = d.points[0], last = d.points[d.points.length - 1];
     if (first && d.points.length >= 3 && Math.hypot(q.x - first.x, q.y - first.y) < 0.3) return finishDrawing();
     if (last && Math.hypot(q.x - last.x, q.y - last.y) < 0.05) return; // second click of a double-click
     d.points.push(q);
@@ -176,7 +328,8 @@ function addDrawPoint(p) {
 function finishDrawing() {
     const pts = drawing.value?.points ?? [];
     if (pts.length < 3) return;
-    const item = { id: null, _key: `n${++keySeq}`, code: nextCode('obstacle'), name: '', kind: 'obstacle', section_id: null, x: 0, y: 0, rotation: 0, color: null, levels: 1, double_sided: false, height: 1, width: 1, depth: 1, points: [] };
+    const kind = drawing.value.kind ?? 'obstacle';
+    const item = { id: null, _key: `n${++keySeq}`, code: nextCode(kind), name: '', kind, storey: storey.value, section_id: null, x: 0, y: 0, rotation: 0, color: null, levels: 1, double_sided: false, height: kind === 'obstacle' ? 1 : null, width: 1, depth: 1, points: [] };
     item.points = pts.map((p) => [p.x, p.y]);
     recentre(item, true);
     items.value.push(item);
@@ -235,6 +388,7 @@ const polyPoints = (s) => s.points.map((p) => p.join(',')).join(' ');
 const midPoints = (s) => s.points.map((p, i) => { const q = s.points[(i + 1) % s.points.length]; return [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, i + 1]; });
 
 function onKey(e) {
+    if (tool.value && e.key === 'Escape') { tool.value = null; rect.value = null; return; }
     if (drawing.value) {
         if (e.key === 'Escape') drawing.value = null;
         else if (e.key === 'Enter') finishDrawing();
@@ -254,7 +408,7 @@ onMounted(() => window.addEventListener('keydown', onKey));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
 const corners = (s) => `translate(${s.x} ${s.y}) rotate(${s.rotation})`;
-const fill = (s) => (s.kind === 'shelf' ? s.color || sectionColor(s.section_id) : s.kind === 'wall' ? '#94a3b8' : s.kind === 'gate' ? '#dc2626' : s.kind === 'obstacle' ? s.color || '#6b7280' : s.kind === 'desk' ? '#0f766e' : '#a16207');
+const fill = (s) => (s.kind === 'hall' ? '#64748b' : s.kind === 'corridor' ? '#94a3b8' : s.kind === 'door' ? '#10b981' : s.kind === 'stairs' ? '#7c3aed' : s.kind === 'shelf' ? s.color || sectionColor(s.section_id) : s.kind === 'wall' ? '#94a3b8' : s.kind === 'gate' ? '#dc2626' : s.kind === 'obstacle' ? s.color || '#6b7280' : s.kind === 'desk' ? '#0f766e' : '#a16207');
 const gridLines = computed(() => {
     const out = [];
     for (let x = 0; x <= floor.width; x++) out.push({ x1: x, y1: 0, x2: x, y2: floor.depth, major: x % 5 === 0 });
@@ -263,25 +417,44 @@ const gridLines = computed(() => {
 });
 const fontSize = computed(() => Math.max(0.28, Math.min(0.5, Math.max(floor.width, floor.depth) / 45)));
 
-// «صفوف تلقائية» ------------------------------------------------------------------------------
-const gen = reactive({ open: false, rows: 3, perRow: 4, width: 2, aisle: 1.5, double: true, levels: 5, startLetter: 'A', sectionsByRow: true, replace: true });
+// «صفوف تلقائية»: rows of bookcases in the room, or (since 2026-11-06) in the selected hall,
+// turned the way the hall is turned. -----------------------------------------------------------
+const gen = reactive({ open: false, rows: 3, perRow: 4, width: 2, aisle: 1.5, double: true, levels: 5, startLetter: 'A', sectionsByRow: true, replace: true, hall: null });
+function openGenerate() {
+    const s = selected.value;
+    gen.hall = s && s.kind === 'hall' ? s : null;
+    if (gen.hall) {
+        // Fill the hall: as many bookcases as fit, a metre clear of its walls.
+        const depth = gen.double ? 0.9 : 0.5;
+        gen.perRow = Math.max(1, Math.floor((gen.hall.width - 2) / gen.width));
+        gen.rows = Math.max(1, Math.min(26, Math.floor((gen.hall.depth - 2 + gen.aisle) / (depth + gen.aisle))));
+    }
+    gen.open = true;
+}
 function generate() {
     const depth = gen.double ? 0.9 : 0.5;
     const runLength = gen.perRow * gen.width;
     const total = gen.rows * depth + (gen.rows - 1) * gen.aisle;
-    const x0 = Math.max(0.5, (floor.width - runLength) / 2) + gen.width / 2;
-    const y0 = Math.max(1, (floor.depth - total) / 2 - 0.75) + depth / 2;
-    const roots = props.sections.filter((s) => !s.parent_id);
+    const hall = gen.hall && items.value.includes(gen.hall) ? gen.hall : null;
+    // Positions are worked out round the middle, then turned and moved into place.
+    const cx = hall ? hall.x : floor.width / 2, cy = hall ? hall.y : Math.max(1 + total / 2, floor.depth / 2 - 0.75);
+    const a = ((hall?.rotation ?? 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    const place = (lx, ly) => ({ x: +(cx + lx * c - ly * sn).toFixed(2), y: +(cy + lx * sn + ly * c).toFixed(2) });
+    const roots = props.sections.filter((x) => !x.parent_id);
     const pool = roots.length ? roots : props.sections;
     const fresh = [];
-    if (gen.replace) items.value = items.value.filter((i) => i.kind !== 'shelf');
+    if (gen.replace) {
+        const gone = new Set(items.value.filter((i) => i.kind === 'shelf' && storeyOf(i) === storey.value && (!hall || inOutline(i, hall))));
+        items.value = items.value.filter((i) => !gone.has(i));
+    }
     for (let r = 0; r < gen.rows; r++) {
         const letter = String.fromCharCode(gen.startLetter.toUpperCase().charCodeAt(0) + r);
-        for (let c = 0; c < gen.perRow; c++) {
+        for (let k = 0; k < gen.perRow; k++) {
+            const at = place(-runLength / 2 + gen.width / 2 + k * gen.width, -total / 2 + depth / 2 + r * (depth + gen.aisle));
             fresh.push({
-                id: null, _key: `n${++keySeq}`, code: `${letter}${c + 1}`, name: '', kind: 'shelf',
+                id: null, _key: `n${++keySeq}`, code: `${letter}${k + 1}`, name: '', kind: 'shelf', storey: storey.value,
                 section_id: gen.sectionsByRow && pool.length ? pool[r % pool.length].id : null,
-                x: round(x0 + c * gen.width), y: round(y0 + r * (depth + gen.aisle)), rotation: 0,
+                x: at.x, y: at.y, rotation: hall?.rotation ?? 0,
                 width: gen.width, depth, levels: gen.levels, double_sided: gen.double, color: null,
             });
         }
@@ -290,10 +463,71 @@ function generate() {
     for (const f of fresh) if (taken.has(f.code.toLowerCase())) f.code = uniqueCode(f.code + '-');
     items.value.push(...fresh);
     // Make the room big enough for what was built.
-    floor.width = Math.max(floor.width, Math.ceil(runLength + 2));
-    floor.depth = Math.max(floor.depth, Math.ceil(total + 4));
+    if (!hall) {
+        floor.width = Math.max(floor.width, Math.ceil(runLength + 2));
+        floor.depth = Math.max(floor.depth, Math.ceil(total + 4));
+    }
     gen.open = false;
     selectedKey.value = null;
+}
+
+// «معالج البناء» (2026-11-06, by request): start from a room, or a building of one floor or
+// more: halls on both sides of a corridor, a door from each hall to the corridor, stairs at the
+// end of the corridor on every floor, and the entrance. Everything can be changed afterwards.
+const wiz = reactive({ open: false, type: 'building', storeys: 2, perSide: 3, sides: 2, hallWidth: 10, hallDepth: 8, corridor: 3, roomWidth: 20, roomDepth: 14, keepShelves: true });
+function openWizard() {
+    if (floor.storeys.length > 1) wiz.storeys = floor.storeys.length;
+    wiz.open = true;
+}
+const wizSize = computed(() => (wiz.type === 'room'
+    ? { w: wiz.roomWidth, d: wiz.roomDepth }
+    : { w: wiz.perSide * wiz.hallWidth + 4, d: wiz.corridor + wiz.sides * wiz.hallDepth }));
+function runWizard() {
+    const m = 1; // margin round the building
+    const structure = new Set(['hall', 'corridor', 'door', 'stairs', 'wall']);
+    items.value = items.value.filter((i) => !structure.has(i.kind) && (wiz.keepShelves || i.kind !== 'shelf'));
+    if (wiz.type === 'room') {
+        floor.storeys = [floor.storeys[0] || t('library.map.ground', 'الطابق الأرضي')];
+        storey.value = 0;
+        floor.width = Math.ceil(wiz.roomWidth + 2 * m);
+        floor.depth = Math.ceil(wiz.roomDepth + 2 * m);
+        addHall('hall', m, m, m + wiz.roomWidth, m + wiz.roomDepth, t('library.map.reading_room', 'قاعة المطالعة'));
+        floor.entrance = { x: +(m + wiz.roomWidth / 2).toFixed(2), y: m + wiz.roomDepth };
+        placeDoor({ ...floor.entrance });
+        items.value = items.value.filter((i) => storeyOf(i) === 0);
+    } else {
+        const n = Math.max(1, Math.min(20, wiz.storeys));
+        const names = [t('library.map.ground', 'الطابق الأرضي'), t('library.map.first', 'الطابق الأول'), t('library.map.second', 'الطابق الثاني'), t('library.map.third', 'الطابق الثالث'), t('library.map.fourth', 'الطابق الرابع')];
+        floor.storeys = Array.from({ length: n }, (_, k) => floor.storeys[k] && wiz.storeys === floor.storeys.length ? floor.storeys[k] : names[k] ?? t('library.map.storey_n', 'الطابق :n', { n: k }));
+        const W = wiz.perSide * wiz.hallWidth + 4; // 4 m at the end of the corridor for the stairs
+        const top = wiz.sides === 2 ? wiz.hallDepth : 0;
+        floor.width = Math.ceil(W + 2 * m);
+        floor.depth = Math.ceil(top + wiz.corridor + wiz.hallDepth + 2 * m);
+        const cy0 = m + top, cy1 = cy0 + wiz.corridor;
+        for (let k = 0; k < n; k++) {
+            storey.value = k;
+            addHall('corridor', m, cy0, m + W, cy1, uniqueCode(`${t('library.map.kind.corridor', 'ممر')} `, k + 1));
+            let num = k * 100 + 1;
+            for (let side = 0; side < wiz.sides; side++) {
+                for (let j = 0; j < wiz.perSide; j++) {
+                    const x0 = m + j * wiz.hallWidth, x1 = x0 + wiz.hallWidth;
+                    const [y0, y1] = side === 0 ? [cy1, cy1 + wiz.hallDepth] : [cy0 - wiz.hallDepth, cy0];
+                    addHall('hall', x0, y0, x1, y1, uniqueCode(`${t('library.map.kind.hall_short', 'قاعة')} `, num++));
+                    placeDoor({ x: (x0 + x1) / 2, y: side === 0 ? cy1 : cy0 });
+                }
+            }
+            const stairs = { id: null, _key: `n${++keySeq}`, code: uniqueCode(`${t('library.map.kind.stairs_short', 'درج')} `, k + 1), name: '', kind: 'stairs', storey: k, section_id: null, color: null, ...KIND_DEFAULTS.stairs, width: 2, depth: Math.min(3, wiz.corridor - 0.6), x: +(m + W - 1.5).toFixed(2), y: +((cy0 + cy1) / 2).toFixed(2), rotation: 90 };
+            items.value.push(stairs);
+            // The way in: the near end of the ground-floor corridor.
+            if (k === 0) { floor.entrance = { x: m, y: +((cy0 + cy1) / 2).toFixed(2) }; placeDoor({ ...floor.entrance }); }
+        }
+        // Shelves kept from before stay on floors that still exist.
+        items.value = items.value.filter((i) => storeyOf(i) < n);
+    }
+    storey.value = 0;
+    selectedKey.value = null;
+    wiz.open = false;
+    view.value = 'plan';
 }
 
 // Saving --------------------------------------------------------------------------------------
@@ -305,6 +539,12 @@ const errorList = computed(() => Object.entries(errors.value).map(([k, v]) => {
 }));
 const justSaved = ref(false);
 function save() {
+    // The plan grows to hold every hall and corridor, so the walk can reach all of them.
+    const far = items.value.filter(isHallKind).flatMap(outline);
+    if (far.length) {
+        floor.width = Math.min(200, Math.max(floor.width, Math.ceil(Math.max(...far.map((p) => p.x)) + 0.5)));
+        floor.depth = Math.min(200, Math.max(floor.depth, Math.ceil(Math.max(...far.map((p) => p.y)) + 0.5)));
+    }
     saving.value = true;
     router.put(route('library.manage.map.update'), { floor: { ...floor }, shelves: strip(items.value) }, {
         preserveScroll: true,
@@ -313,12 +553,12 @@ function save() {
     });
 }
 function reset() {
-    Object.assign(floor, JSON.parse(JSON.stringify(props.floor)));
+    Object.assign(floor, withFloorDefaults(props.floor));
     items.value = withKeys(props.shelves);
     selectedKey.value = null;
 }
 const shelfCount = computed(() => items.value.filter((i) => i.kind === 'shelf').length);
-const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._key, section: sectionPath(i.section_id) })));
+const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i._key, section: sectionPath(i.section_id) })));
 </script>
 
 <template>
@@ -348,15 +588,21 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                     <button @click="view = '3d'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium" :class="view === '3d' ? 'bg-white shadow dark:bg-gray-700' : 'text-gray-500'"><CubeIcon class="h-4 w-4" /> {{ t('library.map.view3d', 'ثلاثي الأبعاد') }}</button>
                 </div>
                 <span class="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
+                <button @click="openWizard" class="inline-flex items-center gap-1.5 rounded-lg bg-[#1f2a44] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110"><BuildingOffice2Icon class="h-4 w-4" /> {{ t('library.map.wizard', 'معالج البناء') }}</button>
+                <button @click="pickTool('hall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'hall' ? 'bg-slate-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><HomeModernIcon class="h-4 w-4" /> {{ t('library.map.kind.hall', 'قاعة / غرفة') }}</button>
+                <button @click="pickTool('corridor')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'corridor' ? 'bg-slate-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.kind.corridor', 'ممر') }}</button>
+                <button @click="pickTool('door')" :disabled="!storeyHalls.length" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm disabled:opacity-40" :class="tool === 'door' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleGroupIcon class="h-4 w-4" /> {{ t('library.map.kind.door', 'باب') }}</button>
+                <button @click="add('stairs')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronDoubleUpIcon class="h-4 w-4" /> {{ t('library.map.kind.stairs', 'درج / مصعد') }}</button>
+                <span class="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
                 <button @click="add('shelf')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_shelf', 'رف') }}</button>
                 <button @click="add('double')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_double', 'رف بوجهين') }}</button>
                 <button @click="add('desk')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.desk', 'مكتب الإعارة') }}</button>
                 <button @click="add('table')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.table', 'طاولة قراءة') }}</button>
                 <button @click="add('wall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.wall', 'جدار') }}</button>
                 <button @click="add('gate')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ShieldCheckIcon class="h-4 w-4" /> {{ t('library.map.kind.gate', 'بوابة مانعة للسرقة') }}</button>
-                <button @click="startDrawing" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="drawing ? 'bg-amber-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PencilIcon class="h-4 w-4" /> {{ t('library.map.draw_obstacle', 'ارسم عائقاً') }}</button>
+                <button @click="startDrawing()" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="drawing ? 'bg-amber-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PencilIcon class="h-4 w-4" /> {{ t('library.map.draw_obstacle', 'ارسم عائقاً') }}</button>
                 <button @click="placingEntrance = !placingEntrance; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="placingEntrance ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><MapPinIcon class="h-4 w-4" /> {{ t('library.map.entrance', 'المدخل') }}</button>
-                <button @click="gen.open = true" class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-50)] px-3 py-1.5 text-sm font-medium text-[var(--accent-700)] hover:brightness-95 dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</button>
+                <button @click="openGenerate" class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-50)] px-3 py-1.5 text-sm font-medium text-[var(--accent-700)] hover:brightness-95 dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</button>
             </div>
 
             <div v-if="drawing" class="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
@@ -366,15 +612,32 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                 <button @click="finishDrawing" :disabled="drawing.points.length < 3" class="rounded-md bg-amber-600 px-3 py-1 font-medium text-white disabled:opacity-40">{{ t('library.map.finish_shape', 'إنهاء الشكل') }}</button>
                 <button @click="drawing = null" class="rounded-md px-2.5 py-1 underline">{{ t('common.cancel', 'إلغاء') }}</button>
             </div>
+            <div v-if="tool" class="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-sm" :class="tool === 'door' ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200'">
+                <span class="flex-1">
+                    <template v-if="tool === 'door'">{{ doorHint ? t('library.map.door_far', 'اضغط على جدار قاعة أو ممر (قريباً منه).') : t('library.map.door_hint', 'اضغط على أي جدار ليوضع الباب عليه، وكرر لكل باب. اسحب الباب لتحريكه على الجدار.') }}</template>
+                    <template v-else>{{ t('library.map.rect_hint', 'اسحب على المخطط من زاوية إلى الزاوية المقابلة. تلتصق الزوايا بجدران القاعات المجاورة.') }}</template>
+                </span>
+                <button v-if="tool !== 'door'" @click="startDrawing(tool)" class="rounded-md border border-current/30 px-2.5 py-1 text-xs">{{ t('library.map.free_shape', 'شكل حر بالنقاط') }}</button>
+                <button @click="tool = null" class="rounded-md px-2.5 py-1 underline">{{ tool === 'door' ? t('common.done', 'تم') : t('common.cancel', 'إلغاء') }}</button>
+            </div>
             <p v-if="placingEntrance" class="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('library.map.place_entrance', 'اضغط على المخطط في مكان باب المكتبة.') }}</p>
+
+            <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-sm text-gray-500">{{ t('library.map.storeys', 'الطوابق') }}:</span>
+                <button v-for="(n, i) in floor.storeys" :key="i" @click="storey = i; selectedKey = null"
+                    class="rounded-full px-3 py-1 text-sm" :class="storey === i ? 'bg-[#1f2a44] font-semibold text-white' : 'bg-white ring-1 ring-gray-200 hover:bg-gray-50 dark:bg-gray-800 dark:ring-gray-700'">
+                    {{ storeyLabel(i) }} <span class="text-xs opacity-60">({{ items.filter((x) => storeyOf(x) === i && x.kind === 'shelf').length }})</span>
+                </button>
+                <button @click="addStorey" class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm text-[var(--accent-700)] hover:bg-[var(--accent-50)]"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_storey', 'طابق') }}</button>
+            </div>
 
             <div class="grid gap-4 lg:grid-cols-[1fr_20rem]">
                 <!-- Plan or 3D -->
                 <div class="relative h-[62dvh] min-h-[380px] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                     <div v-show="view === 'plan'" class="h-full w-full overflow-auto">
-                        <svg ref="svg" :viewBox="`-0.6 -0.6 ${floor.width + 1.2} ${floor.depth + 1.2}`" class="block touch-none select-none" :class="placingEntrance || drawing ? 'cursor-crosshair' : ''"
+                        <svg ref="svg" :viewBox="`-0.6 -0.6 ${floor.width + 1.2} ${floor.depth + 1.2}`" class="block touch-none select-none" :class="placingEntrance || drawing || tool ? 'cursor-crosshair' : ''"
                             :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }" preserveAspectRatio="xMidYMid meet"
-                            @pointermove="onMove" @pointerup="endDrag" @pointercancel="endDrag" @click="onPlanClick" @dblclick="drawing && finishDrawing()">
+                            @pointerdown="onPlanDown" @pointermove="onMove" @pointerup="endDrag" @pointercancel="endDrag" @click="onPlanClick" @dblclick="drawing && finishDrawing()">
                             <defs>
                                 <pattern id="hazard" width="0.4" height="0.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
                                     <rect width="0.4" height="0.4" fill="#6b7280" /><rect width="0.2" height="0.4" fill="#4b5563" />
@@ -384,7 +647,25 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                             <line v-for="(g, i) in gridLines" :key="i" v-bind="g" data-bg="1" :stroke-width="g.major ? 0.03 : 0.012" class="stroke-gray-300 dark:stroke-gray-700" />
                             <rect x="0" y="0" :width="floor.width" :height="floor.depth" fill="none" stroke-width="0.12" class="stroke-gray-400 dark:stroke-gray-500" />
 
-                            <g v-for="s in items" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing ? 'pointer-events-none opacity-60' : ''" @pointerdown.stop="startDrag($event, s)">
+                            <g v-for="s in planItems" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing ? 'pointer-events-none opacity-60' : (tool === 'door' && s.kind !== 'door') ? 'pointer-events-none' : ''" @pointerdown.stop="startDrag($event, s)">
+                                <template v-if="isHallKind(s)">
+                                    <!-- A hall or corridor: its floor, and its sides drawn as walls. -->
+                                    <polygon :points="polyPoints(s)" :fill="s.kind === 'corridor' ? '#e2e8f0' : '#fbf8f2'" class="dark:opacity-30" stroke-linejoin="miter"
+                                        :stroke="s._key === selectedKey ? '#f59e0b' : '#475569'" :stroke-width="s._key === selectedKey ? 0.2 : 0.15" />
+                                    <text :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="s.kind === 'corridor' ? fontSize * 0.9 : fontSize * 1.6" font-weight="700" :fill="s.kind === 'corridor' ? '#64748b' : '#94a3b8'" opacity="0.9" class="pointer-events-none">{{ s.code }}</text>
+                                    <template v-if="s._key === selectedKey">
+                                        <circle v-for="m in midPoints(s)" :key="'m' + m[2]" :cx="m[0]" :cy="m[1]" r="0.16" fill="#fff" fill-opacity="0.7" stroke="#f59e0b" stroke-width="0.04" class="cursor-copy" @pointerdown.stop="startVertexDrag($event, s, m[2], true)" />
+                                        <circle v-for="(p, i) in s.points" :key="'v' + i" :cx="p[0]" :cy="p[1]" r="0.24" fill="#f59e0b" stroke="#fff" stroke-width="0.05" class="cursor-move" @pointerdown.stop="startVertexDrag($event, s, i)" @dblclick.stop="removeVertex(s, i)" />
+                                    </template>
+                                </template>
+                                <template v-else-if="s.kind === 'door'">
+                                    <rect :x="-s.width / 2" :y="-0.14" :width="s.width" height="0.28" fill="#10b981" :stroke="s._key === selectedKey ? '#f59e0b' : '#fff'" :stroke-width="s._key === selectedKey ? 0.08 : 0.04" />
+                                </template>
+                                <template v-else-if="s.kind === 'stairs'">
+                                    <rect :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" fill="#ede9fe" :stroke="s._key === selectedKey ? '#f59e0b' : '#7c3aed'" :stroke-width="s._key === selectedKey ? 0.09 : 0.05" />
+                                    <line v-for="k in 7" :key="k" :x1="-s.width / 2" :x2="s.width / 2" :y1="-s.depth / 2 + (s.depth / 8) * k" :y2="-s.depth / 2 + (s.depth / 8) * k" stroke="#7c3aed" stroke-width="0.025" />
+                                    <text :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#5b21b6" style="paint-order: stroke" stroke="#fff" :stroke-width="fontSize / 6">{{ s.code }}</text>
+                                </template>
                                 <template v-if="s.kind === 'obstacle' && s.points?.length >= 3">
                                     <polygon :points="polyPoints(s)" :fill="s.color || 'url(#hazard)'" fill-opacity="0.85" stroke-linejoin="round"
                                         :stroke="s._key === selectedKey ? '#f59e0b' : '#facc15'" :stroke-width="s._key === selectedKey ? 0.09 : 0.06" />
@@ -399,20 +680,22 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                                     <rect v-for="side in [1, -1]" :key="side" :x="side * (s.width / 2 - 0.075) - 0.075" :y="-s.depth / 2" width="0.15" :height="s.depth" rx="0.03" fill="#dc2626" />
                                     <line :x1="-s.width / 2 + 0.2" y1="0" :x2="s.width / 2 - 0.2" y2="0" stroke="#dc2626" stroke-width="0.04" stroke-dasharray="0.1 0.08" />
                                 </template>
-                                <rect v-else-if="s.kind !== 'obstacle'" :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" :rx="s.kind === 'table' ? 0.1 : 0.04"
+                                <rect v-else-if="!['obstacle', 'hall', 'corridor', 'door', 'stairs'].includes(s.kind)" :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" :rx="s.kind === 'table' ? 0.1 : 0.04"
                                     :fill="fill(s)" :fill-opacity="s.kind === 'shelf' ? 0.85 : 0.7"
                                     :stroke="s._key === selectedKey ? '#f59e0b' : 'rgba(0,0,0,0.25)'" :stroke-width="s._key === selectedKey ? 0.09 : 0.025" />
                                 <!-- Front face: where readers stand. -->
                                 <line v-if="s.kind === 'shelf'" :x1="-s.width / 2 + 0.05" :y1="s.depth / 2" :x2="s.width / 2 - 0.05" :y2="s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
                                 <line v-if="s.kind === 'shelf' && s.double_sided" :x1="-s.width / 2 + 0.05" :y1="-s.depth / 2" :x2="s.width / 2 - 0.05" :y2="-s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
-                                <text v-if="s.kind !== 'wall' && s.kind !== 'gate' && s.kind !== 'obstacle'" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
+                                <text v-if="!['wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs'].includes(s.kind)" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
                             </g>
 
+                            <rect v-if="rectBox" v-bind="rectBox" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
+                            <text v-if="rectBox && rectBox.width > 1" :x="rectBox.x + rectBox.width / 2" :y="rectBox.y + rectBox.height / 2" text-anchor="middle" dominant-baseline="central" :font-size="fontSize * 1.2" font-weight="700" fill="#334155" class="pointer-events-none" dir="ltr">{{ rectBox.width.toFixed(1) }} × {{ rectBox.height.toFixed(1) }} m</text>
                             <g v-if="drawing" class="pointer-events-none">
                                 <polyline :points="drawPath" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="0.06" stroke-dasharray="0.15 0.08" />
                                 <circle v-for="(p, i) in drawing.points" :key="i" :cx="p.x" :cy="p.y" :r="i === 0 ? 0.2 : 0.12" :fill="i === 0 ? '#fff' : '#f59e0b'" stroke="#f59e0b" stroke-width="0.05" />
                             </g>
-                            <g :transform="`translate(${floor.entrance.x} ${floor.entrance.y})`" class="cursor-grab" @pointerdown.stop="startEntranceDrag">
+                            <g v-if="storey === 0" :transform="`translate(${floor.entrance.x} ${floor.entrance.y})`" class="cursor-grab" @pointerdown.stop="startEntranceDrag">
                                 <circle r="0.45" fill="#10b981" stroke="#fff" stroke-width="0.08" />
                                 <text text-anchor="middle" dominant-baseline="central" font-size="0.32" font-weight="700" fill="#fff">{{ t('library.map.door', 'باب') }}</text>
                             </g>
@@ -424,7 +707,11 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                         <button @click="zoom = Math.max(1, zoom - 0.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassMinusIcon class="h-5 w-5" /></button>
                         <button @click="zoom = Math.min(4, zoom + 0.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassPlusIcon class="h-5 w-5" /></button>
                     </div>
-                    <p v-if="view === 'plan' && !items.length" class="pointer-events-none absolute inset-x-0 top-1/3 text-center text-sm text-gray-500">{{ t('library.map.empty_plan', 'ابدأ بـ «صفوف تلقائية» أو أضف رفاً من الشريط أعلاه.') }}</p>
+                    <div v-if="view === 'plan' && !onStorey.length && !tool && !drawing" class="absolute inset-x-0 top-1/4 mx-auto max-w-sm space-y-3 rounded-2xl bg-white/90 p-5 text-center shadow ring-1 ring-black/5 dark:bg-gray-800/90">
+                        <BuildingOffice2Icon class="mx-auto h-10 w-10 text-[var(--accent-600)]" />
+                        <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('library.map.empty_plan_wizard', 'ابدأ بـ «معالج البناء»: اختر غرفة أو بناية وعدد الطوابق، فتُبنى القاعات والممرات والأبواب تلقائياً.') }}</p>
+                        <button @click="openWizard" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm font-medium text-white">{{ t('library.map.wizard', 'معالج البناء') }}</button>
+                    </div>
                 </div>
 
                 <!-- Properties -->
@@ -440,7 +727,7 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                             </div>
                         </div>
                         <label class="block text-sm">
-                            <span class="text-gray-600 dark:text-gray-300">{{ selected.kind === 'shelf' ? t('library.map.code', 'رمز الرف (يُكتب في حقل «الرف» للنسخة)') : t('library.map.label', 'الاسم المختصر') }}</span>
+                            <span class="text-gray-600 dark:text-gray-300">{{ selected.kind === 'shelf' ? t('library.map.code', 'رمز الرف (يُكتب في حقل «الرف» للنسخة)') : isHallKind(selected) ? t('library.map.hall_name', 'اسم القاعة (يظهر للقارئ في الإرشادات)') : t('library.map.label', 'الاسم المختصر') }}</span>
                             <input v-model.trim="selected.code" maxlength="30" dir="auto" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                         </label>
                         <label v-if="selected.kind === 'shelf'" class="block text-sm">
@@ -455,23 +742,36 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                             <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.name', 'وصف (اختياري)') }}</span>
                             <input v-model="selected.name" maxlength="255" dir="auto" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                         </label>
+                        <label v-if="selected.kind !== 'door'" class="flex items-center gap-2 text-sm">
+                            <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.angle', 'الزاوية') }}</span>
+                            <input :value="selected.rotation" @change="setRotation(selected, $event.target.value)" type="number" step="5" min="-359" max="359" class="w-20 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <span class="text-gray-400">°</span>
+                            <button v-for="a in [0, 45, 90, 135]" :key="a" @click="setRotation(selected, a)" class="rounded-md border border-gray-200 px-1.5 py-0.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ a }}°</button>
+                        </label>
+                        <div v-if="isHallKind(selected)" class="flex flex-wrap gap-1.5">
+                            <button v-if="selected.kind === 'hall'" @click="openGenerate" class="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-50)] px-2.5 py-1 text-xs font-medium text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-3.5 w-3.5" /> {{ t('library.map.rows_here', 'صفوف رفوف داخل القاعة') }}</button>
+                            <button @click="pickTool('door')" class="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"><RectangleGroupIcon class="h-3.5 w-3.5" /> {{ t('library.map.add_door', 'أضف باباً') }}</button>
+                        </div>
+                        <p v-if="isHallKind(selected)" class="text-xs leading-5 text-gray-500">{{ t('library.map.hall_hint', 'تحريك القاعة أو تدويرها يحرّك ما بداخلها وأبوابها معها. اختر القاعة ثم أضف رفاً ليوضع داخلها بنفس اتجاهها.') }}</p>
+                        <button v-if="selected.kind === 'stairs' && floor.storeys.length > 1" @click="stairsToAllFloors" class="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"><Square2StackIcon class="h-3.5 w-3.5" /> {{ t('library.map.stairs_all', 'ضعه في نفس المكان بكل الطوابق') }}</button>
+                        <p v-if="selected.kind === 'stairs'" class="text-xs leading-5 text-gray-500">{{ t('library.map.stairs_hint', 'الدرج أو المصعد الموجود في نفس المكان بطابقين يربطهما، والمسار يصعد أو ينزل منه.') }}</p>
                         <div class="grid grid-cols-2 gap-2 text-sm">
-                            <template v-if="selected.kind === 'obstacle'">
-                                <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.length', 'الطول (م)') }}</span><input :value="selected.width" @change="scaleObstacle('x', +$event.target.value)" type="number" step="0.1" min="0.3" max="30" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                                <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.depth', 'العمق (م)') }}</span><input :value="selected.depth" @change="scaleObstacle('y', +$event.target.value)" type="number" step="0.1" min="0.1" max="30" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                                <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.height', 'الارتفاع (م)') }}</span><input v-model.number="selected.height" type="number" step="0.1" min="0.1" max="6" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                            <template v-if="selected.kind === 'obstacle' || isHallKind(selected)">
+                                <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.length', 'الطول (م)') }}</span><input :value="selected.width" @change="scaleObstacle('x', +$event.target.value)" type="number" step="0.1" min="0.3" max="200" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                                <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.depth', 'العمق (م)') }}</span><input :value="selected.depth" @change="scaleObstacle('y', +$event.target.value)" type="number" step="0.1" min="0.1" max="200" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                                <label v-if="selected.kind === 'obstacle'"><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.height', 'الارتفاع (م)') }}</span><input v-model.number="selected.height" type="number" step="0.1" min="0.1" max="6" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                                 <div class="col-span-2">
                                     <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.shape', 'الشكل') }}</span>
                                     <div class="mt-1 flex flex-wrap gap-1.5">
                                         <button @click="presetShape('rect')" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.map.shape_rect', 'مستطيل') }}</button>
-                                        <button @click="presetShape('circle')" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.map.shape_circle', 'دائري (عمود)') }}</button>
+                                        <button v-if="selected.kind === 'obstacle'" @click="presetShape('circle')" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.map.shape_circle', 'دائري (عمود)') }}</button>
                                         <button @click="presetShape('L')" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.map.shape_l', 'زاوية L') }}</button>
                                     </div>
                                     <p class="mt-1.5 text-xs leading-5 text-gray-500">{{ t('library.map.shape_hint', 'اسحب الزوايا البرتقالية لتعديل الشكل · النقطة الباهتة في منتصف الضلع تضيف زاوية · نقر مزدوج على زاوية يحذفها.') }}</p>
                                 </div>
                             </template>
                             <label v-else><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.length', 'الطول (م)') }}</span><input v-model.number="selected.width" type="number" step="0.1" min="0.3" max="30" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                            <label v-if="selected.kind !== 'obstacle'"><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.depth', 'العمق (م)') }}</span><input v-model.number="selected.depth" type="number" step="0.05" min="0.1" max="10" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                            <label v-if="selected.kind !== 'obstacle' && !isHallKind(selected) && selected.kind !== 'door'"><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.depth', 'العمق (م)') }}</span><input v-model.number="selected.depth" type="number" step="0.05" min="0.1" max="10" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                             <label v-if="selected.kind === 'shelf'"><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.levels', 'عدد الطبقات') }}</span><input v-model.number="selected.levels" type="number" min="1" max="10" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                             <label class="flex items-end gap-2 pb-2" v-if="selected.kind === 'shelf'"><input v-model="selected.double_sided" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.double', 'بوجهين') }}</label>
                         </div>
@@ -484,7 +784,17 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                     </section>
 
                     <section class="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">
-                        <h3 class="font-semibold">{{ t('library.map.room', 'القاعة') }}</h3>
+                        <h3 class="font-semibold">{{ t('library.map.building', 'المكتبة') }}</h3>
+                        <div class="space-y-1.5">
+                            <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.storey_names', 'أسماء الطوابق') }}</span>
+                            <div v-for="(n, i) in floor.storeys" :key="i" class="flex items-center gap-1.5">
+                                <input v-model="floor.storeys[i]" maxlength="60" dir="auto" class="min-w-0 flex-1 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                                <button v-if="floor.storeys.length > 1" @click="removeStorey(i)" class="rounded-lg p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-4 w-4" /></button>
+                            </div>
+                        </div>
+                        <label class="flex items-start gap-2"><input v-model="floor.separate_halls" type="checkbox" class="mt-0.5 rounded border-gray-300" />
+                            <span>{{ t('library.map.separate_halls', 'كل قاعة مستقلة') }}<span class="block text-xs text-gray-500">{{ t('library.map.separate_halls_hint', 'القارئ يرى القاعة التي هو فيها وحدها، وتتبدل الخريطة عند دخوله قاعة أخرى.') }}</span></span>
+                        </label>
                         <div class="grid grid-cols-2 gap-2">
                             <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.room_width', 'العرض (م)') }}</span><input v-model.number="floor.width" type="number" min="4" max="200" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                             <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.room_depth', 'الطول (م)') }}</span><input v-model.number="floor.depth" type="number" min="4" max="200" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
@@ -496,7 +806,7 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                     <section v-if="items.length" class="rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                         <h3 class="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold dark:border-gray-700">{{ t('library.map.all', 'كل العناصر') }}</h3>
                         <div class="max-h-60 overflow-y-auto">
-                            <button v-for="s in items" :key="s._key" @click="selectedKey = s._key" class="flex w-full items-center gap-2 px-4 py-1.5 text-start text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50" :class="s._key === selectedKey ? 'bg-amber-50 dark:bg-amber-900/20' : ''">
+                            <button v-for="s in planItems" :key="s._key" @click="selectedKey = s._key" class="flex w-full items-center gap-2 px-4 py-1.5 text-start text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50" :class="s._key === selectedKey ? 'bg-amber-50 dark:bg-amber-900/20' : ''">
                                 <span class="h-2.5 w-2.5 shrink-0 rounded-full" :style="{ background: fill(s) }" />
                                 <span class="font-medium" dir="auto">{{ s.code }}</span>
                                 <span class="truncate text-xs text-gray-500">{{ s.kind === 'shelf' ? sectionPath(s.section_id) : kindLabel(s.kind) }}</span>
@@ -524,6 +834,7 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
             <div class="space-y-4 p-6">
                 <div>
                     <h3 class="flex items-center gap-2 text-lg font-semibold"><SparklesIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</h3>
+                    <p v-if="gen.hall" class="mt-1 rounded-lg bg-[var(--accent-50)] px-2 py-1 text-sm text-[var(--accent-700)]">{{ t('library.map.generate_in_hall', 'تُبنى داخل «:hall» وبنفس اتجاهها.', { hall: gen.hall.code }) }}</p>
                     <p class="mt-1 text-sm text-gray-500">{{ t('library.map.generate_text', 'تُبنى صفوف رفوف متوازية بممرات بينها، وترقّم A1، A2… B1… وبعدها تقدر تسحب أي رف لمكانه.') }}</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
@@ -542,6 +853,52 @@ const preview = computed(() => items.value.map((i) => ({ ...i, id: i.id ?? i._ke
                 <div class="flex justify-end gap-2">
                     <button @click="gen.open = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('common.cancel', 'إلغاء') }}</button>
                     <button @click="generate" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm font-medium text-white">{{ t('library.map.gen_build', 'ابنِ الصفوف') }}</button>
+                </div>
+            </div>
+        </Modal>
+        <Modal :show="wiz.open" @close="wiz.open = false" max-width="lg">
+            <div class="space-y-4 p-6">
+                <div>
+                    <h3 class="flex items-center gap-2 text-lg font-semibold"><BuildingOffice2Icon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('library.map.wizard', 'معالج البناء') }}</h3>
+                    <p class="mt-1 text-sm text-gray-500">{{ t('library.map.wizard_text', 'اختر شكل المكتبة فيُبنى المخطط كاملاً، وبعدها تسحب وتعدّل أي قاعة أو باب.') }}</p>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button v-for="opt in [{ v: 'room', icon: HomeModernIcon, title: t('library.map.wiz_room', 'غرفة واحدة'), text: t('library.map.wiz_room_text', 'قاعة مطالعة واحدة') }, { v: 'building', icon: BuildingOffice2Icon, title: t('library.map.wiz_building', 'بناية'), text: t('library.map.wiz_building_text', 'قاعات على ممر، طابق أو أكثر') }]" :key="opt.v"
+                        @click="wiz.type = opt.v" class="rounded-xl border-2 p-3 text-start" :class="wiz.type === opt.v ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 dark:border-gray-600'">
+                        <component :is="opt.icon" class="h-6 w-6 text-[var(--accent-600)]" />
+                        <p class="mt-1 font-semibold">{{ opt.title }}</p>
+                        <p class="text-xs text-gray-500">{{ opt.text }}</p>
+                    </button>
+                </div>
+                <div v-if="wiz.type === 'room'" class="grid grid-cols-2 gap-3 text-sm">
+                    <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.room_width', 'العرض (م)') }}</span><input v-model.number="wiz.roomWidth" type="number" min="3" max="150" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.room_depth', 'الطول (م)') }}</span><input v-model.number="wiz.roomDepth" type="number" min="3" max="150" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                </div>
+                <template v-else>
+                    <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.wiz_storeys', 'عدد الطوابق') }}</span><input v-model.number="wiz.storeys" type="number" min="1" max="20" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.wiz_per_side', 'قاعات بكل جهة') }}</span><input v-model.number="wiz.perSide" type="number" min="1" max="12" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.wiz_sides', 'جهات الممر') }}</span>
+                            <select v-model.number="wiz.sides" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700"><option :value="2">{{ t('library.map.wiz_two_sides', 'الجهتين') }}</option><option :value="1">{{ t('library.map.wiz_one_side', 'جهة واحدة') }}</option></select>
+                        </label>
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.wiz_hall_w', 'عرض القاعة (م)') }}</span><input v-model.number="wiz.hallWidth" type="number" min="3" max="60" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.wiz_hall_d', 'عمق القاعة (م)') }}</span><input v-model.number="wiz.hallDepth" type="number" min="3" max="60" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.wiz_corridor', 'عرض الممر (م)') }}</span><input v-model.number="wiz.corridor" type="number" step="0.5" min="1.5" max="10" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                    </div>
+                    <!-- A small sketch of what will be built. -->
+                    <svg :viewBox="`-0.5 -0.5 ${wizSize.w + 1} ${wizSize.d + 1}`" class="mx-auto block h-28 w-full max-w-sm">
+                        <rect v-if="wiz.sides === 2" v-for="j in wiz.perSide" :key="'t' + j" :x="(j - 1) * wiz.hallWidth" y="0" :width="wiz.hallWidth" :height="wiz.hallDepth" fill="#fbf8f2" stroke="#475569" stroke-width="0.25" />
+                        <rect x="0" :y="wiz.sides === 2 ? wiz.hallDepth : 0" :width="wizSize.w" :height="wiz.corridor" fill="#e2e8f0" stroke="#475569" stroke-width="0.25" />
+                        <rect v-for="j in wiz.perSide" :key="'b' + j" :x="(j - 1) * wiz.hallWidth" :y="(wiz.sides === 2 ? wiz.hallDepth : 0) + wiz.corridor" :width="wiz.hallWidth" :height="wiz.hallDepth" fill="#fbf8f2" stroke="#475569" stroke-width="0.25" />
+                        <rect :x="wizSize.w - 2.5" :y="(wiz.sides === 2 ? wiz.hallDepth : 0) + 0.3" width="2" :height="wiz.corridor - 0.6" fill="#ede9fe" stroke="#7c3aed" stroke-width="0.2" />
+                        <circle cx="0" :cy="(wiz.sides === 2 ? wiz.hallDepth : 0) + wiz.corridor / 2" r="0.8" fill="#10b981" />
+                    </svg>
+                    <p class="text-center text-xs text-gray-500">{{ t('library.map.wiz_summary', 'في كل طابق: :h قاعات وممر ودرج · المساحة :w × :d م', { h: wiz.perSide * wiz.sides, w: wizSize.w, d: wizSize.d }) }}</p>
+                </template>
+                <label class="flex items-center gap-2 text-sm"><input v-model="wiz.keepShelves" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.wiz_keep', 'أبقِ الرفوف الحالية (تُستبدل القاعات والممرات والأبواب فقط)') }}</label>
+                <div class="flex justify-end gap-2">
+                    <button @click="wiz.open = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('common.cancel', 'إلغاء') }}</button>
+                    <button @click="runWizard" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm font-medium text-white">{{ t('library.map.wiz_build', 'ابنِ المخطط') }}</button>
                 </div>
             </div>
         </Modal>

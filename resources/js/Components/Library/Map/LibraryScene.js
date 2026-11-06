@@ -13,6 +13,7 @@ export function shelfHeight(item) {
     if (item.kind === 'wall') return 2.6;
     if (item.kind === 'gate') return 1.6;
     if (item.kind === 'obstacle') return item.height || 1;
+    if (item.kind === 'stairs') return 1.4;
     return item.levels * LEVEL_H + 0.12;
 }
 
@@ -235,6 +236,21 @@ export class LibraryScene {
         this.labels = [];
         const { width: W, depth: D } = floor;
 
+        const halls = items.filter((i) => (i.kind === 'hall' || i.kind === 'corridor') && i.points?.length >= 3);
+        // The overview frames what is drawn: the halls when there are any, else the room.
+        this.planFrame = { x0: 0, y0: 0, x1: W, y1: D };
+        if (halls.length) {
+            const pts = halls.flatMap((h) => {
+                const a = ((h.rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+                return h.points.map(([px, py]) => ({ x: h.x + px * c - py * sn, y: h.y + px * sn + py * c }));
+            });
+            this.planFrame = { x0: Math.min(...pts.map((p) => p.x)), y0: Math.min(...pts.map((p) => p.y)), x1: Math.max(...pts.map((p) => p.x)), y1: Math.max(...pts.map((p) => p.y)) };
+            const changed = JSON.stringify(this.planFrame) !== this.lastFrame;
+            this.lastFrame = JSON.stringify(this.planFrame);
+            if (changed) this.framed = false;
+            return this.setHalls(floor, items, halls);
+        }
+
         // Floor and a low wall round the room.
         const tex = floorTexture(this.dark);
         tex.repeat.set(W / 1, D / 1);
@@ -268,6 +284,102 @@ export class LibraryScene {
         if (edge === 'left') { addWall(0, 0, 0, ent.y - gap); addWall(0, ent.y + gap, 0, D); } else addWall(0, 0, 0, D);
         if (edge === 'right') { addWall(W, 0, W, ent.y - gap); addWall(W, ent.y + gap, W, D); } else addWall(W, 0, W, D);
 
+        this.finishLayout(floor, items);
+    }
+
+    /**
+     * «قاعات وغرف» (2026-11-06, by request): a library of several halls and rooms. Each hall gets
+     * its own floor, low walls along its sides with gaps where doors are, and its name.
+     */
+    setHalls(floor, items, halls) {
+        const outside = new THREE.Mesh(new THREE.PlaneGeometry(floor.width * 6, floor.depth * 6), new THREE.MeshStandardMaterial({ color: this.dark ? '#0f172a' : '#e2e8f0', roughness: 1 }));
+        outside.rotation.x = -Math.PI / 2;
+        outside.position.y = -0.01;
+        outside.receiveShadow = true;
+        this.root.add(outside);
+        const doors = items.filter((i) => i.kind === 'door');
+        const wallMat = new THREE.MeshStandardMaterial({ color: this.dark ? '#475569' : '#cbd5e1', roughness: 0.8 });
+        const capMat = new THREE.MeshStandardMaterial({ color: this.dark ? '#64748b' : '#94a3b8', roughness: 0.6 });
+        const wallH = 1.0, t = 0.15;
+        const plan = (it) => {
+            const a = ((it.rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+            return it.points.map(([px, py]) => ({ x: it.x + px * c - py * sn, y: it.y + px * sn + py * c }));
+        };
+        const wall = (x1, y1, x2, y2) => {
+            const len = Math.hypot(x2 - x1, y2 - y1);
+            if (len < 0.05) return;
+            const m = new THREE.Mesh(new THREE.BoxGeometry(len + t * 0.5, wallH, t), wallMat);
+            m.position.copy(this.world((x1 + x2) / 2, (y1 + y2) / 2, wallH / 2));
+            m.rotation.y = -Math.atan2(y2 - y1, x2 - x1);
+            m.castShadow = m.receiveShadow = true;
+            this.root.add(m);
+            const cap = new THREE.Mesh(new THREE.BoxGeometry(len + t * 0.5, 0.04, t + 0.02), capMat);
+            cap.position.copy(m.position).setY(wallH + 0.02);
+            cap.rotation.y = m.rotation.y;
+            this.root.add(cap);
+        };
+        const tints = this.dark ? ['#1f2937', '#22303f', '#272b3a', '#1f3330', '#2d2a24'] : ['#efe9df', '#e6eef5', '#efe6ef', '#e5f0e8', '#f3ecdc'];
+        // Halls first, corridors on top (a corridor is usually drawn across hall edges).
+        halls.sort((a, b) => (a.kind === 'corridor') - (b.kind === 'corridor')).forEach((h, idx) => {
+            const corridor = h.kind === 'corridor';
+            const pts = plan(h);
+            const shape = new THREE.Shape(pts.map((p) => new THREE.Vector2(p.x - floor.width / 2, -(p.y - floor.depth / 2))));
+            const tex = floorTexture(this.dark);
+            const geo = new THREE.ShapeGeometry(shape);
+            geo.rotateX(-Math.PI / 2);
+            const ground = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, color: corridor ? (this.dark ? '#374151' : '#d9dee5') : tints[idx % tints.length], roughness: 0.92 }));
+            ground.position.y = 0.001 * (idx % 8);
+            ground.receiveShadow = true;
+            this.root.add(ground);
+            // Walls along each side, leaving a gap for every door on it.
+            pts.forEach((a, i) => {
+                const b = pts[(i + 1) % pts.length];
+                const len = Math.hypot(b.x - a.x, b.y - a.y);
+                if (len < 0.05) return;
+                const ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+                const gaps = doors.map((d) => {
+                    const along = (d.x - a.x) * ux + (d.y - a.y) * uy;
+                    const off = Math.abs(-(d.x - a.x) * uy + (d.y - a.y) * ux);
+                    return off < 0.4 && along > -d.width / 2 && along < len + d.width / 2 ? [along - d.width / 2, along + d.width / 2] : null;
+                }).filter(Boolean).sort((p, q) => p[0] - q[0]);
+                let from = 0;
+                for (const [g0, g1] of gaps) {
+                    if (g0 > from) wall(a.x + ux * from, a.y + uy * from, a.x + ux * g0, a.y + uy * g0);
+                    from = Math.max(from, g1);
+                }
+                if (from < len) wall(a.x + ux * from, a.y + uy * from, b.x, b.y);
+            });
+            const label = labelSprite(h.code || '', h.name || null, corridor ? '#64748b' : '#334155', { scale: corridor ? 0.8 : 1.3 });
+            label.position.copy(this.world(h.x, h.y, corridor ? 1.6 : 2.9));
+            label.userData.baseScale = label.scale.clone();
+            label.userData.hall = true;
+            this.root.add(label);
+            this.labels.push(label);
+        });
+        // Doors: a green threshold and a frame post on each side.
+        const sill = new THREE.MeshStandardMaterial({ color: '#10b981', roughness: 0.6, transparent: true, opacity: 0.85 });
+        const frame = new THREE.MeshStandardMaterial({ color: this.dark ? '#a47148' : '#8b5e34', roughness: 0.6 });
+        for (const d of doors) {
+            const g = new THREE.Group();
+            g.position.copy(this.world(d.x, d.y));
+            g.rotation.y = -((d.rotation || 0) * Math.PI) / 180;
+            const th = new THREE.Mesh(new THREE.BoxGeometry(d.width, 0.02, 0.5), sill);
+            th.position.y = 0.012;
+            g.add(th);
+            for (const side of [1, -1]) {
+                const post = new THREE.Mesh(new THREE.BoxGeometry(0.08, wallH + 0.25, t + 0.06), frame);
+                post.position.set(side * (d.width / 2), (wallH + 0.25) / 2, 0);
+                post.castShadow = true;
+                g.add(post);
+            }
+            this.root.add(g);
+        }
+        this.finishLayout(floor, items);
+    }
+
+    finishLayout(floor, items) {
+        const { width: W, depth: D } = floor;
+        const ent = floor.entrance;
         // Entrance mat and label.
         const mat = new THREE.Mesh(new THREE.CircleGeometry(0.7, 40), new THREE.MeshBasicMaterial({ color: '#10b981', transparent: true, opacity: 0.85 }));
         mat.rotation.x = -Math.PI / 2;
@@ -299,7 +411,7 @@ export class LibraryScene {
         }
         bookCount = bookSpots.length;
 
-        for (const item of items) this.addItem(item);
+        for (const item of items) if (!['hall', 'corridor', 'door'].includes(item.kind)) this.addItem(item);
 
         if (bookCount) {
             const geo = new THREE.BoxGeometry(1, 1, 1);
@@ -339,7 +451,7 @@ export class LibraryScene {
         group.position.copy(this.world(item.x, item.y));
         group.rotation.y = -((item.rotation || 0) * Math.PI) / 180;
         group.updateMatrixWorld(true);
-        const accent = item.color || (kind === 'gate' ? '#dc2626' : sectionColor(item.section_id));
+        const accent = item.color || (kind === 'gate' ? '#dc2626' : kind === 'stairs' ? '#7c3aed' : sectionColor(item.section_id));
         const h = shelfHeight(item);
         const wood = new THREE.MeshStandardMaterial({ color: kind === 'wall' ? (this.dark ? '#475569' : '#e5e7eb') : this.dark ? '#7c5a3a' : '#a47148', roughness: 0.75 });
         const accentMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.5, emissive: new THREE.Color(accent), emissiveIntensity: 0 });
@@ -396,6 +508,11 @@ export class LibraryScene {
                 box(0.08, h, D, px, h / 2, 0, post);
                 box(0.1, 0.06, D + 0.02, px, h - 0.03, 0, light);
             }
+        } else if (kind === 'stairs') {
+            // «درج / مصعد»: a flight of steps going up along the item's depth.
+            const n = 8, stepMat = new THREE.MeshStandardMaterial({ color: this.dark ? '#94a3b8' : '#d6d3d1', roughness: 0.7 });
+            for (let k = 0; k < n; k++) box(W, (h / n) * (k + 1), D / n, 0, ((h / n) * (k + 1)) / 2, D / 2 - (D / n) * (k + 0.5), stepMat);
+            box(0.04, 0.9, D, -W / 2, h / 2 + 0.45, 0, accentMat);
         } else {
             box(W, h, D, 0, h / 2, 0);
         }
@@ -537,13 +654,15 @@ export class LibraryScene {
     overview(animate = true) {
         this.mode = 'overview';
         this.controls.enabled = true;
-        const W = this.floorData?.width ?? 20, D = this.floorData?.depth ?? 14;
+        const f = this.planFrame ?? { x0: 0, y0: 0, x1: this.floorData?.width ?? 20, y1: this.floorData?.depth ?? 14 };
+        const W = Math.max(2, f.x1 - f.x0), D = Math.max(2, f.y1 - f.y0);
+        const centre = this.floorData ? this.world((f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2) : new THREE.Vector3();
         // Far enough back for the whole room to fit, on a wide screen or a tall phone.
         const vf = (this.camera.fov * Math.PI) / 180;
         const hf = 2 * Math.atan(Math.tan(vf / 2) * this.camera.aspect);
         const dist = Math.max((D * 1.05) / 2 / Math.tan(vf / 2), (W * 1.08) / 2 / Math.tan(hf / 2)) + 2;
         const dir = new THREE.Vector3(0, 0.8, 0.6).normalize();
-        const target = new THREE.Vector3(0, 0, D * 0.12);
+        const target = centre.clone().add(new THREE.Vector3(0, 0, D * 0.12));
         this.flyTo(target.clone().add(dir.multiplyScalar(dist)), target, animate);
     }
 

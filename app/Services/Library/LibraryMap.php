@@ -23,7 +23,7 @@ class LibraryMap
     /** @var array<int, int|null> section id → bookcase id, for one request */
     private array $sectionShelf = [];
 
-    /** @return array{width: float, depth: float, entrance: array{x: float, y: float}, name: string} */
+    /** @return array{width: float, depth: float, entrance: array{x: float, y: float}, name: string, storeys: list<string>, separate_halls: bool} */
     public function floor(): array
     {
         $saved = json_decode((string) Setting::get(self::SETTING, ''), true) ?: [];
@@ -38,6 +38,10 @@ class LibraryMap
                 'y' => (float) ($saved['entrance']['y'] ?? $depth),
             ],
             'name' => (string) ($saved['name'] ?? ''),
+            // «طوابق البناية»: one name per floor, ground floor first.
+            'storeys' => array_values(array_map('strval', $saved['storeys'] ?? [])) ?: ['الطابق الأرضي'],
+            // «كل قاعة مستقلة»: readers see only the hall they are in, one at a time.
+            'separate_halls' => (bool) ($saved['separate_halls'] ?? false),
         ];
     }
 
@@ -48,6 +52,8 @@ class LibraryMap
             'depth' => (float) $floor['depth'],
             'entrance' => ['x' => (float) $floor['entrance']['x'], 'y' => (float) $floor['entrance']['y']],
             'name' => (string) ($floor['name'] ?? ''),
+            'storeys' => array_values(array_map(fn ($n) => trim((string) $n), $floor['storeys'] ?? [])) ?: ['الطابق الأرضي'],
+            'separate_halls' => (bool) ($floor['separate_halls'] ?? false),
         ], JSON_UNESCAPED_UNICODE));
     }
 
@@ -57,7 +63,7 @@ class LibraryMap
         $paths = collect(LibrarySection::options())->pluck('path', 'id');
 
         return LibraryShelf::orderBy('code')->get()->map(fn (LibraryShelf $s) => [
-            'id' => $s->id, 'code' => $s->code, 'name' => $s->name, 'kind' => $s->kind,
+            'id' => $s->id, 'code' => $s->code, 'name' => $s->name, 'kind' => $s->kind, 'storey' => $s->storey,
             'section_id' => $s->section_id, 'section' => $s->section_id ? ($paths[$s->section_id] ?? null) : null,
             'x' => $s->x, 'y' => $s->y, 'rotation' => $s->rotation, 'width' => $s->width, 'depth' => $s->depth,
             'levels' => $s->levels, 'double_sided' => $s->double_sided, 'color' => $s->color,
