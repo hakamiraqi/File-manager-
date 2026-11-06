@@ -308,11 +308,13 @@ function legRoute(g, start, goals, storey) {
 }
 
 // «درج / مصعد»: stairs on two floors are one stairwell when they sit over each other.
+// A lift is a «درج / مصعد» item with `double_sided` set (the column is reused for it).
 export const STAIRS_LINK = 2.5; // metres apart on the plan, at most
 export const STAIRS_COST = 8; // metres of walking one floor up or down is worth
-export function linkedStairs(items, stair, storey) {
+export const isLift = (it) => it?.kind === 'stairs' && !!it.double_sided;
+export function linkedStairs(items, stair, storey, liftOnly = false) {
     return items
-        .filter((it) => it.kind === 'stairs' && storeyOf(it) === storey && Math.hypot(it.x - stair.x, it.y - stair.y) <= STAIRS_LINK)
+        .filter((it) => it.kind === 'stairs' && (!liftOnly || isLift(it)) && storeyOf(it) === storey && Math.hypot(it.x - stair.x, it.y - stair.y) <= STAIRS_LINK)
         .sort((a, b) => Math.hypot(a.x - stair.x, a.y - stair.y) - Math.hypot(b.x - stair.x, b.y - stair.y))[0] ?? null;
 }
 
@@ -321,13 +323,13 @@ export function linkedStairs(items, stair, storey) {
  * Each point carries its floor; the point that changes floor has `stairs` set.
  * @returns {{points: {x:number,y:number,storey:number,stairs?:object}[], length: number}|null}
  */
-export function findRoute(floor, items, start, shelf) {
+export function findRoute(floor, items, start, shelf, { liftOnly = false } = {}) {
     const from = storeyOf(start), to = storeyOf(shelf);
     const goals = standingPoints(shelf);
     if (from === to) return legRoute(storeyGrid(floor, items, from), start, goals, from);
     let best = null;
-    for (const a of items.filter((it) => it.kind === 'stairs' && storeyOf(it) === from)) {
-        const b = linkedStairs(items, a, to);
+    for (const a of items.filter((it) => it.kind === 'stairs' && storeyOf(it) === from && (!liftOnly || isLift(it)))) {
+        const b = linkedStairs(items, a, to, liftOnly);
         if (!b) continue;
         const up = legRoute(storeyGrid(floor, items, from), start, [{ x: a.x, y: a.y, exact: true }], from);
         if (!up) continue;
@@ -338,7 +340,7 @@ export function findRoute(floor, items, start, shelf) {
         if (best && total >= best.length) continue;
         const [first, ...rest] = down.points;
         best = {
-            points: [...up.points, { ...first, stairs: { from, to, code: a.code, kind: a.name || '', cost: climb } }, ...rest],
+            points: [...up.points, { ...first, stairs: { from, to, code: a.code, kind: a.name || '', cost: climb, lift: isLift(a) } }, ...rest],
             length: total,
         };
     }
