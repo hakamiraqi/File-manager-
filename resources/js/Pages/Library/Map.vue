@@ -12,7 +12,7 @@ import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
 import Maneuver from '@/Components/Library/Map/Maneuver.vue';
-import { findRoute, directions, pointAt, standingPoints } from '@/Components/Library/Map/route.js';
+import { findRoute, directions, pointAt, standingPoints, hallAt, isHall, storeyOf, routeOnStorey, outline } from '@/Components/Library/Map/route.js';
 import { createStepTracker, requestSensors, sensorsSupported, stepLength as stepLengthStore, compassOffset, planBearing, angleDiff, circularMean } from '@/Components/Library/Map/stepTracker.js';
 import QrScanner from '@/Components/Library/Map/QrScanner.vue';
 import { sectionColor } from '@/Components/Library/Map/colors.js';
@@ -31,6 +31,19 @@ const Layout = computed(() => (signedIn.value ? AppLayout : GuestShell));
 const map = ref(null);
 const shelfById = computed(() => Object.fromEntries(props.shelves.map((s) => [s.id, s])));
 const bookcases = computed(() => props.shelves.filter((s) => s.kind === 'shelf'));
+// «قاعات وغرف» (2026-11-06, by request): a big library is several halls and rooms.
+// Since then also corridors, buildings of several floors and «كل قاعة مستقلة».
+const halls = computed(() => props.shelves.filter(isHall));
+const storeys = computed(() => props.floor.storeys?.length ? props.floor.storeys : ['']);
+const multiStorey = computed(() => storeys.value.length > 1);
+const storeyName = (n) => storeys.value[n] || t('library.map.storey_n', 'الطابق :n', { n });
+const hallOf = (p) => hallAt(halls.value.filter((h) => storeyOf(h) === storeyOf(p)), p);
+const hallName = (shelfId) => {
+    const s = shelfById.value[shelfId];
+    if (!s) return '';
+    const h = halls.value.length > 1 ? hallOf(s)?.code ?? '' : '';
+    return [h, multiStorey.value ? storeyName(storeyOf(s)) : ''].filter(Boolean).join(' · ');
+};
 
 // Search -------------------------------------------------------------------------------------
 const q = ref('');
@@ -95,10 +108,10 @@ function onPick(id) {
 const here = ref(null); // { x, y, shelfId, code }
 function placeAt(shelf) {
     const p = standingPoints(shelf)[0];
-    here.value = { x: p.x, y: p.y, shelfId: shelf.id, code: shelf.code };
+    here.value = { x: p.x, y: p.y, storey: storeyOf(shelf), shelfId: shelf.id, code: shelf.code };
 }
 if (props.startAt && shelfById.value[props.startAt]) placeAt(shelfById.value[props.startAt]);
-const origin = computed(() => here.value ?? props.floor.entrance);
+const origin = computed(() => here.value ?? { ...props.floor.entrance, storey: 0 });
 function resetHere() {
     here.value = null;
     stop();
@@ -107,7 +120,7 @@ function resetHere() {
 
 // Route & directions ------------------------------------------------------------------------
 const walkRoute = computed(() => (targetShelf.value?.kind === 'shelf' ? findRoute(props.floor, props.shelves, origin.value, targetShelf.value) : null));
-const steps = computed(() => (walkRoute.value ? directions(walkRoute.value, targetShelf.value) : []));
+const steps = computed(() => (walkRoute.value ? directions(walkRoute.value, targetShelf.value, halls.value) : []));
 const WALK_SPEED = 1.2; // m/s, an easy indoor pace
 const metres = (m) => (m < 10 ? Math.max(1, Math.round(m)) : Math.round(m));
 const eta = computed(() => {
@@ -119,9 +132,16 @@ function levelText(level) {
     return level ? t('library.map.level_n', 'الطبقة :n من الأسفل', { n: level }) : '';
 }
 function stepText(step) {
+    const base = baseStepText(step);
+    return step.hall && step.type !== 'enter' ? `${base} ${t('library.map.into_hall', 'إلى :hall', { hall: step.hall })}` : base;
+}
+function baseStepText(step) {
     const d = metres(step.distance);
     const code = targetShelf.value?.code ?? '';
     switch (step.type) {
+        case 'stairs_up': return t('library.map.stairs_up', 'اصعد عبر :code إلى :storey', { code: step.stairs.code, storey: storeyName(step.storey) });
+        case 'stairs_down': return t('library.map.stairs_down', 'انزل عبر :code إلى :storey', { code: step.stairs.code, storey: storeyName(step.storey) });
+        case 'enter': return t('library.map.enter_hall', 'ادخل :hall وامشِ :d م', { hall: step.hall, d });
         case 'start': return t('library.map.go_straight', 'امشِ للأمام :d م', { d });
         case 'right': return t('library.map.turn_right', 'انعطف يميناً ثم امشِ :d م', { d });
         case 'left': return t('library.map.turn_left', 'انعطف يساراً ثم امشِ :d م', { d });
@@ -313,8 +333,51 @@ function availability(b) {
         : { text: t('library.all_loaned', 'كل النسخ مُعارة'), cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
 }
 const fromText = computed(() => (here.value ? t('library.map.from_here', ':d م من موقعك', { d: metres(walkRoute.value?.length ?? 0) }) : t('library.map.distance', ':d م مشياً من المدخل', { d: metres(walkRoute.value?.length ?? 0) })));
-const spotLabel = (s) => [t('library.shelf', 'الرف') + ' ' + s.code, levelText(s.level)].filter(Boolean).join(' · ');
+const spotLabel = (s) => [t('library.shelf', 'الرف') + ' ' + s.code, hallName(s.shelf_id), levelText(s.level)].filter(Boolean).join(' · ');
 const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id, level: spot.value?.level ?? null } : null));
+
+// What the 3D view shows: one floor of the building, and with «كل قاعة مستقلة» one hall. -------
+const viewStorey = ref(storeyOf(here.value ?? targetShelf.value ?? null));
+const viewHall = ref(null); // hall id, or null for the whole floor
+const hallMenu = ref(false);
+const separate = computed(() => !!props.floor.separate_halls && halls.value.length > 1);
+const storeyHalls = computed(() => halls.value.filter((h) => storeyOf(h) === viewStorey.value && h.kind === 'hall'));
+function showPlace(p) {
+    if (!p) return;
+    viewStorey.value = storeyOf(p);
+    if (separate.value) viewHall.value = hallOf(p)?.id ?? null;
+}
+showPlace(here.value ?? targetShelf.value);
+watch(targetShelf, (s) => { if (s && !walking.value) showPlace(s); });
+watch(here, (h) => h && !walking.value && showPlace(h));
+// While walking, the view follows the walker up the stairs and from hall to hall.
+watch(() => (walking.value ? avatar.value : null), (a) => {
+    if (!a || a.onStairs) return;
+    if (storeyOf(a) !== viewStorey.value) viewStorey.value = storeyOf(a);
+    if (separate.value) { const h = hallOf(a); if (h && h.id !== viewHall.value) viewHall.value = h.id; }
+});
+function nearOutline(item, hall) {
+    const poly = outline(hall);
+    return poly.some((a, i) => {
+        const b = poly[(i + 1) % poly.length], dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((item.x - a.x) * dx + (item.y - a.y) * dy) / (dx * dx + dy * dy || 1)));
+        return Math.hypot(item.x - (a.x + t * dx), item.y - (a.y + t * dy)) < 0.5;
+    });
+}
+const viewShelves = computed(() => {
+    const onFloor = props.shelves.filter((s) => storeyOf(s) === viewStorey.value);
+    const hall = viewHall.value ? shelfById.value[viewHall.value] : null;
+    if (!hall || storeyOf(hall) !== viewStorey.value) return onFloor;
+    return onFloor.filter((s) => s.id === hall.id || (s.kind === 'door' ? nearOutline(s, hall) : !isHall(s) && hallOf(s)?.id === hall.id));
+});
+const viewRoute = computed(() => routeOnStorey(walkRoute.value, viewStorey.value));
+const viewAvatar = computed(() => (avatar.value && storeyOf(avatar.value) === viewStorey.value ? avatar.value : null));
+const viewHighlight = computed(() => (highlight.value && viewShelves.value.some((s) => s.id === highlight.value.id) ? highlight.value : null));
+watch([viewStorey, viewHall], () => setTimeout(() => {
+    if (walking.value) return;
+    if (viewHighlight.value) map.value?.focusShelf(viewHighlight.value.id);
+    else map.value?.overview();
+}, 80));
 </script>
 
 <template>
@@ -343,7 +406,7 @@ const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id
             </div>
 
             <div v-else class="relative h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-gray-900">
-                <LibraryMap3D ref="map" :floor="floor" :shelves="shelves" :highlight="highlight" :route="walkRoute" :avatar="avatar" :follow="walking" @pick="onPick" @ready="onReady" />
+                <LibraryMap3D ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
 
                 <!-- Search, or the Waze-style instruction banner while walking. -->
                 <div class="pointer-events-none absolute inset-x-0 top-0 p-3">
@@ -404,6 +467,25 @@ const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id
                 <p v-if="scanNote" class="absolute inset-x-0 top-28 z-10 mx-auto w-fit rounded-full bg-gray-900/90 px-4 py-2 text-sm text-white shadow-lg">{{ scanNote }}</p>
                 <QrScanner v-if="scanning" @result="onScan" @close="scanning = false" />
 
+                <!-- Floor of the building and, with «كل قاعة مستقلة», the hall shown. -->
+                <div v-if="(multiStorey || separate) && !walking" class="absolute start-3 top-24 flex max-w-[45%] flex-col items-start gap-1.5">
+                    <div v-if="multiStorey" class="flex flex-col overflow-hidden rounded-xl bg-white/95 shadow ring-1 ring-black/5 dark:bg-gray-800/95 dark:ring-white/10">
+                        <button v-for="(n, i) in storeys" :key="i" @click="viewStorey = storeys.length - 1 - i; viewHall = null"
+                            class="px-3 py-1.5 text-start text-xs font-semibold" :class="viewStorey === storeys.length - 1 - i ? 'bg-[#1f2a44] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'">
+                            {{ storeyName(storeys.length - 1 - i) }}
+                        </button>
+                    </div>
+                    <div v-if="separate && storeyHalls.length > 1" class="relative">
+                        <button @click="hallMenu = !hallMenu" class="flex max-w-full items-center gap-1 truncate rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow" dir="auto">
+                            {{ viewHall ? shelfById[viewHall]?.code : t('library.map.all_halls', 'كل القاعات') }} <span class="opacity-80">▾</span>
+                        </button>
+                        <div v-if="hallMenu" class="mt-1 flex max-h-56 flex-col overflow-y-auto rounded-xl bg-white/95 shadow ring-1 ring-black/5 dark:bg-gray-800/95 dark:ring-white/10">
+                            <button @click="viewHall = null; hallMenu = false" class="px-3 py-1.5 text-start text-xs" :class="!viewHall ? 'font-semibold text-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700'">{{ t('library.map.all_halls', 'كل القاعات') }}</button>
+                            <button v-for="h in storeyHalls" :key="h.id" @click="viewHall = h.id; hallMenu = false" class="truncate px-3 py-1.5 text-start text-xs" :class="viewHall === h.id ? 'font-semibold text-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700'" dir="auto">{{ h.code }}</button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Camera buttons. -->
                 <div class="absolute end-3 top-24 flex flex-col gap-2">
                     <button @click="map?.overview()" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="t('library.map.overview', 'عرض المكتبة كاملة')"><MapIcon class="h-5 w-5" /></button>
@@ -436,7 +518,7 @@ const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id
                             <span class="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white" :style="{ background: pickedShelf.color || sectionColor(pickedShelf.section_id) }">{{ pickedShelf.code.slice(0, 4) }}</span>
                             <div class="min-w-0 flex-1">
                                 <p class="font-bold">{{ pickedShelf.kind === 'shelf' ? t('library.shelf', 'الرف') + ' ' + pickedShelf.code : pickedShelf.name || pickedShelf.code }}</p>
-                                <p class="truncate text-sm text-gray-500">{{ pickedShelf.section || pickedShelf.name || '' }}</p>
+                                <p class="truncate text-sm text-gray-500">{{ [pickedShelf.section || pickedShelf.name, hallName(pickedShelf.id)].filter(Boolean).join(' · ') }}</p>
                                 <Link v-if="pickedShelf.section_id" :href="route('library.index', { section: pickedShelf.section_id })" class="mt-1 inline-flex items-center gap-1 text-sm text-[var(--accent-600)] hover:underline"><BookOpenIcon class="h-4 w-4" /> {{ t('library.map.section_books', 'كتب هذا القسم') }}</Link>
                             </div>
                             <button @click="clearSelection" class="-m-1 rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>

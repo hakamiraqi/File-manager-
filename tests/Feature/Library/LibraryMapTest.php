@@ -67,6 +67,38 @@ class LibraryMapTest extends TestCase
             ['code' => 'عائق2', 'kind' => 'obstacle', 'points' => [[0, 0], [1, 1]]],
         ]))->assertSessionHasErrors('shelves.0.points');
 
+        // Several halls and rooms in any direction, joined by doors; bookcases at any angle.
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'القاعة الرئيسية', 'kind' => 'hall', 'x' => 6, 'y' => 7, 'width' => 40, 'depth' => 12, 'rotation' => -30, 'points' => [[-20, -6], [20, -6], [20, 6], [-20, 6]]],
+            ['code' => 'باب1', 'kind' => 'door', 'width' => 1.2, 'depth' => 0.2, 'rotation' => 405 - 360],
+            ['code' => 'C1', 'rotation' => 330],
+        ]))->assertSessionHasNoErrors();
+        $hall = LibraryShelf::where('kind', 'hall')->first();
+        $this->assertSame(330, $hall->rotation);
+        $this->assertSame(40.0, $hall->width);
+        $this->assertCount(4, $hall->points);
+        $this->assertSame(45, LibraryShelf::where('kind', 'door')->value('rotation'));
+        $this->assertNull(LibraryShelf::where('kind', 'door')->value('points'));
+
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'غرفة', 'kind' => 'hall'],
+        ]))->assertSessionHasErrors('shelves.0.points');
+
+        // A building of two floors: corridors and stairs on each, every hall shown on its own.
+        $two = $this->layout([
+            ['code' => 'ممر1', 'kind' => 'corridor', 'width' => 20, 'depth' => 3, 'points' => [[-10, -1.5], [10, -1.5], [10, 1.5], [-10, 1.5]]],
+            ['code' => 'درج1', 'kind' => 'stairs', 'width' => 2, 'depth' => 3],
+            ['code' => 'درج2', 'kind' => 'stairs', 'width' => 2, 'depth' => 3, 'storey' => 1],
+            ['code' => 'D1', 'storey' => 1],
+        ]);
+        $two['floor'] += ['storeys' => ['الأرضي', 'الأول'], 'separate_halls' => true];
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $two)->assertSessionHasNoErrors();
+        $this->assertSame(['الأرضي', 'الأول'], app(LibraryMap::class)->floor()['storeys']);
+        $this->assertTrue(app(LibraryMap::class)->floor()['separate_halls']);
+        $this->assertSame(1, LibraryShelf::where('code', 'D1')->value('storey'));
+        $this->assertSame(1, app(LibraryMap::class)->shelves()->firstWhere('code', 'درج2')['storey']);
+        $this->assertCount(4, LibraryShelf::where('code', 'ممر1')->value('points'));
+
         $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
             ['id' => $a1->id, 'code' => 'A1', 'x' => 3, 'rotation' => 90],
         ]))->assertSessionHasNoErrors();
