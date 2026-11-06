@@ -54,6 +54,23 @@ class LibraryMapTest extends TestCase
             ['code' => 'B1'], ['code' => 'b1'],
         ]))->assertSessionHasErrors('shelves.1.code');
 
+        // An obstacle keeps the outline it was drawn with, and cannot be saved without one.
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'عائق1', 'kind' => 'obstacle', 'height' => 2.5, 'points' => [[-1, -0.5], [1, -0.5], [1, 0.5], [0, 0.5], [-1, 0.2]]],
+        ]))->assertSessionHasNoErrors();
+        $obstacle = LibraryShelf::where('code', 'عائق1')->first();
+        $this->assertEquals([[-1, -0.5], [1, -0.5], [1, 0.5], [0, 0.5], [-1, 0.2]], $obstacle->points);
+        $this->assertSame(2.5, $obstacle->height);
+        $this->assertSame($obstacle->points, app(LibraryMap::class)->shelves()->firstWhere('code', 'عائق1')['points']);
+
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'عائق2', 'kind' => 'obstacle', 'points' => [[0, 0], [1, 1]]],
+        ]))->assertSessionHasErrors('shelves.0.points');
+
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['id' => $a1->id, 'code' => 'A1', 'x' => 3, 'rotation' => 90],
+        ]))->assertSessionHasNoErrors();
+
         $this->actingAs($librarian)->get(route('library.manage.map'))->assertOk()
             ->assertInertia(fn (Assert $page) => $page->component('Library/Manage/Map')->has('shelves', 1));
     }

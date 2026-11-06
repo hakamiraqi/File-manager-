@@ -58,6 +58,7 @@ class LibraryMap
             'section_id' => $s->section_id, 'section' => $s->section_id ? ($paths[$s->section_id] ?? null) : null,
             'x' => $s->x, 'y' => $s->y, 'rotation' => $s->rotation, 'width' => $s->width, 'depth' => $s->depth,
             'levels' => $s->levels, 'double_sided' => $s->double_sided, 'color' => $s->color,
+            'points' => $s->points, 'height' => $s->height,
         ]);
     }
 

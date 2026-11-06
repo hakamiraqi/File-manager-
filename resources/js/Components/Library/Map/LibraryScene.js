@@ -12,6 +12,7 @@ export function shelfHeight(item) {
     if (item.kind === 'table') return 0.75;
     if (item.kind === 'wall') return 2.6;
     if (item.kind === 'gate') return 1.6;
+    if (item.kind === 'obstacle') return item.height || 1;
     return item.levels * LEVEL_H + 0.12;
 }
 
@@ -370,6 +371,21 @@ export class LibraryScene {
         } else if (kind === 'table') {
             box(W, 0.05, D, 0, h - 0.025, 0);
             for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) box(0.05, h - 0.05, 0.05, sx * (W / 2 - 0.08), (h - 0.05) / 2, sz * (D / 2 - 0.08));
+        } else if (kind === 'obstacle' && item.points?.length >= 3) {
+            // The outline as drawn on the plan, raised to its height (plan y runs along local +z).
+            const shape = new THREE.Shape(item.points.map(([px, py]) => new THREE.Vector2(px, -py)));
+            const geo = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+            geo.rotateX(-Math.PI / 2);
+            const mat = new THREE.MeshStandardMaterial({ color: item.color || (this.dark ? '#64748b' : '#9ca3af'), roughness: 0.85 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.castShadow = mesh.receiveShadow = true;
+            mesh.userData.itemId = item.id ?? item._key;
+            group.add(mesh);
+            // Yellow-black hazard band round the top edge.
+            const band = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.06, bevelEnabled: false }).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#facc15', roughness: 0.6 }));
+            band.position.y = h;
+            band.userData.itemId = mesh.userData.itemId;
+            group.add(band);
         } else if (kind === 'gate') {
             // Two slim posts with a light strip on top; the passage between them stays open.
             const post = new THREE.MeshStandardMaterial({ color: this.dark ? '#cbd5e1' : '#f1f5f9', roughness: 0.35, metalness: 0.3, transparent: true, opacity: 0.92 });
@@ -384,7 +400,7 @@ export class LibraryScene {
             box(W, h, D, 0, h / 2, 0);
         }
 
-        if (kind !== 'wall') {
+        if (kind !== 'wall' && kind !== 'obstacle') {
             const label = labelSprite(item.code || '', kind === 'shelf' ? item.section || item.name : item.name, accent, { scale: kind === 'shelf' ? 1 : 0.75 });
             label.position.set(0, h + 0.12, 0);
             label.userData.itemId = item.id ?? item._key;

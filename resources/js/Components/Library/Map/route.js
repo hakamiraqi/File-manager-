@@ -27,20 +27,47 @@ function inside(px, py, item, grow) {
     return Math.abs(lx) <= item.width / 2 + grow && Math.abs(ly) <= item.depth / 2 + grow;
 }
 
+/** «عائق»: an obstacle's drawn outline on the plan (its points are relative to x/y, before rotation). */
+export function outline(item) {
+    const a = ((item.rotation || 0) * Math.PI) / 180;
+    const c = Math.cos(a), s = Math.sin(a);
+    return item.points.map(([px, py]) => ({ x: item.x + px * c - py * s, y: item.y + px * s + py * c }));
+}
+
+function inPolygon(px, py, poly) {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i], b = poly[j];
+        if ((a.y > py) !== (b.y > py) && px < ((b.x - a.x) * (py - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+    }
+    return hit;
+}
+function nearPolygon(px, py, poly, grow) {
+    if (inPolygon(px, py, poly)) return true;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[j], b = poly[i];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (py - a.y) * dy) / (dx * dx + dy * dy || 1)));
+        if (Math.hypot(px - (a.x + t * dx), py - (a.y + t * dy)) <= grow) return true;
+    }
+    return false;
+}
+
 export function buildGrid(floor, items) {
     const cols = Math.max(1, Math.ceil(floor.width / CELL));
     const rows = Math.max(1, Math.ceil(floor.depth / CELL));
     const blocked = new Uint8Array(cols * rows);
     for (const it of items) {
         const grow = it.grow ?? CLEARANCE;
-        const pts = footprint(it, grow);
+        const poly = it.points?.length >= 3 ? outline(it) : null;
+        const pts = poly ? poly.flatMap((p) => [{ x: p.x - grow, y: p.y - grow }, { x: p.x + grow, y: p.y + grow }]) : footprint(it, grow);
         const minX = Math.max(0, Math.floor(Math.min(...pts.map((p) => p.x)) / CELL));
         const maxX = Math.min(cols - 1, Math.ceil(Math.max(...pts.map((p) => p.x)) / CELL));
         const minY = Math.max(0, Math.floor(Math.min(...pts.map((p) => p.y)) / CELL));
         const maxY = Math.min(rows - 1, Math.ceil(Math.max(...pts.map((p) => p.y)) / CELL));
         for (let r = minY; r <= maxY; r++) {
             for (let c = minX; c <= maxX; c++) {
-                if (inside((c + 0.5) * CELL, (r + 0.5) * CELL, it, grow)) blocked[r * cols + c] = 1;
+                if (poly ? nearPolygon((c + 0.5) * CELL, (r + 0.5) * CELL, poly, grow) : inside((c + 0.5) * CELL, (r + 0.5) * CELL, it, grow)) blocked[r * cols + c] = 1;
             }
         }
     }
