@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Library;
 use App\Http\Controllers\Controller;
 use App\Models\Library\Book;
 use App\Models\Library\LibrarySection;
+use App\Services\Library\LibraryMap;
 use App\Support\PublicSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,8 @@ class CatalogController extends Controller
             ->orderBy('title')
             ->paginate(24)
             ->withQueryString();
+        $books->getCollection()->load('copies:id,book_id,shelf,status,barcode');
+        app(LibraryMap::class)->attachSpots($books->getCollection());
 
         return Inertia::render('Library/Index', [
             'books' => $books,

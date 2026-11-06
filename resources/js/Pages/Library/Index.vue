@@ -7,7 +7,7 @@ import Pagination from '@/Components/Pagination.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { MagnifyingGlassIcon, FolderIcon, HomeIcon, Squares2X2Icon, ListBulletIcon, ChevronLeftIcon, CheckBadgeIcon } from '@heroicons/vue/24/outline';
+import { MagnifyingGlassIcon, FolderIcon, HomeIcon, Squares2X2Icon, ListBulletIcon, ChevronLeftIcon, CheckBadgeIcon, MapPinIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const props = defineProps({ books: Object, sections: Array, currentSection: Object, childSections: Array, filters: Object });
@@ -32,6 +32,9 @@ const trail = computed(() => {
     for (let s = byId[props.currentSection.id], i = 0; s && i < 20; s = byId[s.parent_id], i++) out.unshift(s);
     return out;
 });
+
+// «على الخريطة» (2026-11-06, by request): the bookcase code from the library map, e.g. "A3 · 2".
+const spotText = (spot) => (spot.level ? `${spot.code} · ${spot.level}` : spot.code);
 
 function availability(book) {
     if (book.reference_only) return { text: t('library.reference_only', 'للقراءة داخل المكتبة'), cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' };
@@ -116,23 +119,35 @@ function availability(book) {
             <div v-if="!books.data.length" class="py-16 text-center text-gray-400">{{ t('library.empty', 'لا توجد كتب هنا بعد.') }}</div>
 
             <div v-else-if="view === 'grid'" class="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-6">
-                <Link v-for="book in books.data" :key="book.id" :href="route('library.books.show', book.id)" class="group">
-                    <BookCover :book="book" class="transition group-hover:shadow-lg" />
-                    <p class="mt-2 line-clamp-2 text-sm font-medium text-gray-800 dark:text-gray-100" dir="auto">{{ book.title }}</p>
-                    <p v-if="book.authors" class="truncate text-xs text-gray-500" dir="auto">{{ book.authors }}</p>
-                    <span class="mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium" :class="availability(book).cls">{{ availability(book).text }}</span>
-                </Link>
+                <div v-for="book in books.data" :key="book.id">
+                    <Link :href="route('library.books.show', book.id)" class="group block">
+                        <BookCover :book="book" class="transition group-hover:shadow-lg" />
+                        <p class="mt-2 line-clamp-2 text-sm font-medium text-gray-800 dark:text-gray-100" dir="auto">{{ book.title }}</p>
+                        <p v-if="book.authors" class="truncate text-xs text-gray-500" dir="auto">{{ book.authors }}</p>
+                    </Link>
+                    <div class="mt-1 flex flex-wrap items-center gap-1">
+                        <span class="inline-block rounded-full px-2 py-0.5 text-[11px] font-medium" :class="availability(book).cls">{{ availability(book).text }}</span>
+                        <Link v-if="book.map_spot" :href="route('library.map', { book: book.id })" class="inline-flex items-center gap-0.5 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-300" :title="t('library.map.show_on_map', 'أين الكتاب؟ اعرضه على الخريطة')">
+                            <MapPinIcon class="h-3.5 w-3.5" /><span dir="ltr">{{ spotText(book.map_spot) }}</span>
+                        </Link>
+                    </div>
+                </div>
             </div>
 
             <div v-else class="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800">
-                <Link v-for="book in books.data" :key="book.id" :href="route('library.books.show', book.id)" class="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <BookCover :book="book" size="sm" class="w-10 shrink-0" />
-                    <div class="min-w-0 flex-1">
-                        <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100" dir="auto">{{ book.title }}</p>
-                        <p class="truncate text-xs text-gray-500" dir="auto">{{ [book.authors, book.year, book.section?.name].filter(Boolean).join(' · ') }}</p>
-                    </div>
-                    <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" :class="availability(book).cls">{{ availability(book).text }}</span>
-                </Link>
+                <div v-for="book in books.data" :key="book.id" class="flex items-center gap-2 pe-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <Link :href="route('library.books.show', book.id)" class="flex min-w-0 flex-1 items-center gap-3 py-2.5 ps-3">
+                        <BookCover :book="book" size="sm" class="w-10 shrink-0" />
+                        <div class="min-w-0 flex-1">
+                            <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100" dir="auto">{{ book.title }}</p>
+                            <p class="truncate text-xs text-gray-500" dir="auto">{{ [book.authors, book.year, book.section?.name].filter(Boolean).join(' · ') }}</p>
+                        </div>
+                        <span class="shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium" :class="availability(book).cls">{{ availability(book).text }}</span>
+                    </Link>
+                    <Link v-if="book.map_spot" :href="route('library.map', { book: book.id })" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 dark:bg-blue-900/40 dark:text-blue-300" :title="t('library.map.show_on_map', 'أين الكتاب؟ اعرضه على الخريطة')">
+                        <MapPinIcon class="h-4 w-4" /><span dir="ltr">{{ spotText(book.map_spot) }}</span>
+                    </Link>
+                </div>
             </div>
 
             <Pagination :links="books.links" />

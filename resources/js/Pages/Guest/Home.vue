@@ -5,7 +5,7 @@ import GuestShell from '@/Components/GuestShell.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
-    MagnifyingGlassIcon, BookOpenIcon, AcademicCapIcon, FolderIcon, ChatBubbleLeftRightIcon,
+    MagnifyingGlassIcon, BookOpenIcon, AcademicCapIcon, FolderIcon, ChatBubbleLeftRightIcon, MapIcon,
     CheckBadgeIcon, ArrowLeftIcon, PaperAirplaneIcon,
 } from '@heroicons/vue/24/outline';
 
@@ -37,6 +37,7 @@ const tiles = computed(() => [
 
 const cards = computed(() => [
     site.value.library && { title: t('nav.library', 'المكتبة'), text: t('guest.library_text', 'تصفح الكتب حسب الأقسام، وابحث عن أي كتاب واعرف هل هو متوفر الآن أو مُعار.'), href: route('library.index'), icon: BookOpenIcon, tone: 'from-sky-500 to-blue-600' },
+    site.value.library && { title: t('library.tab.map', 'خريطة المكتبة'), text: t('guest.map_text', 'ابحث عن كتاب واعرف رفّه، والطريق إليه داخل المكتبة خطوة بخطوة.'), href: route('library.map'), icon: MapIcon, tone: 'from-cyan-500 to-sky-600' },
     site.value.theses && { title: t('nav.theses', 'الرسائل والأطاريح'), text: t('guest.theses_text', 'ابحث في رسائل الماجستير وأطاريح الدكتوراه حسب السنة والقسم والموضوع.'), href: route('theses.index'), icon: AcademicCapIcon, tone: 'from-violet-500 to-purple-600' },
     site.value.files && { title: t('guest.files', 'الملفات العامة'), text: t('guest.files_text', 'الملفات والمجلدات المتاحة للجميع بدون تسجيل دخول.'), href: route('guest.files'), icon: FolderIcon, tone: 'from-amber-400 to-orange-500' },
     site.value.contact && { title: t('nav.contact', 'تواصل معنا'), text: t('guest.contact_text', 'أرسل استفساراً أو اطلب كتاباً أو رسالة، وسنرد عليك.'), href: route('contact.create'), icon: ChatBubbleLeftRightIcon, tone: 'from-emerald-500 to-teal-600' },
@@ -100,7 +101,7 @@ function availability(book) {
 
         <div class="space-y-10 px-4 pb-12 sm:px-6">
             <!-- Sections -->
-            <section v-if="cards.length" class="grid gap-4 sm:grid-cols-2" :class="cards.length >= 4 ? 'lg:grid-cols-4' : cards.length === 3 ? 'lg:grid-cols-3' : ''">
+            <section v-if="cards.length" class="grid gap-4 sm:grid-cols-2" :class="cards.length >= 5 ? 'lg:grid-cols-5' : cards.length === 4 ? 'lg:grid-cols-4' : cards.length === 3 ? 'lg:grid-cols-3' : ''">
                 <Link v-for="c in cards" :key="c.href" :href="c.href" class="group flex flex-col rounded-2xl border border-gray-200 bg-white p-5 transition hover:-translate-y-0.5 hover:shadow-lg dark:border-gray-700 dark:bg-gray-800">
                     <span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br text-white shadow-md" :class="c.tone"><component :is="c.icon" class="h-6 w-6" /></span>
                     <h2 class="mt-4 font-bold text-gray-900 dark:text-white">{{ c.title }}</h2>
