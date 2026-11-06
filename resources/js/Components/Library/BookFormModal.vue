@@ -166,7 +166,7 @@ function submit() {
                         </div>
                         <div>
                             <InputLabel :value="t('library.shelf', 'الرف')" />
-                            <TextInput v-model="form.shelf" class="mt-1 block w-full" />
+                            <TextInput v-model="form.shelf" list="shelf-codes" class="mt-1 block w-full" />
                         </div>
                     </template>
                     <div class="col-span-2">

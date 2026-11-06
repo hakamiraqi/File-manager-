@@ -1,0 +1,325 @@
+<script setup>
+// «خريطة المكتبة» (2026-11-06, by request): search a book, see its bookcase in a 3D model of the
+// reading room and follow the walk from the entrance, Waze style.
+import { Head, Link, usePage } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import axios from 'axios';
+import AppLayout from '@/Layouts/AppLayout.vue';
+import GuestShell from '@/Components/GuestShell.vue';
+import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
+import BookCover from '@/Components/Library/BookCover.vue';
+import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
+import Maneuver from '@/Components/Library/Map/Maneuver.vue';
+import { findRoute, directions, pointAt } from '@/Components/Library/Map/route.js';
+import { sectionColor } from '@/Components/Library/Map/colors.js';
+import { useTrans } from '@/Composables/useTrans';
+import {
+    MagnifyingGlassIcon, XMarkIcon, PlayIcon, PauseIcon, ArrowPathIcon, MapIcon, PencilSquareIcon,
+    ViewfinderCircleIcon, ChevronLeftIcon, ChevronRightIcon, BookOpenIcon, CheckCircleIcon,
+} from '@heroicons/vue/24/outline';
+
+const { t } = useTrans();
+const props = defineProps({ floor: Object, shelves: Array, target: Object, canEdit: Boolean });
+const page = usePage();
+const signedIn = computed(() => !!page.props.auth?.user);
+const Layout = computed(() => (signedIn.value ? AppLayout : GuestShell));
+
+const map = ref(null);
+const shelfById = computed(() => Object.fromEntries(props.shelves.map((s) => [s.id, s])));
+const bookcases = computed(() => props.shelves.filter((s) => s.kind === 'shelf'));
+
+// Search -------------------------------------------------------------------------------------
+const q = ref('');
+const results = ref([]);
+const searching = ref(false);
+const showResults = ref(false);
+let timer = null;
+let lastQuery = '';
+watch(q, (v) => {
+    clearTimeout(timer);
+    if (v.trim().length < 2) { results.value = []; return; }
+    timer = setTimeout(async () => {
+        lastQuery = v;
+        searching.value = true;
+        try {
+            const { data } = await axios.get(route('library.map.search'), { params: { q: v } });
+            if (lastQuery === v) { results.value = data.books; showResults.value = true; }
+        } finally { searching.value = false; }
+    }, 250);
+});
+
+// Selection: a book (with its spots) or a bookcase clicked on the map. -------------------------
+const book = ref(props.target);
+const spotIndex = ref(0);
+const pickedShelf = ref(null);
+const spot = computed(() => book.value?.spots?.[spotIndex.value] ?? null);
+const targetShelf = computed(() => (spot.value ? shelfById.value[spot.value.shelf_id] : pickedShelf.value));
+
+function chooseBook(b) {
+    book.value = b;
+    spotIndex.value = 0;
+    pickedShelf.value = null;
+    showResults.value = false;
+    q.value = '';
+    stop();
+    // Keep the address shareable: /library/map?book=12
+    try { window.history.replaceState(window.history.state, '', route('library.map', { book: b.id })); } catch {}
+    if (b.spots?.length) setTimeout(() => map.value?.focusShelf(b.spots[0].shelf_id), 50);
+}
+// Opened from a book page (/library/map?book=12): fly straight to its bookcase.
+function onReady(api) {
+    if (spot.value) setTimeout(() => api.focusShelf(spot.value.shelf_id), 400);
+}
+function clearSelection() {
+    book.value = null;
+    pickedShelf.value = null;
+    stop();
+    map.value?.overview();
+    try { window.history.replaceState(window.history.state, '', route('library.map')); } catch {}
+}
+function onPick(id) {
+    const s = shelfById.value[id];
+    if (!s || walking.value) return;
+    if (book.value && spot.value?.shelf_id === id) return;
+    book.value = null;
+    pickedShelf.value = s;
+    stop();
+}
+
+// Route & directions ------------------------------------------------------------------------
+const walkRoute = computed(() => (targetShelf.value?.kind === 'shelf' ? findRoute(props.floor, props.shelves, props.floor.entrance, targetShelf.value) : null));
+const steps = computed(() => (walkRoute.value ? directions(walkRoute.value, targetShelf.value) : []));
+const WALK_SPEED = 1.2; // m/s, an easy indoor pace
+const metres = (m) => (m < 10 ? Math.max(1, Math.round(m)) : Math.round(m));
+const eta = computed(() => {
+    const s = Math.round((walkRoute.value?.length ?? 0) / WALK_SPEED);
+    return s < 60 ? t('library.map.eta_sec', ':n ثانية', { n: Math.max(5, Math.ceil(s / 5) * 5) }) : t('library.map.eta_min', ':n دقيقة', { n: Math.round(s / 60) });
+});
+
+function levelText(level) {
+    return level ? t('library.map.level_n', 'الطبقة :n من الأسفل', { n: level }) : '';
+}
+function stepText(step) {
+    const d = metres(step.distance);
+    const code = targetShelf.value?.code ?? '';
+    switch (step.type) {
+        case 'start': return t('library.map.go_straight', 'امشِ للأمام :d م', { d });
+        case 'right': return t('library.map.turn_right', 'انعطف يميناً ثم امشِ :d م', { d });
+        case 'left': return t('library.map.turn_left', 'انعطف يساراً ثم امشِ :d م', { d });
+        case 'slight_right': return t('library.map.slight_right', 'مِل قليلاً إلى اليمين :d م', { d });
+        case 'slight_left': return t('library.map.slight_left', 'مِل قليلاً إلى اليسار :d م', { d });
+        case 'uturn': return t('library.map.uturn', 'استدر للخلف ثم امشِ :d م', { d });
+        case 'arrive_right': return t('library.map.arrive_right', 'الرف :code على يمينك', { code });
+        case 'arrive_left': return t('library.map.arrive_left', 'الرف :code على يسارك', { code });
+        default: return t('library.map.arrive_ahead', 'الرف :code أمامك', { code });
+    }
+}
+
+// Walking along the route (a preview of the walk: phones can't see where you are indoors). ----
+const walking = ref(false);
+const showSteps = ref(false);
+const paused = ref(false);
+const walked = ref(0);
+const arrived = ref(false);
+let raf = null;
+let lastT = 0;
+const avatar = computed(() => (walkRoute.value && (walking.value || arrived.value) ? pointAt(walkRoute.value, walked.value) : null));
+const currentStep = computed(() => {
+    if (!steps.value.length) return null;
+    let idx = 0;
+    steps.value.forEach((s, i) => { if (s.at <= walked.value + 0.01) idx = i; });
+    // Show the coming manoeuvre once you are close to it, like a satnav.
+    const next = steps.value[idx + 1];
+    if (next && next.at - walked.value < 2.2) idx++;
+    return { ...steps.value[idx], index: idx, toNext: Math.max(0, (steps.value[idx].at > walked.value ? steps.value[idx].at : (steps.value[idx + 1]?.at ?? walkRoute.value.length)) - walked.value) };
+});
+
+function start() {
+    if (!walkRoute.value) return;
+    walked.value = 0;
+    arrived.value = false;
+    walking.value = true;
+    paused.value = false;
+    lastT = performance.now();
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(step);
+}
+function step(now) {
+    const dt = Math.min(0.25, (now - lastT) / 1000);
+    lastT = now;
+    if (!paused.value) walked.value = Math.min(walkRoute.value.length, walked.value + dt * WALK_SPEED * 1.6);
+    if (walked.value >= walkRoute.value.length) {
+        walking.value = false;
+        arrived.value = true;
+        setTimeout(() => !walking.value && targetShelf.value && map.value?.focusShelf(targetShelf.value.id), 600);
+        return;
+    }
+    raf = requestAnimationFrame(step);
+}
+function stop() {
+    cancelAnimationFrame(raf);
+    walking.value = false;
+    arrived.value = false;
+    paused.value = false;
+    walked.value = 0;
+}
+function jump(delta) {
+    const i = Math.min(steps.value.length - 1, Math.max(0, (currentStep.value?.index ?? 0) + delta));
+    walked.value = steps.value[i].at;
+}
+onBeforeUnmount(() => cancelAnimationFrame(raf));
+
+function availability(b) {
+    if (b.reference_only) return { text: t('library.reference_only', 'للقراءة داخل المكتبة'), cls: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200' };
+    if (!b.copies_count) return { text: t('library.not_in_library', 'غير موجود حالياً'), cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700' };
+    return b.available_count > 0
+        ? { text: t('library.available_n', 'متاح :n من :m', { n: b.available_count, m: b.copies_count }), cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' }
+        : { text: t('library.all_loaned', 'كل النسخ مُعارة'), cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
+}
+const spotLabel = (s) => [t('library.shelf', 'الرف') + ' ' + s.code, levelText(s.level)].filter(Boolean).join(' · ');
+const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id, level: spot.value?.level ?? null } : null));
+</script>
+
+<template>
+    <Head :title="t('library.map.title', 'خريطة المكتبة')" />
+
+    <component :is="Layout">
+        <template #header>
+            <div class="flex items-center gap-2">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ t('library.map.title', 'خريطة المكتبة') }}</h2>
+                <Link v-if="canEdit" :href="route('library.manage.map')" class="ms-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
+                    <PencilSquareIcon class="h-4 w-4" /> {{ t('library.map.edit', 'ترتيب الرفوف') }}
+                </Link>
+            </div>
+        </template>
+
+        <div class="space-y-4 p-4 sm:p-6">
+            <LibraryTabs v-if="signedIn" />
+
+            <div v-if="!bookcases.length" class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-600 dark:bg-gray-800">
+                <MapIcon class="mx-auto h-12 w-12 text-gray-300" />
+                <p class="mt-3 font-semibold">{{ t('library.map.empty', 'لم تُرسم خريطة المكتبة بعد') }}</p>
+                <p class="mt-1 text-sm text-gray-500">{{ t('library.map.empty_text', 'بعد ترتيب الرفوف تظهر هنا المكتبة بشكل ثلاثي الأبعاد مع طريق الوصول لكل كتاب.') }}</p>
+                <Link v-if="canEdit" :href="route('library.manage.map')" class="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm font-medium text-white">
+                    <PencilSquareIcon class="h-5 w-5" /> {{ t('library.map.start_editing', 'ابدأ ترتيب الرفوف') }}
+                </Link>
+            </div>
+
+            <div v-else class="relative h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+                <LibraryMap3D ref="map" :floor="floor" :shelves="shelves" :highlight="highlight" :route="walkRoute" :avatar="avatar" :follow="walking" @pick="onPick" @ready="onReady" />
+
+                <!-- Search, or the Waze-style instruction banner while walking. -->
+                <div class="pointer-events-none absolute inset-x-0 top-0 p-3">
+                    <div v-if="walking || arrived" class="pointer-events-auto mx-auto flex max-w-xl items-center gap-3 rounded-2xl px-4 py-3 text-white shadow-lg" :class="arrived ? 'bg-emerald-600' : 'bg-[#1f2a44]'">
+                        <Maneuver :type="arrived ? 'arrive' : currentStep?.type" class="h-12 w-12 shrink-0" />
+                        <div class="min-w-0 flex-1">
+                            <template v-if="arrived">
+                                <p class="text-lg font-bold leading-tight">{{ t('library.map.arrived', 'وصلت') }}</p>
+                                <p class="text-sm opacity-90">{{ stepText(steps[steps.length - 1]) }}<template v-if="spot?.level"> · {{ levelText(spot.level) }}</template></p>
+                            </template>
+                            <template v-else>
+                                <p v-if="currentStep && !currentStep.type.startsWith('arrive')" class="text-2xl font-extrabold leading-none">{{ metres(currentStep.toNext) }} م</p>
+                                <p class="mt-0.5 truncate text-sm font-medium opacity-95">{{ currentStep ? stepText(currentStep) : '' }}</p>
+                            </template>
+                        </div>
+                        <button @click="stop" class="rounded-full bg-white/15 p-2 hover:bg-white/25" :aria-label="t('common.close', 'إغلاق')"><XMarkIcon class="h-5 w-5" /></button>
+                    </div>
+
+                    <div v-else class="pointer-events-auto relative mx-auto max-w-xl">
+                        <div class="flex items-center gap-2 rounded-2xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-gray-800/95 dark:ring-white/10">
+                            <MagnifyingGlassIcon class="h-5 w-5 shrink-0 text-gray-400" />
+                            <input v-model="q" @focus="showResults = true" type="search" :placeholder="t('library.map.search', 'ابحث عن كتاب لتعرف مكانه…')"
+                                class="min-w-0 flex-1 border-0 bg-transparent p-1 text-sm focus:ring-0 dark:text-gray-100" />
+                            <ArrowPathIcon v-if="searching" class="h-4 w-4 animate-spin text-gray-400" />
+                        </div>
+                        <div v-if="showResults && q.trim().length >= 2" class="absolute inset-x-0 top-full mt-2 max-h-[50vh] overflow-y-auto rounded-2xl bg-white shadow-xl ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/10">
+                            <p v-if="!searching && !results.length" class="p-4 text-center text-sm text-gray-500">{{ t('library.no_results', 'لا توجد نتائج') }}</p>
+                            <button v-for="b in results" :key="b.id" @click="chooseBook(b)" class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-2.5 text-start last:border-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/60">
+                                <BookCover :book="b" size="sm" class="w-9 shrink-0" />
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate text-sm font-semibold" dir="auto">{{ b.title }}</span>
+                                    <span class="block truncate text-xs text-gray-500" dir="auto">{{ b.authors }}</span>
+                                    <span class="mt-1 flex flex-wrap gap-1 text-[11px]">
+                                        <span class="rounded-full px-2 py-0.5" :class="availability(b).cls">{{ availability(b).text }}</span>
+                                        <span v-if="b.spots.length" class="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">{{ spotLabel(b.spots[0]) }}</span>
+                                        <span v-else class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-500 dark:bg-gray-700">{{ t('library.map.no_spot', 'مكانه غير محدد على الخريطة') }}</span>
+                                    </span>
+                                </span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Camera buttons. -->
+                <div class="absolute end-3 top-24 flex flex-col gap-2">
+                    <button @click="map?.overview()" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="t('library.map.overview', 'عرض المكتبة كاملة')"><MapIcon class="h-5 w-5" /></button>
+                    <button v-if="targetShelf" @click="map?.focusShelf(targetShelf.id)" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="t('library.map.show_shelf', 'اعرض الرف')"><ViewfinderCircleIcon class="h-5 w-5" /></button>
+                </div>
+
+                <!-- Bottom sheet: the chosen book or bookcase, and the route summary. -->
+                <div v-if="book || pickedShelf" class="absolute inset-x-0 bottom-0 p-3">
+                    <div class="mx-auto max-w-xl rounded-2xl bg-white p-4 shadow-2xl ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/10">
+                        <div v-if="book && !walking" class="flex gap-3">
+                            <BookCover :book="book" size="sm" class="hidden w-12 shrink-0 sm:block" />
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-start gap-2">
+                                    <Link :href="route('library.books.show', book.id)" class="min-w-0 flex-1 truncate font-bold hover:underline" dir="auto">{{ book.title }}</Link>
+                                    <button @click="clearSelection" class="-m-1 rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
+                                </div>
+                                <p class="truncate text-xs text-gray-500" dir="auto">{{ book.authors }}</p>
+                                <div class="mt-1.5 flex flex-wrap gap-1.5 text-xs">
+                                    <span class="rounded-full px-2 py-0.5" :class="availability(book).cls">{{ availability(book).text }}</span>
+                                    <button v-for="(s, i) in book.spots" :key="i" @click="spotIndex = i; stop(); map?.focusShelf(s.shelf_id)"
+                                        class="rounded-full px-2 py-0.5 ring-1" :class="i === spotIndex ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-blue-700 ring-blue-200 dark:bg-gray-700 dark:text-blue-300 dark:ring-gray-600'">
+                                        {{ spotLabel(s) }}<template v-if="s.total"> ({{ s.available }}/{{ s.total }})</template>
+                                    </button>
+                                </div>
+                                <p v-if="!book.spots.length" class="mt-2 text-sm text-amber-700 dark:text-amber-400">{{ t('library.map.no_spot_text', 'لم يُحدَّد رف هذا الكتاب بعد. اسأل موظف المكتبة.') }}</p>
+                                <p v-else-if="spot?.by_section" class="mt-1.5 text-xs text-gray-500">{{ t('library.map.by_section', 'المكان حسب قسم الكتاب') }}</p>
+                            </div>
+                        </div>
+                        <div v-else-if="!walking" class="flex items-start gap-3">
+                            <span class="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white" :style="{ background: pickedShelf.color || sectionColor(pickedShelf.section_id) }">{{ pickedShelf.code.slice(0, 4) }}</span>
+                            <div class="min-w-0 flex-1">
+                                <p class="font-bold">{{ pickedShelf.kind === 'shelf' ? t('library.shelf', 'الرف') + ' ' + pickedShelf.code : pickedShelf.name || pickedShelf.code }}</p>
+                                <p class="truncate text-sm text-gray-500">{{ pickedShelf.section || pickedShelf.name || '' }}</p>
+                                <Link v-if="pickedShelf.section_id" :href="route('library.index', { section: pickedShelf.section_id })" class="mt-1 inline-flex items-center gap-1 text-sm text-[var(--accent-600)] hover:underline"><BookOpenIcon class="h-4 w-4" /> {{ t('library.map.section_books', 'كتب هذا القسم') }}</Link>
+                            </div>
+                            <button @click="clearSelection" class="-m-1 rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
+                        </div>
+
+                        <div v-if="walkRoute" class="flex items-center gap-3" :class="walking ? '' : 'mt-3 border-t border-gray-100 pt-3 dark:border-gray-700'">
+                            <div class="min-w-0 flex-1">
+                                <p class="text-lg font-extrabold text-emerald-600 dark:text-emerald-400">{{ eta }}</p>
+                                <p class="text-xs text-gray-500">{{ t('library.map.distance', ':d م مشياً من المدخل', { d: metres(walkRoute.length) }) }}</p>
+                            </div>
+                            <template v-if="walking">
+                                <button @click="jump(-1)" class="rounded-full border border-gray-300 p-2 dark:border-gray-600" :aria-label="t('library.map.prev', 'الخطوة السابقة')"><ChevronRightIcon class="h-5 w-5 ltr:rotate-180" /></button>
+                                <button @click="paused = !paused" class="rounded-full bg-[#1f2a44] p-2.5 text-white"><component :is="paused ? PlayIcon : PauseIcon" class="h-5 w-5" /></button>
+                                <button @click="jump(1)" class="rounded-full border border-gray-300 p-2 dark:border-gray-600" :aria-label="t('library.map.next', 'الخطوة التالية')"><ChevronLeftIcon class="h-5 w-5 ltr:rotate-180" /></button>
+                            </template>
+                            <button v-else @click="start" class="inline-flex items-center gap-2 rounded-full bg-[#33ccff] px-5 py-2.5 text-sm font-bold text-[#0b1f33] shadow hover:brightness-105">
+                                <component :is="arrived ? ArrowPathIcon : PlayIcon" class="h-5 w-5" /> {{ arrived ? t('library.map.again', 'أعد الطريق') : t('library.map.go', 'خذني إليه') }}
+                            </button>
+                        </div>
+
+                        <!-- All the steps, Waze's list view. -->
+                        <button v-if="walkRoute && !walking" @click="showSteps = !showSteps" class="mt-2 text-xs font-medium text-blue-600 sm:hidden dark:text-blue-400">{{ showSteps ? t('library.map.hide_steps', 'إخفاء الخطوات') : t('library.map.show_steps', 'عرض الخطوات (:n)', { n: steps.length }) }}</button>
+                        <ol v-if="walkRoute && !walking" class="mt-2 max-h-36 space-y-1.5 overflow-y-auto text-sm sm:mt-3 sm:block" :class="showSteps ? 'block' : 'hidden'">
+                            <li v-for="(s, i) in steps" :key="i" class="flex items-center gap-2.5">
+                                <Maneuver :type="s.type" class="h-5 w-5 shrink-0" :class="s.type.startsWith('arrive') ? 'text-red-500' : 'text-blue-600 dark:text-blue-400'" />
+                                <span class="flex-1">{{ stepText(s) }}<template v-if="s.type.startsWith('arrive') && spot?.level"> · {{ levelText(spot.level) }}</template></span>
+                                <CheckCircleIcon v-if="arrived" class="h-4 w-4 text-emerald-500" />
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Legend of sections when nothing is chosen. -->
+                <div v-else class="pointer-events-none absolute inset-x-0 bottom-0 p-3">
+                    <p class="mx-auto w-fit rounded-full bg-white/90 px-3 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-800/90 dark:text-gray-300">{{ t('library.map.hint', 'ابحث عن كتاب أو اضغط على أي رف · اسحب لتدوير المكتبة') }}</p>
+                </div>
+            </div>
+        </div>
+    </component>
+</template>

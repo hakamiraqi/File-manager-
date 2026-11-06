@@ -1,0 +1,114 @@
+<?php
+
+namespace Tests\Feature\Library;
+
+use App\Models\Library\Book;
+use App\Models\Library\LibrarySection;
+use App\Models\Library\LibraryShelf;
+use App\Models\User;
+use App\Services\Library\LibraryMap;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Inertia\Testing\AssertableInertia as Assert;
+use Tests\TestCase;
+
+class LibraryMapTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function layout(array $shelves): array
+    {
+        return [
+            'floor' => ['width' => 20, 'depth' => 14, 'name' => '', 'entrance' => ['x' => 10, 'y' => 14]],
+            'shelves' => array_map(fn ($s) => $s + [
+                'kind' => 'shelf', 'name' => null, 'section_id' => null, 'x' => 5, 'y' => 5, 'rotation' => 0,
+                'width' => 2, 'depth' => 0.5, 'levels' => 5, 'double_sided' => false, 'color' => null,
+            ], $shelves),
+        ];
+    }
+
+    public function test_a_librarian_saves_the_floor_plan_and_codes_must_be_unique(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $section = LibrarySection::create(['name' => 'جراحة الفم']);
+
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'A1', 'section_id' => $section->id],
+            ['code' => 'A2', 'x' => 7, 'double_sided' => true, 'depth' => 0.9],
+            ['code' => 'مكتب1', 'kind' => 'desk'],
+        ]))->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(3, LibraryShelf::count());
+        $this->assertSame(14.0, app(LibraryMap::class)->floor()['entrance']['y']);
+
+        // Saving again updates by id and removes what was taken off the plan.
+        $a1 = LibraryShelf::where('code', 'A1')->first();
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['id' => $a1->id, 'code' => 'A1', 'x' => 3, 'rotation' => 90],
+        ]))->assertSessionHasNoErrors();
+        $this->assertSame(1, LibraryShelf::count());
+        $this->assertSame(90, $a1->fresh()->rotation);
+
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'B1'], ['code' => 'b1'],
+        ]))->assertSessionHasErrors('shelves.1.code');
+
+        $this->actingAs($librarian)->get(route('library.manage.map'))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Library/Manage/Map')->has('shelves', 1));
+    }
+
+    public function test_readers_cannot_edit_the_map(): void
+    {
+        $reader = User::factory()->create();
+        $this->actingAs($reader)->get(route('library.manage.map'))->assertForbidden();
+        $this->actingAs($reader)->put(route('library.manage.map.update'), $this->layout([]))->assertForbidden();
+    }
+
+    public function test_a_book_is_found_by_its_copy_shelf_code_or_its_section(): void
+    {
+        $section = LibrarySection::create(['name' => 'تقويم']);
+        $child = LibrarySection::create(['name' => 'تقويم متحرك', 'parent_id' => $section->id]);
+        $a3 = LibraryShelf::create(['code' => 'A3', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        $c1 = LibraryShelf::create(['code' => 'C1', 'section_id' => $section->id, 'x' => 9, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+
+        $byCode = Book::create(['title' => 'Oral Surgery']);
+        $byCode->copies()->create(['barcode' => 'X1', 'shelf' => 'a3-2']);
+        $byCode->copies()->create(['barcode' => 'X2', 'shelf' => 'A3/2', 'status' => 'loaned']);
+
+        $bySection = Book::create(['title' => 'Removable Ortho', 'section_id' => $child->id]);
+        $bySection->copies()->create(['barcode' => 'Y1', 'shelf' => 'رف قديم']);
+
+        $map = app(LibraryMap::class);
+        $spots = $map->locate($byCode);
+        $this->assertCount(1, $spots);
+        $this->assertSame([$a3->id, 2, 1, 2, false], [$spots[0]['shelf_id'], $spots[0]['level'], $spots[0]['available'], $spots[0]['total'], $spots[0]['by_section']]);
+
+        $spots = $map->locate($bySection);
+        $this->assertSame([$c1->id, null, true], [$spots[0]['shelf_id'], $spots[0]['level'], $spots[0]['by_section']]);
+
+        // A level past the top of the bookcase is ignored, not invented.
+        $this->assertNull($map->parseShelf('A3-9')[1]);
+        $this->assertNull($map->parseShelf('Z9'));
+    }
+
+    public function test_the_map_and_its_search_follow_the_public_library_switch(): void
+    {
+        $shelf = LibraryShelf::create(['code' => 'B2', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        $book = Book::create(['title' => 'Dental Anatomy']);
+        $book->copies()->create(['barcode' => 'Z1', 'shelf' => 'B2']);
+
+        $this->get(route('library.map'))->assertRedirect(route('login'));
+        $this->getJson(route('library.map.search', ['q' => 'Anatomy']))->assertForbidden();
+
+        $reader = User::factory()->create();
+        $this->actingAs($reader)->get(route('library.map', ['book' => $book->id]))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Library/Map')
+                ->has('shelves', 1)->where('target.spots.0.code', 'B2')->where('canEdit', false));
+        $this->actingAs($reader)->getJson(route('library.map.search', ['q' => 'Anatomy']))->assertOk()
+            ->assertJsonPath('books.0.spots.0.shelf_id', $shelf->id)
+            ->assertJsonPath('books.0.available_count', 1);
+
+        // The book page links to the map.
+        $this->actingAs($reader)->get(route('library.books.show', $book))
+            ->assertInertia(fn (Assert $page) => $page->where('spots.0.code', 'B2'));
+    }
+}

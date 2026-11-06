@@ -42,6 +42,8 @@ class BookController extends Controller
             'sections' => LibrarySection::options(),
             'filters' => ['q' => $q, 'section' => $sectionId],
             'statuses' => BookCopy::STATUSES,
+            // Bookcase codes from «ترتيب الرفوف», suggested in every «الرف» box.
+            'shelfCodes' => \App\Models\Library\LibraryShelf::where('kind', 'shelf')->orderBy('code')->pluck('code'),
         ]);
     }
 
