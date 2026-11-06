@@ -20,6 +20,9 @@ class LibraryMap
 {
     public const SETTING = 'library_map';
 
+    /** @var array<int, int|null> section id → bookcase id, for one request */
+    private array $sectionShelf = [];
+
     /** @return array{width: float, depth: float, entrance: array{x: float, y: float}, name: string} */
     public function floor(): array
     {
@@ -101,8 +104,7 @@ class LibraryMap
         $sectionShelf = $this->shelfForSection($book->section_id, $shelves);
         $spots = [];
         foreach ($copies as $copy) {
-            $parsed = $this->parseShelf($copy->shelf, $shelves);
-            [$shelf, $level, $bySection] = $parsed ? [$parsed[0], $parsed[1], false] : [$sectionShelf, null, true];
+            [$shelf, $level, $bySection] = $this->spotOf($copy, $book->section_id, $shelves) ?? [null, null, true];
             if (! $shelf) {
                 continue;
             }
@@ -138,7 +140,37 @@ class LibraryMap
         }
     }
 
+    /**
+     * The bookcase one copy sits on: its «الرف» text when that names a bookcase, otherwise the
+     * bookcase of its section. [bookcase, level|null, placed by section] or null.
+     */
+    public function spotOf(BookCopy $copy, ?int $sectionId, Collection $shelves): ?array
+    {
+        if ($parsed = $this->parseShelf($copy->shelf, $shelves)) {
+            return [$parsed[0], $parsed[1], false];
+        }
+        $shelf = $this->shelfForSection($sectionId, $shelves);
+
+        return $shelf ? [$shelf, null, true] : null;
+    }
+
     private function shelfForSection(?int $sectionId, Collection $shelves): ?LibraryShelf
+    {
+        if ($sectionId && array_key_exists($sectionId, $this->sectionShelf)) {
+            $id = $this->sectionShelf[$sectionId];
+
+            return $id ? $shelves->firstWhere('id', $id) : null;
+        }
+        $start = $sectionId;
+        $found = $this->walkSections($sectionId, $shelves);
+        if ($start) {
+            $this->sectionShelf[$start] = $found?->id;
+        }
+
+        return $found;
+    }
+
+    private function walkSections(?int $sectionId, Collection $shelves): ?LibraryShelf
     {
         for ($i = 0; $sectionId && $i < 20; $i++) {
             if ($hit = $shelves->firstWhere('section_id', $sectionId)) {

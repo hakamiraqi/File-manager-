@@ -5,12 +5,14 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { useLibrary } from '@/Composables/useLibrary';
-import { SignalIcon, LinkIcon, XMarkIcon, ExclamationTriangleIcon, CheckCircleIcon, PrinterIcon, ArrowPathIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/24/outline';
+import QrScanner from '@/Components/Library/Map/QrScanner.vue';
+import { SignalIcon, LinkIcon, XMarkIcon, ExclamationTriangleIcon, CheckCircleIcon, PrinterIcon, ArrowPathIcon, ClipboardDocumentCheckIcon, InboxStackIcon, QrCodeIcon, CameraIcon, ArrowUturnRightIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
     sections: Array,
     untagged: Number,
     tagged: Number,
+    bookcases: { type: Array, default: () => [] },
 });
 
 const { t } = useTrans();
@@ -103,8 +105,89 @@ async function unlink(c) {
     counts.value = { tagged: Math.max(0, counts.value.tagged - 1), untagged: counts.value.untagged + 1 };
 }
 
+// ---------- Bookcase stickers ----------
+// The QR sticker on a bookcase holds the map link (…/library/map?at=12). A typed code works
+// too: "A3", or "A3-2" for level 2.
+function asBookcase(text) {
+    const at = /library\/map/.test(text) && text.match(/[?&]at=(\d+)/);
+    if (at) {
+        const b = props.bookcases.find((x) => x.id === Number(at[1]));
+        return b ? { bookcase: b, level: null } : null;
+    }
+    const byCode = (c) => props.bookcases.find((x) => x.code.toLowerCase() === c.trim().toLowerCase());
+    let b = byCode(text);
+    if (b) return { bookcase: b, level: null };
+    const m = text.match(/^(.+?)\s*[-/\s،,]\s*(\d{1,2})$/u);
+    if (m && (b = byCode(m[1]))) return { bookcase: b, level: Number(m[2]) <= b.levels ? Number(m[2]) : null };
+    return null;
+}
+const tokens = (text) => text.split(/[\s,;]+/).map((c) => c.trim()).filter(Boolean);
+const camera = ref(false);
+function onCamera(text) {
+    camera.value = false;
+    code.value = text;
+    onSubmit();
+}
+
+// ---------- «توزيع على الرفوف»: scan the bookcase sticker, then the books put on it ----------
+const shelveCase = ref(null);
+const shelveLevel = ref(null);
+const shelveLog = ref([]);
+const shelveUnknown = ref([]);
+const shelveError = ref('');
+let pending = [];
+let shelveTimer;
+const shelfText = computed(() => (shelveCase.value ? shelveCase.value.code + (shelveLevel.value ? `-${shelveLevel.value}` : '') : ''));
+
+function submitShelve() {
+    const list = tokens(code.value);
+    code.value = '';
+    shelveError.value = '';
+    for (const tk of list) {
+        const hit = asBookcase(tk);
+        if (hit) {
+            flushShelve();
+            shelveCase.value = hit.bookcase;
+            shelveLevel.value = hit.level;
+            beep(true);
+        } else if (!shelveCase.value) {
+            shelveError.value = t('library.shelve_case_first', 'امسح ملصق QR الخاص بالرف أولاً، ثم الكتب.');
+            beep(false);
+        } else if (!pending.includes(tk)) {
+            pending.push(tk);
+        }
+    }
+    // An RFID reader sends many tags in a burst: collect them and send once it pauses.
+    clearTimeout(shelveTimer);
+    if (pending.length) shelveTimer = setTimeout(flushShelve, 500);
+    focusScan();
+}
+
+async function flushShelve() {
+    clearTimeout(shelveTimer);
+    if (!pending.length || !shelveCase.value) return;
+    const codes = pending;
+    pending = [];
+    try {
+        const res = (await window.axios.post(route('library.manage.rfid.shelve'), { shelf_id: shelveCase.value.id, level: shelveLevel.value, codes })).data;
+        shelveLog.value.unshift(...res.moved.map((c) => ({ ...c, to: res.shelf })));
+        shelveUnknown.value = [...new Set([...res.unknown, ...shelveUnknown.value])];
+        beep(res.unknown.length === 0);
+    } catch (e) {
+        shelveError.value = errText(e);
+        beep(false);
+    }
+}
+
+async function undoShelve(row) {
+    await window.axios.post(route('library.manage.rfid.unshelve', row.id), { shelf: row.from });
+    shelveLog.value = shelveLog.value.filter((r) => r !== row);
+}
+const shelveCount = computed(() => shelveLog.value.filter((r) => r.to === shelfText.value).length);
+
 // ---------- Inventory: scan a section's shelves and compare ----------
 const invSection = ref('');
+const invCase = ref(null); // one bookcase, from its QR sticker
 const invShelf = ref('');
 const scanned = ref([]);
 const result = ref(null);
@@ -115,8 +198,18 @@ let compareTimer;
 const scannedSet = computed(() => new Set(scanned.value));
 
 function submitInventory() {
-    const fresh = code.value.split(/[\s,;]+/).map((c) => c.trim()).filter((c) => c && !scannedSet.value.has(c));
+    const all = tokens(code.value);
     code.value = '';
+    // A bookcase sticker starts a new inventory of that bookcase.
+    const caseHit = all.map(asBookcase).find(Boolean);
+    if (caseHit) {
+        invCase.value = caseHit.bookcase;
+        invSection.value = '';
+        scanned.value = [];
+        result.value = null;
+        beep(true);
+    }
+    const fresh = all.filter((c) => !asBookcase(c) && !scannedSet.value.has(c));
     if (!fresh.length) return;
     scanned.value = [...scanned.value, ...fresh];
     beep(true);
@@ -125,13 +218,13 @@ function submitInventory() {
 }
 
 async function compare() {
-    if (!invSection.value) { invError.value = t('library.inv_pick_section', 'اختر القسم أولاً.'); return; }
+    if (!invSection.value && !invCase.value) { invError.value = t('library.inv_pick_section', 'اختر القسم أو امسح ملصق الرف أولاً.'); return; }
     comparing.value = true;
     invError.value = '';
     try {
-        result.value = (await window.axios.post(route('library.manage.rfid.inventory'), {
-            section_id: invSection.value, shelf: invShelf.value || null, codes: scanned.value,
-        })).data;
+        result.value = (await window.axios.post(route('library.manage.rfid.inventory'), invCase.value
+            ? { shelf_id: invCase.value.id, codes: scanned.value }
+            : { section_id: invSection.value, shelf: invShelf.value || null, codes: scanned.value })).data;
     } catch (e) {
         invError.value = errText(e);
     } finally {
@@ -145,7 +238,19 @@ function resetInventory() {
     result.value = null;
     focusScan();
 }
-watch([invSection, invShelf], () => { if (scanned.value.length) compare(); });
+watch([invSection, invShelf], () => {
+    if (invSection.value) invCase.value = null;
+    if (scanned.value.length) compare();
+});
+watch(invCase, () => { if (invCase.value && scanned.value.length) compare(); });
+
+// Misplaced books found on this bookcase can be recorded as being here.
+async function moveHere() {
+    const ids = result.value.misplaced.map((c) => c.id);
+    if (!ids.length) return;
+    await window.axios.post(route('library.manage.rfid.shelve'), { shelf_id: invCase.value.id, copy_ids: ids });
+    await compare();
+}
 
 async function markLost() {
     const ids = result.value.missing.map((c) => c.id);
@@ -168,7 +273,12 @@ const groups = computed(() => !result.value ? [] : [
 ]);
 
 const printPage = () => window.print();
-const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory());
+const onSubmit = () => (tab.value === 'link' ? submitLink() : tab.value === 'shelve' ? submitShelve() : submitInventory());
+const TABS = computed(() => [
+    { key: 'link', icon: LinkIcon, label: t('library.rfid_link', 'ربط الشرائح بالنسخ') },
+    { key: 'shelve', icon: InboxStackIcon, label: t('library.shelve', 'توزيع على الرفوف') },
+    { key: 'inventory', icon: ClipboardDocumentCheckIcon, label: t('library.inventory', 'جرد الرفوف') },
+]);
 </script>
 
 <template>
@@ -182,12 +292,12 @@ const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory())
         <div class="space-y-4 p-4 sm:p-6">
             <LibraryTabs class="print:hidden" />
 
-            <div class="grid grid-cols-2 gap-1 rounded-2xl bg-gray-100 p-1 print:hidden sm:inline-grid dark:bg-gray-900">
-                <button v-for="k in ['link', 'inventory']" :key="k" type="button" @click="tab = k"
-                    class="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition"
-                    :class="tab === k ? 'bg-white text-[var(--accent-600)] shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'">
-                    <component :is="k === 'link' ? LinkIcon : ClipboardDocumentCheckIcon" class="h-5 w-5" />
-                    {{ k === 'link' ? t('library.rfid_link', 'ربط الشرائح بالنسخ') : t('library.inventory', 'جرد الرفوف') }}
+            <div class="grid grid-cols-3 gap-1 rounded-2xl bg-gray-100 p-1 print:hidden sm:inline-grid dark:bg-gray-900">
+                <button v-for="k in TABS" :key="k.key" type="button" @click="tab = k.key"
+                    class="inline-flex flex-col items-center justify-center gap-1 rounded-xl px-3 py-2 text-xs font-semibold transition sm:flex-row sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
+                    :class="tab === k.key ? 'bg-white text-[var(--accent-600)] shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'">
+                    <component :is="k.icon" class="h-5 w-5" />
+                    {{ k.label }}
                 </button>
             </div>
 
@@ -198,17 +308,92 @@ const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory())
                     <template v-if="tab === 'link'">
                         {{ current ? t('library.rfid_scan_tag', 'الآن امسح شريحة RFID الملصقة على هذه النسخة') : t('library.rfid_scan_copy', 'امسح باركود النسخة أو اختر من القائمة') }}
                     </template>
-                    <template v-else>{{ t('library.inv_scan', 'مرّر القارئ على الرف؛ كل الشرائح والباركودات تُجمع هنا') }}</template>
+                    <template v-else-if="tab === 'shelve'">
+                        {{ shelveCase ? t('library.shelve_scan_books', 'مرّر الكتب التي وضعتها على الرف :c (أو امسح ملصق رف آخر)', { c: shelfText }) : t('library.shelve_scan_case', 'امسح ملصق QR الخاص بالرف، أو اكتب رمزه مثل A3') }}
+                    </template>
+                    <template v-else>{{ t('library.inv_scan', 'مرّر القارئ على الرف؛ كل الشرائح والباركودات تُجمع هنا') }} · {{ t('library.inv_scan_case', 'لجرد رف واحد امسح ملصق QR الخاص به أولاً') }}</template>
                 </label>
                 <div class="mt-2 flex gap-2">
                     <input ref="scanInput" v-model="code" dir="ltr" autocomplete="off"
                         class="block w-full rounded-lg border-gray-300 text-lg tracking-wider dark:border-gray-600 dark:bg-gray-700" :placeholder="t('library.scan_placeholder', 'الرمز...')" />
+                    <button v-if="tab !== 'link'" type="button" @click="camera = true" class="shrink-0 rounded-lg border border-gray-300 px-3 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300" :title="t('library.scan_camera', 'امسح QR بالكاميرا')"><CameraIcon class="h-5 w-5" /></button>
                     <button class="rounded-lg bg-[var(--accent-600)] px-4 text-white">↵</button>
                 </div>
             </form>
+            <QrScanner v-if="camera" @result="onCamera" @close="camera = false" />
+
+            <!-- ===== Shelving ===== -->
+            <div v-if="tab === 'shelve'" class="grid gap-4 lg:grid-cols-5">
+                <div class="space-y-4 lg:col-span-3">
+                    <div v-if="shelveCase" class="flex flex-wrap items-center gap-4 rounded-2xl border-2 border-blue-300 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
+                        <div class="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-blue-600 text-white">
+                            <span class="text-[10px] opacity-80">{{ t('library.shelf', 'الرف') }}</span>
+                            <span class="text-xl font-extrabold leading-none" dir="ltr">{{ shelveCase.code }}</span>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="font-semibold text-blue-900 dark:text-blue-100">{{ t('library.shelve_on', 'الكتب الممسوحة تُسجَّل على هذا الرف') }}</p>
+                            <p v-if="shelveCase.section" class="truncate text-sm text-blue-800/80 dark:text-blue-200/80">{{ shelveCase.section }}</p>
+                            <p class="mt-1 text-sm text-blue-900 dark:text-blue-100">{{ t('library.shelve_count', 'سُجّل هنا في هذه الجلسة') }}: <b>{{ shelveCount }}</b></p>
+                        </div>
+                        <label class="text-sm">
+                            <span class="mb-1 block text-xs text-blue-900/70 dark:text-blue-200/70">{{ t('library.map.level', 'الطبقة') }}</span>
+                            <select v-model="shelveLevel" @change="focusScan" class="rounded-lg border-blue-300 text-sm dark:border-blue-700 dark:bg-gray-800">
+                                <option :value="null">{{ t('library.shelve_any_level', 'بدون تحديد') }}</option>
+                                <option v-for="n in shelveCase.levels" :key="n" :value="n">{{ t('library.map.level_n', 'الطبقة :n من الأسفل', { n }) }}</option>
+                            </select>
+                        </label>
+                        <button @click="shelveCase = null; focusScan()" class="text-blue-400 hover:text-blue-700"><XMarkIcon class="h-5 w-5" /></button>
+                    </div>
+                    <div v-else class="flex items-start gap-3 rounded-2xl border border-dashed border-gray-300 bg-white p-5 text-sm text-gray-600 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                        <QrCodeIcon class="h-10 w-10 shrink-0 text-gray-400" />
+                        <div>
+                            <p class="font-semibold text-gray-800 dark:text-gray-100">{{ t('library.shelve_how', 'كيف تعمل؟') }}</p>
+                            <ol class="mt-1 list-decimal space-y-0.5 ps-5">
+                                <li>{{ t('library.shelve_step1', 'امسح ملصق QR الملصق على الرف (بقارئ الباركود أو بزر الكاميرا).') }}</li>
+                                <li>{{ t('library.shelve_step2', 'اختر الطبقة إن أردت.') }}</li>
+                                <li>{{ t('library.shelve_step3', 'مرّر الكتب على قارئ RFID أو امسح باركودها؛ يُكتب رمز الرف في كل نسخة وتظهر في مكانها على الخريطة.') }}</li>
+                            </ol>
+                        </div>
+                    </div>
+
+                    <p v-if="shelveError" class="flex items-start gap-2 rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                        <ExclamationTriangleIcon class="h-5 w-5 shrink-0" /> {{ shelveError }}
+                    </p>
+
+                    <div class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                        <h3 class="border-b border-gray-100 px-4 py-2.5 text-sm font-semibold dark:border-gray-700">{{ t('library.shelve_done', 'وُزّعت في هذه الجلسة') }} ({{ shelveLog.length }})</h3>
+                        <p v-if="!shelveLog.length" class="p-4 text-sm text-gray-400">{{ t('library.no_ops', 'لا عمليات بعد.') }}</p>
+                        <div v-for="(l, i) in shelveLog" :key="i + '-' + l.id" class="flex items-center gap-3 border-b border-gray-50 px-4 py-2 text-sm last:border-0 dark:border-gray-700">
+                            <CheckCircleIcon class="h-5 w-5 shrink-0 text-emerald-600" />
+                            <div class="min-w-0 flex-1">
+                                <p class="truncate" dir="auto">{{ l.title }}</p>
+                                <p class="text-xs text-gray-500"><span dir="ltr">{{ l.barcode }}</span> · <span v-if="l.from && l.from !== l.to">{{ l.from }} ← </span><b dir="ltr">{{ l.to }}</b></p>
+                            </div>
+                            <button v-if="l.from !== l.to" @click="undoShelve(l)" class="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-red-600"><ArrowUturnRightIcon class="h-3.5 w-3.5" /> {{ t('library.undo', 'تراجع') }}</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="space-y-3 lg:col-span-2">
+                    <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                        <p class="text-sm font-semibold">{{ t('library.shelve_pick', 'أو اختر الرف') }}</p>
+                        <select :value="shelveCase?.id ?? ''" @change="shelveCase = bookcases.find((b) => b.id === Number($event.target.value)) ?? null; shelveLevel = null; focusScan()" class="mt-2 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option value="">—</option>
+                            <option v-for="b in bookcases" :key="b.id" :value="b.id">{{ b.code }}{{ b.section ? ' · ' + b.section : '' }}</option>
+                        </select>
+                        <p v-if="!bookcases.length" class="mt-2 text-xs text-amber-700">{{ t('library.shelve_no_map', 'لا توجد رفوف على خريطة المكتبة بعد. أضفها من «ترتيب الرفوف».') }}</p>
+                    </div>
+                    <div v-if="shelveUnknown.length" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                        <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ t('library.inv_unknown', 'رموز غير معروفة (شرائح غير مربوطة)') }} ({{ shelveUnknown.length }})</h4>
+                        <p class="mt-1 text-xs text-gray-500">{{ t('library.shelve_unknown_hint', 'اربطها بنسخها من تبويب «ربط الشرائح بالنسخ» ثم امسحها هنا مرة أخرى.') }}</p>
+                        <p class="mt-2 flex flex-wrap gap-1.5" dir="ltr">
+                            <span v-for="u in shelveUnknown" :key="u" class="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs dark:bg-gray-700">{{ u }}</span>
+                        </p>
+                    </div>
+                </div>
+            </div>
 
             <!-- ===== Link ===== -->
-            <div v-if="tab === 'link'" class="grid gap-4 lg:grid-cols-5">
+            <div v-else-if="tab === 'link'" class="grid gap-4 lg:grid-cols-5">
                 <div class="space-y-4 lg:col-span-3">
                     <div class="flex gap-3 text-sm">
                         <span class="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('library.rfid_tagged', 'مربوطة') }}: <b>{{ counts.tagged }}</b></span>
@@ -269,14 +454,18 @@ const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory())
             <!-- ===== Inventory ===== -->
             <div v-else class="space-y-4">
                 <div class="flex flex-wrap items-end gap-3 print:hidden">
-                    <label class="text-sm">
+                    <div v-if="invCase" class="flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800 dark:bg-blue-900/30 dark:text-blue-200">
+                        <QrCodeIcon class="h-4 w-4" /> {{ t('library.inv_case', 'جرد الرف') }} <b dir="ltr">{{ invCase.code }}</b>
+                        <button @click="invCase = null; resetInventory()" class="text-blue-400 hover:text-blue-700"><XMarkIcon class="h-4 w-4" /></button>
+                    </div>
+                    <label v-if="!invCase" class="text-sm">
                         <span class="mb-1 block text-xs text-gray-500">{{ t('library.section', 'القسم') }}</span>
                         <select v-model="invSection" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
                             <option value="">—</option>
                             <option v-for="s in sections" :key="s.id" :value="s.id">{{ s.path }}</option>
                         </select>
                     </label>
-                    <label class="text-sm">
+                    <label v-if="!invCase" class="text-sm">
                         <span class="mb-1 block text-xs text-gray-500">{{ t('library.shelf_optional', 'الرف (اختياري)') }}</span>
                         <input v-model.lazy="invShelf" class="w-32 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                     </label>
@@ -292,10 +481,10 @@ const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory())
                 <p v-if="invError" class="rounded-lg bg-red-50 p-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ invError }}</p>
 
                 <template v-if="result">
-                    <h3 class="hidden text-lg font-bold print:block">{{ t('library.inventory', 'جرد الرفوف') }} — {{ sections.find((s) => s.id === invSection)?.path }} {{ invShelf }}</h3>
+                    <h3 class="hidden text-lg font-bold print:block">{{ t('library.inventory', 'جرد الرفوف') }} — {{ invCase ? t('library.shelf', 'الرف') + ' ' + invCase.code : sections.find((s) => s.id === invSection)?.path + ' ' + invShelf }}</h3>
                     <div class="grid grid-cols-2 gap-3 sm:grid-cols-5">
                         <div class="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
-                            <p class="text-xs text-gray-500">{{ t('library.inv_expected', 'المفترض في القسم') }}</p>
+                            <p class="text-xs text-gray-500">{{ invCase ? t('library.inv_expected_case', 'المفترض على الرف') : t('library.inv_expected', 'المفترض في القسم') }}</p>
                             <p class="text-2xl font-bold">{{ result.expected }}</p>
                         </div>
                         <div v-for="g in groups" :key="g.key" class="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
@@ -306,6 +495,7 @@ const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory())
 
                     <div class="flex flex-wrap gap-2 print:hidden">
                         <button v-if="result.missing.length" @click="markLost" class="rounded-lg bg-red-600 px-3 py-1.5 text-sm text-white">{{ t('library.inv_mark_lost', 'تعليم غير الموجودة كمفقودة') }}</button>
+                        <button v-if="invCase && result.misplaced.length" @click="moveHere" class="rounded-lg bg-blue-600 px-3 py-1.5 text-sm text-white">{{ t('library.inv_move_here', 'تسجيل :n نسخة في غير مكانها على هذا الرف', { n: result.misplaced.length }) }}</button>
                         <button v-if="foundLost.length" @click="restoreFound" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm text-white">{{ t('library.inv_restore', 'إرجاع :n نسخة وُجدت إلى المتاح', { n: foundLost.length }) }}</button>
                     </div>
 
@@ -314,7 +504,7 @@ const onSubmit = () => (tab.value === 'link' ? submitLink() : submitInventory())
                         <div v-for="c in g.items" :key="c.id" class="flex items-center gap-3 border-b border-gray-50 px-4 py-2 text-sm last:border-0 dark:border-gray-700">
                             <div class="min-w-0 flex-1">
                                 <p class="truncate">{{ c.title }}</p>
-                                <p class="text-xs text-gray-500"><span dir="ltr">{{ c.barcode }}</span><span v-if="c.shelf"> · {{ t('library.shelf', 'الرف') }} {{ c.shelf }}</span><span v-if="g.key === 'misplaced' && c.section_path"> · {{ t('library.belongs_to', 'مكانها') }}: {{ c.section_path }}</span></p>
+                                <p class="text-xs text-gray-500"><span dir="ltr">{{ c.barcode }}</span><span v-if="c.shelf"> · {{ t('library.shelf', 'الرف') }} {{ c.shelf }}</span><span v-if="g.key === 'misplaced' && (c.belongs || c.section_path)"> · {{ t('library.belongs_to', 'مكانها') }}: <span dir="auto">{{ c.belongs ? t('library.shelf', 'الرف') + ' ' + c.belongs : c.section_path }}</span></span></p>
                             </div>
                             <span class="rounded px-2 py-0.5 text-xs" :class="statusClass(c.status)">{{ statusLabel(c.status) }}</span>
                         </div>

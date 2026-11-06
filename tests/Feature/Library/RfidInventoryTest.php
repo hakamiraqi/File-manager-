@@ -5,6 +5,7 @@ namespace Tests\Feature\Library;
 use App\Models\Library\Book;
 use App\Models\Library\BookCopy;
 use App\Models\Library\LibrarySection;
+use App\Models\Library\LibraryShelf;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -68,5 +69,53 @@ class RfidInventoryTest extends TestCase
             ->assertJsonPath('updated', 1);
         $this->assertSame(BookCopy::LOST, $missing->fresh()->status);
         $this->assertSame(BookCopy::LOANED, $loaned->fresh()->status);
+    }
+
+    public function test_scanned_books_are_put_on_a_bookcase_and_can_be_put_back(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $a3 = LibraryShelf::create(['code' => 'A3', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        $book = Book::create(['title' => 'Anatomy']);
+        $one = $book->copies()->create(['barcode' => 'C1', 'rfid_tag' => 'T1', 'shelf' => 'old']);
+        $two = $book->copies()->create(['barcode' => 'C2']);
+
+        $this->actingAs($librarian)->get(route('library.manage.rfid'))->assertOk()
+            ->assertInertia(fn ($page) => $page->where('bookcases.0.code', 'A3'));
+
+        $this->actingAs($librarian)->postJson(route('library.manage.rfid.shelve'), ['shelf_id' => $a3->id, 'level' => 2, 'codes' => ['T1', 'C2', 'NOPE']])
+            ->assertOk()->assertJsonPath('shelf', 'A3-2')->assertJsonCount(2, 'moved')->assertJsonPath('unknown', ['NOPE']);
+        $this->assertSame('A3-2', $one->fresh()->shelf);
+        $this->assertSame('A3-2', $two->fresh()->shelf);
+
+        // A level the bookcase does not have is dropped.
+        $this->actingAs($librarian)->postJson(route('library.manage.rfid.shelve'), ['shelf_id' => $a3->id, 'level' => 9, 'copy_ids' => [$two->id]])
+            ->assertOk()->assertJsonPath('shelf', 'A3');
+
+        $this->actingAs($librarian)->postJson(route('library.manage.rfid.unshelve', $one), ['shelf' => 'old'])->assertOk();
+        $this->assertSame('old', $one->fresh()->shelf);
+
+        $this->actingAs(User::factory()->create())->postJson(route('library.manage.rfid.shelve'), ['shelf_id' => $a3->id, 'codes' => ['T1']])->assertForbidden();
+    }
+
+    public function test_one_bookcase_is_inventoried_from_its_sticker(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $ortho = LibrarySection::create(['name' => 'Ortho']);
+        $a3 = LibraryShelf::create(['code' => 'A3', 'section_id' => $ortho->id, 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        LibraryShelf::create(['code' => 'B1', 'x' => 9, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+
+        $book = Book::create(['title' => 'Ortho basics', 'section_id' => $ortho->id]);
+        $here = $book->copies()->create(['barcode' => 'C1', 'rfid_tag' => 'T1', 'shelf' => 'A3-1']);
+        $bySection = $book->copies()->create(['barcode' => 'C2']); // no shelf: its section's bookcase
+        $missing = $book->copies()->create(['barcode' => 'C3', 'shelf' => 'a3']);
+        $elsewhere = Book::create(['title' => 'Physiology'])->copies()->create(['barcode' => 'D1', 'shelf' => 'B1']);
+
+        $res = $this->actingAs($librarian)->postJson(route('library.manage.rfid.inventory'), ['shelf_id' => $a3->id, 'codes' => ['T1', 'C2', 'D1', 'ZZZ']])
+            ->assertOk()->assertJsonPath('expected', 3)->assertJsonPath('unknown', ['ZZZ'])->json();
+
+        $this->assertEqualsCanonicalizing([$here->id, $bySection->id], array_column($res['found'], 'id'));
+        $this->assertSame([$missing->id], array_column($res['missing'], 'id'));
+        $this->assertSame([$elsewhere->id], array_column($res['misplaced'], 'id'));
+        $this->assertSame('B1', $res['misplaced'][0]['belongs']);
     }
 }

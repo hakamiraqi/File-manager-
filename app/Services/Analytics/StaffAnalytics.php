@@ -31,7 +31,7 @@ class StaffAnalytics
         ],
         'circulation' => [
             'library.loan', 'library.return', 'library.renew', 'library.hold',
-            'library.fine_paid', 'library.fine_waived', 'library.rfid', 'library.inventory',
+            'library.fine_paid', 'library.fine_waived', 'library.rfid', 'library.inventory', 'library.shelving',
         ],
         'sharing' => ['share.created', 'share.emailed'],
         'downloads' => ['file.downloaded', 'file.bulk_download'],

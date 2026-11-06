@@ -84,6 +84,8 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::delete('/rfid/{copy}', [RfidController::class, 'unlink'])->name('rfid.unlink');
         Route::post('/rfid/inventory', [RfidController::class, 'inventory'])->name('rfid.inventory');
         Route::post('/rfid/mark', [RfidController::class, 'mark'])->name('rfid.mark');
+        Route::post('/rfid/shelve', [RfidController::class, 'shelve'])->name('rfid.shelve');
+        Route::post('/rfid/unshelve/{copy}', [RfidController::class, 'unshelve'])->name('rfid.unshelve');
 
         Route::get('/import/template', [ImportController::class, 'template'])->name('import.template');
         Route::post('/import', [ImportController::class, 'store'])->name('import');

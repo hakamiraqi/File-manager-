@@ -59,6 +59,7 @@ class ActivityLogController extends Controller
         'library.fine_waived' => 'إعفاء من غرامة',
         'library.rfid' => 'ربط بطاقة RFID',
         'library.inventory' => 'جرد',
+        'library.shelving' => 'توزيع على الرفوف',
         'admin.user_created' => 'إضافة مستخدم',
         'admin.user_updated' => 'تعديل مستخدم',
         'admin.user_deleted' => 'حذف مستخدم',
