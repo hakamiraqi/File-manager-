@@ -97,8 +97,15 @@ class MapController extends Controller
             'shelves.*.levels' => ['required', 'integer', 'min:1', 'max:10'],
             'shelves.*.double_sided' => ['boolean'],
             'shelves.*.color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            // An obstacle's outline: 3 to 64 corners, metres from its centre.
+            'shelves.*.points' => ['nullable', 'required_if:shelves.*.kind,obstacle', 'array', 'min:3', 'max:64'],
+            'shelves.*.points.*' => ['array', 'size:2'],
+            'shelves.*.points.*.*' => ['numeric', 'min:-30', 'max:30'],
+            'shelves.*.height' => ['nullable', 'numeric', 'min:0.1', 'max:6'],
         ], [
             'shelves.*.code.distinct' => 'رمز الرف مكرر: كل رف يحتاج رمزاً مختلفاً.',
+            'shelves.*.points.required_if' => 'ارسم شكل العائق: 3 نقاط على الأقل.',
+            'shelves.*.points.min' => 'ارسم شكل العائق: 3 نقاط على الأقل.',
         ]);
 
         DB::transaction(function () use ($data) {
@@ -107,6 +114,9 @@ class MapController extends Controller
             foreach ($data['shelves'] as $row) {
                 $fields = collect($row)->only((new LibraryShelf)->getFillable())->all();
                 $fields['double_sided'] = (bool) ($row['double_sided'] ?? false);
+                $obstacle = $row['kind'] === 'obstacle';
+                $fields['points'] = $obstacle ? array_map(fn ($p) => [round((float) $p[0], 2), round((float) $p[1], 2)], $row['points']) : null;
+                $fields['height'] = $obstacle ? (float) ($row['height'] ?? 1) : null;
                 $shelf = ! empty($row['id']) ? LibraryShelf::find($row['id']) : null;
                 $shelf ? $shelf->update($fields) : $shelf = LibraryShelf::create($fields);
                 $keep[] = $shelf->id;
