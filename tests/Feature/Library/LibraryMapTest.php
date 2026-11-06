@@ -177,6 +177,35 @@ class LibraryMapTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('spots.0.code', 'B2'));
     }
 
+    public function test_the_apps_open_the_map_signed_in_as_the_same_user(): void
+    {
+        $shelf = LibraryShelf::create(['code' => 'B2', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        $book = Book::create(['title' => 'Dental Anatomy']);
+        $book->copies()->create(['barcode' => 'Z1', 'shelf' => 'B2-3']);
+
+        // Visitors need the public library switched on.
+        $this->getJson('/api/v1/public/library/map-link')->assertUnauthorized();
+
+        $reader = User::factory()->create();
+        $token = $reader->createToken('phone')->plainTextToken;
+        $this->withToken($token)->getJson("/api/v1/public/library/books/{$book->id}")->assertOk()
+            ->assertJsonPath('map_spot.code', 'B2')->assertJsonPath('map_spot.level', 3);
+        $path = $this->withToken($token)->getJson("/api/v1/public/library/map-link?book={$book->id}")->assertOk()->json('path');
+        $this->assertStringStartsWith('/library/map/app?', $path);
+
+        // The app's web view follows the link: signed in, then the map alone with the book.
+        $this->app['auth']->forgetGuards();
+        $this->get($path)->assertRedirect(route('library.map', ['book' => $book->id, 'app' => 1]));
+        $this->assertAuthenticatedAs($reader);
+        $this->get(route('library.map', ['book' => $book->id]))->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Library/Map')->where('embedded', true)->where('target.spots.0.shelf_id', $shelf->id));
+
+        // A changed link does not sign anyone in.
+        auth()->logout();
+        $this->get(str_replace('user='.$reader->id, 'user='.($reader->id + 1), $path))->assertForbidden();
+        $this->assertGuest();
+    }
+
     public function test_qr_stickers_open_the_map_at_their_bookcase(): void
     {
         $librarian = User::factory()->create(['is_librarian' => true]);

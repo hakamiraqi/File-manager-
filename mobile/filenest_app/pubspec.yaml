@@ -23,6 +23,9 @@ dependencies:
   video_player: ^2.9.1
   screen_brightness: ^1.0.1
   volume_controller: ^2.0.7
+  # «خريطة المكتبة»: the website's 3D map (three.js) inside the app on Android, iPhone and Windows.
+  flutter_inappwebview: ^6.1.5
+  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:

@@ -7,6 +7,7 @@ import '../../auth/state/auth_provider.dart';
 import '../../site/site_api.dart';
 import 'book_screen.dart';
 import 'library_desk_screen.dart';
+import 'library_map_screen.dart';
 import 'library_widgets.dart';
 import 'my_loans_screen.dart';
 
@@ -96,6 +97,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
       appBar: AppBar(
         title: Text(context.l('المكتبة', 'Library')),
         actions: [
+          IconButton(
+            tooltip: context.l('خريطة المكتبة', 'Library map'),
+            icon: const Icon(Icons.map_outlined),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryMapScreen())),
+          ),
           if (user != null)
             IconButton(
               tooltip: context.l('استعاراتي', 'My loans'),

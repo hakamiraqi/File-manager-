@@ -2,6 +2,9 @@
     <!-- The FileNest server: the hosting over https, or a local (offline) server over plain http on the LAN. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <!-- The library map scans the QR sticker on a bookcase. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
         android:label="FileNest"
         android:usesCleartextTraffic="true"

@@ -13,15 +13,34 @@ use App\Models\Library\Loan;
 use App\Models\Library\Notice;
 use App\Models\UserNotification;
 use App\Services\Library\HoldService;
+use App\Services\Library\LibraryMap;
 use App\Services\Library\LoanService;
 use App\Support\PublicSite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\URL;
 
 /** The library for the mobile apps: the catalogue, a book, holds and «استعاراتي», plus the staff loans list. */
 class LibraryController extends Controller
 {
-    public function __construct(private LoanService $loans, private HoldService $holds) {}
+    public function __construct(private LoanService $loans, private HoldService $holds, private LibraryMap $map) {}
+
+    /**
+     * «خريطة المكتبة» in the apps (2026-11-06, by request): the app shows the same 3D map as the
+     * website. A signed-in app gets a short-lived signed path that opens the map signed in as the
+     * same user; visitors get the public map. The app puts its own server address in front.
+     */
+    public function mapLink(Request $request): JsonResponse
+    {
+        $this->allowGuest($request);
+        $user = $request->user('sanctum');
+        $params = array_filter(['book' => $request->integer('book') ?: null, 'at' => $request->integer('at') ?: null]);
+        $path = $user
+            ? URL::temporarySignedRoute('library.map.app', now()->addMinutes(5), ['user' => $user->id] + $params, absolute: false)
+            : route('library.map', $params + ['app' => 1], false);
+
+        return response()->json(['path' => $path]);
+    }
 
     public function index(Request $request): JsonResponse
     {
@@ -69,6 +88,8 @@ class LibraryController extends Controller
             'digital_file_id' => $book->file && $user && $user->can('view', $book->file) ? $book->file->id : null,
             'can_hold' => (bool) $user,
             'contact_enabled' => PublicSite::contact(),
+            // Where it is on the library map (first bookcase), for «مكانه على الخريطة».
+            'map_spot' => ($spot = $this->map->locate($book)[0] ?? null) ? ['code' => $spot['code'], 'level' => $spot['level']] : null,
         ]);
     }
 

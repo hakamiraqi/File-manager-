@@ -4,7 +4,7 @@
 // the reader can also say where they are by scanning the QR sticker on the nearest bookcase,
 // and «ابدأ المشي» moves the arrow with their real steps (motion sensor + compass).
 import { Head, Link, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, h, onBeforeUnmount, ref, watch } from 'vue';
 import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import GuestShell from '@/Components/GuestShell.vue';
@@ -23,10 +23,12 @@ import {
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ floor: Object, shelves: Array, target: Object, canEdit: Boolean, startAt: { type: Number, default: null } });
+const props = defineProps({ floor: Object, shelves: Array, target: Object, canEdit: Boolean, startAt: { type: Number, default: null }, embedded: Boolean });
 const page = usePage();
 const signedIn = computed(() => !!page.props.auth?.user);
-const Layout = computed(() => (signedIn.value ? AppLayout : GuestShell));
+// Inside the FileNest apps (2026-11-06, by request) the map fills the app's screen on its own.
+const EmbedShell = { setup: (_, { slots }) => () => h('div', { class: 'min-h-dvh bg-gray-100 dark:bg-gray-900' }, slots.default?.()) };
+const Layout = computed(() => (props.embedded ? EmbedShell : signedIn.value ? AppLayout : GuestShell));
 
 const map = ref(null);
 const shelfById = computed(() => Object.fromEntries(props.shelves.map((s) => [s.id, s])));
@@ -393,8 +395,8 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
             </div>
         </template>
 
-        <div class="space-y-4 p-4 sm:p-6">
-            <LibraryTabs v-if="signedIn" />
+        <div :class="embedded ? '' : 'space-y-4 p-4 sm:p-6'">
+            <LibraryTabs v-if="signedIn && !embedded" />
 
             <div v-if="!bookcases.length" class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-600 dark:bg-gray-800">
                 <MapIcon class="mx-auto h-12 w-12 text-gray-300" />
@@ -405,7 +407,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                 </Link>
             </div>
 
-            <div v-else class="relative h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] overflow-hidden rounded-2xl border border-gray-200 bg-gray-100 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+            <div v-else class="relative overflow-hidden bg-gray-100 dark:bg-gray-900" :class="embedded ? 'h-dvh' : 'h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
                 <LibraryMap3D ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
 
                 <!-- Search, or the Waze-style instruction banner while walking. -->
@@ -499,7 +501,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                             <BookCover :book="book" size="sm" class="hidden w-12 shrink-0 sm:block" />
                             <div class="min-w-0 flex-1">
                                 <div class="flex items-start gap-2">
-                                    <Link :href="route('library.books.show', book.id)" class="min-w-0 flex-1 truncate font-bold hover:underline" dir="auto">{{ book.title }}</Link>
+                                    <component :is="embedded ? 'span' : Link" :href="embedded ? undefined : route('library.books.show', book.id)" class="min-w-0 flex-1 truncate font-bold hover:underline" dir="auto">{{ book.title }}</component>
                                     <button @click="clearSelection" class="-m-1 rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
                                 </div>
                                 <p class="truncate text-xs text-gray-500" dir="auto">{{ book.authors }}</p>
@@ -519,7 +521,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                             <div class="min-w-0 flex-1">
                                 <p class="font-bold">{{ pickedShelf.kind === 'shelf' ? t('library.shelf', 'الرف') + ' ' + pickedShelf.code : pickedShelf.name || pickedShelf.code }}</p>
                                 <p class="truncate text-sm text-gray-500">{{ [pickedShelf.section || pickedShelf.name, hallName(pickedShelf.id)].filter(Boolean).join(' · ') }}</p>
-                                <Link v-if="pickedShelf.section_id" :href="route('library.index', { section: pickedShelf.section_id })" class="mt-1 inline-flex items-center gap-1 text-sm text-[var(--accent-600)] hover:underline"><BookOpenIcon class="h-4 w-4" /> {{ t('library.map.section_books', 'كتب هذا القسم') }}</Link>
+                                <Link v-if="pickedShelf.section_id && !embedded" :href="route('library.index', { section: pickedShelf.section_id })" class="mt-1 inline-flex items-center gap-1 text-sm text-[var(--accent-600)] hover:underline"><BookOpenIcon class="h-4 w-4" /> {{ t('library.map.section_books', 'كتب هذا القسم') }}</Link>
                             </div>
                             <button @click="clearSelection" class="-m-1 rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
                         </div>

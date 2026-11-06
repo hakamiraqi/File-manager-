@@ -7,6 +7,7 @@ import '../../features/admin/presentation/admin_home_screen.dart';
 import '../../features/app_settings/presentation/app_settings_screen.dart';
 import '../../features/auth/state/auth_provider.dart';
 import '../../features/contact/presentation/contact_screen.dart';
+import '../../features/library/presentation/library_map_screen.dart';
 import '../../features/library/presentation/my_loans_screen.dart';
 import '../../features/playlists/presentation/playlists_screen.dart';
 import '../../features/saved/presentation/saved_screen.dart';
@@ -51,6 +52,11 @@ List<NavDestinationItem> buildSecondaryDestinations(BuildContext context) {
       icon: Icons.bookmark_border_rounded,
       label: context.l('المحفوظات والتنزيلات', 'Saved & downloads'),
       onTap: () => push(const SavedScreen()),
+    ),
+    NavDestinationItem(
+      icon: Icons.map_outlined,
+      label: context.l('خريطة المكتبة', 'Library map'),
+      onTap: () => push(const LibraryMapScreen()),
     ),
     NavDestinationItem(
       icon: Icons.bookmark_added_outlined,

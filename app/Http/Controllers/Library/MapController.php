@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\Library\Book;
 use App\Models\Library\LibrarySection;
 use App\Models\Library\LibraryShelf;
+use App\Models\User;
 use App\Services\Library\LibraryMap;
 use App\Support\PublicSite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -38,7 +40,24 @@ class MapController extends Controller
             'canEdit' => (bool) $request->user()?->canManageLibrary(),
             // ?at=12 comes from the QR sticker on bookcase 12: «أنت هنا».
             'startAt' => $request->integer('at') ?: null,
+            // Inside the apps: the map alone, full screen, without the site's menus.
+            'embedded' => $request->boolean('app') || (bool) $request->session()->get('library_app'),
         ]);
+    }
+
+    /** The apps' way in: a signed link from the API signs the web view in as the app's user. */
+    public function app(Request $request): RedirectResponse
+    {
+        abort_unless($request->hasValidSignature(false), 403);
+        $user = User::find($request->integer('user'));
+        abort_unless($user && $user->is_active, 403);
+        if (Auth::id() !== $user->id) {
+            Auth::login($user);
+            $request->session()->regenerate();
+        }
+        $request->session()->put('library_app', true);
+
+        return redirect()->route('library.map', array_filter(['book' => $request->integer('book') ?: null, 'at' => $request->integer('at') ?: null, 'app' => 1]));
     }
 
     /** The search box on the map: books with where they are. */
