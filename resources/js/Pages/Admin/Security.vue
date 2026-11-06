@@ -12,6 +12,7 @@ import SecretInput from '@/Components/SecretInput.vue';
 import StickySaveBar from '@/Components/StickySaveBar.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
+    ArrowTopRightOnSquareIcon,
     LockClosedIcon, GlobeAltIcon, PuzzlePieceIcon, KeyIcon, NoSymbolIcon, TrashIcon,
     ChevronDownIcon, ClipboardDocumentIcon, CheckIcon, PlusIcon, ShieldCheckIcon,
 } from '@heroicons/vue/24/outline';
@@ -21,6 +22,10 @@ const props = defineProps({ settings: Object, ipRules: Array, appUrl: String });
 
 const form = useForm({
     guest_access_enabled: props.settings.guest_access_enabled === '1',
+    public_library_enabled: props.settings.public_library_enabled === '1',
+    public_theses_enabled: props.settings.public_theses_enabled === '1',
+    public_files_enabled: props.settings.public_files_enabled === '1',
+    contact_enabled: props.settings.contact_enabled === '1',
     remote_upload_enabled: props.settings.remote_upload_enabled === '1',
     show_captcha_register: props.settings.show_captcha_register === '1',
     show_captcha_reset: props.settings.show_captcha_reset === '1',
@@ -122,8 +127,25 @@ const inputClass = 'block w-full rounded-xl border-gray-300 text-sm shadow-sm fo
             <!-- Public access -->
             <SettingsSection :icon="GlobeAltIcon" tone="green" :title="t('security.public_access', 'الوصول العام')" :description="t('security.public_access_desc', 'من يقدر يتصفح بدون حساب، ومن أين يمكن رفع الملفات.')">
                 <div class="divide-y divide-gray-100 dark:divide-gray-700">
-                    <SettingToggle v-model="form.guest_access_enabled" :description="t('security.guest_access_desc', 'حسب صلاحيات دور «زائر» في صفحة الصلاحيات.')">
-                        {{ t('security.guest_access_short', 'السماح للزوار بتصفح المجلدات العامة') }}
+                    <SettingToggle v-model="form.guest_access_enabled" :description="t('security.guest_site_desc', 'واجهة للطلاب والزوار بدون تسجيل دخول. اختر الأقسام الظاهرة فيها من تحت.')">
+                        {{ t('security.guest_site', 'تفعيل واجهة الزوار') }}
+                    </SettingToggle>
+                    <div v-if="form.guest_access_enabled" class="space-y-0 bg-gray-50/60 py-1 ps-4 sm:ps-8 dark:bg-gray-900/20">
+                        <SettingToggle v-model="form.public_library_enabled" :description="t('security.public_library_desc', 'تصفح الكتب والبحث فيها ومعرفة هل الكتاب متوفر أو مُعار.')">
+                            {{ t('security.public_library', 'المكتبة') }}
+                        </SettingToggle>
+                        <SettingToggle v-model="form.public_theses_enabled" :description="t('security.public_theses_desc', 'الرسائل والأطاريح الموجودة داخل مجلدات عامة فقط.')">
+                            {{ t('security.public_theses', 'الرسائل والأطاريح') }}
+                        </SettingToggle>
+                        <SettingToggle v-model="form.public_files_enabled" :description="t('security.guest_access_desc', 'حسب صلاحيات دور «زائر» في صفحة الصلاحيات.')">
+                            {{ t('security.public_files', 'الملفات والمجلدات العامة') }}
+                        </SettingToggle>
+                        <a :href="route('guest.index')" target="_blank" class="inline-flex items-center gap-1 py-2 text-sm font-medium text-[var(--accent-600)] hover:underline">
+                            <ArrowTopRightOnSquareIcon class="h-4 w-4" /> {{ t('security.open_guest_site', 'افتح واجهة الزوار') }}
+                        </a>
+                    </div>
+                    <SettingToggle v-model="form.contact_enabled" :description="t('security.contact_desc', 'نموذج «تواصل معنا» للزوار والمستخدمين؛ الرسائل تظهر في صفحة «التواصل معنا».')">
+                        {{ t('security.contact', 'تواصل معنا وإرسال الطلبات') }}
                     </SettingToggle>
                     <SettingToggle v-model="form.remote_upload_enabled" :description="t('security.remote_upload_desc', 'يسمح بلصق رابط ملف من الإنترنت وتنزيله مباشرة إلى النظام.')">
                         {{ t('security.remote_upload_short', 'الرفع من رابط خارجي') }}

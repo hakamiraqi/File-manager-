@@ -165,7 +165,7 @@ class ThesisController extends Controller
 
     private function guestsAllowed(): bool
     {
-        return Setting::get('guest_access_enabled', false) && RolePermission::allows('guest', 'view');
+        return \App\Support\PublicSite::theses();
     }
 
     private function card(Folder $f, bool $signedIn): array

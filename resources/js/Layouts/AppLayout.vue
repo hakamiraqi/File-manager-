@@ -23,6 +23,7 @@ import {
     BookOpenIcon,
     AcademicCapIcon,
     BookmarkIcon,
+    ChatBubbleLeftRightIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -41,6 +42,11 @@ const nav = computed(() => [
     { label: t('nav.playlists', 'قوائم التشغيل'), href: route('playlists.index'), icon: QueueListIcon, active: route().current('playlists.*') },
     { label: t('nav.shares', 'الروابط المشتركة'), href: route('shares.index'), icon: ShareIcon, active: route().current('shares.index') },
     { label: t('nav.trash', 'سلة المحذوفات'), href: route('trash.index'), icon: TrashIcon, active: route().current('trash.index') },
+    ...(page.props.permissions?.manage_contact
+        ? [{ label: t('nav.contact_inbox', 'التواصل معنا'), href: route('contact.inbox'), icon: ChatBubbleLeftRightIcon, active: route().current('contact.inbox'), badge: page.props.permissions?.contact_new || 0 }]
+        : page.props.appSettings?.publicSite?.contact
+            ? [{ label: t('nav.contact', 'تواصل معنا'), href: route('contact.create'), icon: ChatBubbleLeftRightIcon, active: route().current('contact.create') }]
+            : []),
 ]);
 
 function logout() {

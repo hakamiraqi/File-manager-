@@ -57,6 +57,8 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Gate::define('manage-library', fn ($user) => $user->canManageLibrary());
+        // «تواصل معنا» inbox: admins who manage settings, and librarians.
+        Gate::define('manage-contact', fn ($user) => $user->hasAdminCapability('can_manage_settings') || $user->canManageLibrary());
 
         Gate::define('access-settings-page', fn ($user) => $user->hasAdminCapability('can_manage_settings')
             || $user->hasAdminCapability('can_manage_appearance'));

@@ -386,5 +386,6 @@
     "view.grid": "Cards",
     "view.list": "List",
     "preview.document_loading": "Preparing the document preview...",
-    "preview.document_failed": "This document could not be shown here. Download it to open it."
+    "preview.document_failed": "This document could not be shown here. Download it to open it.",
+    "guest.browse_site": "Browse the site without signing in"
 }

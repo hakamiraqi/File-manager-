@@ -66,6 +66,9 @@ class HandleInertiaRequests extends Middleware
                 'comment' => $user->canPerform('comment'),
                 'is_admin' => $user->isAdmin(),
                 'manage_library' => $user->canManageLibrary(),
+                'manage_contact' => $user->can('manage-contact'),
+                'contact_new' => $user->can('manage-contact') && \Illuminate\Support\Facades\Schema::hasTable('contact_messages')
+                    ? \App\Models\ContactMessage::where('status', 'new')->count() : 0,
                 'library_unread' => \Illuminate\Support\Facades\Schema::hasTable('library_notices')
                     ? \App\Models\Library\Notice::whereNull('read_at')->whereHas('member', fn ($m) => $m->where('user_id', $user->id))->count() : 0,
                 'admin' => $user->isAdmin() ? [
@@ -84,6 +87,8 @@ class HandleInertiaRequests extends Middleware
                 'locale' => $locale,
                 'locales' => \App\Support\Locales::active(),
                 'guestAccessEnabled' => (bool) ($settings['guest_access_enabled'] ?? false),
+                // Which parts of the visitors' site are switched on.
+                'publicSite' => \App\Support\PublicSite::sections(),
                 'remoteUploadEnabled' => (bool) ($settings['remote_upload_enabled'] ?? false),
                 // Word/PowerPoint/Excel previews need LibreOffice on the server (the VPS image has it).
                 'officePreviewEnabled' => app(\App\Services\LibreOfficeConverter::class)->available(),
