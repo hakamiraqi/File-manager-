@@ -15,6 +15,10 @@ class SecurityController extends Controller
 {
     private const DEFAULTS = [
         'guest_access_enabled' => '0',
+        'public_files_enabled' => '1',
+        'public_library_enabled' => '1',
+        'public_theses_enabled' => '1',
+        'contact_enabled' => '1',
         'show_captcha_register' => '0',
         'show_captcha_reset' => '0',
         'show_captcha_download' => '0',
@@ -46,6 +50,10 @@ class SecurityController extends Controller
     {
         $data = $request->validate([
             'guest_access_enabled' => ['boolean'],
+            'public_files_enabled' => ['boolean'],
+            'public_library_enabled' => ['boolean'],
+            'public_theses_enabled' => ['boolean'],
+            'contact_enabled' => ['boolean'],
             'show_captcha_register' => ['boolean'],
             'show_captcha_reset' => ['boolean'],
             'show_captcha_download' => ['boolean'],
@@ -64,7 +72,7 @@ class SecurityController extends Controller
             'remote_upload_enabled' => ['boolean'],
         ]);
 
-        foreach (['guest_access_enabled', 'show_captcha_register', 'show_captcha_reset', 'show_captcha_download', 'recaptcha_enabled', 'recaptcha_invisible', 'remote_upload_enabled'] as $boolField) {
+        foreach (['guest_access_enabled', 'public_files_enabled', 'public_library_enabled', 'public_theses_enabled', 'contact_enabled', 'show_captcha_register', 'show_captcha_reset', 'show_captcha_download', 'recaptcha_enabled', 'recaptcha_invisible', 'remote_upload_enabled'] as $boolField) {
             $data[$boolField] = $request->boolean($boolField) ? '1' : '0';
         }
 

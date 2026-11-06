@@ -17,9 +17,11 @@ use Illuminate\Support\Facades\Route;
 Route::get('/library/cover/{type}/{id}', [CatalogController::class, 'cover'])
     ->whereIn('type', ['book', 'section'])->whereNumber('id')->name('library.cover');
 
+// The catalogue: visitors may browse it too when the admin switches the public library on.
+Route::get('/library', [CatalogController::class, 'index'])->name('library.index');
+Route::get('/library/books/{book}', [CatalogController::class, 'show'])->whereNumber('book')->name('library.books.show');
+
 Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->group(function () {
-    Route::get('/', [CatalogController::class, 'index'])->name('index');
-    Route::get('/books/{book}', [CatalogController::class, 'show'])->name('books.show');
     Route::get('/my-loans', [LoanController::class, 'mine'])->name('my-loans');
     Route::post('/loans/{loan}/renew', [LoanController::class, 'renew'])->name('loans.renew');
     Route::post('/books/{book}/hold', [HoldController::class, 'store'])->name('holds.store');

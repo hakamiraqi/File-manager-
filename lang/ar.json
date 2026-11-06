@@ -386,5 +386,6 @@
     "view.grid": "عرض كبطاقات",
     "view.list": "عرض كقائمة",
     "preview.document_loading": "جارِ تجهيز معاينة المستند...",
-    "preview.document_failed": "تعذّر عرض هذا المستند هنا. نزّله لفتحه."
+    "preview.document_failed": "تعذّر عرض هذا المستند هنا. نزّله لفتحه.",
+    "guest.browse_site": "تصفح الموقع بدون تسجيل دخول"
 }

@@ -119,7 +119,7 @@ const submit = () => {
             :href="route('guest.index')"
             class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
         >
-            {{ t('guest.browse_without_login', 'تصفح الملفات العامة بدون تسجيل دخول') }}
+            {{ t('guest.browse_site', 'تصفح الموقع بدون تسجيل دخول') }}
         </Link>
 
         <p class="mt-6 text-center text-sm">

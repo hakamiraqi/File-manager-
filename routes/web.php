@@ -21,11 +21,17 @@ Route::get('/', function () {
         return redirect()->route('dashboard');
     }
 
-    // With guest access on, visitors land on the public folders instead of the login form.
-    $guests = \App\Models\Setting::get('guest_access_enabled', false)
-        && \App\Models\RolePermission::allows('guest', 'view');
+    // With guest access on, visitors land on the public site instead of the login form.
+    return redirect()->route(\App\Support\PublicSite::enabled() ? 'guest.index' : 'login');
+});
 
-    return redirect()->route($guests ? 'guest.index' : 'login');
+// «تواصل معنا»: open to visitors and users (when switched on).
+Route::get('/contact', [\App\Http\Controllers\ContactController::class, 'create'])->name('contact.create');
+Route::post('/contact', [\App\Http\Controllers\ContactController::class, 'store'])->middleware('throttle:6,1')->name('contact.store');
+Route::middleware(['auth', 'verified', 'can:manage-contact'])->group(function () {
+    Route::get('/inbox', [\App\Http\Controllers\ContactController::class, 'inbox'])->name('contact.inbox');
+    Route::patch('/inbox/{message}', [\App\Http\Controllers\ContactController::class, 'update'])->name('contact.update');
+    Route::delete('/inbox/{message}', [\App\Http\Controllers\ContactController::class, 'destroy'])->name('contact.destroy');
 });
 
 // Thesis catalogue: guests see the public theses when guest access is on.

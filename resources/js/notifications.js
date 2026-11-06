@@ -1,7 +1,7 @@
 // Look of each notification kind, and a short "time ago" in Arabic.
 import {
     BookOpenIcon, BookmarkIcon, ClockIcon, ExclamationTriangleIcon, CheckCircleIcon, ArrowPathIcon,
-    BanknotesIcon, FolderPlusIcon, ChatBubbleLeftEllipsisIcon, UserPlusIcon, BellIcon, ClipboardDocumentListIcon,
+    BanknotesIcon, FolderPlusIcon, ChatBubbleLeftRightIcon, ArrowUturnLeftIcon, ChatBubbleLeftEllipsisIcon, UserPlusIcon, BellIcon, ClipboardDocumentListIcon,
 } from '@heroicons/vue/24/outline';
 
 const KINDS = {
@@ -19,6 +19,8 @@ const KINDS = {
     folder_assigned: [FolderPlusIcon, 'accent'],
     video_comment: [ChatBubbleLeftEllipsisIcon, 'sky'],
     user_registered: [UserPlusIcon, 'green'],
+    contact_message: [ChatBubbleLeftRightIcon, 'accent'],
+    contact_reply: [ArrowUturnLeftIcon, 'green'],
 };
 
 export const TONES = {

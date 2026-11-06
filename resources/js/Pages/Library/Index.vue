@@ -2,21 +2,26 @@
 import { ref, computed } from 'vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import GuestShell from '@/Components/GuestShell.vue';
 import Pagination from '@/Components/Pagination.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { MagnifyingGlassIcon, FolderIcon, HomeIcon, Squares2X2Icon, ListBulletIcon, ChevronLeftIcon } from '@heroicons/vue/24/outline';
+import { MagnifyingGlassIcon, FolderIcon, HomeIcon, Squares2X2Icon, ListBulletIcon, ChevronLeftIcon, CheckBadgeIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const props = defineProps({ books: Object, sections: Array, currentSection: Object, childSections: Array, filters: Object });
+
+const page = usePage();
+const signedIn = computed(() => !!page.props.auth?.user);
+const Layout = computed(() => (signedIn.value ? AppLayout : GuestShell));
 
 const q = ref(props.filters.q ?? '');
 const view = ref((() => { try { return localStorage.getItem('library.view') || 'grid'; } catch { return 'grid'; } })());
 function setView(v) { view.value = v; try { localStorage.setItem('library.view', v); } catch {} }
 
 function go(params) {
-    router.get(route('library.index'), { q: q.value || undefined, section: props.filters.section || undefined, ...params }, { preserveState: true, preserveScroll: true });
+    router.get(route('library.index'), { q: q.value || undefined, section: props.filters.section || undefined, available: props.filters.available ? 1 : undefined, ...params }, { preserveState: true, preserveScroll: true });
 }
 
 // "الدراسات الأولية / جراحة الفم" → clickable parts.
@@ -30,7 +35,7 @@ const trail = computed(() => {
 
 function availability(book) {
     if (book.reference_only) return { text: t('library.reference_only', 'للقراءة داخل المكتبة'), cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' };
-    if (!book.copies_count) return { text: t('library.no_copies', 'لا توجد نسخ'), cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700' };
+    if (!book.copies_count) return { text: t('library.not_in_library', 'غير موجود حالياً'), cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700' };
     return book.available_count > 0
         ? { text: t('library.available_n', 'متاح :n من :m', { n: book.available_count, m: book.copies_count }), cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' }
         : { text: t('library.all_loaned', 'كل النسخ مُعارة'), cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300' };
@@ -40,7 +45,7 @@ function availability(book) {
 <template>
     <Head :title="t('nav.library', 'المكتبة')" />
 
-    <AppLayout>
+    <component :is="Layout">
         <template #header>
             <div class="flex items-center gap-3">
                 <h2 class="hidden text-lg font-semibold text-gray-800 sm:block dark:text-gray-100">{{ t('nav.library', 'المكتبة') }}</h2>
@@ -58,7 +63,7 @@ function availability(book) {
         </template>
 
         <div class="space-y-5 p-4 sm:p-6">
-            <LibraryTabs />
+            <LibraryTabs v-if="signedIn" />
 
             <!-- Path: المكتبة / قسم / قسم فرعي -->
             <nav class="flex flex-wrap items-center gap-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
@@ -91,7 +96,17 @@ function availability(book) {
             </div>
 
             <div class="flex items-center justify-between">
-                <p class="text-sm text-gray-500">{{ t('library.n_results', ':n كتاب', { n: books.total }) }}</p>
+                <div class="flex items-center gap-3">
+                    <p class="text-sm text-gray-500">{{ t('library.n_results', ':n كتاب', { n: books.total }) }}</p>
+                    <button
+                        type="button"
+                        @click="go({ available: filters.available ? undefined : 1, page: undefined })"
+                        class="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition"
+                        :class="filters.available ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700'"
+                    >
+                        <CheckBadgeIcon class="h-4 w-4" /> {{ t('library.only_available', 'المتوفر الآن فقط') }}
+                    </button>
+                </div>
                 <div class="inline-flex overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600">
                     <button @click="setView('grid')" class="p-2" :class="view === 'grid' ? 'bg-[var(--accent-600)] text-white' : 'text-gray-500'"><Squares2X2Icon class="h-5 w-5" /></button>
                     <button @click="setView('list')" class="p-2" :class="view === 'list' ? 'bg-[var(--accent-600)] text-white' : 'text-gray-500'"><ListBulletIcon class="h-5 w-5" /></button>
@@ -122,5 +137,5 @@ function availability(book) {
 
             <Pagination :links="books.links" />
         </div>
-    </AppLayout>
+    </component>
 </template>

@@ -1,12 +1,12 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { Head, router, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import GuestShell from '@/Components/GuestShell.vue';
 import Pagination from '@/Components/Pagination.vue';
 import Modal from '@/Components/Modal.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { AcademicCapIcon, MagnifyingGlassIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, XMarkIcon, FolderOpenIcon } from '@heroicons/vue/24/outline';
+import { AcademicCapIcon, MagnifyingGlassIcon, ArrowDownTrayIcon, ArrowUpTrayIcon, XMarkIcon, FolderOpenIcon, ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
     theses: Object,
@@ -24,6 +24,7 @@ const page = usePage();
 const signedIn = computed(() => !!page.props.auth?.user);
 const isAdmin = computed(() => page.props.auth?.user?.role === 'admin');
 const Layout = computed(() => (signedIn.value ? AppLayout : GuestShell));
+const contactEnabled = computed(() => !!page.props.appSettings?.publicSite?.contact);
 
 const q = ref(props.filters.q ?? '');
 const field = ref(props.filters.field ?? 'all');
@@ -78,7 +79,6 @@ function submitImport() {
         </template>
 
         <div class="space-y-4 p-4 sm:p-6">
-            <div v-if="!signedIn" class="flex items-center gap-2 text-lg font-bold"><AcademicCapIcon class="h-6 w-6" /> {{ t('nav.theses', 'الرسائل والأطاريح') }}</div>
             <p v-if="presets.university || presets.college" class="text-sm text-gray-500 dark:text-gray-400">{{ [presets.college, presets.university].filter(Boolean).join(' — ') }}</p>
 
             <!-- Search -->
@@ -153,6 +153,7 @@ function submitImport() {
                                 </div>
                                 <p v-if="false && th.iqdr_receipt" class="mt-2 text-xs text-emerald-700 dark:text-emerald-400">{{ t('thesis.iqdr_deposited', 'مودعة في المستودع الرقمي العراقي') }} · {{ th.iqdr_receipt }}</p>
                             </div>
+                            <Link v-if="contactEnabled" :href="route('contact.create', { thesis: th.id })" class="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700" :title="t('thesis.request', 'اطلب هذه الرسالة')"><ChatBubbleLeftRightIcon class="h-5 w-5" /></Link>
                             <a :href="th.url" class="shrink-0 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700" :title="t('thesis.open_folder', 'فتح المجلد')"><FolderOpenIcon class="h-5 w-5" /></a>
                         </div>
                     </article>
