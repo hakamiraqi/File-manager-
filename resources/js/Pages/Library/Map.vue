@@ -11,8 +11,9 @@ import GuestShell from '@/Components/GuestShell.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
+import LibraryMap2D from '@/Components/Library/Map/LibraryMap2D.vue';
 import Maneuver from '@/Components/Library/Map/Maneuver.vue';
-import { findRoute, directions, pointAt, standingPoints, hallAt, isHall, storeyOf, routeOnStorey, outline } from '@/Components/Library/Map/route.js';
+import { findRoute, isLift, directions, pointAt, standingPoints, hallAt, isHall, storeyOf, routeOnStorey, outline } from '@/Components/Library/Map/route.js';
 import { createStepTracker, requestSensors, sensorsSupported, stepLength as stepLengthStore, compassOffset, planBearing, angleDiff, circularMean } from '@/Components/Library/Map/stepTracker.js';
 import QrScanner from '@/Components/Library/Map/QrScanner.vue';
 import { isSticker, nearestStickers } from '@/Components/Library/Map/stickers.js';
@@ -21,6 +22,7 @@ import { useTrans } from '@/Composables/useTrans';
 import {
     MagnifyingGlassIcon, XMarkIcon, PlayIcon, PauseIcon, ArrowPathIcon, MapIcon, PencilSquareIcon,
     ViewfinderCircleIcon, ChevronLeftIcon, ChevronRightIcon, BookOpenIcon, CheckCircleIcon, QrCodeIcon, MapPinIcon, ExclamationTriangleIcon, MinusIcon, PlusIcon,
+    Squares2X2Icon, CubeIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -32,6 +34,29 @@ const EmbedShell = { setup: (_, { slots }) => () => h('div', { class: 'min-h-dvh
 const Layout = computed(() => (props.embedded ? EmbedShell : signedIn.value ? AppLayout : GuestShell));
 
 const map = ref(null);
+
+// «خريطة مسطحة» (2026-11-06, by request): a light 2D plan for weak phones, or by choice.
+// Chosen by itself when the phone can't draw 3D or is a low-end one; the choice is remembered.
+const store = {
+    get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
+    set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+};
+function weakDevice() {
+    try {
+        if ((navigator.deviceMemory && navigator.deviceMemory <= 2) || (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 2)) return true;
+        const c = document.createElement('canvas');
+        return !(c.getContext('webgl2') || c.getContext('webgl'));
+    } catch { return false; }
+}
+const saved2d = store.get('library.map.flat');
+const flat = ref(saved2d === null ? weakDevice() : saved2d === '1');
+function setFlat(v) {
+    flat.value = v;
+    store.set('library.map.flat', v ? '1' : '0');
+}
+// «بدون درج (مصعد فقط)»: the way to another floor goes by a lift only (wheelchair, trolley).
+const liftOnly = ref(store.get('library.map.lift_only') === '1');
+watch(liftOnly, (v) => store.set('library.map.lift_only', v ? '1' : '0'));
 const shelfById = computed(() => Object.fromEntries(props.shelves.map((s) => [s.id, s])));
 const bookcases = computed(() => props.shelves.filter((s) => s.kind === 'shelf'));
 // «قاعات وغرف» (2026-11-06, by request): a big library is several halls and rooms.
@@ -122,7 +147,10 @@ function resetHere() {
 }
 
 // Route & directions ------------------------------------------------------------------------
-const walkRoute = computed(() => (targetShelf.value?.kind === 'shelf' ? findRoute(props.floor, props.shelves, origin.value, targetShelf.value) : null));
+const hasLift = computed(() => multiStorey.value && props.shelves.some(isLift));
+const routeOpts = computed(() => ({ liftOnly: liftOnly.value && hasLift.value }));
+const walkRoute = computed(() => (targetShelf.value?.kind === 'shelf' ? findRoute(props.floor, props.shelves, origin.value, targetShelf.value, routeOpts.value) : null));
+const otherFloor = computed(() => !!targetShelf.value && storeyOf(targetShelf.value) !== storeyOf(origin.value));
 const steps = computed(() => (walkRoute.value ? directions(walkRoute.value, targetShelf.value, halls.value) : []));
 const WALK_SPEED = 1.2; // m/s, an easy indoor pace
 const metres = (m) => (m < 10 ? Math.max(1, Math.round(m)) : Math.round(m));
@@ -142,8 +170,10 @@ function baseStepText(step) {
     const d = metres(step.distance);
     const code = targetShelf.value?.code ?? '';
     switch (step.type) {
-        case 'stairs_up': return t('library.map.stairs_up', 'اصعد عبر :code إلى :storey', { code: step.stairs.code, storey: storeyName(step.storey) });
-        case 'stairs_down': return t('library.map.stairs_down', 'انزل عبر :code إلى :storey', { code: step.stairs.code, storey: storeyName(step.storey) });
+        case 'stairs_up': if (step.stairs.lift) return t('library.map.lift_up', 'اركب :lift واصعد إلى :storey', { lift: /مصعد/.test(step.stairs.code) ? step.stairs.code : `${t('library.map.lift', 'المصعد')} ${step.stairs.code}`, storey: storeyName(step.storey) });
+            return t('library.map.stairs_up', 'اصعد عبر :code إلى :storey', { code: step.stairs.code, storey: storeyName(step.storey) });
+        case 'stairs_down': if (step.stairs.lift) return t('library.map.lift_down', 'اركب :lift وانزل إلى :storey', { lift: /مصعد/.test(step.stairs.code) ? step.stairs.code : `${t('library.map.lift', 'المصعد')} ${step.stairs.code}`, storey: storeyName(step.storey) });
+            return t('library.map.stairs_down', 'انزل عبر :code إلى :storey', { code: step.stairs.code, storey: storeyName(step.storey) });
         case 'enter': return t('library.map.enter_hall', 'ادخل :hall وامشِ :d م', { hall: step.hall, d });
         case 'start': return t('library.map.go_straight', 'امشِ للأمام :d م', { d });
         case 'right': return t('library.map.turn_right', 'انعطف يميناً ثم امشِ :d م', { d });
@@ -335,7 +365,7 @@ function onScan(text) {
     const wasLive = live.value && walking.value;
     if (wasLive && stepCount.value >= 8 && liveStartedFrom) {
         // We now know how far they really walked: tune the step length to it.
-        const real = findRoute(props.floor, props.shelves, liveStartedFrom, shelf)?.length;
+        const real = findRoute(props.floor, props.shelves, liveStartedFrom, shelf, routeOpts.value)?.length;
         const len = real ? real / stepCount.value : null;
         if (len && len >= 0.4 && len <= 0.95) { stepLen.value = Math.round(len * 100) / 100; stepLengthStore.set(stepLen.value); }
     }
@@ -436,7 +466,8 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
             </div>
 
             <div v-else class="relative overflow-hidden bg-gray-100 dark:bg-gray-900" :class="embedded ? 'h-dvh' : 'h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
-                <LibraryMap3D ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
+                <LibraryMap2D v-if="flat" ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
+                <LibraryMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
 
                 <!-- Search, or the Waze-style instruction banner while walking. -->
                 <div class="pointer-events-none absolute inset-x-0 top-0 p-3">
@@ -536,6 +567,9 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
 
                 <!-- Camera buttons. -->
                 <div class="absolute end-3 top-24 flex flex-col gap-2">
+                    <button @click="setFlat(!flat)" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="flat ? t('library.map.to_3d', 'عرض ثلاثي الأبعاد') : t('library.map.to_2d', 'خريطة مسطحة (أخف)')">
+                        <component :is="flat ? CubeIcon : Squares2X2Icon" class="h-5 w-5" />
+                    </button>
                     <button @click="map?.overview()" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="t('library.map.overview', 'عرض المكتبة كاملة')"><MapIcon class="h-5 w-5" /></button>
                     <button v-if="targetShelf" @click="map?.focusShelf(targetShelf.id)" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="t('library.map.show_shelf', 'اعرض الرف')"><ViewfinderCircleIcon class="h-5 w-5" /></button>
                 </div>
@@ -604,6 +638,10 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                                 </button>
                             </template>
                         </div>
+                        <label v-if="hasLift && otherFloor && !walking" class="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                            <input v-model="liftOnly" type="checkbox" class="rounded border-gray-300" /> ♿ {{ t('library.map.lift_only', 'بدون درج (مصعد فقط)') }}
+                        </label>
+                        <p v-if="targetShelf?.kind === 'shelf' && !walkRoute && !walking" class="mt-2 text-sm text-amber-700 dark:text-amber-400">{{ routeOpts.liftOnly ? t('library.map.no_lift_route', 'لا يوجد طريق بالمصعد إلى هذا الرف. اسأل موظف المكتبة.') : t('library.map.no_route', 'تعذّر إيجاد طريق إلى هذا الرف.') }}</p>
                         <p v-if="sensorError" class="mt-2 text-xs text-red-600">{{ sensorError }}</p>
                         <p v-if="walkRoute && !walking && !arrived && canLive" class="mt-2 text-[11px] leading-5 text-gray-500">{{ t('library.map.live_hint', 'امسك الهاتف أمامك وامشِ: السهم يتقدم مع خطواتك. للدقة امسح ملصق QR على أي رف تمر به.') }}</p>
 
@@ -621,7 +659,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
 
                 <!-- Legend of sections when nothing is chosen. -->
                 <div v-else class="pointer-events-none absolute inset-x-0 bottom-0 p-3">
-                    <p class="mx-auto w-fit rounded-full bg-white/90 px-3 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-800/90 dark:text-gray-300">{{ t('library.map.hint', 'ابحث عن كتاب أو اضغط على أي رف · اسحب لتدوير المكتبة') }}</p>
+                    <p class="mx-auto w-fit rounded-full bg-white/90 px-3 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-800/90 dark:text-gray-300">{{ flat ? t('library.map.hint_2d', 'ابحث عن كتاب أو اضغط على أي رف · اسحب للتحريك وبإصبعين للتكبير') : t('library.map.hint', 'ابحث عن كتاب أو اضغط على أي رف · اسحب لتدوير المكتبة') }}</p>
                 </div>
             </div>
         </div>

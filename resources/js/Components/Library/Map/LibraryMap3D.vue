@@ -14,7 +14,7 @@ const props = defineProps({
     follow: { type: Boolean, default: false },
     beacons: { type: Object, default: null }, // { ids: [], nearest } stickers to make pulse
 });
-const emit = defineEmits(['pick', 'ready']);
+const emit = defineEmits(['pick', 'ready', 'failed']);
 
 const el = ref(null);
 const failed = ref(false);
@@ -38,6 +38,7 @@ onMounted(async () => {
     } catch (e) {
         console.error(e);
         failed.value = true;
+        emit('failed');
     }
 });
 

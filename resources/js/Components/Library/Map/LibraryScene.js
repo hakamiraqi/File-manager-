@@ -13,7 +13,7 @@ export function shelfHeight(item) {
     if (item.kind === 'wall') return 2.6;
     if (item.kind === 'gate') return 1.6;
     if (item.kind === 'obstacle') return item.height || 1;
-    if (item.kind === 'stairs') return 1.4;
+    if (item.kind === 'stairs') return item.double_sided ? 2.4 : 1.4; // a lift stands higher
     return item.levels * LEVEL_H + 0.12;
 }
 
@@ -552,6 +552,14 @@ export class LibraryScene {
             const face = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), new THREE.MeshBasicMaterial({ map: this.qrTexture() }));
             face.position.set(0, 0.72, 0.041);
             group.add(plate, face);
+        } else if (kind === 'stairs' && item.double_sided) {
+            // «مصعد»: a lift car with its doors on the front.
+            const shaft = new THREE.MeshStandardMaterial({ color: this.dark ? '#475569' : '#cbd5e1', roughness: 0.35, metalness: 0.4 });
+            box(W, 2.3, D, 0, 1.15, 0, shaft);
+            const doorMat = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.25, metalness: 0.7 });
+            box(W * 0.36, 2, 0.03, -W * 0.185, 1, D / 2 + 0.016, doorMat);
+            box(W * 0.36, 2, 0.03, W * 0.185, 1, D / 2 + 0.016, doorMat);
+            box(W * 0.8, 0.12, 0.04, 0, 2.15, D / 2 + 0.02, accentMat);
         } else if (kind === 'stairs') {
             // «درج / مصعد»: a flight of steps going up along the item's depth.
             const n = 8, stepMat = new THREE.MeshStandardMaterial({ color: this.dark ? '#94a3b8' : '#d6d3d1', roughness: 0.7 });

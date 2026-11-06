@@ -15,7 +15,7 @@ import { wallPolygons, wallSpot, autoStickers } from '@/Components/Library/Map/s
 import { useTrans } from '@/Composables/useTrans';
 import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
-    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon, HomeModernIcon, BuildingOffice2Icon, ArrowsRightLeftIcon, ChevronDoubleUpIcon, RectangleGroupIcon, Square2StackIcon,
+    MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon, HomeModernIcon, BuildingOffice2Icon, ArrowsRightLeftIcon, ChevronDoubleUpIcon, RectangleGroupIcon, Square2StackIcon, RectangleStackIcon,
     PhotoIcon, ClipboardDocumentCheckIcon, ArrowUturnLeftIcon, ArrowsPointingOutIcon, XMarkIcon, InformationCircleIcon,
 } from '@heroicons/vue/24/outline';
 
@@ -99,11 +99,144 @@ const selected = computed(() => items.value.find((i) => i._key === selectedKey.v
 const sectionPath = (id) => props.sections.find((s) => s.id === id)?.path ?? '';
 const snap = ref(true);
 const zoom = ref(1);
+// «المحرر على الهاتف» (2026-11-06, by request): pinch with two fingers to zoom, drag the empty
+// floor (one finger or the mouse) or two fingers to move round the plan, Ctrl + wheel to zoom.
+const planBox = ref(null);
+const ZOOM_MAX = 6;
+/** Zooms to `z`, keeping the plan point under (mx, my) (pixels in the box) where it is. */
+function zoomAt(z, mx = null, my = null) {
+    const box = planBox.value;
+    const next = Math.min(ZOOM_MAX, Math.max(1, z));
+    if (!box || next === zoom.value) { zoom.value = next; return; }
+    mx ??= box.clientWidth / 2;
+    my ??= box.clientHeight / 2;
+    const k = next / zoom.value, sl = box.scrollLeft, st = box.scrollTop;
+    zoom.value = next;
+    nextTick(() => { box.scrollLeft = (sl + mx) * k - mx; box.scrollTop = (st + my) * k - my; });
+}
+// «تحديد عدة رفوف» (2026-11-06, by request): tap several bookcases (or drag a box round them)
+// and give them a section, levels or codes all at once, move or delete them together.
+const multiMode = ref(false);
+const multi = ref(new Set());
+const multiKind = (i) => !isHallKind(i) && i.kind !== 'door';
+const multiItems = computed(() => items.value.filter((i) => multi.value.has(i._key)));
+const multiShelves = computed(() => multiItems.value.filter((i) => i.kind === 'shelf'));
+function toggleMulti(item) {
+    const next = new Set(multi.value);
+    next.has(item._key) ? next.delete(item._key) : next.add(item._key);
+    multi.value = next;
+    selectedKey.value = null;
+}
+function selectHallShelves(hall) {
+    multi.value = new Set(onStorey.value.filter((i) => i.kind === 'shelf' && inOutline(i, hall)).map((i) => i._key));
+    multiMode.value = true;
+    selectedKey.value = null;
+}
+const bulk = reactive({ section: '', levels: '', prefix: 'A', start: 1 });
+function bulkSet(field, value) {
+    for (const s of multiShelves.value) s[field] = value;
+}
+/** Codes in reading order: hall by hall, then row by row (front row first) along each, A1, A2… */
+function bulkNumber() {
+    const list = [...multiShelves.value];
+    if (!list.length) return;
+    const halls = onStorey.value.filter(isHallKind);
+    const hallOf = (i) => halls.findIndex((h) => inOutline(i, h));
+    const groups = new Map();
+    for (const s of list) { const h = hallOf(s); groups.has(h) || groups.set(h, []); groups.get(h).push(s); }
+    const mid = (g) => ({ x: g.reduce((t, i) => t + i.x, 0) / g.length, y: g.reduce((t, i) => t + i.y, 0) / g.length });
+    const ordered = [...groups.values()].sort((A, B) => { const a = mid(A), b = mid(B); return Math.abs(a.y - b.y) > 2 ? a.y - b.y : a.x - b.x; });
+    const others = new Set(items.value.filter((i) => !multi.value.has(i._key)).map((i) => i.code.toLowerCase()));
+    let n = Math.max(1, Number(bulk.start) || 1);
+    for (const g of ordered) {
+        const a = ((g[0].rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+        const pts = g.map((i) => ({ i, u: i.x * c + i.y * sn, v: -i.x * sn + i.y * c })).sort((p, q) => p.v - q.v);
+        const rows = [];
+        for (const pt of pts) (rows.length && pt.v - rows.at(-1).at(-1).v < 0.4 ? rows.at(-1) : rows[rows.push([]) - 1]).push(pt);
+        for (const row of rows) for (const { i } of row.sort((p, q) => p.u - q.u)) {
+            while (others.has(`${bulk.prefix}${n}`.toLowerCase())) n++;
+            i.code = `${bulk.prefix}${n++}`;
+        }
+    }
+}
+function bulkRemove() {
+    items.value = items.value.filter((i) => !multi.value.has(i._key));
+    multi.value = new Set();
+}
+function bulkRotate(deg) {
+    // Turned together round their middle.
+    const list = multiItems.value;
+    if (!list.length) return;
+    const cx = list.reduce((t, i) => t + i.x, 0) / list.length, cy = list.reduce((t, i) => t + i.y, 0) / list.length;
+    const a = (deg * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    for (const i of list) {
+        const dx = i.x - cx, dy = i.y - cy;
+        i.x = +(cx + dx * c - dy * sn).toFixed(2);
+        i.y = +(cy + dx * sn + dy * c).toFixed(2);
+        i.rotation = ((((i.rotation || 0) + deg) % 360) + 360) % 360;
+    }
+}
+
+const touches = new Map();
+let pinch = null;
+let pan = null;
+function boxPoint(e) {
+    const r = planBox.value.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function gestureDown(e) {
+    touches.set(e.pointerId, boxPoint(e));
+    if (touches.size === 2) {
+        // A second finger: whatever the first one started becomes a pinch.
+        drag = null;
+        rect.value = null;
+        pan = null;
+        const [a, b] = [...touches.values()];
+        pinch = { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, zoom: zoom.value, mid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } };
+        skipClick = true;
+    }
+}
+function gestureMove(e) {
+    if (!touches.has(e.pointerId)) return;
+    touches.set(e.pointerId, boxPoint(e));
+    const box = planBox.value;
+    if (pinch && touches.size >= 2) {
+        e.stopPropagation();
+        const [a, b] = [...touches.values()];
+        const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        box.scrollLeft -= mid.x - pinch.mid.x;
+        box.scrollTop -= mid.y - pinch.mid.y;
+        pinch.mid = mid;
+        const z = pinch.zoom * (Math.hypot(a.x - b.x, a.y - b.y) / pinch.dist);
+        if (Math.abs(z - zoom.value) > 0.02) zoomAt(z, mid.x, mid.y);
+        return;
+    }
+    if (pan) {
+        const p = touches.get(e.pointerId);
+        if (!pan.moved && Math.hypot(p.x - pan.x, p.y - pan.y) < 5) return;
+        pan.moved = true;
+        box.scrollLeft = pan.sl - (p.x - pan.x);
+        box.scrollTop = pan.st - (p.y - pan.y);
+    }
+}
+function gestureUp(e) {
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
+    if (pan?.moved) skipClick = true;
+    if (!touches.size) { pan = null; setTimeout(() => (skipClick = false), 50); }
+}
+function onWheel(e) {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    const p = boxPoint(e);
+    zoomAt(zoom.value * (e.deltaY < 0 ? 1.15 : 1 / 1.15), p.x, p.y);
+}
 const placingEntrance = ref(false);
 
 // «قاعات وممرات وطوابق» (2026-11-06, by request): a library of several halls, rooms and
 // corridors in any direction, on one floor or several. The plan shows one floor at a time.
 const storey = ref(0);
+watch(storey, () => (multi.value = new Set()));
 const onStorey = computed(() => items.value.filter((i) => storeyOf(i) === storey.value));
 const isHallKind = (i) => HALL_KINDS.includes(i.kind) && i.points?.length >= 3;
 const storeyHalls = computed(() => onStorey.value.filter(isHallKind));
@@ -183,6 +316,21 @@ function snapToHalls(p) {
     return { x, y };
 }
 function onPlanDown(e) {
+    if (pinch) return;
+    // The empty floor, with no tool in hand: drag to move round the plan.
+    const free = !tool.value && !drawing.value && !calib.value && !bgMove.value && !placingEntrance.value;
+    if (free && multiMode.value && (e.target === svg.value || e.target.dataset?.bg)) {
+        // Drag a box round the bookcases to select.
+        const p = snapPoint(toPlan(e));
+        rect.value = { kind: 'select', a: p, b: p };
+        e.target.setPointerCapture?.(e.pointerId);
+        return;
+    }
+    if (free && (e.target === svg.value || e.target.dataset?.bg)) {
+        const p = boxPoint(e);
+        pan = { x: p.x, y: p.y, sl: planBox.value.scrollLeft, st: planBox.value.scrollTop, moved: false };
+        return;
+    }
     if (bgMove.value && bg.value) {
         const p = toPlan(e);
         drag = { bg: true, dx: bg.value.x - p.x, dy: bg.value.y - p.y };
@@ -199,6 +347,13 @@ function finishRect() {
     rect.value = null;
     if (!r) return;
     const x0 = Math.min(r.a.x, r.b.x), x1 = Math.max(r.a.x, r.b.x), y0 = Math.min(r.a.y, r.b.y), y1 = Math.max(r.a.y, r.b.y);
+    if (r.kind === 'select') {
+        for (const i of onStorey.value) if (multiKind(i) && i.x >= x0 && i.x <= x1 && i.y >= y0 && i.y <= y1) multi.value.add(i._key);
+        multi.value = new Set(multi.value);
+        skipClick = true;
+        setTimeout(() => (skipClick = false), 50);
+        return;
+    }
     if (x1 - x0 < 1 || y1 - y0 < 1) return; // a click, not a drag
     const hall = addHall(r.kind, x0, y0, x1, y1);
     if (rectShape.value === 'L') { hall.points = lPoints(hall.width, hall.depth, dragCorner(r)); recentre(hall); }
@@ -386,9 +541,16 @@ function toPlan(e) {
 function startDrag(e, item) {
     if (tool.value === 'hall' || tool.value === 'corridor') return onPlanDown(e);
     if (tool.value === 'door' || tool.value === 'qr') return;
-    selectedKey.value = item._key;
+    if ((multiMode.value || e.shiftKey) && multiKind(item)) {
+        // Tap to add to (or take out of) the selection; a selected one can still be dragged
+        // and the others move with it.
+        if (!multi.value.has(item._key) || !multiMode.value) { toggleMulti(item); if (!multi.value.has(item._key)) return; }
+    }
+    if (multi.value.size && !multi.value.has(item._key)) multi.value = new Set();
+    selectedKey.value = multi.value.size ? null : item._key;
     const p = toPlan(e);
-    drag = { item, dx: item.x - p.x, dy: item.y - p.y, moved: false, children: isHallKind(item) ? contents(item).map((o) => ({ o, dx: o.x - item.x, dy: o.y - item.y })) : null };
+    const group = multi.value.size ? items.value.filter((o) => o !== item && multi.value.has(o._key)) : isHallKind(item) ? contents(item) : null;
+    drag = { item, dx: item.x - p.x, dy: item.y - p.y, moved: false, children: group?.map((o) => ({ o, dx: o.x - item.x, dy: o.y - item.y })) ?? null };
     e.target.setPointerCapture?.(e.pointerId);
 }
 function startEntranceDrag(e) {
@@ -399,7 +561,7 @@ function startEntranceDrag(e) {
 function onMove(e) {
     if (calib.value) { calib.value.hover = toPlan(e); return; }
     if (drawing.value) { drawing.value.hover = snapPoint(toPlan(e)); return; }
-    if (rect.value) { rect.value.b = snapToHalls(snapPoint(toPlan(e))); return; }
+    if (rect.value) { rect.value.b = rect.value.kind === 'select' ? snapPoint(toPlan(e)) : snapToHalls(snapPoint(toPlan(e))); return; }
     if (!drag) return;
     const p = toPlan(e);
     if (drag.vertex !== undefined) {
@@ -569,6 +731,14 @@ function onKey(e) {
         if (e.key === 'Escape') drawing.value = null;
         else if (e.key === 'Enter') finishDrawing();
         else if (e.key === 'Backspace') drawing.value.points.pop();
+        return;
+    }
+    if (multi.value.size && !typing) {
+        const step = e.shiftKey ? 1 : 0.25;
+        const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+        if (moves[e.key]) { e.preventDefault(); for (const i of multiItems.value) { i.x = clamp(+(i.x + moves[e.key][0]).toFixed(2), 0, floor.width); i.y = clamp(+(i.y + moves[e.key][1]).toFixed(2), 0, floor.depth); } }
+        else if (e.key === 'Delete') bulkRemove();
+        else if (e.key === 'Escape') multi.value = new Set();
         return;
     }
     if (!selected.value || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
@@ -933,8 +1103,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
         <div class="space-y-4 p-4 sm:p-6">
             <LibraryTabs />
 
-            <!-- Toolbar -->
-            <div class="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+            <!-- Toolbar: one row that scrolls sideways on phones, so the plan stays in sight -->
+            <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap rounded-2xl [scrollbar-width:thin] max-sm:-mx-1 sm:flex-wrap [&>*]:shrink-0 border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                 <div class="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-900">
                     <button @click="view = 'plan'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium" :class="view === 'plan' ? 'bg-white shadow dark:bg-gray-700' : 'text-gray-500'"><Squares2X2Icon class="h-4 w-4" /> {{ t('library.map.plan', 'المخطط') }}</button>
                     <button @click="view = '3d'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium" :class="view === '3d' ? 'bg-white shadow dark:bg-gray-700' : 'text-gray-500'"><CubeIcon class="h-4 w-4" /> {{ t('library.map.view3d', 'ثلاثي الأبعاد') }}</button>
@@ -942,6 +1112,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <span class="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
                 <button @click="openWizard" class="inline-flex items-center gap-1.5 rounded-lg bg-[#1f2a44] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110"><BuildingOffice2Icon class="h-4 w-4" /> {{ t('library.map.wizard', 'معالج البناء') }}</button>
                 <button @click="bgPanel = !bgPanel; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="bgPanel ? 'bg-sky-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PhotoIcon class="h-4 w-4" /> {{ t('library.map.bg', 'مخطط البناية') }}</button>
+                <button @click="multiMode = !multiMode; if (!multiMode) multi = new Set(); else selectedKey = null" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="multiMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleStackIcon class="h-4 w-4" /> {{ t('library.map.multi', 'تحديد عدة رفوف') }}</button>
                 <button @click="runCheck" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ClipboardDocumentCheckIcon class="h-4 w-4" /> {{ t('library.map.check', 'فحص الخريطة') }}</button>
                 <button @click="pickTool('hall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'hall' ? 'bg-slate-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><HomeModernIcon class="h-4 w-4" /> {{ t('library.map.kind.hall', 'قاعة / غرفة') }}</button>
                 <button @click="pickTool('corridor')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'corridor' ? 'bg-slate-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.kind.corridor', 'ممر') }}</button>
@@ -984,6 +1155,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <span class="flex-1">{{ calib.points.length ? t('library.map.calib_2', 'الآن اضغط على الطرف الثاني.') : t('library.map.calib_1', 'اضغط على طرف جدار (أو باب) تعرف طوله في الصورة، ثم على طرفه الآخر.') }}</span>
                 <button @click="calib = null" class="rounded-md px-2.5 py-1 underline">{{ t('common.cancel', 'إلغاء') }}</button>
             </div>
+            <p v-if="multiMode && !multi.size" class="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:bg-blue-900/30 dark:text-blue-100">{{ t('library.map.multi_hint', 'اضغط على الرفوف لتحديدها، أو اسحب مربعاً حولها. (على الحاسوب: Shift + نقر يعمل دائماً)') }}</p>
             <p v-if="bgMove" class="rounded-lg bg-sky-100 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/40 dark:text-sky-100">{{ t('library.map.bg_move_hint', 'اسحب الصورة لتضعها في مكانها، ثم اضغط «تم».') }}</p>
 
             <div v-if="drawing" class="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
@@ -1026,7 +1198,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
             <div class="grid gap-4 lg:grid-cols-[1fr_20rem]">
                 <!-- Plan or 3D -->
                 <div class="relative h-[62dvh] min-h-[380px] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-                    <div v-show="view === 'plan'" class="h-full w-full overflow-auto">
+                    <div v-show="view === 'plan'" ref="planBox" dir="ltr" class="h-full w-full overflow-auto overscroll-contain"
+                        @pointerdown.capture="gestureDown" @pointermove.capture="gestureMove" @pointerup.capture="gestureUp" @pointercancel.capture="gestureUp" @wheel="onWheel">
                         <svg ref="svg" :viewBox="`-0.6 -0.6 ${floor.width + 1.2} ${floor.depth + 1.2}`" class="block touch-none select-none" :class="placingEntrance || drawing || tool || calib ? 'cursor-crosshair' : bgMove ? 'cursor-move' : ''"
                             :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }" preserveAspectRatio="xMidYMid meet"
                             @pointerdown="onPlanDown" @pointermove="onMove" @pointerup="endDrag" @pointercancel="endDrag" @click="onPlanClick" @dblclick="drawing && finishDrawing()">
@@ -1062,7 +1235,11 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 </template>
                                 <template v-else-if="s.kind === 'stairs'">
                                     <rect :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" fill="#ede9fe" :stroke="s._key === selectedKey ? '#f59e0b' : '#7c3aed'" :stroke-width="s._key === selectedKey ? 0.09 : 0.05" />
-                                    <line v-for="k in 7" :key="k" :x1="-s.width / 2" :x2="s.width / 2" :y1="-s.depth / 2 + (s.depth / 8) * k" :y2="-s.depth / 2 + (s.depth / 8) * k" stroke="#7c3aed" stroke-width="0.025" />
+                                    <template v-if="s.double_sided">
+                                        <line :x1="-s.width / 2" :y1="-s.depth / 2" :x2="s.width / 2" :y2="s.depth / 2" stroke="#7c3aed" stroke-width="0.04" />
+                                        <line :x1="s.width / 2" :y1="-s.depth / 2" :x2="-s.width / 2" :y2="s.depth / 2" stroke="#7c3aed" stroke-width="0.04" />
+                                    </template>
+                                    <line v-else v-for="k in 7" :key="k" :x1="-s.width / 2" :x2="s.width / 2" :y1="-s.depth / 2 + (s.depth / 8) * k" :y2="-s.depth / 2 + (s.depth / 8) * k" stroke="#7c3aed" stroke-width="0.025" />
                                     <text :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#5b21b6" style="paint-order: stroke" stroke="#fff" :stroke-width="fontSize / 6">{{ s.code }}</text>
                                 </template>
                                 <template v-if="s.kind === 'obstacle' && s.points?.length >= 3">
@@ -1085,11 +1262,13 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 <!-- Front face: where readers stand. -->
                                 <line v-if="s.kind === 'shelf'" :x1="-s.width / 2 + 0.05" :y1="s.depth / 2" :x2="s.width / 2 - 0.05" :y2="s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
                                 <line v-if="s.kind === 'shelf' && s.double_sided" :x1="-s.width / 2 + 0.05" :y1="-s.depth / 2" :x2="s.width / 2 - 0.05" :y2="-s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
+                                <rect v-if="multi.has(s._key)" :x="-s.width / 2 - 0.12" :y="-s.depth / 2 - 0.12" :width="s.width + 0.24" :height="s.depth + 0.24" rx="0.08" fill="rgba(37,99,235,0.15)" stroke="#2563eb" stroke-width="0.08" stroke-dasharray="0.2 0.1" class="pointer-events-none" />
                                 <text v-if="!['wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs', 'qr'].includes(s.kind)" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
                             </g>
 
+                            <rect v-if="rectBox && rect.kind === 'select'" v-bind="rectBox" class="pointer-events-none" fill="rgba(37,99,235,0.12)" stroke="#2563eb" stroke-width="0.08" stroke-dasharray="0.25 0.12" />
                             <polygon v-if="rectL" :points="rectL" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
-                            <rect v-if="rectBox && !rectL" v-bind="rectBox" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
+                            <rect v-if="rectBox && !rectL && rect.kind !== 'select'" v-bind="rectBox" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
                             <text v-if="rectBox && rectBox.width > 1" :x="rectBox.x + rectBox.width / 2" :y="rectBox.y + rectBox.height / 2" text-anchor="middle" dominant-baseline="central" :font-size="fontSize * 1.2" font-weight="700" fill="#334155" class="pointer-events-none" dir="ltr">{{ rectBox.width.toFixed(1) }} × {{ rectBox.height.toFixed(1) }} m</text>
                             <g v-if="calib" class="pointer-events-none">
                                 <line v-if="calibLine" v-bind="calibLine" stroke="#0284c7" stroke-width="0.08" stroke-dasharray="0.2 0.1" />
@@ -1108,8 +1287,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                     <LibraryMap3D v-if="view === '3d'" :floor="floor" :shelves="preview" :highlight="selected ? { id: selected.id ?? selected._key } : null" @pick="(id) => (selectedKey = items.find((i) => (i.id ?? i._key) === id)?._key ?? null)" />
 
                     <div v-if="view === 'plan'" class="absolute bottom-3 end-3 flex gap-1.5">
-                        <button @click="zoom = Math.max(1, zoom - 0.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassMinusIcon class="h-5 w-5" /></button>
-                        <button @click="zoom = Math.min(4, zoom + 0.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassPlusIcon class="h-5 w-5" /></button>
+                        <button @click="zoomAt(zoom / 1.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassMinusIcon class="h-5 w-5" /></button>
+                        <button @click="zoomAt(zoom * 1.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassPlusIcon class="h-5 w-5" /></button>
                     </div>
                     <div v-if="view === 'plan' && !onStorey.length && !tool && !drawing" class="absolute inset-x-0 top-1/4 mx-auto max-w-sm space-y-3 rounded-2xl bg-white/90 p-5 text-center shadow ring-1 ring-black/5 dark:bg-gray-800/90">
                         <BuildingOffice2Icon class="mx-auto h-10 w-10 text-[var(--accent-600)]" />
@@ -1123,6 +1302,47 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
 
                 <!-- Properties -->
                 <aside class="space-y-4">
+                    <section v-if="multi.size" class="space-y-3 rounded-2xl border-2 border-blue-200 bg-white p-4 text-sm dark:border-blue-800 dark:bg-gray-800">
+                        <div class="flex items-center gap-2">
+                            <RectangleStackIcon class="h-5 w-5 text-blue-600" />
+                            <h3 class="flex-1 font-semibold">{{ t('library.map.multi_count', ':n محدد (:s رف)', { n: multi.size, s: multiShelves.length }) }}</h3>
+                            <button @click="bulkRotate(90)" class="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.rotate', 'تدوير 90°')"><ArrowPathRoundedSquareIcon class="h-5 w-5" /></button>
+                            <button @click="bulkRemove" class="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-5 w-5" /></button>
+                            <button @click="multi = new Set()" class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.unselect', 'إلغاء التحديد')"><XMarkIcon class="h-5 w-5" /></button>
+                        </div>
+                        <template v-if="multiShelves.length">
+                            <label class="block">
+                                <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.bulk_section', 'القسم لكل الرفوف المحددة') }}</span>
+                                <select @change="bulkSet('section_id', $event.target.value ? +$event.target.value : null); $event.target.value = '__'" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                    <option value="__" disabled selected>{{ t('library.map.choose', 'اختر…') }}</option>
+                                    <option value="">{{ t('library.map.no_section', 'بدون قسم') }}</option>
+                                    <option v-for="sec in sections" :key="sec.id" :value="sec.id">{{ sec.path }}</option>
+                                </select>
+                            </label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.levels', 'عدد الطبقات') }}</span>
+                                    <input type="number" min="1" max="10" :placeholder="t('library.map.unchanged', 'بلا تغيير')" @change="$event.target.value && bulkSet('levels', Math.min(10, Math.max(1, +$event.target.value)))" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                                </label>
+                                <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.faces', 'الوجه') }}</span>
+                                    <select @change="bulkSet('double_sided', $event.target.value === '2')" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                        <option value="" disabled selected>{{ t('library.map.unchanged', 'بلا تغيير') }}</option>
+                                        <option value="1">{{ t('library.map.one_face', 'وجه واحد') }}</option>
+                                        <option value="2">{{ t('library.map.double', 'بوجهين') }}</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-900/40">
+                                <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.bulk_codes', 'رقّمها بالترتيب (صفاً صفاً)') }}</span>
+                                <div class="mt-1 flex items-center gap-1.5">
+                                    <input v-model.trim="bulk.prefix" maxlength="10" dir="auto" class="w-16 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                                    <input v-model.number="bulk.start" type="number" min="1" class="w-16 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                                    <button @click="bulkNumber" class="rounded-lg bg-blue-600 px-3 py-1 text-xs font-medium text-white">{{ t('library.map.bulk_number', 'رقّم') }}</button>
+                                </div>
+                                <p class="mt-1 text-[11px] text-gray-500" dir="auto">{{ bulk.prefix }}{{ bulk.start || 1 }}، {{ bulk.prefix }}{{ (bulk.start || 1) + 1 }}…</p>
+                            </div>
+                        </template>
+                        <p class="text-xs leading-5 text-gray-500">{{ t('library.map.multi_keys', 'اسحب أي رف محدد لتحريكها كلها · الأسهم للتحريك الدقيق · Delete للحذف.') }}</p>
+                    </section>
                     <section v-if="selected" class="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
                         <div class="flex items-center gap-2">
                             <span class="h-3 w-3 rounded-full" :style="{ background: fill(selected) }" />
@@ -1157,11 +1377,16 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <button v-for="a in [0, 45, 90, 135]" :key="a" @click="setRotation(selected, a)" class="rounded-md border border-gray-200 px-1.5 py-0.5 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ a }}°</button>
                         </label>
                         <div v-if="isHallKind(selected)" class="flex flex-wrap gap-1.5">
+                            <button @click="selectHallShelves(selected)" class="inline-flex items-center gap-1 rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"><RectangleStackIcon class="h-3.5 w-3.5" /> {{ t('library.map.select_hall_shelves', 'حدد كل رفوفها') }}</button>
                             <button v-if="selected.kind === 'hall'" @click="openGenerate" class="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-50)] px-2.5 py-1 text-xs font-medium text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-3.5 w-3.5" /> {{ t('library.map.rows_here', 'صفوف رفوف داخل القاعة') }}</button>
                             <button @click="pickTool('door')" class="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"><RectangleGroupIcon class="h-3.5 w-3.5" /> {{ t('library.map.add_door', 'أضف باباً') }}</button>
                         </div>
                         <p v-if="isHallKind(selected)" class="text-xs leading-5 text-gray-500">{{ t('library.map.hall_hint', 'تحريك القاعة أو تدويرها يحرّك ما بداخلها وأبوابها معها. اختر القاعة ثم أضف رفاً ليوضع داخلها بنفس اتجاهها.') }}</p>
                         <button v-if="selected.kind === 'stairs' && floor.storeys.length > 1" @click="stairsToAllFloors" class="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"><Square2StackIcon class="h-3.5 w-3.5" /> {{ t('library.map.stairs_all', 'ضعه في نفس المكان بكل الطوابق') }}</button>
+                        <label v-if="selected.kind === 'stairs'" class="flex items-center gap-2 rounded-lg bg-violet-50 px-2.5 py-2 text-sm dark:bg-violet-900/30">
+                            <input v-model="selected.double_sided" type="checkbox" class="rounded border-gray-300" />
+                            <span>{{ t('library.map.is_lift', 'هذا مصعد (يصلح للكراسي المتحركة)') }}</span>
+                        </label>
                         <p v-if="selected.kind === 'stairs'" class="text-xs leading-5 text-gray-500">{{ t('library.map.stairs_hint', 'الدرج أو المصعد الموجود في نفس المكان بطابقين يربطهما، والمسار يصعد أو ينزل منه.') }}</p>
                         <div v-if="selected.kind !== 'qr'" class="grid grid-cols-2 gap-2 text-sm">
                             <template v-if="selected.kind === 'obstacle' || isHallKind(selected)">
