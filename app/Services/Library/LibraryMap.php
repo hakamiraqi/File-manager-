@@ -8,6 +8,7 @@ use App\Models\Library\LibrarySection;
 use App\Models\Library\LibraryShelf;
 use App\Models\Setting;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * The library floor plan and «أين الكتاب؟»: which bookcase (and level) holds each copy.
@@ -19,6 +20,9 @@ use Illuminate\Support\Collection;
 class LibraryMap
 {
     public const SETTING = 'library_map';
+
+    /** Folder (public disk) of the uploaded building plans drawn over. */
+    public const PLANS = 'library-plans';
 
     /** @var array<int, int|null> section id → bookcase id, for one request */
     private array $sectionShelf = [];
@@ -42,7 +46,29 @@ class LibraryMap
             'storeys' => array_values(array_map('strval', $saved['storeys'] ?? [])) ?: ['الطابق الأرضي'],
             // «كل قاعة مستقلة»: readers see only the hall they are in, one at a time.
             'separate_halls' => (bool) ($saved['separate_halls'] ?? false),
+            // «مخطط البناية»: a picture of each floor's plan, drawn over in the editor.
+            'backgrounds' => array_values(array_map(fn ($b) => $b + ['url' => Storage::disk('public')->url($b['path'])], $saved['backgrounds'] ?? [])),
         ];
+    }
+
+    /** @return list<array{storey:int, path:string, x:float, y:float, width:float, aspect:float, opacity:float, hidden:bool}> */
+    private function cleanBackgrounds(array $list): array
+    {
+        $out = [];
+        foreach ($list as $b) {
+            $path = (string) ($b['path'] ?? '');
+            if (! str_starts_with($path, self::PLANS.'/') || str_contains($path, '..')) {
+                continue;
+            }
+            $out[] = [
+                'storey' => (int) $b['storey'], 'path' => $path,
+                'x' => round((float) $b['x'], 2), 'y' => round((float) $b['y'], 2),
+                'width' => round((float) $b['width'], 3), 'aspect' => round((float) $b['aspect'], 5),
+                'opacity' => round((float) ($b['opacity'] ?? 0.5), 2), 'hidden' => (bool) ($b['hidden'] ?? false),
+            ];
+        }
+
+        return $out;
     }
 
     public function saveFloor(array $floor): void
@@ -54,7 +80,41 @@ class LibraryMap
             'name' => (string) ($floor['name'] ?? ''),
             'storeys' => array_values(array_map(fn ($n) => trim((string) $n), $floor['storeys'] ?? [])) ?: ['الطابق الأرضي'],
             'separate_halls' => (bool) ($floor['separate_halls'] ?? false),
+            'backgrounds' => $backgrounds = $this->cleanBackgrounds($floor['backgrounds'] ?? []),
         ], JSON_UNESCAPED_UNICODE));
+        // Plans no longer used are deleted.
+        $keep = array_column($backgrounds, 'path');
+        foreach (Storage::disk('public')->files(self::PLANS) as $file) {
+            if (! in_array($file, $keep, true)) {
+                Storage::disk('public')->delete($file);
+            }
+        }
+    }
+
+    /**
+     * «كتب بلا مكان» for the map check: books none of whose copies is on a bookcase, by its
+     * «الرف» code or by its section.
+     *
+     * @return array{count:int, books:list<array{id:int, title:string}>}
+     */
+    public function unplaced(int $sample = 10): array
+    {
+        $shelves = LibraryShelf::where('kind', 'shelf')->get();
+        $count = 0;
+        $books = [];
+        Book::with('copies')->orderBy('title')->chunk(300, function ($chunk) use ($shelves, &$count, &$books, $sample) {
+            foreach ($chunk as $book) {
+                if ($shelves->isNotEmpty() && $this->locate($book, $shelves) !== []) {
+                    continue;
+                }
+                $count++;
+                if (count($books) < $sample) {
+                    $books[] = ['id' => $book->id, 'title' => $book->title];
+                }
+            }
+        });
+
+        return ['count' => $count, 'books' => $books];
     }
 
     /** Every bookcase as the 3D map draws it. */

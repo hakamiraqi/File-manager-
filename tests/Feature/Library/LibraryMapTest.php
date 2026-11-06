@@ -8,6 +8,8 @@ use App\Models\Library\LibraryShelf;
 use App\Models\User;
 use App\Services\Library\LibraryMap;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -235,5 +237,43 @@ class LibraryMapTest extends TestCase
                 ->where('shelves.0.code', 'A1')
                 ->where('shelves.1.kind', 'qr')->where('shelves.1.name', 'بجانب باب 1')
                 ->where('shelves.1.url', route('library.map', ['at' => $sticker->id])));
+    }
+
+    public function test_a_building_plan_picture_is_kept_under_its_floor_and_old_ones_are_removed(): void
+    {
+        Storage::fake('public');
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $this->actingAs($librarian)->postJson(route('library.manage.map.background'), ['plan' => UploadedFile::fake()->create('notes.txt', 3)])->assertStatus(422);
+        $up = $this->postJson(route('library.manage.map.background'), ['plan' => UploadedFile::fake()->image('plan.png', 800, 400)])
+            ->assertOk()->assertJsonPath('aspect', 0.5)->json();
+        Storage::disk('public')->assertExists($up['path']);
+        $old = $this->postJson(route('library.manage.map.background'), ['plan' => UploadedFile::fake()->image('old.png', 100, 100)])->json('path');
+
+        $layout = $this->layout([['code' => 'A1']]);
+        $layout['floor']['backgrounds'] = [['storey' => 0, 'path' => $up['path'], 'x' => 0, 'y' => 0, 'width' => 40, 'aspect' => 0.5, 'opacity' => 0.6, 'hidden' => false]];
+        $this->put(route('library.manage.map.update'), $layout)->assertSessionHasNoErrors();
+
+        Storage::disk('public')->assertMissing($old);
+        $floor = app(LibraryMap::class)->floor();
+        $this->assertSame($up['path'], $floor['backgrounds'][0]['path']);
+        $this->assertEquals(40, $floor['backgrounds'][0]['width']);
+
+        // A path outside the plans folder is never kept.
+        $layout['floor']['backgrounds'][0]['path'] = 'avatars/someone.jpg';
+        $this->put(route('library.manage.map.update'), $layout)->assertSessionHasNoErrors();
+        $this->assertSame([], app(LibraryMap::class)->floor()['backgrounds']);
+        $this->actingAs(User::factory()->create())->postJson(route('library.manage.map.background'), [])->assertForbidden();
+    }
+
+    public function test_the_map_check_counts_books_with_no_place(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $section = LibrarySection::create(['name' => 'جراحة']);
+        LibraryShelf::create(['code' => 'A1', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5, 'section_id' => $section->id]);
+        Book::create(['title' => 'Placed', 'section_id' => $section->id]);
+        Book::create(['title' => 'Lost']);
+
+        $this->actingAs($librarian)->getJson(route('library.manage.map.unplaced'))->assertOk()
+            ->assertJsonPath('count', 1)->assertJsonPath('books.0.title', 'Lost');
     }
 }

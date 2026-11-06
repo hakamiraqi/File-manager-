@@ -3,18 +3,20 @@
 // bookcases, rotate them, give each a code and a section; «صفوف تلقائية» builds a whole room in
 // one step. The 3D tab shows the same room as readers see it.
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import axios from 'axios';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
-import { frontNormal, snapToWall, outline, HALL_KINDS, storeyOf } from '@/Components/Library/Map/route.js';
+import { frontNormal, snapToWall, outline, footprint, findRoute, linkedStairs, HALL_KINDS, storeyOf } from '@/Components/Library/Map/route.js';
 import { sectionColor } from '@/Components/Library/Map/colors.js';
 import { wallPolygons, wallSpot, autoStickers } from '@/Components/Library/Map/stickers.js';
 import { useTrans } from '@/Composables/useTrans';
 import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
     MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon, HomeModernIcon, BuildingOffice2Icon, ArrowsRightLeftIcon, ChevronDoubleUpIcon, RectangleGroupIcon, Square2StackIcon,
+    PhotoIcon, ClipboardDocumentCheckIcon, ArrowUturnLeftIcon, ArrowsPointingOutIcon, XMarkIcon, InformationCircleIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -24,18 +26,72 @@ const page = usePage();
 let keySeq = 0;
 const withKeys = (list) => list.map((s) => ({ ...s, _key: s.id ? `id${s.id}` : `n${++keySeq}` }));
 const strip = (list) => list.map(({ _key, section, ...rest }) => rest);
-const withFloorDefaults = (f) => ({ storeys: ['الطابق الأرضي'], separate_halls: false, ...JSON.parse(JSON.stringify(f)) });
+const withFloorDefaults = (f) => ({ storeys: ['الطابق الأرضي'], separate_halls: false, backgrounds: [], ...JSON.parse(JSON.stringify(f)) });
 const floor = reactive(withFloorDefaults(props.floor));
 const items = ref(withKeys(props.shelves));
 const snapshot = (f, list) => JSON.stringify({ f, list: strip(list) });
 const original = ref(snapshot(withFloorDefaults(props.floor), props.shelves));
 watch(() => [props.floor, props.shelves], () => {
+    // Saved: the history starts again (undoing past a save would lose the saved ids, which the
+    // printed QR stickers point to).
+    restoring = true;
+    clearTimeout(pending);
+    pending = null;
+    undoStack.value = [];
+    redoStack.value = [];
+    nextTick(() => { lastState = state(); restoring = false; });
     Object.assign(floor, withFloorDefaults(props.floor));
     items.value = withKeys(props.shelves);
     original.value = snapshot(withFloorDefaults(props.floor), props.shelves);
     selectedKey.value = null;
 });
 const dirty = computed(() => snapshot(floor, items.value) !== original.value);
+
+// «تراجع / إعادة» (2026-11-06, by request): every change can be undone with Ctrl+Z (or the
+// buttons in the save bar) and redone with Ctrl+Y. A drag counts as one change.
+const state = () => JSON.stringify({ f: floor, list: items.value, sel: selectedKey.value });
+const undoStack = ref([]);
+const redoStack = ref([]);
+let lastState = null;
+let restoring = false;
+let pending = null;
+function commit() {
+    clearTimeout(pending);
+    pending = null;
+    const now = state();
+    if (lastState !== null && now !== lastState) {
+        undoStack.value.push(lastState);
+        if (undoStack.value.length > 100) undoStack.value.shift();
+        redoStack.value = [];
+    }
+    lastState = now;
+}
+watch(() => JSON.stringify({ f: floor, list: items.value }), () => {
+    if (restoring) return;
+    clearTimeout(pending);
+    pending = setTimeout(commit, drag ? 600 : 300);
+});
+function restore(json) {
+    restoring = true;
+    const { f, list, sel } = JSON.parse(json);
+    Object.keys(floor).forEach((k) => delete floor[k]);
+    Object.assign(floor, f);
+    items.value = list;
+    selectedKey.value = list.some((i) => i._key === sel) ? sel : null;
+    lastState = json;
+    nextTick(() => (restoring = false));
+}
+function undo() {
+    if (pending) commit();
+    if (!undoStack.value.length) return;
+    redoStack.value.push(state());
+    restore(undoStack.value.pop());
+}
+function redo() {
+    if (!redoStack.value.length) return;
+    undoStack.value.push(state());
+    restore(redoStack.value.pop());
+}
 
 const view = ref('plan');
 const selectedKey = ref(null);
@@ -127,6 +183,12 @@ function snapToHalls(p) {
     return { x, y };
 }
 function onPlanDown(e) {
+    if (bgMove.value && bg.value) {
+        const p = toPlan(e);
+        drag = { bg: true, dx: bg.value.x - p.x, dy: bg.value.y - p.y };
+        e.target.setPointerCapture?.(e.pointerId);
+        return;
+    }
     if (tool.value !== 'hall' && tool.value !== 'corridor') return;
     const p = snapToHalls(snapPoint(toPlan(e)));
     rect.value = { kind: tool.value, a: p, b: p };
@@ -335,6 +397,7 @@ function startEntranceDrag(e) {
     e.target.setPointerCapture?.(e.pointerId);
 }
 function onMove(e) {
+    if (calib.value) { calib.value.hover = toPlan(e); return; }
     if (drawing.value) { drawing.value.hover = snapPoint(toPlan(e)); return; }
     if (rect.value) { rect.value.b = snapToHalls(snapPoint(toPlan(e))); return; }
     if (!drag) return;
@@ -354,6 +417,11 @@ function onMove(e) {
             }
         }
         pts[i] = v;
+        return;
+    }
+    if (drag.bg) {
+        bg.value.x = +(p.x + drag.dx).toFixed(2);
+        bg.value.y = +(p.y + drag.dy).toFixed(2);
         return;
     }
     if (drag.entrance) {
@@ -381,10 +449,12 @@ function endDrag() {
     if (rect.value) finishRect();
     if (drag?.vertex !== undefined) recentre(drag.item);
     drag = null;
+    if (pending) commit();
 }
 let skipClick = false;
 function onPlanClick(e) {
     if (skipClick) { skipClick = false; return; }
+    if (calib.value) { addCalibPoint(toPlan(e)); return; }
     if (drawing.value) { addDrawPoint(toPlan(e)); return; }
     if (tool.value === 'door') {
         doorHint.value = !placeDoor(toPlan(e));
@@ -487,6 +557,13 @@ const polyPoints = (s) => s.points.map((p) => p.join(',')).join(' ');
 const midPoints = (s) => s.points.map((p, i) => { const q = s.points[(i + 1) % s.points.length]; return [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, i + 1]; });
 
 function onKey(e) {
+    const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
+    if ((e.ctrlKey || e.metaKey) && !typing && !drawing.value) {
+        const k = e.key.toLowerCase();
+        if ((k === 'z' || k === 'ئ') && !e.shiftKey) { e.preventDefault(); undo(); return; }
+        if (k === 'y' || k === 'غ' || ((k === 'z' || k === 'ئ') && e.shiftKey)) { e.preventDefault(); redo(); return; }
+    }
+    if (calib.value && e.key === 'Escape') { calib.value = null; return; }
     if (tool.value && e.key === 'Escape') { tool.value = null; rect.value = null; return; }
     if (drawing.value) {
         if (e.key === 'Escape') drawing.value = null;
@@ -503,7 +580,7 @@ function onKey(e) {
     else if (e.key === 'Delete') remove();
     else if (e.key === 'Escape') selectedKey.value = null;
 }
-onMounted(() => window.addEventListener('keydown', onKey));
+onMounted(() => { window.addEventListener('keydown', onKey); lastState = state(); });
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
 const corners = (s) => `translate(${s.x} ${s.y}) rotate(${s.rotation})`;
@@ -629,6 +706,181 @@ function runWizard() {
     view.value = 'plan';
 }
 
+// «مخطط البناية» (2026-11-06, by request): a picture or PDF of each floor's plan under the
+// drawing, so halls are drawn over it at the right size. «معايرة» sets its scale from one known
+// distance: click both ends of a wall, type its length. ---------------------------------------
+const bg = computed(() => floor.backgrounds.find((b) => b.storey === storey.value) ?? null);
+const bgPanel = ref(false);
+const bgMove = ref(false);
+const bgUploading = ref(false);
+const bgError = ref('');
+const calib = ref(null); // { points: [] } while measuring
+const bgInput = ref(null);
+async function uploadPlan(e) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    bgUploading.value = true;
+    bgError.value = '';
+    try {
+        const form = new FormData();
+        form.append('plan', file);
+        const { data } = await axios.post(route('library.manage.map.background'), form);
+        // Fitted to the plan's width; the scale is set by «معايرة» afterwards.
+        const width = Math.max(4, floor.width);
+        const next = { storey: storey.value, path: data.path, url: data.url, x: 0, y: 0, width, aspect: data.aspect, opacity: 0.55, hidden: false };
+        floor.backgrounds = [...floor.backgrounds.filter((b) => b.storey !== storey.value), next];
+        floor.depth = Math.min(200, Math.max(floor.depth, Math.ceil(width * data.aspect)));
+        bgPanel.value = true;
+        startCalibration();
+    } catch (err) {
+        bgError.value = err.response?.data?.message || err.response?.data?.errors?.plan?.[0] || t('library.map.bg_failed', 'تعذّر رفع الملف.');
+    } finally {
+        bgUploading.value = false;
+    }
+}
+function removePlan() {
+    floor.backgrounds = floor.backgrounds.filter((b) => b.storey !== storey.value);
+    bgMove.value = false;
+    calib.value = null;
+}
+function startCalibration() {
+    tool.value = null;
+    drawing.value = null;
+    bgMove.value = false;
+    view.value = 'plan';
+    selectedKey.value = null;
+    calib.value = { points: [] };
+}
+function addCalibPoint(p) {
+    const c = calib.value;
+    c.points.push({ x: p.x, y: p.y });
+    if (c.points.length < 2) return;
+    const [a, b] = c.points;
+    const measured = Math.hypot(b.x - a.x, b.y - a.y);
+    calib.value = null;
+    if (measured < 0.05) return;
+    const answer = window.prompt(t('library.map.calib_ask', 'كم طول هذه المسافة في الحقيقة (بالمتر)؟'), measured.toFixed(2));
+    const real = parseFloat(String(answer ?? '').replace(',', '.').replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+    if (!(real > 0)) return;
+    const k = real / measured, b0 = bg.value;
+    // Scaled round the first point, so it stays where it was clicked; then moved to the corner.
+    b0.width = +(b0.width * k).toFixed(3);
+    b0.x = +(a.x - (a.x - b0.x) * k).toFixed(2);
+    b0.y = +(a.y - (a.y - b0.y) * k).toFixed(2);
+    fitPlan();
+}
+/** The plan area grows (or shrinks) to the picture, its top-left corner at 0,0. */
+function fitPlan() {
+    const b = bg.value;
+    if (!b) return;
+    const dx = -b.x, dy = -b.y;
+    if (dx || dy) {
+        b.x = 0;
+        b.y = 0;
+        for (const i of items.value) if (storeyOf(i) === storey.value) { i.x = +(i.x + dx).toFixed(2); i.y = +(i.y + dy).toFixed(2); }
+        if (storey.value === 0) { floor.entrance.x = +(floor.entrance.x + dx).toFixed(2); floor.entrance.y = +(floor.entrance.y + dy).toFixed(2); }
+    }
+    floor.width = Math.min(200, Math.max(4, Math.ceil(b.width)));
+    floor.depth = Math.min(200, Math.max(4, Math.ceil(b.width * b.aspect)));
+}
+const calibLine = computed(() => calib.value?.points.length === 1 && calib.value.hover ? { x1: calib.value.points[0].x, y1: calib.value.points[0].y, x2: calib.value.hover.x, y2: calib.value.hover.y } : null);
+
+// «فحص الخريطة» (2026-11-06, by request): what would stop readers finding their way. -------
+const check = reactive({ open: false, running: false, issues: [], unplaced: null });
+function overlaps(a, b) {
+    // Separating axis test of two turned rectangles.
+    const pa = footprint(a), pb = footprint(b);
+    for (const poly of [pa, pb]) {
+        for (let i = 0; i < 4; i++) {
+            const p = poly[i], q = poly[(i + 1) % 4], nx = q.y - p.y, ny = p.x - q.x;
+            const proj = (pts) => pts.map((r) => r.x * nx + r.y * ny);
+            const A = proj(pa), B = proj(pb);
+            if (Math.max(...A) <= Math.min(...B) + 0.02 || Math.max(...B) <= Math.min(...A) + 0.02) return false;
+        }
+    }
+    return true;
+}
+async function runCheck() {
+    check.open = true;
+    check.running = true;
+    check.issues = [];
+    await nextTick();
+    await new Promise((r) => setTimeout(r, 30)); // let the dialog paint before the work
+    const all = items.value.map((i) => ({ ...i, id: i.id ?? i._key }));
+    const out = [];
+    const add = (level, text, it = null) => out.push({ level, text, key: it?._key ?? null, storey: it ? storeyOf(it) : null });
+    const label = (i) => `${kindLabel(i.kind)} ${i.code}${floor.storeys.length > 1 ? ' · ' + storeyLabel(storeyOf(i)) : ''}`;
+    const shelves = all.filter((i) => i.kind === 'shelf');
+    if (!shelves.length) add('error', t('library.map.chk_no_shelves', 'لا توجد رفوف على الخريطة بعد.'));
+    // Codes
+    const seen = new Map();
+    for (const i of all) {
+        const c = (i.code || '').trim().toLowerCase();
+        if (!c) add('error', t('library.map.chk_no_code', ':item بلا رمز.', { item: kindLabel(i.kind) }), i);
+        else if (seen.has(c)) add('error', t('library.map.chk_dup', 'الرمز «:code» مكرر.', { code: i.code }), i);
+        else seen.set(c, i);
+    }
+    // Floors joined by stairs
+    floor.storeys.forEach((_, n) => {
+        if (!n) return;
+        const has = all.some((i) => storeyOf(i) === n && i.kind !== 'stairs');
+        const joined = all.some((s) => s.kind === 'stairs' && storeyOf(s) === n && (linkedStairs(all, s, n - 1) || linkedStairs(all, s, n + 1)));
+        if (has && !joined) add('error', t('library.map.chk_no_stairs', ':storey غير مربوط بدرج مع الطابق الذي تحته (ضع درجاً في نفس المكان بالطابقين).', { storey: storeyLabel(n) }), all.find((i) => storeyOf(i) === n));
+    });
+    // Halls with no door
+    for (const h of all.filter((i) => isHallKind(i))) {
+        const n = storeyOf(h);
+        const others = all.filter((i) => storeyOf(i) === n && isHallKind(i)).length;
+        const doors = all.filter((d) => d.kind === 'door' && storeyOf(d) === n && (snapToWall([h], d)?.distance ?? 9) < 0.4);
+        if (others > 1 && !doors.length) add('error', t('library.map.chk_no_door', ':item بلا باب.', { item: label(h) }), h);
+    }
+    // Things outside every hall, and bookcases standing in each other
+    for (const i of all.filter((x) => !isHallKind(x) && !['door', 'qr', 'stairs'].includes(x.kind))) {
+        const hs = all.filter((h) => storeyOf(h) === storeyOf(i) && isHallKind(h));
+        if (hs.length && !hs.some((h) => inOutline(i, h))) add('warn', t('library.map.chk_outside', ':item خارج كل القاعات.', { item: label(i) }), i);
+    }
+    const solid = all.filter((i) => ['shelf', 'desk', 'table', 'wall'].includes(i.kind));
+    for (let a = 0; a < solid.length; a++) {
+        for (let b = a + 1; b < solid.length; b++) {
+            if (storeyOf(solid[a]) === storeyOf(solid[b]) && Math.hypot(solid[a].x - solid[b].x, solid[a].y - solid[b].y) < (solid[a].width + solid[b].width) / 2 + 1 && overlaps(solid[a], solid[b])) {
+                add('warn', t('library.map.chk_overlap', ':a متداخل مع :b.', { a: label(solid[a]), b: solid[b].code }), solid[a]);
+            }
+        }
+    }
+    // Every bookcase reachable from the entrance
+    const from = { ...floor.entrance, storey: 0 };
+    // (grouped by hall: a missing door cuts off a whole hall at once)
+    const cut = new Map();
+    for (const s of shelves) {
+        await new Promise((r) => setTimeout(r, 0));
+        if (findRoute(floor, all, from, s)) continue;
+        const hall = all.filter((h) => isHallKind(h) && storeyOf(h) === storeyOf(s) && inOutline(s, h)).sort((a, b) => a.width * a.depth - b.width * b.depth)[0];
+        const k = `${storeyOf(s)}|${hall?._key ?? ''}`;
+        if (!cut.has(k)) cut.set(k, { hall, list: [] });
+        cut.get(k).list.push(s);
+    }
+    for (const { hall, list } of cut.values()) {
+        const where = [hall?.code, floor.storeys.length > 1 ? storeyLabel(storeyOf(list[0])) : ''].filter(Boolean).join(' · ');
+        const codes = list.slice(0, 8).map((s) => s.code).join('، ') + (list.length > 8 ? '…' : '');
+        add('error', list.length === 1
+            ? t('library.map.chk_unreachable', 'لا يوجد طريق من المدخل إلى :item (أغلقه رف أو جدار، أو ينقصه باب أو درج).', { item: label(list[0]) })
+            : t('library.map.chk_unreachable_n', 'لا يوجد طريق من المدخل إلى :n رفوف:where (:codes). ينقصها باب أو درج، أو يغلق الطريق رف أو جدار.', { n: list.length, where: where ? ` في ${where}` : '', codes }), list[0]);
+    }
+    for (const s of shelves) if (!s.section_id) add('info', t('library.map.chk_no_section', ':item بلا قسم: كتبه تظهر فقط إذا كُتب رمزه في حقل «الرف».', { item: label(s) }), s);
+    if (!all.some((i) => i.kind === 'qr') && all.some((i) => isHallKind(i))) add('info', t('library.map.chk_no_qr', 'لا توجد ملصقات QR على الجدران. زر «QR تلقائي» يضيفها بجانب الأبواب والدرج.'));
+    const order = { error: 0, warn: 1, info: 2 };
+    check.issues = out.sort((a, b) => order[a.level] - order[b.level]);
+    check.running = false;
+    try { const { data } = await axios.get(route('library.manage.map.unplaced')); check.unplaced = typeof data?.count === 'number' ? data : null; } catch { check.unplaced = null; }
+}
+function goToIssue(issue) {
+    check.open = false;
+    view.value = 'plan';
+    if (issue.storey !== null) storey.value = issue.storey;
+    if (issue.key) selectedKey.value = issue.key;
+}
+
 // Saving --------------------------------------------------------------------------------------
 const saving = ref(false);
 const errors = computed(() => page.props.errors ?? {});
@@ -652,6 +904,7 @@ function save() {
     });
 }
 function reset() {
+    if (pending) commit();
     Object.assign(floor, withFloorDefaults(props.floor));
     items.value = withKeys(props.shelves);
     selectedKey.value = null;
@@ -688,6 +941,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 </div>
                 <span class="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
                 <button @click="openWizard" class="inline-flex items-center gap-1.5 rounded-lg bg-[#1f2a44] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110"><BuildingOffice2Icon class="h-4 w-4" /> {{ t('library.map.wizard', 'معالج البناء') }}</button>
+                <button @click="bgPanel = !bgPanel; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="bgPanel ? 'bg-sky-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PhotoIcon class="h-4 w-4" /> {{ t('library.map.bg', 'مخطط البناية') }}</button>
+                <button @click="runCheck" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ClipboardDocumentCheckIcon class="h-4 w-4" /> {{ t('library.map.check', 'فحص الخريطة') }}</button>
                 <button @click="pickTool('hall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'hall' ? 'bg-slate-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><HomeModernIcon class="h-4 w-4" /> {{ t('library.map.kind.hall', 'قاعة / غرفة') }}</button>
                 <button @click="pickTool('corridor')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'corridor' ? 'bg-slate-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.kind.corridor', 'ممر') }}</button>
                 <button @click="pickTool('door')" :disabled="!storeyHalls.length" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm disabled:opacity-40" :class="tool === 'door' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleGroupIcon class="h-4 w-4" /> {{ t('library.map.kind.door', 'باب') }}</button>
@@ -705,6 +960,31 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <button @click="placingEntrance = !placingEntrance; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="placingEntrance ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><MapPinIcon class="h-4 w-4" /> {{ t('library.map.entrance', 'المدخل') }}</button>
                 <button @click="openGenerate" class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-50)] px-3 py-1.5 text-sm font-medium text-[var(--accent-700)] hover:brightness-95 dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</button>
             </div>
+
+            <!-- «مخطط البناية» -->
+            <div v-if="bgPanel" class="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-100">
+                <input ref="bgInput" type="file" accept="image/png,image/jpeg,image/webp,application/pdf,.pdf" class="hidden" @change="uploadPlan" />
+                <button @click="bgInput.click()" :disabled="bgUploading" class="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white disabled:opacity-50">
+                    <ArrowPathRoundedSquareIcon v-if="bgUploading" class="h-4 w-4 animate-spin" /><PhotoIcon v-else class="h-4 w-4" />
+                    {{ bg ? t('library.map.bg_replace', 'استبدل الصورة') : t('library.map.bg_upload', 'ارفع صورة أو PDF للمخطط') }}
+                </button>
+                <template v-if="bg">
+                    <button @click="startCalibration" class="inline-flex items-center gap-1 rounded-lg border border-sky-300 bg-white px-2.5 py-1.5 font-medium dark:border-sky-700 dark:bg-sky-950"><ArrowsPointingOutIcon class="h-4 w-4" /> {{ t('library.map.calib', 'معايرة القياس') }}</button>
+                    <button @click="bgMove = !bgMove; calib = null" class="rounded-lg px-2.5 py-1.5" :class="bgMove ? 'bg-sky-700 text-white' : 'border border-sky-300 bg-white dark:border-sky-700 dark:bg-sky-950'">{{ bgMove ? t('common.done', 'تم') : t('library.map.bg_move', 'حرّك الصورة') }}</button>
+                    <label class="flex items-center gap-1.5">{{ t('library.map.bg_width', 'عرضها') }} <input type="number" min="1" max="1000" step="0.5" :value="bg.width" @change="bg.width = Math.max(1, +$event.target.value || bg.width)" class="w-20 rounded-md border-sky-300 py-1 text-sm dark:border-sky-700 dark:bg-sky-950" /> {{ t('library.map.m', 'م') }}</label>
+                    <label class="flex items-center gap-1.5">{{ t('library.map.bg_opacity', 'الوضوح') }} <input type="range" min="0.1" max="1" step="0.05" v-model.number="bg.opacity" class="w-24 accent-sky-600" /></label>
+                    <label class="flex items-center gap-1.5"><input type="checkbox" :checked="!bg.hidden" @change="bg.hidden = !$event.target.checked" class="rounded border-sky-400" /> {{ t('library.map.bg_show', 'ظاهرة') }}</label>
+                    <button @click="removePlan" class="ms-auto rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-4 w-4" /></button>
+                </template>
+                <p class="w-full text-xs leading-5 opacity-80">{{ bg ? t('library.map.bg_hint', 'ارسم القاعات والممرات فوق الصورة. «معايرة القياس»: اضغط على طرفي جدار تعرف طوله ثم اكتب طوله بالمتر، فتأخذ الصورة قياسها الصحيح. الصورة لك فقط ولا تظهر للقراء.') : t('library.map.bg_intro', 'صورة لمخطط البناية (من الهاتف أو ملف PDF من المهندس) تحت الرسم، لكل طابق صورته. ترسم فوقها القاعات بسرعة وبالقياس الصحيح.') }}</p>
+                <p v-if="bgError" class="w-full text-xs font-medium text-red-600">{{ bgError }}</p>
+            </div>
+            <div v-if="calib" class="flex flex-wrap items-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-sm text-white">
+                <ArrowsPointingOutIcon class="h-5 w-5 shrink-0" />
+                <span class="flex-1">{{ calib.points.length ? t('library.map.calib_2', 'الآن اضغط على الطرف الثاني.') : t('library.map.calib_1', 'اضغط على طرف جدار (أو باب) تعرف طوله في الصورة، ثم على طرفه الآخر.') }}</span>
+                <button @click="calib = null" class="rounded-md px-2.5 py-1 underline">{{ t('common.cancel', 'إلغاء') }}</button>
+            </div>
+            <p v-if="bgMove" class="rounded-lg bg-sky-100 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/40 dark:text-sky-100">{{ t('library.map.bg_move_hint', 'اسحب الصورة لتضعها في مكانها، ثم اضغط «تم».') }}</p>
 
             <div v-if="drawing" class="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
                 <span class="flex-1">{{ t('library.map.draw_hint', 'اضغط على المخطط عند كل زاوية من زوايا العائق بالترتيب، ثم اضغط على النقطة الأولى أو «إنهاء الشكل». (رجوع يحذف آخر نقطة)') }}</span>
@@ -747,7 +1027,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <!-- Plan or 3D -->
                 <div class="relative h-[62dvh] min-h-[380px] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                     <div v-show="view === 'plan'" class="h-full w-full overflow-auto">
-                        <svg ref="svg" :viewBox="`-0.6 -0.6 ${floor.width + 1.2} ${floor.depth + 1.2}`" class="block touch-none select-none" :class="placingEntrance || drawing || tool ? 'cursor-crosshair' : ''"
+                        <svg ref="svg" :viewBox="`-0.6 -0.6 ${floor.width + 1.2} ${floor.depth + 1.2}`" class="block touch-none select-none" :class="placingEntrance || drawing || tool || calib ? 'cursor-crosshair' : bgMove ? 'cursor-move' : ''"
                             :style="{ width: `${zoom * 100}%`, height: `${zoom * 100}%` }" preserveAspectRatio="xMidYMid meet"
                             @pointerdown="onPlanDown" @pointermove="onMove" @pointerup="endDrag" @pointercancel="endDrag" @click="onPlanClick" @dblclick="drawing && finishDrawing()">
                             <defs>
@@ -756,10 +1036,11 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 </pattern>
                             </defs>
                             <rect data-bg="1" x="0" y="0" :width="floor.width" :height="floor.depth" class="fill-[#f8f5ef] dark:fill-gray-900" />
+                            <image v-if="bg && !bg.hidden" :href="bg.url" :x="bg.x" :y="bg.y" :width="bg.width" :height="bg.width * bg.aspect" preserveAspectRatio="none" :opacity="bg.opacity" data-bg="1" />
                             <line v-for="(g, i) in gridLines" :key="i" v-bind="g" data-bg="1" :stroke-width="g.major ? 0.03 : 0.012" class="stroke-gray-300 dark:stroke-gray-700" />
                             <rect x="0" y="0" :width="floor.width" :height="floor.depth" fill="none" stroke-width="0.12" class="stroke-gray-400 dark:stroke-gray-500" />
 
-                            <g v-for="s in planItems" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing ? 'pointer-events-none opacity-60' : (tool === 'door' && s.kind !== 'door') || (tool === 'qr' && s.kind !== 'qr') ? 'pointer-events-none' : ''" @pointerdown.stop="startDrag($event, s)">
+                            <g v-for="s in planItems" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing || calib || bgMove ? 'pointer-events-none opacity-60' : (tool === 'door' && s.kind !== 'door') || (tool === 'qr' && s.kind !== 'qr') ? 'pointer-events-none' : ''" @pointerdown.stop="startDrag($event, s)">
                                 <template v-if="isHallKind(s)">
                                     <!-- A hall or corridor: its floor, and its sides drawn as walls. -->
                                     <polygon :points="polyPoints(s)" :fill="s.kind === 'corridor' ? '#e2e8f0' : '#fbf8f2'" class="dark:opacity-30" stroke-linejoin="miter"
@@ -810,6 +1091,10 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <polygon v-if="rectL" :points="rectL" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
                             <rect v-if="rectBox && !rectL" v-bind="rectBox" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
                             <text v-if="rectBox && rectBox.width > 1" :x="rectBox.x + rectBox.width / 2" :y="rectBox.y + rectBox.height / 2" text-anchor="middle" dominant-baseline="central" :font-size="fontSize * 1.2" font-weight="700" fill="#334155" class="pointer-events-none" dir="ltr">{{ rectBox.width.toFixed(1) }} × {{ rectBox.height.toFixed(1) }} m</text>
+                            <g v-if="calib" class="pointer-events-none">
+                                <line v-if="calibLine" v-bind="calibLine" stroke="#0284c7" stroke-width="0.08" stroke-dasharray="0.2 0.1" />
+                                <circle v-for="(q, i) in calib.points" :key="i" :cx="q.x" :cy="q.y" r="0.18" fill="#0284c7" stroke="#fff" stroke-width="0.05" />
+                            </g>
                             <g v-if="drawing" class="pointer-events-none">
                                 <polyline :points="drawPath" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="0.06" stroke-dasharray="0.15 0.08" />
                                 <circle v-for="(p, i) in drawing.points" :key="i" :cx="p.x" :cy="p.y" :r="i === 0 ? 0.2 : 0.12" :fill="i === 0 ? '#fff' : '#f59e0b'" stroke="#f59e0b" stroke-width="0.05" />
@@ -829,7 +1114,10 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                     <div v-if="view === 'plan' && !onStorey.length && !tool && !drawing" class="absolute inset-x-0 top-1/4 mx-auto max-w-sm space-y-3 rounded-2xl bg-white/90 p-5 text-center shadow ring-1 ring-black/5 dark:bg-gray-800/90">
                         <BuildingOffice2Icon class="mx-auto h-10 w-10 text-[var(--accent-600)]" />
                         <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('library.map.empty_plan_wizard', 'ابدأ بـ «معالج البناء»: اختر غرفة أو بناية وعدد الطوابق، فتُبنى القاعات والممرات والأبواب تلقائياً.') }}</p>
-                        <button @click="openWizard" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm font-medium text-white">{{ t('library.map.wizard', 'معالج البناء') }}</button>
+                        <div class="flex flex-wrap justify-center gap-2">
+                            <button @click="openWizard" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm font-medium text-white">{{ t('library.map.wizard', 'معالج البناء') }}</button>
+                            <button @click="bgPanel = true; $nextTick(() => bgInput?.click())" class="inline-flex items-center gap-1.5 rounded-lg border border-sky-300 px-4 py-2 text-sm font-medium text-sky-700 dark:border-sky-700 dark:text-sky-300"><PhotoIcon class="h-4 w-4" /> {{ t('library.map.bg_from_plan', 'ارسم فوق صورة المخطط') }}</button>
+                        </div>
                     </div>
                 </div>
 
@@ -945,7 +1233,11 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                         <template v-else-if="dirty"><span class="h-2 w-2 rounded-full bg-amber-500" /><span class="font-medium text-amber-600">{{ t('settings.unsaved', 'تغييرات غير محفوظة') }}</span></template>
                         <template v-else-if="justSaved"><CheckCircleIcon class="h-5 w-5 text-emerald-500" /><span class="text-emerald-600">{{ t('settings.saved', 'تم الحفظ') }}</span></template>
                     </p>
-                    <button v-if="dirty" @click="reset" class="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><ArrowUturnRightIcon class="h-4 w-4" /> {{ t('settings.discard', 'تراجع') }}</button>
+                    <div class="flex rounded-lg border border-gray-200 dark:border-gray-700">
+                        <button @click="undo" :disabled="!undoStack.length" class="rounded-s-lg p-2 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-800" :title="t('library.map.undo', 'تراجع (Ctrl+Z)')"><ArrowUturnRightIcon class="h-5 w-5" /></button>
+                        <button @click="redo" :disabled="!redoStack.length" class="rounded-e-lg border-s border-gray-200 p-2 hover:bg-gray-100 disabled:opacity-30 dark:border-gray-700 dark:hover:bg-gray-800" :title="t('library.map.redo', 'إعادة (Ctrl+Y)')"><ArrowUturnLeftIcon class="h-5 w-5" /></button>
+                    </div>
+                    <button v-if="dirty" @click="reset" class="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"><ArrowUturnRightIcon class="h-4 w-4" /> {{ t('library.map.discard_all', 'إلغاء كل التغييرات') }}</button>
                     <button @click="save" :disabled="saving || !dirty" class="rounded-lg bg-[var(--accent-600)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">{{ t('library.map.save', 'حفظ الخريطة') }}</button>
                 </div>
             </div>
@@ -975,6 +1267,39 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                     <button @click="gen.open = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('common.cancel', 'إلغاء') }}</button>
                     <button @click="generate" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm font-medium text-white">{{ t('library.map.gen_build', 'ابنِ الصفوف') }}</button>
                 </div>
+            </div>
+        </Modal>
+        <Modal :show="check.open" @close="check.open = false" max-width="lg">
+            <div class="space-y-4 p-6">
+                <div class="flex items-center gap-2">
+                    <ClipboardDocumentCheckIcon class="h-6 w-6 text-[var(--accent-600)]" />
+                    <h3 class="flex-1 text-lg font-semibold">{{ t('library.map.check', 'فحص الخريطة') }}</h3>
+                    <button @click="check.open = false" class="rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
+                </div>
+                <p v-if="check.running" class="flex items-center gap-2 text-sm text-gray-500"><ArrowPathRoundedSquareIcon class="h-4 w-4 animate-spin" /> {{ t('library.map.checking', 'يفحص الطرق إلى كل رف…') }}</p>
+                <template v-else>
+                    <div v-if="!check.issues.some((i) => i.level !== 'info')" class="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm font-medium text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
+                        <CheckCircleIcon class="h-6 w-6 shrink-0" /> {{ t('library.map.check_ok', 'الخريطة سليمة: كل رف يوصله طريق من المدخل.') }}
+                    </div>
+                    <p v-else class="text-sm text-gray-600 dark:text-gray-300">{{ t('library.map.check_count', ':e مشكلة و:w تنبيه. اضغط على أي سطر لتذهب إليه.', { e: check.issues.filter((i) => i.level === 'error').length, w: check.issues.filter((i) => i.level === 'warn').length }) }}</p>
+                    <ul v-if="check.issues.length" class="max-h-[50vh] space-y-1.5 overflow-y-auto">
+                        <li v-for="(iss, n) in check.issues" :key="n">
+                            <button @click="goToIssue(iss)" :disabled="!iss.key && iss.storey === null" class="flex w-full items-start gap-2 rounded-lg px-2.5 py-2 text-start text-sm hover:bg-gray-50 disabled:cursor-default dark:hover:bg-gray-700/50"
+                                :class="iss.level === 'error' ? 'text-red-700 dark:text-red-300' : iss.level === 'warn' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-600 dark:text-gray-300'">
+                                <component :is="iss.level === 'info' ? InformationCircleIcon : ExclamationCircleIcon" class="mt-0.5 h-4 w-4 shrink-0" />
+                                <span class="flex-1">{{ iss.text }}</span>
+                            </button>
+                        </li>
+                    </ul>
+                    <div v-if="check.unplaced" class="rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <p class="font-medium" :class="check.unplaced.count ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'">
+                            {{ check.unplaced.count ? t('library.map.unplaced', ':n كتاب بلا مكان على الخريطة (حسب آخر حفظ).', { n: check.unplaced.count }) : t('library.map.unplaced_none', 'كل الكتب لها مكان على الخريطة.') }}
+                        </p>
+                        <p v-if="check.unplaced.count" class="mt-1 text-xs leading-5 text-gray-500">{{ t('library.map.unplaced_hint', 'اكتب رمز الرف في حقل «الرف» لنسخها، أو اختر لرف قسم هذه الكتب، أو وزّعها بقارئ RFID من «توزيع على الرفوف».') }}</p>
+                        <p v-if="check.unplaced.books.length" class="mt-1 line-clamp-2 text-xs text-gray-500" dir="auto">{{ check.unplaced.books.map((b) => b.title).join(' · ') }}</p>
+                    </div>
+                    <p v-if="dirty" class="text-xs text-gray-500">{{ t('library.map.check_unsaved', 'الفحص يشمل تغييراتك غير المحفوظة، إلا عدد الكتب بلا مكان فهو حسب آخر حفظ.') }}</p>
+                </template>
             </div>
         </Modal>
         <Modal :show="wiz.open" @close="wiz.open = false" max-width="lg">
