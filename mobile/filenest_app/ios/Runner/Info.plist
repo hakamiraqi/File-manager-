@@ -14,7 +14,9 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>لاختيار الصور والفيديو ورفعها إلى FileNest</string>
 	<key>NSCameraUsageDescription</key>
-	<string>لالتقاط صورة أو فيديو ورفعه إلى FileNest</string>
+	<string>لالتقاط صورة أو فيديو ورفعه إلى FileNest، ولمسح ملصق QR على رفوف المكتبة</string>
+	<key>NSMotionUsageDescription</key>
+	<string>لتحريك سهمك على خريطة المكتبة مع خطواتك</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>لتسجيل الصوت مع الفيديو</string>
 	<key>UIFileSharingEnabled</key>

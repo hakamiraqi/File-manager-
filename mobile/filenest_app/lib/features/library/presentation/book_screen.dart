@@ -6,6 +6,7 @@ import '../../../core/widgets/ui_kit.dart';
 import '../../auth/state/auth_provider.dart';
 import '../../contact/presentation/contact_screen.dart';
 import '../../site/site_api.dart';
+import 'library_map_screen.dart';
 import 'library_widgets.dart';
 
 /// One book: is it on the shelf, hold it, its copies, ask for it.
@@ -135,6 +136,19 @@ class _BookScreenState extends State<BookScreen> {
               ]),
             ),
           ),
+          // «مكانه على الخريطة»: its bookcase (and level), and the walk to it in 3D.
+          if (d['map_spot'] is Map)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: FilledButton.tonalIcon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => LibraryMapScreen(bookId: widget.bookId))),
+                icon: const Icon(Icons.location_on_outlined),
+                label: Text(context.l(
+                  'مكانه على الخريطة · الرف ${(d['map_spot'] as Map)['code']}${(d['map_spot'] as Map)['level'] != null ? ' · الطبقة ${(d['map_spot'] as Map)['level']}' : ''}',
+                  'On the map · bookcase ${(d['map_spot'] as Map)['code']}${(d['map_spot'] as Map)['level'] != null ? ', level ${(d['map_spot'] as Map)['level']}' : ''}',
+                )),
+              ),
+            ),
           const SizedBox(height: 12),
           if (book['reference_only'] != true && copies.isNotEmpty)
             Padding(
