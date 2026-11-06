@@ -6,12 +6,15 @@
 FROM php:8.4-fpm-alpine AS base
 # ffmpeg: video thumbnails and quality transcoding; poppler-utils: PDF thumbnails and pdftotext;
 # LibreOffice + Arabic fonts: Word/PowerPoint/Excel previews (as PDF) and their searchable text.
+# Tesseract (Arabic + English): text recognition of scanned images and PDFs (OCR), off-hours.
 RUN apk add --no-cache icu-libs libzip libpng libjpeg-turbo libwebp freetype mariadb-client ffmpeg poppler-utils \
         libreoffice-writer libreoffice-calc libreoffice-impress font-noto-arabic font-dejavu font-liberation fontconfig \
+        tesseract-ocr tesseract-ocr-data-ara tesseract-ocr-data-eng \
     && apk add --no-cache --virtual .build $PHPIZE_DEPS icu-dev libzip-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev linux-headers \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql intl zip gd bcmath exif opcache pcntl \
-    && apk del .build
+    && apk del .build \
+    && tesseract --list-langs 2>&1 | grep -qx ara
 
 FROM base AS vendor
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

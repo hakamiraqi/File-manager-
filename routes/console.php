@@ -17,3 +17,8 @@ Schedule::command('library:expire-holds')->everyFifteenMinutes();
 
 // Offline server: a daily backup (does nothing unless BACKUP_DAILY is on).
 Schedule::command('backup:run')->hourly();
+
+// Text recognition (OCR): a round every minute (it waits for the work hours and a quiet
+// computer by itself), and a morning report for the admins.
+Schedule::command('ocr:run')->everyMinute()->withoutOverlapping(120)->runInBackground();
+Schedule::command('ocr:report')->dailyAt('07:30')->timezone('Asia/Baghdad');

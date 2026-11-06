@@ -32,6 +32,8 @@ env:
   CADDY_VERSION: '2.8.4'
   COREDNS_VERSION: '1.12.3'
   CLOUDFLARED_VERSION: '2026.9.3'
+  TESSERACT_VERSION: '5.4.0.20240606'
+  POPPLER_VERSION: '24.08.0-0'
   SITE: https://files.azoclinic.duckdns.org
 
 jobs:
@@ -173,6 +175,34 @@ jobs:
           test -f $OUT/caddy/caddy.exe && test -f $OUT/coredns/coredns.exe && test -f $OUT/FileNest.exe
           test "$(stat -c %s $OUT/cloudflared/cloudflared.exe)" -gt 20000000
 
+      - name: Text recognition (Tesseract with Arabic and English, Poppler for scanned PDFs)
+        run: |
+          # Bundled so text recognition works without installing anything on the clinic PC.
+          OUT=dist/FileNestOffline
+          command -v 7z >/dev/null || sudo apt-get install -y p7zip-full >/dev/null
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o tess.exe \
+            "https://github.com/UB-Mannheim/tesseract/releases/download/v${TESSERACT_VERSION}/tesseract-ocr-w64-setup-${TESSERACT_VERSION}.exe"
+          7z x -y -otess-x tess.exe >/dev/null
+          EXE=$(find tess-x -iname tesseract.exe | head -1)
+          test -n "$EXE"
+          mkdir -p $OUT/tesseract
+          cp -r "$(dirname "$EXE")"/. $OUT/tesseract/
+          rm -rf "$OUT/tesseract/\$PLUGINSDIR" $OUT/tesseract/*.html $OUT/tesseract/doc $OUT/tesseract/Uninstall* $OUT/tesseract/tessdata/script $OUT/tesseract/tessdata/configs/*.ttf
+          mkdir -p $OUT/tesseract/tessdata
+          # The most accurate models (tessdata_best) for Arabic and English.
+          for l in ara eng osd; do
+            curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o $OUT/tesseract/tessdata/$l.traineddata \
+              "https://github.com/tesseract-ocr/tessdata_best/raw/main/$l.traineddata"
+          done
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o poppler.zip \
+            "https://github.com/oschwartz10612/poppler-windows/releases/download/v${POPPLER_VERSION}/Release-${POPPLER_VERSION}.zip"
+          unzip -q poppler.zip -d poppler-x
+          BIN=$(dirname "$(find poppler-x -iname pdftoppm.exe | head -1)")
+          mkdir -p $OUT/poppler && cp -r "$BIN"/. $OUT/poppler/
+          test -f $OUT/tesseract/tesseract.exe && test -f $OUT/poppler/pdftoppm.exe
+          test "$(stat -c %s $OUT/tesseract/tessdata/ara.traineddata)" -gt 1000000
+          du -sh $OUT/tesseract $OUT/poppler
+
       - name: Zip
         run: |
           cd dist && zip -qr9 ../FileNestOffline-windows.zip FileNestOffline
@@ -218,6 +248,17 @@ jobs:
           }
           $admin = & "$root\mariadb\bin\mariadb.exe" --user=root --host=127.0.0.1 --port=3308 -N -e "select email from filenest.users where email='admin@filenest.test'"
           if ($admin -ne 'admin@filenest.test') { throw 'The admin account was not created.' }
+
+          Write-Host 'Text recognition:'
+          $langs = & "$root\tesseract\tesseract.exe" --list-langs 2>&1 | Out-String
+          Write-Host $langs
+          if ($langs -notmatch '(?m)^ara\s*$') { throw 'Tesseract or its Arabic model is missing.' }
+          & "$root\poppler\pdftoppm.exe" -v 2>&1 | Select-Object -First 1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw 'pdftoppm does not start.' }
+          Push-Location "$root\app"
+          & "$root\php\php.exe" -c "$root\php\php.ini" artisan ocr:run --force --batch=1 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'ocr:run failed.' }
+          Pop-Location
 
           Write-Host 'DNS:'
           $dns = Resolve-DnsName -Name files.lan -Server 127.0.0.1 -DnsOnly -Type A
