@@ -67,6 +67,11 @@ jobs:
       - run: flutter pub get
       - run: flutter build apk --release $BUILD_FLAGS --dart-define=API_BASE_URL=$API_BASE_URL
       - run: cp build/app/outputs/flutter-apk/app-release.apk ../../FileNest-android.apk
+      - name: Check the APK installs (signature and package)
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs ../../FileNest-android.apk | grep -vE '^WARNING: META-INF' | head -20
+          "$BT/aapt2" dump badging ../../FileNest-android.apk | grep -E "^(package|sdkVersion|targetSdkVersion|application-icon-160|native-code)"
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -170,6 +175,15 @@ jobs:
           # Remove older app builds the manifest no longer points at (the offline server zip has its own entry).
           keep=" $(jq -r '.[] | .url' out/releases.json | xargs -n1 basename | tr '\n' ' ')"
           vps "cd '$dir' && for f in FileNest-1.0.* FileNestSetup-1.0.*; do [ -e \"\$f\" ] || continue; case '$keep' in *\" \$f \"*) ;; *) rm -f -- \"\$f\";; esac; done; ls -la"
+      - name: Check the published APK matches the build
+        run: |
+          V=$APP_VERSION
+          url="https://files.azoclinic.duckdns.org/downloads/FileNest-$V.apk"
+          curl -fsSL -o served.apk "$url"
+          curl -sI "$url" | grep -iE '^(content-type|content-length|content-encoding)'
+          a=$(sha256sum out/FileNest-$V.apk | cut -d' ' -f1); b=$(sha256sum served.apk | cut -d' ' -f1)
+          echo "built  $a"; echo "served $b"
+          [ "$a" = "$b" ] || { echo "::error::The APK on the site differs from the build."; exit 1; }
       # The offline server carries the apps too (apps/ on the LAN), so rebuild it with the new versions.
       - name: Rebuild the offline server with the new apps
         env:
