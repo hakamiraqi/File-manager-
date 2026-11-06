@@ -8,12 +8,16 @@ use App\Models\Library\LibrarySection;
 use App\Models\Library\LibraryShelf;
 use App\Models\User;
 use App\Services\Library\LibraryMap;
+use App\Services\Ocr\OcrEngine;
 use App\Support\PublicSite;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -82,6 +86,44 @@ class MapController extends Controller
         ]);
     }
 
+    /**
+     * «مخطط البناية»: an image or the first page of a PDF of a floor plan, to draw the halls
+     * over. Saved with the map; until then it is only a file.
+     */
+    public function background(Request $request): JsonResponse
+    {
+        $request->validate(['plan' => ['required', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:20480']]);
+        $file = $request->file('plan');
+        $disk = Storage::disk('public');
+        $name = LibraryMap::PLANS.'/'.Str::random(16);
+
+        if (strtolower($file->getClientOriginalExtension()) === 'pdf' || $file->getMimeType() === 'application/pdf') {
+            $bin = app(OcrEngine::class)->pdftoppm();
+            abort_if($bin === null, 422, 'تحويل PDF غير متوفر على هذا الخادم. ارفع صورة (JPG أو PNG) للمخطط.');
+            $tmp = sys_get_temp_dir().'/plan-'.Str::random(8);
+            $r = Process::timeout(60)->run([$bin, '-png', '-r', '150', '-f', '1', '-l', '1', '-scale-to', '3000', '-singlefile', $file->getRealPath(), $tmp]);
+            abort_unless($r->successful() && is_file($tmp.'.png'), 422, 'تعذّرت قراءة ملف PDF.');
+            $path = $name.'.png';
+            $disk->put($path, file_get_contents($tmp.'.png'));
+            @unlink($tmp.'.png');
+        } else {
+            $path = $file->storeAs(LibraryMap::PLANS, basename($name).'.'.strtolower($file->extension()), 'public');
+        }
+        [$w, $h] = @getimagesize($disk->path($path)) ?: [0, 0];
+        if (! $w || ! $h) {
+            $disk->delete($path);
+            abort(422, 'الملف ليس صورة صالحة.');
+        }
+
+        return response()->json(['path' => $path, 'url' => $disk->url($path), 'aspect' => round($h / $w, 5)]);
+    }
+
+    /** «فحص الخريطة»: books with no place on the saved map. */
+    public function unplaced(): JsonResponse
+    {
+        return response()->json($this->map->unplaced());
+    }
+
     /** Printable QR stickers: one per bookcase and the wall stickers, scanned to say «أنت هنا». */
     public function labels(): Response
     {
@@ -108,6 +150,15 @@ class MapController extends Controller
             'floor.storeys' => ['nullable', 'array', 'max:20'],
             'floor.storeys.*' => ['nullable', 'string', 'max:60'],
             'floor.separate_halls' => ['boolean'],
+            'floor.backgrounds' => ['nullable', 'array', 'max:20'],
+            'floor.backgrounds.*.storey' => ['required', 'integer', 'min:0', 'max:19'],
+            'floor.backgrounds.*.path' => ['required', 'string', 'max:200'],
+            'floor.backgrounds.*.x' => ['required', 'numeric', 'min:-400', 'max:400'],
+            'floor.backgrounds.*.y' => ['required', 'numeric', 'min:-400', 'max:400'],
+            'floor.backgrounds.*.width' => ['required', 'numeric', 'min:0.5', 'max:1000'],
+            'floor.backgrounds.*.aspect' => ['required', 'numeric', 'min:0.01', 'max:100'],
+            'floor.backgrounds.*.opacity' => ['nullable', 'numeric', 'min:0', 'max:1'],
+            'floor.backgrounds.*.hidden' => ['boolean'],
             'shelves' => ['present', 'array', 'max:500'],
             'shelves.*.id' => ['nullable', 'integer'],
             'shelves.*.code' => ['required', 'string', 'max:30', 'distinct:ignore_case'],
