@@ -82,12 +82,15 @@ class MapController extends Controller
         ]);
     }
 
-    /** Printable QR stickers: one per bookcase, scanned to say «أنت هنا». */
+    /** Printable QR stickers: one per bookcase and the wall stickers, scanned to say «أنت هنا». */
     public function labels(): Response
     {
+        $storeys = $this->map->floor()['storeys'];
+
         return Inertia::render('Library/Manage/MapLabels', [
-            'shelves' => $this->map->shelves()->where('kind', 'shelf')->values()->map(fn ($s) => [
-                'id' => $s['id'], 'code' => $s['code'], 'section' => $s['section'], 'color' => $s['color'], 'section_id' => $s['section_id'],
+            'shelves' => $this->map->shelves()->whereIn('kind', ['shelf', 'qr'])->sortBy(fn ($s) => [$s['kind'] === 'qr' ? 1 : 0, $s['storey'], $s['code']])->values()->map(fn ($s) => [
+                'id' => $s['id'], 'kind' => $s['kind'], 'code' => $s['code'], 'name' => $s['name'], 'section' => $s['section'], 'color' => $s['color'], 'section_id' => $s['section_id'],
+                'storey' => count($storeys) > 1 ? ($storeys[$s['storey']] ?? null) : null,
                 'url' => route('library.map', ['at' => $s['id']]),
             ]),
             'mapUrl' => route('library.map'),

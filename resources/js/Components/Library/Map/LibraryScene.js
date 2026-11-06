@@ -103,6 +103,32 @@ function chevronTexture() {
     return tex;
 }
 
+/** A QR-looking square for the sticker plates (the real codes are on the printed stickers). */
+function qrTexture() {
+    const n = 21, px = 6, c = document.createElement('canvas');
+    c.width = c.height = (n + 2) * px;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.fillStyle = '#111';
+    const r = rng(7);
+    const finder = (x, y) => (x < 7 && y < 7) || (x >= n - 7 && y < 7) || (x < 7 && y >= n - 7);
+    for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+            let on;
+            if (finder(x, y)) {
+                const fx = x < 7 ? x : x - (n - 7), fy = y < 7 ? y : y - (n - 7);
+                on = fx === 0 || fx === 6 || fy === 0 || fy === 6 || (fx >= 2 && fx <= 4 && fy >= 2 && fy <= 4);
+            } else on = r() < 0.48;
+            if (on) ctx.fillRect((x + 1) * px, (y + 1) * px, px, px);
+        }
+    }
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.NearestFilter;
+    return tex;
+}
+
 function floorTexture(dark) {
     const c = document.createElement('canvas');
     c.width = c.height = 128;
@@ -149,7 +175,7 @@ export class LibraryScene {
         this.controls.dampingFactor = 0.08;
         this.controls.maxPolarAngle = Math.PI * 0.46;
         this.controls.minDistance = 2;
-        this.controls.maxDistance = 120;
+        this.controls.maxDistance = 200;
         this.controls.screenSpacePanning = false;
 
         this.root = new THREE.Group();
@@ -158,6 +184,10 @@ export class LibraryScene {
         this.scene.add(this.routeGroup);
         this.fx = new THREE.Group();
         this.scene.add(this.fx);
+        // «أين أقرب ملصق QR؟»: pulsing marks on the stickers to scan.
+        this.beacons = new THREE.Group();
+        this.scene.add(this.beacons);
+        this.beaconIds = null;
 
         const hemi = new THREE.HemisphereLight(0xffffff, 0x8a7f70, 1.6);
         this.scene.add(hemi);
@@ -234,6 +264,7 @@ export class LibraryScene {
         this.clearGroup(this.root);
         this.items.clear();
         this.labels = [];
+        this.qrTex = null;
         const { width: W, depth: D } = floor;
 
         const halls = items.filter((i) => (i.kind === 'hall' || i.kind === 'corridor') && i.points?.length >= 3);
@@ -412,6 +443,7 @@ export class LibraryScene {
         bookCount = bookSpots.length;
 
         for (const item of items) if (!['hall', 'corridor', 'door'].includes(item.kind)) this.addItem(item);
+        if (this.beaconIds) this.setBeacons(this.beaconIds, this.beaconNearest);
 
         if (bookCount) {
             const geo = new THREE.BoxGeometry(1, 1, 1);
@@ -475,6 +507,11 @@ export class LibraryScene {
             for (let lv = 1; lv < item.levels; lv++) box(W - 2 * th, 0.022, D, 0, 0.1 + lv * LEVEL_H, 0);
             // A coloured strip on each face so the section reads from far away.
             for (const f of item.double_sided ? [1, -1] : [1]) box(W, 0.06, 0.012, 0, h - 0.06, f * (D / 2 + 0.006), accentMat);
+            // Its QR sticker: on the front, in the middle, at eye level.
+            const qy = Math.min(h - 0.2, 1.45);
+            const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.16), new THREE.MeshBasicMaterial({ map: this.qrTexture() }));
+            plate.position.set(0, qy, D / 2 + 0.008);
+            group.add(plate);
         } else if (kind === 'desk') {
             box(W, 0.05, D, 0, h - 0.025, 0, accentMat);
             box(W, h - 0.05, 0.04, 0, (h - 0.05) / 2, D / 2 - 0.05);
@@ -508,6 +545,13 @@ export class LibraryScene {
                 box(0.08, h, D, px, h / 2, 0, post);
                 box(0.1, 0.06, D + 0.02, px, h - 0.03, 0, light);
             }
+        } else if (kind === 'qr') {
+            // «ملصق QR» on a wall: a plate facing the room (the hall walls here are 1 m high).
+            const plate = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.02), new THREE.MeshStandardMaterial({ color: '#fff', roughness: 0.4 }));
+            plate.position.set(0, 0.72, 0.03);
+            const face = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), new THREE.MeshBasicMaterial({ map: this.qrTexture() }));
+            face.position.set(0, 0.72, 0.041);
+            group.add(plate, face);
         } else if (kind === 'stairs') {
             // «درج / مصعد»: a flight of steps going up along the item's depth.
             const n = 8, stepMat = new THREE.MeshStandardMaterial({ color: this.dark ? '#94a3b8' : '#d6d3d1', roughness: 0.7 });
@@ -517,7 +561,12 @@ export class LibraryScene {
             box(W, h, D, 0, h / 2, 0);
         }
 
-        if (kind !== 'wall' && kind !== 'obstacle') {
+        let sticker = null;
+        if (kind === 'qr' || kind === 'shelf') {
+            const local = new THREE.Vector3(0, kind === 'qr' ? 0.72 : Math.min(h - 0.2, 1.45), kind === 'qr' ? 0.05 : D / 2 + 0.01);
+            sticker = { pos: local.applyMatrix4(group.matrixWorld), normal: new THREE.Vector3(0, 0, 1).applyAxisAngle(new THREE.Vector3(0, 1, 0), group.rotation.y) };
+        }
+        if (kind !== 'wall' && kind !== 'obstacle' && kind !== 'qr') {
             const label = labelSprite(item.code || '', kind === 'shelf' ? item.section || item.name : item.name, accent, { scale: kind === 'shelf' ? 1 : 0.75 });
             label.position.set(0, h + 0.12, 0);
             label.userData.itemId = item.id ?? item._key;
@@ -526,7 +575,57 @@ export class LibraryScene {
             this.labels.push(label);
         }
         this.root.add(group);
-        this.items.set(item.id ?? item._key, { group, data: item, accentMat, height: h });
+        this.items.set(item.id ?? item._key, { group, data: item, accentMat, height: h, sticker });
+    }
+
+    qrTexture() {
+        this.qrTex ??= qrTexture();
+        return this.qrTex;
+    }
+
+    /**
+     * «أين أقرب ملصق؟»: a pulsing halo round each sticker in `ids`, a ring on the floor where to
+     * stand, and a bouncing arrow over the nearest one with «امسحني». Null clears them.
+     */
+    setBeacons(ids, nearestId = null) {
+        this.clearGroup(this.beacons);
+        this.beaconIds = ids;
+        this.beaconNearest = nearestId;
+        if (!ids || !this.floorData) return;
+        for (const id of ids) {
+            const it = this.items.get(id);
+            if (!it?.sticker) continue;
+            const near = id === nearestId;
+            const color = near ? '#f97316' : '#06b6d4';
+            const { pos, normal } = it.sticker;
+            const g = new THREE.Group();
+            g.userData.near = near;
+            // Halo on the sticker, facing out of it.
+            const halo = new THREE.Mesh(new THREE.RingGeometry(0.13, 0.2, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+            halo.position.copy(pos).addScaledVector(normal, 0.02);
+            halo.lookAt(pos.clone().add(normal));
+            halo.renderOrder = 10;
+            halo.userData.pulse = { base: near ? 1.2 : 1, speed: near ? 1.1 : 1.6 };
+            g.add(halo);
+            // Where to stand: a ring on the floor in front of it.
+            const stand = pos.clone().addScaledVector(normal, 0.6).setY(0.02);
+            const ring = new THREE.Mesh(new THREE.RingGeometry(0.22, 0.3, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide, depthWrite: false }));
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.copy(stand);
+            ring.userData.pulse = { base: near ? 1.5 : 1, speed: 1.4, floor: true };
+            g.add(ring);
+            if (near) {
+                const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.36, 24), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.5 }));
+                arrow.rotation.x = Math.PI;
+                arrow.position.copy(pos).addScaledVector(normal, 0.15).setY(pos.y + 0.55);
+                arrow.userData.bob = pos.y + 0.55;
+                g.add(arrow);
+                const label = labelSprite('امسحني', null, color, { scale: 0.6 });
+                label.position.copy(pos).addScaledVector(normal, 0.15).setY(pos.y + 1.05);
+                g.add(label);
+            }
+            this.beacons.add(g);
+        }
     }
 
     pick(e) {
@@ -660,9 +759,16 @@ export class LibraryScene {
         // Far enough back for the whole room to fit, on a wide screen or a tall phone.
         const vf = (this.camera.fov * Math.PI) / 180;
         const hf = 2 * Math.atan(Math.tan(vf / 2) * this.camera.aspect);
-        const dist = Math.max((D * 1.05) / 2 / Math.tan(vf / 2), (W * 1.08) / 2 / Math.tan(hf / 2)) + 2;
-        const dir = new THREE.Vector3(0, 0.8, 0.6).normalize();
-        const target = centre.clone().add(new THREE.Vector3(0, 0, D * 0.12));
+        // A long building on a tall phone screen is seen from its end, so it runs up the screen
+        // and fills it instead of being a thin strip far away (2026-11-06, seen in the app).
+        const turn = this.camera.aspect < 0.9 && W > D * 1.2;
+        const across = turn ? D : W, along = turn ? W : D;
+        // Steeper on phones: the plan reads better from above.
+        const steep = this.camera.aspect < 0.9 ? 0.92 : 0.8;
+        const dist = Math.max((along * 1.05 * (turn ? 0.8 : 1)) / 2 / Math.tan(vf / 2), (across * 1.08) / 2 / Math.tan(hf / 2)) + 2;
+        const flat = Math.sqrt(1 - steep * steep);
+        const dir = turn ? new THREE.Vector3(-flat, steep, 0) : new THREE.Vector3(0, steep, flat);
+        const target = centre.clone().add(turn ? new THREE.Vector3(-along * 0.06, 0, 0) : new THREE.Vector3(0, 0, along * 0.12));
         this.flyTo(target.clone().add(dir.multiplyScalar(dist)), target, animate);
     }
 
@@ -717,6 +823,13 @@ export class LibraryScene {
             this.controls.target.lerp(look, 1 - Math.pow(0.002, dt));
             this.camera.lookAt(this.controls.target);
         } else this.controls.update();
+        // The fog only softens what is far behind: it moves back with the camera, so a big
+        // building seen from far away is not washed out.
+        if (this.scene.fog) {
+            const d = this.camera.position.distanceTo(this.controls.target);
+            this.scene.fog.near = d + 15;
+            this.scene.fog.far = d * 2.5 + 60;
+        }
 
         // Labels shrink while walking so the aisle stays visible; the target's stays full size.
         const want = this.mode === 'follow' ? 0.45 : 1;
@@ -729,6 +842,17 @@ export class LibraryScene {
         if (this.pin) { this.pin.position.y = (this.items.get(this.highlighted?.id)?.height ?? 2) + 0.85 + Math.sin(time * 3) * 0.12; this.pin.rotation.y = time * 1.5; }
         if (this.ring) { const p = (time % 1.6) / 1.6; this.ring.material.opacity = 0.65 * (1 - p); this.ring.scale.setScalar((Math.max(this.items.get(this.highlighted?.id)?.data.width ?? 1, 1) * 0.6) * (0.8 + p * 0.9)); }
         if (this.levelGlow) this.levelGlow.material.opacity = 0.22 + Math.sin(time * 4) * 0.12;
+        for (const g of this.beacons.children) {
+            for (const m of g.children) {
+                const pl = m.userData.pulse;
+                if (pl) {
+                    const p = (time % pl.speed) / pl.speed;
+                    m.scale.setScalar(pl.base * (1 + p * (pl.floor ? 1.2 : 1.6)));
+                    m.material.opacity = 0.9 * (1 - p);
+                }
+                if (m.userData.bob !== undefined) m.position.y = m.userData.bob + Math.abs(Math.sin(time * 3.2)) * 0.18;
+            }
+        }
         this.renderer.render(this.scene, this.camera);
     }
 

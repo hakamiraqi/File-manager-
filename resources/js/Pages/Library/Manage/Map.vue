@@ -10,6 +10,7 @@ import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
 import { frontNormal, snapToWall, outline, HALL_KINDS, storeyOf } from '@/Components/Library/Map/route.js';
 import { sectionColor } from '@/Components/Library/Map/colors.js';
+import { wallPolygons, wallSpot, autoStickers } from '@/Components/Library/Map/stickers.js';
 import { useTrans } from '@/Composables/useTrans';
 import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
@@ -91,9 +92,22 @@ function stairsToAllFloors() {
     });
 }
 
-// Tools: «قاعة» / «ممر» by dragging a rectangle, «باب» by clicking a wall. ---------------------
-const tool = ref(null); // 'hall' | 'corridor' | 'door' | null
+// Tools: «قاعة» / «ممر» by dragging a rectangle (or an L), «باب» and «ملصق QR» by clicking a wall.
+const tool = ref(null); // 'hall' | 'corridor' | 'door' | 'qr' | null
 const rect = ref(null); // { kind, a: {x, y}, b: {x, y} } while dragging
+// «غرفة على شكل حرف L» (2026-11-06, by request): one drag draws the L; which corner is cut out
+// can be changed afterwards, and dragging its corners keeps the walls straight.
+const rectShape = ref('rect'); // 'rect' | 'L'
+const L_CORNERS = ['tr', 'tl', 'bl', 'br'];
+/** An L the size of the box w × d (centred), with a cut-out at `corner` (fractions of w and d). */
+function lPoints(w, d, corner = 'tr', cutX = 0.5, cutY = 0.5) {
+    const hw = w / 2, hd = d / 2, cx = hw - w * cutX, cy = -hd + d * cutY;
+    // Cut at top-right, then mirrored to the corner asked for.
+    const base = [[-hw, -hd], [cx, -hd], [cx, cy], [hw, cy], [hw, hd], [-hw, hd]];
+    const sx = corner.includes('l') ? -1 : 1, sy = corner.includes('b') ? -1 : 1;
+    const pts = base.map(([x, y]) => [+(x * sx).toFixed(2), +(y * sy).toFixed(2)]);
+    return sx * sy < 0 ? pts.reverse() : pts;
+}
 function pickTool(name) {
     placingEntrance.value = false;
     drawing.value = null;
@@ -124,8 +138,11 @@ function finishRect() {
     if (!r) return;
     const x0 = Math.min(r.a.x, r.b.x), x1 = Math.max(r.a.x, r.b.x), y0 = Math.min(r.a.y, r.b.y), y1 = Math.max(r.a.y, r.b.y);
     if (x1 - x0 < 1 || y1 - y0 < 1) return; // a click, not a drag
-    addHall(r.kind, x0, y0, x1, y1);
+    const hall = addHall(r.kind, x0, y0, x1, y1);
+    if (rectShape.value === 'L') { hall.points = lPoints(hall.width, hall.depth, dragCorner(r)); recentre(hall); }
     tool.value = null;
+    skipClick = true; // the click that ends the drag must not unselect the new hall
+    setTimeout(() => (skipClick = false), 50);
 }
 function addHall(kind, x0, y0, x1, y1, code = null) {
     const w = +(x1 - x0).toFixed(2), d = +(y1 - y0).toFixed(2);
@@ -142,6 +159,62 @@ const rectBox = computed(() => {
     const r = rect.value;
     return r ? { x: Math.min(r.a.x, r.b.x), y: Math.min(r.a.y, r.b.y), width: Math.abs(r.b.x - r.a.x), height: Math.abs(r.b.y - r.a.y) } : null;
 });
+/** The L's cut-out corner: dragging from the top-left down to the bottom-right cuts the
+ * top-right, and so on (the two corners dragged between are corners of the room). */
+const dragCorner = (r) => `${r.a.y <= r.b.y ? 't' : 'b'}${r.a.x <= r.b.x ? 'r' : 'l'}`;
+/** While dragging an L: its outline. */
+const rectL = computed(() => {
+    const r = rect.value, b = rectBox.value;
+    if (!r || !b || rectShape.value !== 'L' || b.width < 0.5 || b.height < 0.5) return null;
+    return lPoints(b.width, b.height, dragCorner(r)).map(([x, y]) => `${b.x + b.width / 2 + x},${b.y + b.height / 2 + y}`).join(' ');
+});
+/** Turns the selected L so the next corner is the cut-out one, keeping the size of its arms. */
+function turnL() {
+    const s = selected.value, pts = s.points;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const w = maxX - minX, d = maxY - minY;
+    const inner = pts.find(([x, y]) => x > minX + 0.01 && x < maxX - 0.01 && y > minY + 0.01 && y < maxY - 0.01);
+    if (!inner || !w || !d) return;
+    // The cut-out corner is the corner of the box with no point on it.
+    const has = (x, y) => pts.some((p) => Math.abs(p[0] - x) < 0.01 && Math.abs(p[1] - y) < 0.01);
+    const now = L_CORNERS.find((c) => !has(c.includes('r') ? maxX : minX, c.includes('t') ? minY : maxY));
+    if (!now) return;
+    const cutX = (now.includes('r') ? maxX - inner[0] : inner[0] - minX) / w;
+    const cutY = (now.includes('t') ? inner[1] - minY : maxY - inner[1]) / d;
+    s.points = lPoints(w, d, L_CORNERS[(L_CORNERS.indexOf(now) + 1) % 4], cutX, cutY);
+    recentre(s);
+}
+const isL = (s) => s?.points?.length === 6 && s.points.every((p, i) => { const q = s.points[(i + 1) % 6]; return Math.abs(p[0] - q[0]) < 0.01 || Math.abs(p[1] - q[1]) < 0.01; });
+
+/** «ملصق QR» on the wall nearest the click, facing the side clicked. */
+function placeSticker(p) {
+    const at = wallSpot(wallPolygons(floor, items.value, storey.value), p);
+    if (!at || at.distance > 1.5) return false;
+    const item = { id: null, _key: `n${++keySeq}`, code: nextCode('qr'), name: '', kind: 'qr', storey: storey.value, section_id: null, color: null, ...KIND_DEFAULTS.qr, x: at.x, y: at.y, rotation: at.rotation };
+    items.value.push(item);
+    selectedKey.value = item._key;
+    return true;
+}
+// «ملصقات QR تلقائية» (2026-11-06, by request): stickers on the walls of every floor, by the
+// doors, the stairs and along corridors, wherever there isn't one yet. Bookcases have theirs.
+const qrNote = ref('');
+function autoQr() {
+    let added = 0;
+    floor.storeys.forEach((_, n) => {
+        for (const s of autoStickers(floor, items.value, n)) {
+            const near = s.near === 'entrance' ? t('library.map.qr_by_entrance', 'بجانب المدخل') : s.near ? t('library.map.qr_by', 'بجانب :name', { name: s.near }) : '';
+            items.value.push({ id: null, _key: `n${++keySeq}`, code: nextCode('qr'), name: near, kind: 'qr', storey: n, section_id: null, color: null, ...KIND_DEFAULTS.qr, x: s.x, y: s.y, rotation: s.rotation });
+            added++;
+        }
+    });
+    selectedKey.value = null;
+    view.value = 'plan';
+    qrNote.value = added
+        ? t('library.map.qr_added', 'أُضيف :n ملصقاً على الجدران (بجانب الأبواب والدرج وعلى طول الممرات). كل رف له ملصقه أصلاً. احفظ ثم اطبعها من «ملصقات QR».', { n: added })
+        : t('library.map.qr_none_added', 'كل الأماكن المناسبة فيها ملصقات. تقدر تضيف ملصقاً بيدك بالضغط على أي جدار.');
+    setTimeout(() => (qrNote.value = ''), 9000);
+}
 /** A door goes on the nearest wall, along it. */
 function placeDoor(p) {
     const at = snapToWall(storeyHalls.value, p);
@@ -162,8 +235,9 @@ const KIND_DEFAULTS = {
     gate: { width: 1.4, depth: 0.5, levels: 1, double_sided: false },
     door: { width: 1.2, depth: 0.2, levels: 1, double_sided: false },
     stairs: { width: 2, depth: 3, levels: 1, double_sided: false },
+    qr: { width: 0.3, depth: 0.1, levels: 1, double_sided: false },
 };
-const kindLabel = (k) => ({ shelf: t('library.map.kind.shelf', 'رف كتب'), desk: t('library.map.kind.desk', 'مكتب الإعارة'), table: t('library.map.kind.table', 'طاولة قراءة'), wall: t('library.map.kind.wall', 'جدار'), gate: t('library.map.kind.gate', 'بوابة مانعة للسرقة'), obstacle: t('library.map.kind.obstacle', 'عائق'), hall: t('library.map.kind.hall', 'قاعة / غرفة'), corridor: t('library.map.kind.corridor', 'ممر'), door: t('library.map.kind.door', 'باب'), stairs: t('library.map.kind.stairs', 'درج / مصعد') })[k] ?? k;
+const kindLabel = (k) => ({ shelf: t('library.map.kind.shelf', 'رف كتب'), desk: t('library.map.kind.desk', 'مكتب الإعارة'), table: t('library.map.kind.table', 'طاولة قراءة'), wall: t('library.map.kind.wall', 'جدار'), gate: t('library.map.kind.gate', 'بوابة مانعة للسرقة'), obstacle: t('library.map.kind.obstacle', 'عائق'), hall: t('library.map.kind.hall', 'قاعة / غرفة'), corridor: t('library.map.kind.corridor', 'ممر'), door: t('library.map.kind.door', 'باب'), stairs: t('library.map.kind.stairs', 'درج / مصعد'), qr: t('library.map.kind.qr', 'ملصق QR') })[k] ?? k;
 
 function nextCode(kind) {
     if (kind === 'desk') return uniqueCode(t('library.map.kind.desk_short', 'مكتب'));
@@ -175,6 +249,7 @@ function nextCode(kind) {
     if (kind === 'corridor') return uniqueCode(t('library.map.kind.corridor', 'ممر') + ' ');
     if (kind === 'door') return uniqueCode(t('library.map.kind.door', 'باب') + ' ');
     if (kind === 'stairs') return uniqueCode(t('library.map.kind.stairs_short', 'درج') + ' ');
+    if (kind === 'qr') return uniqueCode('QR');
     const last = [...items.value].reverse().find((i) => i.kind === 'shelf' && /\d+$/.test(i.code));
     if (!last) return uniqueCode('A', 1);
     const [, prefix, n] = last.code.match(/^(.*?)(\d+)$/);
@@ -248,7 +323,7 @@ function toPlan(e) {
 }
 function startDrag(e, item) {
     if (tool.value === 'hall' || tool.value === 'corridor') return onPlanDown(e);
-    if (tool.value === 'door') return;
+    if (tool.value === 'door' || tool.value === 'qr') return;
     selectedKey.value = item._key;
     const p = toPlan(e);
     drag = { item, dx: item.x - p.x, dy: item.y - p.y, moved: false, children: isHallKind(item) ? contents(item).map((o) => ({ o, dx: o.x - item.x, dy: o.y - item.y })) : null };
@@ -268,12 +343,28 @@ function onMove(e) {
         // Plan point → the obstacle's own (unrotated) coordinates.
         const it = drag.item, a = (-(it.rotation || 0) * Math.PI) / 180;
         const q = snapPoint(p), dx = q.x - it.x, dy = q.y - it.y;
-        it.points[drag.vertex] = [+(dx * Math.cos(a) - dy * Math.sin(a)).toFixed(2), +(dx * Math.sin(a) + dy * Math.cos(a)).toFixed(2)];
+        const v = [+(dx * Math.cos(a) - dy * Math.sin(a)).toFixed(2), +(dx * Math.sin(a) + dy * Math.cos(a)).toFixed(2)];
+        const pts = it.points, i = drag.vertex, n = pts.length;
+        if (drag.square) {
+            // Square corners stay square: the two neighbours move along with this corner, so an L
+            // or a room keeps straight walls. (A middle point moves its whole wall.)
+            for (const j of [(i - 1 + n) % n, (i + 1) % n]) {
+                const vertical = Math.abs(pts[j][0] - pts[i][0]) < 0.01;
+                pts[j] = vertical ? [v[0], pts[j][1]] : [pts[j][0], v[1]];
+            }
+        }
+        pts[i] = v;
         return;
     }
     if (drag.entrance) {
         floor.entrance.x = clamp(round(p.x + drag.dx), 0, floor.width);
         floor.entrance.y = clamp(round(p.y + drag.dy), 0, floor.depth);
+        return;
+    }
+    if (drag.item.kind === 'qr') {
+        // A sticker slides along the walls too, and turns to face the side it is dragged to.
+        const at = wallSpot(wallPolygons(floor, items.value, storey.value), p);
+        if (at && at.distance < 2) Object.assign(drag.item, { x: at.x, y: at.y, rotation: at.rotation });
         return;
     }
     if (drag.item.kind === 'door') {
@@ -291,10 +382,16 @@ function endDrag() {
     if (drag?.vertex !== undefined) recentre(drag.item);
     drag = null;
 }
+let skipClick = false;
 function onPlanClick(e) {
+    if (skipClick) { skipClick = false; return; }
     if (drawing.value) { addDrawPoint(toPlan(e)); return; }
     if (tool.value === 'door') {
         doorHint.value = !placeDoor(toPlan(e));
+        return;
+    }
+    if (tool.value === 'qr') {
+        doorHint.value = !placeSticker(toPlan(e));
         return;
     }
     if (placingEntrance.value) {
@@ -358,7 +455,9 @@ function startVertexDrag(e, item, index, insert = false) {
         const a = item.points[index - 1], b = item.points[index % item.points.length];
         item.points.splice(index, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
     }
-    drag = { item, vertex: index };
+    // Halls and corridors whose walls are all straight (rooms, Ls) keep them straight.
+    const square = item.kind !== 'obstacle' && item.points.every((p, i) => { const q = item.points[(i + 1) % item.points.length]; return Math.abs(p[0] - q[0]) < 0.01 || Math.abs(p[1] - q[1]) < 0.01; });
+    drag = { item, vertex: index, square };
     e.target.setPointerCapture?.(e.pointerId);
 }
 function removeVertex(item, index) {
@@ -369,7 +468,7 @@ function presetShape(kind) {
     const s = selected.value, w = s.width / 2, d = s.depth / 2;
     if (kind === 'rect') s.points = [[-w, -d], [w, -d], [w, d], [-w, d]];
     else if (kind === 'circle') { const r = Math.min(w, d) || 0.3; s.points = Array.from({ length: 20 }, (_, i) => [+(r * Math.cos((i / 20) * 2 * Math.PI)).toFixed(2), +(r * Math.sin((i / 20) * 2 * Math.PI)).toFixed(2)]); }
-    else if (kind === 'L') s.points = [[-w, -d], [0, -d], [0, 0], [w, 0], [w, d], [-w, d]];
+    else if (kind === 'L') s.points = lPoints(s.width, s.depth);
     recentre(s);
 }
 function scaleObstacle(axis, value) {
@@ -408,7 +507,7 @@ onMounted(() => window.addEventListener('keydown', onKey));
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
 
 const corners = (s) => `translate(${s.x} ${s.y}) rotate(${s.rotation})`;
-const fill = (s) => (s.kind === 'hall' ? '#64748b' : s.kind === 'corridor' ? '#94a3b8' : s.kind === 'door' ? '#10b981' : s.kind === 'stairs' ? '#7c3aed' : s.kind === 'shelf' ? s.color || sectionColor(s.section_id) : s.kind === 'wall' ? '#94a3b8' : s.kind === 'gate' ? '#dc2626' : s.kind === 'obstacle' ? s.color || '#6b7280' : s.kind === 'desk' ? '#0f766e' : '#a16207');
+const fill = (s) => (s.kind === 'qr' ? '#111827' : s.kind === 'hall' ? '#64748b' : s.kind === 'corridor' ? '#94a3b8' : s.kind === 'door' ? '#10b981' : s.kind === 'stairs' ? '#7c3aed' : s.kind === 'shelf' ? s.color || sectionColor(s.section_id) : s.kind === 'wall' ? '#94a3b8' : s.kind === 'gate' ? '#dc2626' : s.kind === 'obstacle' ? s.color || '#6b7280' : s.kind === 'desk' ? '#0f766e' : '#a16207');
 const gridLines = computed(() => {
     const out = [];
     for (let x = 0; x <= floor.width; x++) out.push({ x1: x, y1: 0, x2: x, y2: floor.depth, major: x % 5 === 0 });
@@ -570,7 +669,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ t('library.map.edit', 'ترتيب الرفوف') }}</h2>
                 <span class="text-sm text-gray-500">{{ t('library.map.count', ':n رف', { n: shelfCount }) }}</span>
                 <a :href="route('library.manage.map.labels')" target="_blank" class="ms-auto inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
-                    <QrCodeIcon class="h-4 w-4" /> {{ t('library.map.qr_labels', 'ملصقات QR للرفوف') }}
+                    <QrCodeIcon class="h-4 w-4" /> {{ t('library.map.qr_labels_all', 'ملصقات QR') }}
                 </a>
                 <Link :href="route('library.map')" class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
                     <EyeIcon class="h-4 w-4" /> {{ t('library.map.as_reader', 'كما يراها القارئ') }}
@@ -593,6 +692,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <button @click="pickTool('corridor')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'corridor' ? 'bg-slate-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.kind.corridor', 'ممر') }}</button>
                 <button @click="pickTool('door')" :disabled="!storeyHalls.length" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm disabled:opacity-40" :class="tool === 'door' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleGroupIcon class="h-4 w-4" /> {{ t('library.map.kind.door', 'باب') }}</button>
                 <button @click="add('stairs')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronDoubleUpIcon class="h-4 w-4" /> {{ t('library.map.kind.stairs', 'درج / مصعد') }}</button>
+                <button @click="pickTool('qr')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'qr' ? 'bg-gray-900 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><QrCodeIcon class="h-4 w-4" /> {{ t('library.map.kind.qr', 'ملصق QR') }}</button>
+                <button @click="autoQr" class="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-sm font-medium text-white hover:brightness-125 dark:bg-gray-600"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.auto_qr', 'QR تلقائي') }}</button>
                 <span class="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
                 <button @click="add('shelf')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_shelf', 'رف') }}</button>
                 <button @click="add('double')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_double', 'رف بوجهين') }}</button>
@@ -613,13 +714,24 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <button @click="drawing = null" class="rounded-md px-2.5 py-1 underline">{{ t('common.cancel', 'إلغاء') }}</button>
             </div>
             <div v-if="tool" class="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-sm" :class="tool === 'door' ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-200' : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-200'">
+                <div v-if="tool === 'hall' || tool === 'corridor'" class="flex rounded-lg bg-white p-0.5 ring-1 ring-slate-300 dark:bg-slate-900 dark:ring-slate-600">
+                    <button @click="rectShape = 'rect'" class="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium" :class="rectShape === 'rect' ? 'bg-slate-700 text-white' : ''">
+                        <svg viewBox="0 0 16 16" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="3" width="12" height="10" /></svg> {{ t('library.map.shape_rect', 'مستطيل') }}
+                    </button>
+                    <button @click="rectShape = 'L'" class="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium" :class="rectShape === 'L' ? 'bg-slate-700 text-white' : ''">
+                        <svg viewBox="0 0 16 16" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 2h6v6h6v6H2z" /></svg> {{ t('library.map.shape_l_room', 'حرف L') }}
+                    </button>
+                </div>
                 <span class="flex-1">
                     <template v-if="tool === 'door'">{{ doorHint ? t('library.map.door_far', 'اضغط على جدار قاعة أو ممر (قريباً منه).') : t('library.map.door_hint', 'اضغط على أي جدار ليوضع الباب عليه، وكرر لكل باب. اسحب الباب لتحريكه على الجدار.') }}</template>
+                    <template v-else-if="tool === 'qr'">{{ doorHint ? t('library.map.qr_far', 'اضغط داخل القاعة قريباً من الجدار.') : t('library.map.qr_hint_tool', 'اضغط داخل القاعة قرب الجدار الذي ستلصق عليه الملصق، وكرر لكل ملصق. يتجه الملصق نحو الجهة التي ضغطت فيها.') }}</template>
+                    <template v-else-if="rectShape === 'L'">{{ t('library.map.l_hint', 'اسحب من زاوية الغرفة إلى الزاوية المقابلة. بعدها «غيّر الزاوية المقطوعة» يقلب الـ L، واسحب الزاوية الداخلية لتغيير عرض الذراعين.') }}</template>
                     <template v-else>{{ t('library.map.rect_hint', 'اسحب على المخطط من زاوية إلى الزاوية المقابلة. تلتصق الزوايا بجدران القاعات المجاورة.') }}</template>
                 </span>
-                <button v-if="tool !== 'door'" @click="startDrawing(tool)" class="rounded-md border border-current/30 px-2.5 py-1 text-xs">{{ t('library.map.free_shape', 'شكل حر بالنقاط') }}</button>
-                <button @click="tool = null" class="rounded-md px-2.5 py-1 underline">{{ tool === 'door' ? t('common.done', 'تم') : t('common.cancel', 'إلغاء') }}</button>
+                <button v-if="tool !== 'door' && tool !== 'qr'" @click="startDrawing(tool)" class="rounded-md border border-current/30 px-2.5 py-1 text-xs">{{ t('library.map.free_shape', 'شكل حر بالنقاط') }}</button>
+                <button @click="tool = null" class="rounded-md px-2.5 py-1 underline">{{ tool === 'door' || tool === 'qr' ? t('common.done', 'تم') : t('common.cancel', 'إلغاء') }}</button>
             </div>
+            <p v-if="qrNote" class="flex items-start gap-2 rounded-lg bg-gray-900 px-3 py-2 text-sm text-white dark:bg-gray-700"><QrCodeIcon class="mt-0.5 h-4 w-4 shrink-0" /> {{ qrNote }}</p>
             <p v-if="placingEntrance" class="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('library.map.place_entrance', 'اضغط على المخطط في مكان باب المكتبة.') }}</p>
 
             <div class="flex flex-wrap items-center gap-1.5">
@@ -647,7 +759,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <line v-for="(g, i) in gridLines" :key="i" v-bind="g" data-bg="1" :stroke-width="g.major ? 0.03 : 0.012" class="stroke-gray-300 dark:stroke-gray-700" />
                             <rect x="0" y="0" :width="floor.width" :height="floor.depth" fill="none" stroke-width="0.12" class="stroke-gray-400 dark:stroke-gray-500" />
 
-                            <g v-for="s in planItems" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing ? 'pointer-events-none opacity-60' : (tool === 'door' && s.kind !== 'door') ? 'pointer-events-none' : ''" @pointerdown.stop="startDrag($event, s)">
+                            <g v-for="s in planItems" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing ? 'pointer-events-none opacity-60' : (tool === 'door' && s.kind !== 'door') || (tool === 'qr' && s.kind !== 'qr') ? 'pointer-events-none' : ''" @pointerdown.stop="startDrag($event, s)">
                                 <template v-if="isHallKind(s)">
                                     <!-- A hall or corridor: its floor, and its sides drawn as walls. -->
                                     <polygon :points="polyPoints(s)" :fill="s.kind === 'corridor' ? '#e2e8f0' : '#fbf8f2'" class="dark:opacity-30" stroke-linejoin="miter"
@@ -660,6 +772,12 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 </template>
                                 <template v-else-if="s.kind === 'door'">
                                     <rect :x="-s.width / 2" :y="-0.14" :width="s.width" height="0.28" fill="#10b981" :stroke="s._key === selectedKey ? '#f59e0b' : '#fff'" :stroke-width="s._key === selectedKey ? 0.08 : 0.04" />
+                                </template>
+                                <template v-else-if="s.kind === 'qr'">
+                                    <!-- A small QR plate on the wall; the triangle shows the side readers scan it from. -->
+                                    <polygon points="-0.14,0.12 0.14,0.12 0,0.32" fill="#111827" opacity="0.5" />
+                                    <rect x="-0.2" y="-0.1" width="0.4" height="0.2" rx="0.03" fill="#111827" :stroke="s._key === selectedKey ? '#f59e0b' : '#fff'" :stroke-width="s._key === selectedKey ? 0.07 : 0.03" />
+                                    <text :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" font-size="0.13" font-weight="800" fill="#fff" class="pointer-events-none">QR</text>
                                 </template>
                                 <template v-else-if="s.kind === 'stairs'">
                                     <rect :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" fill="#ede9fe" :stroke="s._key === selectedKey ? '#f59e0b' : '#7c3aed'" :stroke-width="s._key === selectedKey ? 0.09 : 0.05" />
@@ -680,16 +798,17 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                     <rect v-for="side in [1, -1]" :key="side" :x="side * (s.width / 2 - 0.075) - 0.075" :y="-s.depth / 2" width="0.15" :height="s.depth" rx="0.03" fill="#dc2626" />
                                     <line :x1="-s.width / 2 + 0.2" y1="0" :x2="s.width / 2 - 0.2" y2="0" stroke="#dc2626" stroke-width="0.04" stroke-dasharray="0.1 0.08" />
                                 </template>
-                                <rect v-else-if="!['obstacle', 'hall', 'corridor', 'door', 'stairs'].includes(s.kind)" :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" :rx="s.kind === 'table' ? 0.1 : 0.04"
+                                <rect v-else-if="!['obstacle', 'hall', 'corridor', 'door', 'stairs', 'qr'].includes(s.kind)" :x="-s.width / 2" :y="-s.depth / 2" :width="s.width" :height="s.depth" :rx="s.kind === 'table' ? 0.1 : 0.04"
                                     :fill="fill(s)" :fill-opacity="s.kind === 'shelf' ? 0.85 : 0.7"
                                     :stroke="s._key === selectedKey ? '#f59e0b' : 'rgba(0,0,0,0.25)'" :stroke-width="s._key === selectedKey ? 0.09 : 0.025" />
                                 <!-- Front face: where readers stand. -->
                                 <line v-if="s.kind === 'shelf'" :x1="-s.width / 2 + 0.05" :y1="s.depth / 2" :x2="s.width / 2 - 0.05" :y2="s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
                                 <line v-if="s.kind === 'shelf' && s.double_sided" :x1="-s.width / 2 + 0.05" :y1="-s.depth / 2" :x2="s.width / 2 - 0.05" :y2="-s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
-                                <text v-if="!['wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs'].includes(s.kind)" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
+                                <text v-if="!['wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs', 'qr'].includes(s.kind)" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
                             </g>
 
-                            <rect v-if="rectBox" v-bind="rectBox" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
+                            <polygon v-if="rectL" :points="rectL" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
+                            <rect v-if="rectBox && !rectL" v-bind="rectBox" class="pointer-events-none" :fill="rect.kind === 'corridor' ? 'rgba(148,163,184,0.35)' : 'rgba(71,85,105,0.18)'" stroke="#475569" stroke-width="0.12" stroke-dasharray="0.3 0.15" />
                             <text v-if="rectBox && rectBox.width > 1" :x="rectBox.x + rectBox.width / 2" :y="rectBox.y + rectBox.height / 2" text-anchor="middle" dominant-baseline="central" :font-size="fontSize * 1.2" font-weight="700" fill="#334155" class="pointer-events-none" dir="ltr">{{ rectBox.width.toFixed(1) }} × {{ rectBox.height.toFixed(1) }} m</text>
                             <g v-if="drawing" class="pointer-events-none">
                                 <polyline :points="drawPath" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="0.06" stroke-dasharray="0.15 0.08" />
@@ -742,7 +861,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.name', 'وصف (اختياري)') }}</span>
                             <input v-model="selected.name" maxlength="255" dir="auto" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                         </label>
-                        <label v-if="selected.kind !== 'door'" class="flex items-center gap-2 text-sm">
+                        <p v-if="selected.kind === 'qr'" class="rounded-lg bg-gray-50 p-2 text-xs leading-5 text-gray-600 dark:bg-gray-900/40 dark:text-gray-300">{{ t('library.map.qr_item_hint', 'يُطبع من «ملصقات QR» ويُلصق على هذا الجدار بمستوى النظر. من يمسحه تظهر له الخريطة من هذا المكان. اسحبه لتحريكه على الجدار.') }}</p>
+                        <label v-if="selected.kind !== 'door' && selected.kind !== 'qr'" class="flex items-center gap-2 text-sm">
                             <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.angle', 'الزاوية') }}</span>
                             <input :value="selected.rotation" @change="setRotation(selected, $event.target.value)" type="number" step="5" min="-359" max="359" class="w-20 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                             <span class="text-gray-400">°</span>
@@ -755,7 +875,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                         <p v-if="isHallKind(selected)" class="text-xs leading-5 text-gray-500">{{ t('library.map.hall_hint', 'تحريك القاعة أو تدويرها يحرّك ما بداخلها وأبوابها معها. اختر القاعة ثم أضف رفاً ليوضع داخلها بنفس اتجاهها.') }}</p>
                         <button v-if="selected.kind === 'stairs' && floor.storeys.length > 1" @click="stairsToAllFloors" class="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2.5 py-1 text-xs font-medium text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"><Square2StackIcon class="h-3.5 w-3.5" /> {{ t('library.map.stairs_all', 'ضعه في نفس المكان بكل الطوابق') }}</button>
                         <p v-if="selected.kind === 'stairs'" class="text-xs leading-5 text-gray-500">{{ t('library.map.stairs_hint', 'الدرج أو المصعد الموجود في نفس المكان بطابقين يربطهما، والمسار يصعد أو ينزل منه.') }}</p>
-                        <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div v-if="selected.kind !== 'qr'" class="grid grid-cols-2 gap-2 text-sm">
                             <template v-if="selected.kind === 'obstacle' || isHallKind(selected)">
                                 <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.length', 'الطول (م)') }}</span><input :value="selected.width" @change="scaleObstacle('x', +$event.target.value)" type="number" step="0.1" min="0.3" max="200" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                                 <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.depth', 'العمق (م)') }}</span><input :value="selected.depth" @change="scaleObstacle('y', +$event.target.value)" type="number" step="0.1" min="0.1" max="200" class="mt-1 w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
@@ -766,6 +886,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                         <button @click="presetShape('rect')" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.map.shape_rect', 'مستطيل') }}</button>
                                         <button v-if="selected.kind === 'obstacle'" @click="presetShape('circle')" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.map.shape_circle', 'دائري (عمود)') }}</button>
                                         <button @click="presetShape('L')" class="rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.map.shape_l', 'زاوية L') }}</button>
+                                        <button v-if="isL(selected)" @click="turnL" class="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"><ArrowPathRoundedSquareIcon class="h-3.5 w-3.5" /> {{ t('library.map.turn_l', 'غيّر الزاوية المقطوعة') }}</button>
                                     </div>
                                     <p class="mt-1.5 text-xs leading-5 text-gray-500">{{ t('library.map.shape_hint', 'اسحب الزوايا البرتقالية لتعديل الشكل · النقطة الباهتة في منتصف الضلع تضيف زاوية · نقر مزدوج على زاوية يحذفها.') }}</p>
                                 </div>
