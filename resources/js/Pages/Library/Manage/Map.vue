@@ -17,7 +17,7 @@ import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
     MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon, HomeModernIcon, BuildingOffice2Icon, ArrowsRightLeftIcon, ChevronDoubleUpIcon, RectangleGroupIcon, Square2StackIcon, RectangleStackIcon,
     PhotoIcon, ClipboardDocumentCheckIcon, ArrowUturnLeftIcon, ArrowsPointingOutIcon, XMarkIcon, InformationCircleIcon,
-    LockClosedIcon, LockOpenIcon, ArrowsPointingInIcon, PencilSquareIcon,
+    LockClosedIcon, LockOpenIcon, ArrowsPointingInIcon, PencilSquareIcon, PrinterIcon, WrenchScrewdriverIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -284,6 +284,16 @@ function toggleLock(it) {
 // «ملء الشاشة» (2026-11-07, by request): the editor takes the whole screen, without the side bar
 // and the top bar, so the plan has all the room there is.
 const full = ref(false);
+
+// Toolbar groups (2026-11-07, by request): fewer buttons at once; the last group is remembered.
+const toolGroups = [
+    { key: 'build', label: t('library.map.group_build', 'البناء'), icon: BuildingOffice2Icon },
+    { key: 'furniture', label: t('library.map.group_furniture', 'الرفوف'), icon: RectangleStackIcon },
+    { key: 'stickers', label: t('library.map.group_stickers', 'الملصقات'), icon: QrCodeIcon },
+    { key: 'tools', label: t('library.map.group_tools', 'أدوات'), icon: WrenchScrewdriverIcon },
+];
+const toolGroup = ref((() => { try { return localStorage.getItem('library.map.toolGroup') || 'furniture'; } catch { return 'furniture'; } })());
+watch(toolGroup, (v) => { try { localStorage.setItem('library.map.toolGroup', v); } catch {} });
 function toggleFull() {
     full.value = !full.value;
     try {
@@ -1359,35 +1369,55 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <div v-if="tip" class="pointer-events-none fixed z-[70] rounded-md bg-gray-900/90 px-2 py-1 text-xs font-semibold tabular-nums text-white shadow" :style="{ left: tip.cx + 16 + 'px', top: tip.cy + 18 + 'px' }" dir="ltr">{{ tip.text }}</div>
             </Teleport>
 
-            <!-- Toolbar: one row that scrolls sideways on phones, so the plan stays in sight -->
-            <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap rounded-2xl [scrollbar-width:thin] max-sm:-mx-1 sm:flex-wrap [&>*]:shrink-0 border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                <div class="flex rounded-xl bg-gray-100 p-1 dark:bg-gray-900">
-                    <button @click="view = 'plan'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium" :class="view === 'plan' ? 'bg-white shadow dark:bg-gray-700' : 'text-gray-500'"><Squares2X2Icon class="h-4 w-4" /> {{ t('library.map.plan', 'المخطط') }}</button>
-                    <button @click="view = '3d'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium" :class="view === '3d' ? 'bg-white shadow dark:bg-gray-700' : 'text-gray-500'"><CubeIcon class="h-4 w-4" /> {{ t('library.map.view3d', 'ثلاثي الأبعاد') }}</button>
+            <!-- Toolbar (2026-11-07, by request: split into groups): the groups on top, the tools of the
+                 chosen group below, and what is always needed (view, undo, lock, full screen) on the side. -->
+            <div class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-gray-100 px-2 pt-2 max-sm:gap-1 [scrollbar-width:none] dark:border-gray-700 [&>*]:shrink-0">
+                <div class="flex rounded-xl bg-gray-100 p-1 max-sm:mb-1.5 dark:bg-gray-900">
+                    <button @click="view = 'plan'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium" :class="view === 'plan' ? 'bg-white shadow dark:bg-gray-700' : 'text-gray-500'"><Squares2X2Icon class="h-4 w-4" /> <span class="max-sm:sr-only">{{ t('library.map.plan', 'المخطط') }}</span></button>
+                    <button @click="view = '3d'" class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium" :class="view === '3d' ? 'bg-white shadow dark:bg-gray-700' : 'text-gray-500'"><CubeIcon class="h-4 w-4" /> <span class="max-sm:sr-only">{{ t('library.map.view3d', 'ثلاثي الأبعاد') }}</span></button>
                 </div>
-                <span class="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
-                <button @click="openWizard" class="inline-flex items-center gap-1.5 rounded-lg bg-[#1f2a44] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110"><BuildingOffice2Icon class="h-4 w-4" /> {{ t('library.map.wizard', 'معالج البناء') }}</button>
-                <button @click="bgPanel = !bgPanel; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="bgPanel ? 'bg-sky-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PhotoIcon class="h-4 w-4" /> {{ t('library.map.bg', 'مخطط البناية') }}</button>
-                <button @click="multiMode = !multiMode; if (!multiMode) multi = new Set(); else selectedKey = null" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="multiMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleStackIcon class="h-4 w-4" /> {{ t('library.map.multi', 'تحديد عدة رفوف') }}</button>
-                <button @click="lockAll = !lockAll" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="lockAll ? 'bg-slate-700 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'" :title="t('library.map.lock_all_hint', 'يمنع تحريك أو تغيير حجم أي شيء بالخطأ. الاختيار وتعديل البيانات يبقى ممكناً.')"><component :is="lockAll ? LockClosedIcon : LockOpenIcon" class="h-4 w-4" /> {{ lockAll ? t('library.map.locked_all', 'التحريك مقفل') : t('library.map.lock_all', 'قفل التحريك') }}</button>
-                <button @click="toggleFull" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="full ? 'bg-[#1f2a44] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><component :is="full ? ArrowsPointingInIcon : ArrowsPointingOutIcon" class="h-4 w-4" /> {{ full ? t('library.map.exit_full', 'خروج من ملء الشاشة') : t('library.map.full', 'ملء الشاشة') }}</button>
-                <button @click="runCheck" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ClipboardDocumentCheckIcon class="h-4 w-4" /> {{ t('library.map.check', 'فحص الخريطة') }}</button>
-                <button @click="pickTool('hall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'hall' ? 'bg-slate-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><HomeModernIcon class="h-4 w-4" /> {{ t('library.map.kind.hall', 'قاعة / غرفة') }}</button>
-                <button @click="pickTool('corridor')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'corridor' ? 'bg-slate-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.kind.corridor', 'ممر') }}</button>
-                <button @click="pickTool('door')" :disabled="!storeyHalls.length" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm disabled:opacity-40" :class="tool === 'door' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleGroupIcon class="h-4 w-4" /> {{ t('library.map.kind.door', 'باب') }}</button>
-                <button @click="add('stairs')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronDoubleUpIcon class="h-4 w-4" /> {{ t('library.map.kind.stairs', 'درج / مصعد') }}</button>
-                <button @click="pickTool('qr')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'qr' ? 'bg-gray-900 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><QrCodeIcon class="h-4 w-4" /> {{ t('library.map.kind.qr', 'ملصق QR') }}</button>
-                <button @click="autoQr" class="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-sm font-medium text-white hover:brightness-125 dark:bg-gray-600"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.auto_qr', 'QR تلقائي') }}</button>
-                <span class="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
-                <button @click="add('shelf')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_shelf', 'رف') }}</button>
-                <button @click="add('double')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_double', 'رف بوجهين') }}</button>
-                <button @click="add('desk')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.desk', 'مكتب الإعارة') }}</button>
-                <button @click="add('table')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.table', 'طاولة قراءة') }}</button>
-                <button @click="add('wall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.wall', 'جدار') }}</button>
-                <button @click="add('gate')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ShieldCheckIcon class="h-4 w-4" /> {{ t('library.map.kind.gate', 'بوابة مانعة للسرقة') }}</button>
-                <button @click="startDrawing()" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="drawing ? 'bg-amber-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PencilIcon class="h-4 w-4" /> {{ t('library.map.draw_obstacle', 'ارسم عائقاً') }}</button>
-                <button @click="placingEntrance = !placingEntrance; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="placingEntrance ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><MapPinIcon class="h-4 w-4" /> {{ t('library.map.entrance', 'المدخل') }}</button>
-                <button @click="openGenerate" class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-50)] px-3 py-1.5 text-sm font-medium text-[var(--accent-700)] hover:brightness-95 dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</button>
+                    <span class="mx-0.5 h-6 w-px bg-gray-200 max-sm:hidden dark:bg-gray-700" />
+                    <button v-for="g in toolGroups" :key="g.key" @click="toolGroup = g.key" class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 pb-2 pt-1.5 text-sm font-medium max-sm:flex-col max-sm:gap-0.5 max-sm:px-1.5 max-sm:pb-1.5 max-sm:pt-0 max-sm:text-[11px]"
+                        :class="toolGroup === g.key ? 'border-[var(--accent-600)] text-[var(--accent-700)] dark:text-[var(--accent-400)]' : 'border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200'">
+                        <component :is="g.icon" class="h-4 w-4" /> {{ g.label }}
+                    </button>
+                    <span class="ms-auto max-sm:hidden" />
+                    <button @click="lockAll = !lockAll" class="rounded-lg p-2 max-sm:hidden" :class="lockAll ? 'bg-slate-700 text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'" :title="lockAll ? t('library.map.locked_all', 'التحريك مقفل') : t('library.map.lock_all_hint', 'يمنع تحريك أو تغيير حجم أي شيء بالخطأ. الاختيار وتعديل البيانات يبقى ممكناً.')"><component :is="lockAll ? LockClosedIcon : LockOpenIcon" class="h-4 w-4" /></button>
+                    <button @click="toggleFull" class="rounded-lg p-2 max-sm:hidden" :class="full ? 'bg-[#1f2a44] text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'" :title="full ? t('library.map.exit_full', 'خروج من ملء الشاشة') : t('library.map.full', 'ملء الشاشة')"><component :is="full ? ArrowsPointingInIcon : ArrowsPointingOutIcon" class="h-4 w-4" /></button>
+                </div>
+                <div class="flex flex-wrap items-center gap-1.5 p-2">
+                    <template v-if="toolGroup === 'build'">
+                    <button @click="openWizard" class="inline-flex items-center gap-1.5 rounded-lg bg-[#1f2a44] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110"><BuildingOffice2Icon class="h-4 w-4" /> {{ t('library.map.wizard', 'معالج البناء') }}</button>
+                    <button @click="pickTool('hall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'hall' ? 'bg-slate-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><HomeModernIcon class="h-4 w-4" /> {{ t('library.map.kind.hall', 'قاعة / غرفة') }}</button>
+                    <button @click="pickTool('corridor')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'corridor' ? 'bg-slate-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.kind.corridor', 'ممر') }}</button>
+                    <button @click="pickTool('door')" :disabled="!storeyHalls.length" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm disabled:opacity-40" :class="tool === 'door' ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleGroupIcon class="h-4 w-4" /> {{ t('library.map.kind.door', 'باب') }}</button>
+                    <button @click="add('stairs')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ChevronDoubleUpIcon class="h-4 w-4" /> {{ t('library.map.kind.stairs', 'درج / مصعد') }}</button>
+                    <button @click="placingEntrance = !placingEntrance; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="placingEntrance ? 'bg-emerald-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><MapPinIcon class="h-4 w-4" /> {{ t('library.map.entrance', 'المدخل') }}</button>
+                    <button @click="bgPanel = !bgPanel; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="bgPanel ? 'bg-sky-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PhotoIcon class="h-4 w-4" /> {{ t('library.map.bg', 'مخطط البناية') }}</button>
+                    </template>
+                    <template v-else-if="toolGroup === 'furniture'">
+                    <button @click="add('shelf')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_shelf', 'رف') }}</button>
+                    <button @click="add('double')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_double', 'رف بوجهين') }}</button>
+                    <button @click="openGenerate" class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-50)] px-3 py-1.5 text-sm font-medium text-[var(--accent-700)] hover:brightness-95 dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</button>
+                    <button @click="add('desk')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.desk', 'مكتب الإعارة') }}</button>
+                    <button @click="add('table')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.table', 'طاولة قراءة') }}</button>
+                    <button @click="add('wall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.wall', 'جدار') }}</button>
+                    <button @click="add('gate')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ShieldCheckIcon class="h-4 w-4" /> {{ t('library.map.kind.gate', 'بوابة مانعة للسرقة') }}</button>
+                    <button @click="startDrawing()" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="drawing ? 'bg-amber-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PencilIcon class="h-4 w-4" /> {{ t('library.map.draw_obstacle', 'ارسم عائقاً') }}</button>
+                    </template>
+                    <template v-else-if="toolGroup === 'stickers'">
+                    <button @click="pickTool('qr')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'qr' ? 'bg-gray-900 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><QrCodeIcon class="h-4 w-4" /> {{ t('library.map.kind.qr', 'ملصق QR') }}</button>
+                    <button @click="autoQr" class="inline-flex items-center gap-1 rounded-lg bg-gray-900 px-2.5 py-1.5 text-sm font-medium text-white hover:brightness-125 dark:bg-gray-600"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.auto_qr', 'QR تلقائي') }}</button>
+                <a :href="route('library.manage.map.labels')" target="_blank" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PrinterIcon class="h-4 w-4" /> {{ t('library.map.print_labels', 'اطبع الملصقات') }}</a>
+                    </template>
+                    <template v-else>
+                    <button @click="multiMode = !multiMode; if (!multiMode) multi = new Set(); else selectedKey = null" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="multiMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleStackIcon class="h-4 w-4" /> {{ t('library.map.multi', 'تحديد عدة رفوف') }}</button>
+                    <button @click="runCheck" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ClipboardDocumentCheckIcon class="h-4 w-4" /> {{ t('library.map.check', 'فحص الخريطة') }}</button>
+                    <button @click="lockAll = !lockAll" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="lockAll ? 'bg-slate-700 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'" :title="t('library.map.lock_all_hint', 'يمنع تحريك أو تغيير حجم أي شيء بالخطأ. الاختيار وتعديل البيانات يبقى ممكناً.')"><component :is="lockAll ? LockClosedIcon : LockOpenIcon" class="h-4 w-4" /> {{ lockAll ? t('library.map.locked_all', 'التحريك مقفل') : t('library.map.lock_all', 'قفل التحريك') }}</button>
+                    <button @click="toggleFull" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="full ? 'bg-[#1f2a44] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><component :is="full ? ArrowsPointingInIcon : ArrowsPointingOutIcon" class="h-4 w-4" /> {{ full ? t('library.map.exit_full', 'خروج من ملء الشاشة') : t('library.map.full', 'ملء الشاشة') }}</button>
+                    </template>
+                </div>
             </div>
 
             <!-- «مخطط البناية» -->

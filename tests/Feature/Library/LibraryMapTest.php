@@ -135,6 +135,39 @@ class LibraryMapTest extends TestCase
         $this->assertTrue(app(LibraryMap::class)->shelves()->firstWhere('code', 'A1')['locked']);
     }
 
+    public function test_the_map_knows_the_real_stock_and_the_books_on_each_bookcase(): void
+    {
+        $section = LibrarySection::create(['name' => 'تقويم']);
+        $a3 = LibraryShelf::create(['code' => 'A3', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        $c1 = LibraryShelf::create(['code' => 'C1', 'section_id' => $section->id, 'x' => 9, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+
+        $surgery = Book::create(['title' => 'Oral Surgery']);
+        $surgery->copies()->create(['barcode' => 'X1', 'shelf' => 'A3-2']);
+        $surgery->copies()->create(['barcode' => 'X2', 'shelf' => 'A3-2', 'status' => 'loaned']);
+        $surgery->copies()->create(['barcode' => 'X3', 'shelf' => 'A3', 'status' => 'lost']);
+        $ortho = Book::create(['title' => 'Removable Ortho', 'section_id' => $section->id]);
+        $ortho->copies()->create(['barcode' => 'Y1']);
+        $ortho->copies()->create(['barcode' => 'Y2', 'shelf' => 'A3']);
+
+        $user = User::factory()->create();
+        $this->actingAs($user)->get(route('library.map'))->assertOk()
+            ->assertInertia(fn ($page) => $page
+                ->where("stock.{$a3->id}.n", 3)
+                ->where("stock.{$a3->id}.levels.2", 2)
+                ->where("stock.{$a3->id}.levels.0", 1)
+                ->where("stock.{$c1->id}.n", 1));
+
+        $this->actingAs($user)->getJson(route('library.map.shelf-books', $a3))->assertOk()
+            ->assertJsonCount(2, 'books')
+            ->assertJsonPath('books.0.title', 'Oral Surgery')
+            ->assertJsonPath('books.0.level', 2)
+            ->assertJsonPath('books.0.copies', 2)
+            ->assertJsonPath('books.1.title', 'Removable Ortho');
+        $this->actingAs($user)->getJson(route('library.map.shelf-books', $c1))->assertOk()
+            ->assertJsonPath('books.0.title', 'Removable Ortho')
+            ->assertJsonPath('books.0.copies', 1);
+    }
+
     public function test_readers_cannot_edit_the_map(): void
     {
         $reader = User::factory()->create();

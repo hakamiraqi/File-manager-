@@ -457,17 +457,39 @@ export class LibraryScene {
         const shelves = items.filter((i) => (i.kind || 'shelf') === 'shelf');
         let bookCount = 0;
         const bookSpots = [];
+        // With the library's real stock (2026-11-07, by request) every copy is one book on its
+        // level; copies with no level fill the levels from eye height down. Without stock data (the
+        // editor, or a library that has not entered any) the bookcases are filled for the look.
+        const real = this.stock && Object.keys(this.stock).length > 0;
         for (const s of shelves) {
             const r = rng(s.id ? Number(s.id) * 13 + 7 : Math.round(s.x * 31 + s.y * 17));
             const faces = s.double_sided ? [1, -1] : [1];
+            const bd = Math.min(0.24, (s.double_sided ? s.depth / 2 : s.depth) - 0.08);
+            const spine = (face, lv, x, bw) => bookSpots.push({ s, face, lv, x: x + bw / 2, bw, bh: 0.2 + r() * 0.11, bd, c: BOOK_COLORS[Math.floor(r() * BOOK_COLORS.length)], lean: r() < 0.04 ? (r() - 0.5) * 0.5 : 0 });
+            if (real) {
+                const st = this.stock[s.id];
+                if (!st) continue;
+                const per = Array.from({ length: s.levels }, (_, i) => st.levels?.[i + 1] ?? 0);
+                const order = Array.from({ length: s.levels }, (_, i) => i).sort((a, b) => Math.abs(a - 2.5) - Math.abs(b - 2.5));
+                for (let k = 0; k < (st.levels?.[0] ?? 0); k++) per[order[k % order.length]]++;
+                per.forEach((n, lv) => {
+                    let x = -s.width / 2 + 0.06, f = 0;
+                    for (let k = 0; k < n && f < faces.length; k++) {
+                        const bw = 0.025 + r() * 0.045;
+                        if (x + bw > s.width / 2 - 0.06) { f++; x = -s.width / 2 + 0.06; if (f >= faces.length) break; }
+                        spine(faces[f], lv, x, bw);
+                        x += bw + 0.002;
+                    }
+                });
+                continue;
+            }
             for (const face of faces) {
                 for (let lv = 0; lv < s.levels; lv++) {
                     let x = -s.width / 2 + 0.06;
                     while (x < s.width / 2 - 0.08) {
                         const bw = 0.025 + r() * 0.045;
                         if (r() < 0.06) { x += bw * 2; continue; } // a gap now and then
-                        const bh = 0.2 + r() * 0.11;
-                        bookSpots.push({ s, face, lv, x: x + bw / 2, bw, bh, bd: Math.min(0.24, (s.double_sided ? s.depth / 2 : s.depth) - 0.08), c: BOOK_COLORS[Math.floor(r() * BOOK_COLORS.length)], lean: r() < 0.04 ? (r() - 0.5) * 0.5 : 0 });
+                        spine(face, lv, x, bw);
                         x += bw + 0.002;
                     }
                 }
@@ -748,10 +770,10 @@ export class LibraryScene {
     }
 
     /** Marks the target bookcase: section colour glows, a pin bobs over it, the level lights up. */
-    highlight(id, level = null) {
+    highlight(id, level = null, cover = null) {
         this.clearGroup(this.fx);
         for (const it of this.items.values()) it.accentMat.emissiveIntensity = 0;
-        this.highlighted = id != null ? { id, level } : null;
+        this.highlighted = id != null ? { id, level, cover } : null;
         const it = id != null ? this.items.get(id) : null;
         if (!it) return;
         it.accentMat.emissiveIntensity = 0.6;
@@ -787,6 +809,34 @@ export class LibraryScene {
             this.levelGlow = glow;
             this.fx.add(glow);
         } else this.levelGlow = null;
+        if (cover && (s.kind || 'shelf') === 'shelf') this.showCover(it, level, cover);
+    }
+
+    /** The book's cover stood face-out on the front of its level, so the reader knows it on sight. */
+    showCover(it, level, url) {
+        const s = it.data;
+        const lv = Math.min(s.levels, Math.max(1, level || Math.min(s.levels, 3)));
+        const want = this.highlighted;
+        new THREE.TextureLoader().load(url, (tex) => {
+            if (this.highlighted !== want || !this.items.has(s.id)) { tex.dispose(); return; }
+            tex.colorSpace = THREE.SRGBColorSpace;
+            const img = tex.image;
+            const h = Math.min(0.3, LEVEL_H - 0.05);
+            const w = Math.min(0.26, h * ((img?.width || 2) / (img?.height || 3)));
+            const faces = s.double_sided ? [1, -1] : [1];
+            for (const face of faces) {
+                const g = new THREE.Group();
+                const back = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.025, h + 0.025), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+                const front = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex }));
+                front.position.z = 0.002;
+                g.add(back, front);
+                // Leaning back a little against the books, on the front edge of the level.
+                g.position.set(0, 0.1 + (lv - 1) * LEVEL_H + 0.02 + h / 2, face * (s.depth / 2 + 0.015));
+                g.rotation.set(-0.08 * face, face < 0 ? Math.PI : 0, 0, 'YXZ');
+                g.applyMatrix4(it.group.matrixWorld);
+                this.fx.add(g);
+            }
+        }, undefined, () => {});
     }
 
     setRoute(route) {

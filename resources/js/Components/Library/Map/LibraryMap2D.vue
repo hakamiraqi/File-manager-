@@ -98,6 +98,12 @@ function move(e) {
     }
 }
 function up(e) {
+    // A tap: the pointer is captured by the map, so the click would not reach the bookcase.
+    if (pointers.size === 1 && pointers.has(e.pointerId) && moved < 6) {
+        const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest('[data-pick]');
+        const s = hit && props.shelves.find((i) => String(i.id) === hit.dataset.id);
+        if (s) pick(s.id);
+    }
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
     if (!pointers.size) pan = null;
@@ -165,7 +171,7 @@ defineExpose(api);
             <g :transform="spinT"><g :transform="turnT">
                 <rect x="0" y="0" :width="W" :height="D" class="fill-white stroke-gray-300 dark:fill-gray-800 dark:stroke-gray-600" stroke-width="0.08" />
                 <polygon v-for="h in halls" :key="h.id" :points="poly(outline(h))" :class="h.kind === 'corridor' ? 'fill-slate-100 dark:fill-slate-700/60' : 'fill-amber-50/70 dark:fill-gray-700/60'" stroke="#475569" stroke-width="0.12" stroke-linejoin="round" />
-                <g v-for="s in things" :key="s.id" :transform="`translate(${s.x} ${s.y}) rotate(${s.rotation || 0})`" @click="pick(s.id)" class="cursor-pointer">
+                <g v-for="s in things" :key="s.id" :transform="`translate(${s.x} ${s.y}) rotate(${s.rotation || 0})`" data-pick :data-id="s.id" class="cursor-pointer">
                     <polygon v-if="s.kind === 'obstacle' && s.points?.length >= 3" :points="poly(outline(s).map((p) => ({ x: p.x - s.x, y: p.y - s.y })))" :transform="`rotate(${-(s.rotation || 0)})`" :fill="fillOf(s)" fill-opacity="0.7" />
                     <rect v-else-if="s.kind === 'door'" :x="-s.width / 2" y="-0.1" :width="s.width" height="0.2" fill="#10b981" />
                     <template v-else>

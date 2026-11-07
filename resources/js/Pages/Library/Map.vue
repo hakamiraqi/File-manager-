@@ -26,7 +26,7 @@ import {
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ floor: Object, shelves: Array, target: Object, canEdit: Boolean, startAt: { type: Number, default: null }, embedded: Boolean });
+const props = defineProps({ floor: Object, shelves: Array, stock: { type: Object, default: () => ({}) }, target: Object, canEdit: Boolean, startAt: { type: Number, default: null }, embedded: Boolean });
 const page = usePage();
 const signedIn = computed(() => !!page.props.auth?.user);
 // Inside the FileNest apps (2026-11-06, by request) the map fills the app's screen on its own.
@@ -145,6 +145,23 @@ function onPick(id) {
     pickedShelf.value = s;
     stop();
 }
+
+// «كتب هذا الرف» (2026-11-07, by request): the covers of the books on the bookcase you tap; tapping
+// a cover lights up its level and stands the cover on the shelf in 3D.
+const shelfBooks = ref([]);
+const shelfBooksLoading = ref(false);
+const pickedBook = ref(null);
+watch(pickedShelf, async (s) => {
+    shelfBooks.value = [];
+    pickedBook.value = null;
+    if (!s || s.kind !== 'shelf' || !props.stock?.[s.id]) return;
+    shelfBooksLoading.value = true;
+    try {
+        const { data } = await axios.get(route('library.map.shelf-books', s.id));
+        if (pickedShelf.value?.id === s.id) shelfBooks.value = data.books ?? [];
+    } catch {} finally { shelfBooksLoading.value = false; }
+});
+const stockOf = (id) => props.stock?.[id]?.n ?? 0;
 
 // «أنت هنا»: the entrance, or the bookcase whose QR sticker was scanned. ------------------------
 const here = ref(null); // { x, y, shelfId, code }
@@ -463,7 +480,11 @@ function availability(b) {
 }
 const fromText = computed(() => (here.value ? t('library.map.from_here', ':d م من موقعك', { d: metres(walkRoute.value?.length ?? 0) }) : t('library.map.distance', ':d م مشياً من المدخل', { d: metres(walkRoute.value?.length ?? 0) })));
 const spotLabel = (s) => [t('library.shelf', 'الرف') + ' ' + s.code, hallName(s.shelf_id), levelText(s.level)].filter(Boolean).join(' · ');
-const highlight = computed(() => (targetShelf.value ? { id: targetShelf.value.id, level: spot.value?.level ?? null } : null));
+const highlight = computed(() => {
+    if (!targetShelf.value) return null;
+    const shown = book.value ?? pickedBook.value;
+    return { id: targetShelf.value.id, level: spot.value?.level ?? pickedBook.value?.level ?? null, cover: shown?.cover_url ?? null };
+});
 
 // What the 3D view shows: one floor of the building, and with «كل قاعة مستقلة» one hall. -------
 const viewStorey = ref(storeyOf(here.value ?? targetShelf.value ?? null));
@@ -537,7 +558,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
             <Teleport v-else to="body" :disabled="!full">
             <div class="overflow-hidden bg-gray-100 dark:bg-gray-900" :class="full ? 'fixed inset-0 z-40 h-dvh' : embedded ? 'relative h-dvh' : 'relative h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
                 <LibraryMap2D v-if="flat" ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
-                <LibraryMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
+                <LibraryMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :stock="stock" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
 
                 <!-- Search, or the Waze-style instruction banner while walking. -->
                 <div class="pointer-events-none absolute inset-x-0 top-0 p-3">
@@ -682,6 +703,18 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                                 <p class="font-bold">{{ pickedShelf.kind === 'shelf' ? t('library.shelf', 'الرف') + ' ' + pickedShelf.code : pickedShelf.name || pickedShelf.code }}</p>
                                 <p class="truncate text-sm text-gray-500">{{ [pickedShelf.section || pickedShelf.name, hallName(pickedShelf.id)].filter(Boolean).join(' · ') }}</p>
                                 <Link v-if="pickedShelf.section_id && !embedded" :href="route('library.index', { section: pickedShelf.section_id })" class="mt-1 inline-flex items-center gap-1 text-sm text-[var(--accent-600)] hover:underline"><BookOpenIcon class="h-4 w-4" /> {{ t('library.map.section_books', 'كتب هذا القسم') }}</Link>
+                                <template v-if="pickedShelf.kind === 'shelf'">
+                                    <p class="mt-2 text-xs font-semibold text-gray-500">{{ stockOf(pickedShelf.id) ? t('library.map.shelf_stock', 'على هذا الرف :n نسخة', { n: stockOf(pickedShelf.id) }) : t('library.map.shelf_empty', 'لا توجد كتب مسجّلة على هذا الرف') }}</p>
+                                    <div v-if="shelfBooks.length || shelfBooksLoading" class="-mx-1 mt-1.5 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
+                                        <template v-if="shelfBooksLoading && !shelfBooks.length"><span v-for="i in 4" :key="'l' + i" class="h-[4.5rem] w-12 shrink-0 animate-pulse rounded-md bg-gray-200 dark:bg-gray-700" /></template>
+                                        <button v-for="b in shelfBooks" :key="b.id + '-' + b.level" @click="pickedBook = pickedBook === b ? null : b" class="relative w-12 shrink-0 rounded-md text-start outline-none ring-offset-2 dark:ring-offset-gray-800" :class="pickedBook === b ? 'ring-2 ring-[var(--accent-600)]' : ''" :title="b.title">
+                                            <BookCover :book="b" size="sm" class="w-12" />
+                                            <span v-if="b.copies > 1" class="absolute -end-1 -top-1 rounded-full bg-gray-900 px-1 text-[10px] font-bold leading-4 text-white">×{{ b.copies }}</span>
+                                            <span v-if="b.level" class="absolute inset-x-0 bottom-0 rounded-b-md bg-black/60 text-center text-[10px] leading-4 text-white">{{ t('library.map.level_short', 'ط :n', { n: b.level }) }}</span>
+                                        </button>
+                                    </div>
+                                    <p v-if="pickedBook" class="mt-1 truncate text-sm font-medium" dir="auto">{{ pickedBook.title }}<span v-if="pickedBook.level" class="text-gray-500"> · {{ levelText(pickedBook.level) }}</span></p>
+                                </template>
                             </div>
                             <button @click="clearSelection" class="-m-1 rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
                         </div>

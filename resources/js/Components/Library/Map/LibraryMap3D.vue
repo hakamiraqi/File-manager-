@@ -8,7 +8,8 @@ const { t } = useTrans();
 const props = defineProps({
     floor: { type: Object, required: true },
     shelves: { type: Array, required: true },
-    highlight: { type: Object, default: null }, // { id, level }
+    highlight: { type: Object, default: null }, // { id, level, cover }
+    stock: { type: Object, default: null }, // bookcase id → { n, levels } real copies, drawn as books
     route: { type: Object, default: null },
     avatar: { type: Object, default: null }, // { x, y, heading }
     follow: { type: Boolean, default: false },
@@ -42,6 +43,7 @@ onMounted(async () => {
             } : {}),
         }));
         if (props.editable) scene.onDragTip = (id, x, y, cx, cy) => emit('dragging', id === null ? null : { id, x, y, cx, cy });
+        scene.stock = props.stock ? plain(props.stock) : null;
         scene.setLayout(plain(props.floor), plain(props.shelves));
         apply();
         themeObserver = new MutationObserver(() => scene?.dark !== isDark() && scene?.applyTheme(isDark()));
@@ -56,7 +58,7 @@ onMounted(async () => {
 
 function apply() {
     if (!scene) return;
-    scene.highlight(props.highlight?.id ?? null, props.highlight?.level ?? null);
+    scene.highlight(props.highlight?.id ?? null, props.highlight?.level ?? null, props.highlight?.cover ?? null);
     scene.setRoute(props.route ? plain(props.route) : null);
     scene.setAvatar(props.avatar);
     props.follow ? scene.follow() : scene.mode === 'follow' && scene.overview();
@@ -66,7 +68,7 @@ function apply() {
 watch(() => [props.floor, props.shelves], () => scene?.setLayout(plain(props.floor), plain(props.shelves)), { deep: true });
 watch(() => [props.highlight, props.route], () => {
     if (!scene) return;
-    scene.highlight(props.highlight?.id ?? null, props.highlight?.level ?? null);
+    scene.highlight(props.highlight?.id ?? null, props.highlight?.level ?? null, props.highlight?.cover ?? null);
     scene.setRoute(props.route ? plain(props.route) : null);
 }, { deep: true });
 watch(() => props.avatar, (a) => scene?.setAvatar(a));
