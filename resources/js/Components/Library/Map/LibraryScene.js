@@ -3,9 +3,19 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { sectionColor } from './colors.js';
+import { footprint, outline } from './route.js';
 
 const LEVEL_H = 0.36; // height of one shelf level, metres
 const BOOK_COLORS = ['#7f1d1d', '#9a3412', '#a16207', '#3f6212', '#065f46', '#155e75', '#1e3a8a', '#4c1d95', '#831843', '#44403c', '#b45309', '#0f766e', '#1d4ed8', '#be123c', '#57534e', '#d6d3d1'];
+
+function inPoly(x, y, poly) {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i], b = poly[j];
+        if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+    }
+    return hit;
+}
 
 export function shelfHeight(item) {
     if (item.kind === 'desk') return 0.8;
@@ -283,6 +293,7 @@ export class LibraryScene {
 
     setLayout(floor, items) {
         this.floorData = floor;
+        this.layoutItems = items;
         this.clearGroup(this.root);
         this.items.clear();
         this.labels = [];
@@ -691,7 +702,13 @@ export class LibraryScene {
         const p = this.floorPoint(e);
         if (!p) return;
         this.controls.enabled = false;
-        this.dragging = { id, it, dx: it.data.x - p.x, dy: it.data.y - p.y, x: it.data.x, y: it.data.y, moved: false, start: { x: e.clientX, y: e.clientY } };
+        // «محصور داخل الغرفة» (2026-11-07, by request): a bookcase dragged in 3D stays in the hall it
+        // stands in (Alt lets it go to another room).
+        const halls = (this.layoutItems ?? []).filter((h) => ['hall', 'corridor'].includes(h.kind) && h.points?.length >= 3).map((h) => ({ h, poly: outline(h) }));
+        let room = halls.filter(({ poly }) => inPoly(it.data.x, it.data.y, poly)).sort((a, b) => a.h.width * a.h.depth - b.h.width * b.h.depth)[0]?.poly ?? null;
+        // One already poking through a wall is not held (it could not move at all).
+        if (room && !footprint(it.data).every((q) => inPoly(q.x, q.y, room))) room = null;
+        this.dragging = { id, it, room, dx: it.data.x - p.x, dy: it.data.y - p.y, x: it.data.x, y: it.data.y, moved: false, start: { x: e.clientX, y: e.clientY } };
         this.renderer.domElement.setPointerCapture?.(e.pointerId);
         this.container.style.cursor = 'grabbing';
     }
@@ -704,8 +721,18 @@ export class LibraryScene {
         const p = this.floorPoint(e);
         if (!p) return;
         const snap = (v) => Math.round(v * 4) / 4;
-        d.x = Math.min(this.floorData.width, Math.max(0, snap(p.x + d.dx)));
-        d.y = Math.min(this.floorData.depth, Math.max(0, snap(p.y + d.dy)));
+        const nx = Math.min(this.floorData.width, Math.max(0, snap(p.x + d.dx)));
+        const ny = Math.min(this.floorData.depth, Math.max(0, snap(p.y + d.dy)));
+        if (d.room && !e.altKey) {
+            const fits = (x, y) => footprint({ ...d.it.data, x, y }).every((q) => inPoly(q.x, q.y, d.room));
+            // Slide along the wall when only one direction is blocked.
+            if (fits(nx, ny)) { d.x = nx; d.y = ny; }
+            else if (fits(nx, d.y)) d.x = nx;
+            else if (fits(d.x, ny)) d.y = ny;
+        } else {
+            d.x = nx;
+            d.y = ny;
+        }
         d.it.group.position.copy(this.world(d.x, d.y));
         this.onDragTip?.(d.id, d.x, d.y, e.clientX, e.clientY);
     }
