@@ -18,13 +18,13 @@ class LibraryShelf extends Model
 
     public const KINDS = ['shelf', 'desk', 'table', 'wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs', 'qr'];
 
-    protected $fillable = ['code', 'name', 'kind', 'storey', 'section_id', 'x', 'y', 'rotation', 'width', 'depth', 'levels', 'double_sided', 'color', 'points', 'height'];
+    protected $fillable = ['code', 'name', 'kind', 'storey', 'section_id', 'x', 'y', 'rotation', 'width', 'depth', 'levels', 'double_sided', 'color', 'points', 'height', 'locked'];
 
     protected function casts(): array
     {
         return [
             'x' => 'float', 'y' => 'float', 'width' => 'float', 'depth' => 'float',
-            'rotation' => 'integer', 'storey' => 'integer', 'levels' => 'integer', 'double_sided' => 'boolean',
+            'rotation' => 'integer', 'storey' => 'integer', 'levels' => 'integer', 'double_sided' => 'boolean', 'locked' => 'boolean',
             'points' => 'array', 'height' => 'float',
         ];
     }

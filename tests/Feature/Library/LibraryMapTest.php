@@ -123,6 +123,18 @@ class LibraryMapTest extends TestCase
                 ->missing('books.data.1.copies'));
     }
 
+    public function test_a_locked_item_keeps_its_lock(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'A1', 'locked' => true], ['code' => 'A2', 'x' => 8],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertTrue(LibraryShelf::where('code', 'A1')->value('locked'));
+        $this->assertFalse(LibraryShelf::where('code', 'A2')->value('locked'));
+        $this->assertTrue(app(LibraryMap::class)->shelves()->firstWhere('code', 'A1')['locked']);
+    }
+
     public function test_readers_cannot_edit_the_map(): void
     {
         $reader = User::factory()->create();

@@ -22,7 +22,7 @@ import { useTrans } from '@/Composables/useTrans';
 import {
     MagnifyingGlassIcon, XMarkIcon, PlayIcon, PauseIcon, ArrowPathIcon, MapIcon, PencilSquareIcon,
     ViewfinderCircleIcon, ChevronLeftIcon, ChevronRightIcon, BookOpenIcon, CheckCircleIcon, QrCodeIcon, MapPinIcon, ExclamationTriangleIcon, MinusIcon, PlusIcon,
-    Squares2X2Icon, CubeIcon,
+    Squares2X2Icon, CubeIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -54,6 +54,20 @@ function setFlat(v) {
     flat.value = v;
     store.set('library.map.flat', v ? '1' : '0');
 }
+// «ملء الشاشة» (2026-11-07, by request): the map takes the whole screen, without the side bar,
+// the top bar and the browser's own bars where the browser allows it.
+const full = ref(false);
+function toggleFull() {
+    full.value = !full.value;
+    try {
+        if (full.value && !document.fullscreenElement) document.documentElement.requestFullscreen?.()?.catch?.(() => {});
+        else if (!full.value && document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {});
+    } catch {}
+    setTimeout(() => (viewHighlight.value ? map.value?.focusShelf(viewHighlight.value.id) : map.value?.overview()), 250);
+}
+const onFullChange = () => { if (!document.fullscreenElement && full.value) toggleFull(); };
+if (typeof document !== 'undefined') document.addEventListener('fullscreenchange', onFullChange);
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullChange));
 // «بدون درج (مصعد فقط)»: the way to another floor goes by a lift only (wheelchair, trolley).
 const liftOnly = ref(store.get('library.map.lift_only') === '1');
 watch(liftOnly, (v) => store.set('library.map.lift_only', v ? '1' : '0'));
@@ -465,7 +479,8 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                 </Link>
             </div>
 
-            <div v-else class="relative overflow-hidden bg-gray-100 dark:bg-gray-900" :class="embedded ? 'h-dvh' : 'h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
+            <Teleport v-else to="body" :disabled="!full">
+            <div class="overflow-hidden bg-gray-100 dark:bg-gray-900" :class="full ? 'fixed inset-0 z-40 h-dvh' : embedded ? 'relative h-dvh' : 'relative h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
                 <LibraryMap2D v-if="flat" ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
                 <LibraryMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
 
@@ -567,6 +582,9 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
 
                 <!-- Camera buttons. -->
                 <div class="absolute end-3 top-24 flex flex-col gap-2">
+                    <button v-if="!embedded" @click="toggleFull" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="full ? t('library.map.exit_full', 'خروج من ملء الشاشة') : t('library.map.full', 'ملء الشاشة')">
+                        <component :is="full ? ArrowsPointingInIcon : ArrowsPointingOutIcon" class="h-5 w-5" />
+                    </button>
                     <button @click="setFlat(!flat)" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="flat ? t('library.map.to_3d', 'عرض ثلاثي الأبعاد') : t('library.map.to_2d', 'خريطة مسطحة (أخف)')">
                         <component :is="flat ? CubeIcon : Squares2X2Icon" class="h-5 w-5" />
                     </button>
@@ -662,6 +680,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                     <p class="mx-auto w-fit rounded-full bg-white/90 px-3 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-800/90 dark:text-gray-300">{{ flat ? t('library.map.hint_2d', 'ابحث عن كتاب أو اضغط على أي رف · اسحب للتحريك وبإصبعين للتكبير') : t('library.map.hint', 'ابحث عن كتاب أو اضغط على أي رف · اسحب لتدوير المكتبة') }}</p>
                 </div>
             </div>
+            </Teleport>
         </div>
     </component>
 </template>
