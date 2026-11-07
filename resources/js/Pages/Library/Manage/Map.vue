@@ -297,6 +297,86 @@ function onFullChange() {
 onMounted(() => document.addEventListener('fullscreenchange', onFullChange));
 onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullChange));
 
+// «المقاس عند المؤشر» (2026-11-07, by request): while resizing, turning or dragging, the size,
+// angle or place shows beside the pointer.
+const tip = ref(null); // { cx, cy, text }
+const m2 = (v) => (+v).toFixed(2);
+// The 3D view in the editor (2026-11-07, by request): drag furniture there too.
+const byPreviewId = (id) => items.value.find((i) => (i.id ?? i._key) === id) ?? null;
+function on3dMove(id, x, y) {
+    const it = byPreviewId(id);
+    if (!it || !canMove(it)) return;
+    it.x = x;
+    it.y = y;
+    selectedKey.value = it._key;
+}
+function on3dDragging(d) {
+    tip.value = d ? { cx: d.cx, cy: d.cy, text: `x ${m2(d.x)} · y ${m2(d.y)} م` } : null;
+}
+
+// «قائمة الزر الأيمن» (2026-11-07, by request): right click (or a long press on a phone) on any
+// item opens its own options.
+const ctx = ref(null); // { x, y, key }
+const ctxItem = computed(() => (ctx.value ? items.value.find((i) => i._key === ctx.value.key) ?? null : null));
+const ctxMulti = computed(() => !!ctxItem.value && multi.value.size > 1 && multi.value.has(ctxItem.value._key));
+function openCtx(e, item) {
+    e.preventDefault?.();
+    if (!item) return;
+    if (!(multi.value.size && multi.value.has(item._key))) { multi.value = new Set(); selectedKey.value = item._key; }
+    const W = window.innerWidth, H = window.innerHeight;
+    ctx.value = { x: Math.min(e.clientX, W - 236), y: Math.min(e.clientY, H - 340), key: item._key };
+}
+function on3dContext(id, cx, cy) {
+    openCtx({ clientX: cx, clientY: cy }, byPreviewId(id));
+}
+function ctxDo(fn) {
+    const it = ctxItem.value;
+    ctx.value = null;
+    if (it) fn(it);
+}
+const needsMove = (fn) => (it) => (canMove(it) ? fn(it) : flashLocked(it));
+const ctxActions = computed(() => {
+    const it = ctxItem.value;
+    if (!it) return [];
+    if (ctxMulti.value) {
+        return [
+            { label: t('library.map.ctx_rotate_all', 'تدوير المحدد 90°'), icon: ArrowPathRoundedSquareIcon, run: () => bulkRotate(90) },
+            { label: multiItems.value.every((x) => x.locked) ? t('library.map.unlock_all', 'فتح قفل المحدد') : t('library.map.lock_all_sel', 'قفل المحدد'), icon: LockClosedIcon, run: () => { const v = !multiItems.value.every((x) => x.locked); multiItems.value.forEach((x) => (x.locked = v)); } },
+            { label: t('library.map.unselect', 'إلغاء التحديد'), icon: XMarkIcon, run: () => (multi.value = new Set()) },
+            { label: t('library.map.ctx_delete_all', 'حذف المحدد (:n)', { n: multi.value.size }), icon: TrashIcon, danger: true, run: () => bulkRemove() },
+        ];
+    }
+    const out = [{ label: t('library.map.ctx_edit', 'تعديل البيانات'), icon: PencilIcon, run: (i) => { selectedKey.value = i._key; nextTick(() => panelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })); } }];
+    if (!['door', 'qr'].includes(it.kind)) {
+        out.push({ label: t('library.map.rotate', 'تدوير 90°'), icon: ArrowPathRoundedSquareIcon, run: needsMove((i) => setRotation(i, (i.rotation || 0) + 90)) });
+        out.push({ label: t('library.map.ctx_rotate_45', 'تدوير 45°'), icon: ArrowPathRoundedSquareIcon, run: needsMove((i) => setRotation(i, (i.rotation || 0) + 45)) });
+    }
+    if (it.kind === 'shelf') out.push({ label: it.double_sided ? t('library.map.ctx_one_face', 'اجعله بوجه واحد') : t('library.map.ctx_two_faces', 'اجعله بوجهين'), icon: Square2StackIcon, run: (i) => { i.double_sided = !i.double_sided; i.depth = i.double_sided ? Math.max(i.depth, 0.9) : Math.min(i.depth, 0.5); } });
+    if (isHallKind(it)) {
+        out.push({ label: t('library.map.select_hall_shelves', 'حدد كل رفوفها'), icon: RectangleStackIcon, run: (i) => selectHallShelves(i) });
+        if (it.kind === 'hall') out.push({ label: t('library.map.rows_here', 'صفوف رفوف داخل القاعة'), icon: SparklesIcon, run: () => openGenerate() });
+    }
+    if (it.kind === 'stairs') out.push({ label: it.double_sided ? t('library.map.ctx_is_stairs', 'اجعله درجاً') : t('library.map.ctx_is_lift', 'اجعله مصعداً'), icon: ChevronDoubleUpIcon, run: (i) => (i.double_sided = !i.double_sided) });
+    if (!['door'].includes(it.kind)) out.push({ label: t('library.map.duplicate', 'تكرار بجانبه'), icon: DocumentDuplicateIcon, run: () => duplicate() });
+    out.push({ label: it.locked ? t('library.map.unlock', 'فتح القفل') : t('library.map.lock', 'قفل (لا يتحرك بالخطأ)'), icon: it.locked ? LockOpenIcon : LockClosedIcon, run: (i) => toggleLock(i) });
+    out.push({ label: t('common.delete', 'حذف'), icon: TrashIcon, danger: true, run: needsMove(() => remove()) });
+    return out;
+});
+const panelEl = ref(null);
+function closeCtx() { ctx.value = null; }
+onMounted(() => { window.addEventListener('pointerdown', closeCtxOutside, true); window.addEventListener('scroll', closeCtx, true); });
+onBeforeUnmount(() => { window.removeEventListener('pointerdown', closeCtxOutside, true); window.removeEventListener('scroll', closeCtx, true); });
+function closeCtxOutside(e) { if (ctx.value && !e.target.closest?.('[data-ctx]')) ctx.value = null; }
+// A long press on a phone opens the menu too.
+let pressTimer = null;
+function pressStart(e, item) {
+    if (e.pointerType !== 'touch') return;
+    clearTimeout(pressTimer);
+    const at = { clientX: e.clientX, clientY: e.clientY };
+    pressTimer = setTimeout(() => { drag = null; skipClick = true; navigator.vibrate?.(30); openCtx(at, item); }, 550);
+}
+const pressEnd = () => clearTimeout(pressTimer);
+
 const touches = new Map();
 let pinch = null;
 let pan = null;
@@ -691,8 +771,9 @@ function onMove(e) {
     if (rect.value) { rect.value.b = rect.value.kind === 'select' ? snapPoint(toPlan(e)) : snapToHalls(snapPoint(toPlan(e))); return; }
     if (!drag) return;
     const p = toPlan(e);
-    if (drag.resize) { resizeTo(p, e.shiftKey); return; }
-    if (drag.rotate) { rotateTo(p, e.shiftKey || e.altKey); return; }
+    pressEnd();
+    if (drag.resize) { resizeTo(p, e.shiftKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${m2(drag.item.width)} × ${m2(drag.item.depth)} م` }; return; }
+    if (drag.rotate) { rotateTo(p, e.shiftKey || e.altKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${drag.item.rotation}°` }; return; }
     if (drag.vertex !== undefined) {
         // Plan point → the obstacle's own (unrotated) coordinates.
         const it = drag.item, a = (-(it.rotation || 0) * Math.PI) / 180;
@@ -741,6 +822,8 @@ function endDrag() {
     if (drag?.vertex !== undefined) recentre(drag.item);
     if (drag?.resize || drag?.rotate) { skipClick = true; setTimeout(() => (skipClick = false), 50); }
     rotating.value = false;
+    tip.value = null;
+    pressEnd();
     drag = null;
     if (pending) commit();
 }
@@ -851,6 +934,7 @@ const polyPoints = (s) => s.points.map((p) => p.join(',')).join(' ');
 const midPoints = (s) => s.points.map((p, i) => { const q = s.points[(i + 1) % s.points.length]; return [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, i + 1]; });
 
 function onKey(e) {
+    if (ctx.value && e.key === 'Escape') { ctx.value = null; return; }
     const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName);
     if ((e.ctrlKey || e.metaKey) && !typing && !drawing.value) {
         const k = e.key.toLowerCase();
@@ -1235,6 +1319,15 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
 
         <div :class="full ? 'fixed inset-0 z-40 flex flex-col gap-2 bg-gray-50 p-2 dark:bg-gray-900' : 'space-y-4 p-4 sm:p-6'">
             <LibraryTabs v-if="!full" />
+            <Teleport to="body">
+                <div v-if="ctx && ctxItem" data-ctx class="fixed z-[70] w-56 overflow-hidden rounded-xl bg-white py-1 text-sm shadow-xl ring-1 ring-black/10 dark:bg-gray-800 dark:ring-white/10" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" dir="rtl" @contextmenu.prevent>
+                    <p class="truncate border-b border-gray-100 px-3 pb-1.5 pt-1 text-xs font-semibold text-gray-500 dark:border-gray-700" dir="auto">{{ ctxMulti ? t('library.map.multi_count', ':n محدد (:s رف)', { n: multi.size, s: multiShelves.length }) : `${kindLabel(ctxItem.kind)} · ${ctxItem.code}` }}<LockClosedIcon v-if="ctxItem.locked && !ctxMulti" class="ms-1 inline h-3.5 w-3.5" /></p>
+                    <button v-for="(a, i) in ctxActions" :key="i" @click="ctxDo(a.run)" class="flex w-full items-center gap-2 px-3 py-1.5 text-start hover:bg-gray-100 dark:hover:bg-gray-700" :class="a.danger ? 'text-red-600' : ''">
+                        <component :is="a.icon" class="h-4 w-4 shrink-0 opacity-70" /> {{ a.label }}
+                    </button>
+                </div>
+                <div v-if="tip" class="pointer-events-none fixed z-[70] rounded-md bg-gray-900/90 px-2 py-1 text-xs font-semibold tabular-nums text-white shadow" :style="{ left: tip.cx + 16 + 'px', top: tip.cy + 18 + 'px' }" dir="ltr">{{ tip.text }}</div>
+            </Teleport>
 
             <!-- Toolbar: one row that scrolls sideways on phones, so the plan stays in sight -->
             <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap rounded-2xl [scrollbar-width:thin] max-sm:-mx-1 sm:flex-wrap [&>*]:shrink-0 border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -1349,7 +1442,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <line v-for="(g, i) in gridLines" :key="i" v-bind="g" data-bg="1" :stroke-width="g.major ? 0.03 : 0.012" class="stroke-gray-300 dark:stroke-gray-700" />
                             <rect x="0" y="0" :width="floor.width" :height="floor.depth" fill="none" stroke-width="0.12" class="stroke-gray-400 dark:stroke-gray-500" />
 
-                            <g v-for="s in planItems" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing || calib || bgMove ? 'pointer-events-none opacity-60' : (tool === 'door' && s.kind !== 'door') || (tool === 'qr' && s.kind !== 'qr') ? 'pointer-events-none' : ''" @pointerdown.stop="startDrag($event, s)">
+                            <g v-for="s in planItems" :key="s._key" :transform="corners(s)" class="cursor-grab active:cursor-grabbing" :class="drawing || calib || bgMove ? 'pointer-events-none opacity-60' : (tool === 'door' && s.kind !== 'door') || (tool === 'qr' && s.kind !== 'qr') ? 'pointer-events-none' : ''" @pointerdown.stop="startDrag($event, s); pressStart($event, s)" @pointerup="pressEnd" @contextmenu.prevent.stop="openCtx($event, s)">
                                 <template v-if="isHallKind(s)">
                                     <!-- A hall or corridor: its floor, and its sides drawn as walls. -->
                                     <polygon :points="polyPoints(s)" :fill="s.kind === 'corridor' ? '#e2e8f0' : '#fbf8f2'" class="dark:opacity-30" stroke-linejoin="miter"
@@ -1438,7 +1531,9 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             </g>
                         </svg>
                     </div>
-                    <LibraryMap3D v-if="view === '3d'" :floor="floor" :shelves="preview" :highlight="selected ? { id: selected.id ?? selected._key } : null" @pick="(id) => (selectedKey = items.find((i) => (i.id ?? i._key) === id)?._key ?? null)" />
+                    <LibraryMap3D v-if="view === '3d'" :floor="floor" :shelves="preview" :highlight="selected ? { id: selected.id ?? selected._key } : null" editable :can-drag="(id) => canMove(byPreviewId(id))"
+                        @pick="(id) => (selectedKey = byPreviewId(id)?._key ?? null)" @move="on3dMove" @context="on3dContext" @dragging="on3dDragging" />
+                    <p v-if="view === '3d'" class="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-white/90 px-3 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-800/90 dark:text-gray-300">{{ t('library.map.edit3d_hint', 'اسحب أي رف لتحريكه · اسحب الأرض لتدوير المشهد · زر الماوس الأيمن على أي عنصر لخياراته') }}</p>
 
                     <div v-if="view === 'plan'" class="absolute bottom-3 end-3 flex gap-1.5">
                         <button @click="zoomAt(zoom / 1.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassMinusIcon class="h-5 w-5" /></button>
@@ -1498,7 +1593,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                         </template>
                         <p class="text-xs leading-5 text-gray-500">{{ t('library.map.multi_keys', 'اسحب أي رف محدد لتحريكها كلها · الأسهم للتحريك الدقيق · Delete للحذف.') }}</p>
                     </section>
-                    <section v-if="selected" class="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                    <section v-if="selected" ref="panelEl" class="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
                         <div class="flex items-center gap-2">
                             <span class="h-3 w-3 rounded-full" :style="{ background: fill(selected) }" />
                             <h3 class="font-semibold">{{ kindLabel(selected.kind) }}</h3>

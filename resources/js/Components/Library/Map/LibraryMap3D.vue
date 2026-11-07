@@ -13,8 +13,11 @@ const props = defineProps({
     avatar: { type: Object, default: null }, // { x, y, heading }
     follow: { type: Boolean, default: false },
     beacons: { type: Object, default: null }, // { ids: [], nearest } stickers to make pulse
+    // Map editor: drag furniture on the floor (canDrag(id) says if it may move) and right click.
+    editable: { type: Boolean, default: false },
+    canDrag: { type: Function, default: null },
 });
-const emit = defineEmits(['pick', 'ready', 'failed']);
+const emit = defineEmits(['pick', 'ready', 'failed', 'move', 'context', 'dragging']);
 
 const el = ref(null);
 const failed = ref(false);
@@ -29,7 +32,16 @@ onMounted(async () => {
         const { LibraryScene } = await import('./LibraryScene.js');
         try { await Promise.race([document.fonts?.ready, new Promise((r) => setTimeout(r, 1500))]); } catch {}
         if (!el.value) return;
-        scene = markRaw(new LibraryScene(el.value, { dark: isDark(), onPick: (id) => emit('pick', id) }));
+        scene = markRaw(new LibraryScene(el.value, {
+            dark: isDark(),
+            onPick: (id) => emit('pick', id),
+            ...(props.editable ? {
+                onMove: (id, x, y) => emit('move', id, x, y),
+                onContext: (id, cx, cy) => emit('context', id, cx, cy),
+                canDrag: (id) => (props.canDrag ? props.canDrag(id) : true),
+            } : {}),
+        }));
+        if (props.editable) scene.onDragTip = (id, x, y, cx, cy) => emit('dragging', id === null ? null : { id, x, y, cx, cy });
         scene.setLayout(plain(props.floor), plain(props.shelves));
         apply();
         themeObserver = new MutationObserver(() => scene?.dark !== isDark() && scene?.applyTheme(isDark()));
