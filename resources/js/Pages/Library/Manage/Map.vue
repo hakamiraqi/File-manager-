@@ -17,7 +17,7 @@ import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
     MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon, HomeModernIcon, BuildingOffice2Icon, ArrowsRightLeftIcon, ChevronDoubleUpIcon, RectangleGroupIcon, Square2StackIcon, RectangleStackIcon,
     PhotoIcon, ClipboardDocumentCheckIcon, ArrowUturnLeftIcon, ArrowsPointingOutIcon, XMarkIcon, InformationCircleIcon,
-    LockClosedIcon, LockOpenIcon, ArrowsPointingInIcon,
+    LockClosedIcon, LockOpenIcon, ArrowsPointingInIcon, PencilSquareIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -329,8 +329,28 @@ function openCtx(e, item) {
 function on3dContext(id, cx, cy) {
     openCtx({ clientX: cx, clientY: cy }, byPreviewId(id));
 }
-function ctxDo(fn) {
+// «إعادة التسمية» from the menu: the name is typed right there.
+const renaming = reactive({ on: false, text: '', error: '' });
+function startRename() {
+    renaming.on = true;
+    renaming.text = ctxItem.value?.code ?? '';
+    renaming.error = '';
+    nextTick(() => document.querySelector('[data-ctx] input')?.select());
+}
+function saveRename() {
+    const it = ctxItem.value, text = renaming.text.trim();
+    if (!it) return;
+    if (!text) { renaming.error = t('library.map.rename_empty', 'اكتب اسماً.'); return; }
+    if (text.length > 30) { renaming.error = t('library.map.rename_long', 'الاسم أطول من 30 حرفاً.'); return; }
+    if (items.value.some((o) => o !== it && o.code.toLowerCase() === text.toLowerCase())) { renaming.error = t('library.map.rename_taken', 'هذا الاسم مستعمل لعنصر آخر.'); return; }
+    it.code = text;
+    renaming.on = false;
+    ctx.value = null;
+}
+watch(ctx, () => (renaming.on = false));
+function ctxDo(fn, keep = false) {
     const it = ctxItem.value;
+    if (keep) { if (it) fn(it); return; }
     ctx.value = null;
     if (it) fn(it);
 }
@@ -346,7 +366,7 @@ const ctxActions = computed(() => {
             { label: t('library.map.ctx_delete_all', 'حذف المحدد (:n)', { n: multi.value.size }), icon: TrashIcon, danger: true, run: () => bulkRemove() },
         ];
     }
-    const out = [{ label: t('library.map.ctx_edit', 'تعديل البيانات'), icon: PencilIcon, run: (i) => { selectedKey.value = i._key; nextTick(() => panelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })); } }];
+    const out = [{ label: t('library.map.rename', 'إعادة التسمية'), icon: PencilSquareIcon, keep: true, run: () => startRename() }, { label: t('library.map.ctx_edit', 'تعديل البيانات'), icon: PencilIcon, run: (i) => { selectedKey.value = i._key; nextTick(() => panelEl.value?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })); } }];
     if (!['door', 'qr'].includes(it.kind)) {
         out.push({ label: t('library.map.rotate', 'تدوير 90°'), icon: ArrowPathRoundedSquareIcon, run: needsMove((i) => setRotation(i, (i.rotation || 0) + 90)) });
         out.push({ label: t('library.map.ctx_rotate_45', 'تدوير 45°'), icon: ArrowPathRoundedSquareIcon, run: needsMove((i) => setRotation(i, (i.rotation || 0) + 45)) });
@@ -1322,9 +1342,19 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
             <Teleport to="body">
                 <div v-if="ctx && ctxItem" data-ctx class="fixed z-[70] w-56 overflow-hidden rounded-xl bg-white py-1 text-sm shadow-xl ring-1 ring-black/10 dark:bg-gray-800 dark:ring-white/10" :style="{ left: ctx.x + 'px', top: ctx.y + 'px' }" dir="rtl" @contextmenu.prevent>
                     <p class="truncate border-b border-gray-100 px-3 pb-1.5 pt-1 text-xs font-semibold text-gray-500 dark:border-gray-700" dir="auto">{{ ctxMulti ? t('library.map.multi_count', ':n محدد (:s رف)', { n: multi.size, s: multiShelves.length }) : `${kindLabel(ctxItem.kind)} · ${ctxItem.code}` }}<LockClosedIcon v-if="ctxItem.locked && !ctxMulti" class="ms-1 inline h-3.5 w-3.5" /></p>
-                    <button v-for="(a, i) in ctxActions" :key="i" @click="ctxDo(a.run)" class="flex w-full items-center gap-2 px-3 py-1.5 text-start hover:bg-gray-100 dark:hover:bg-gray-700" :class="a.danger ? 'text-red-600' : ''">
-                        <component :is="a.icon" class="h-4 w-4 shrink-0 opacity-70" /> {{ a.label }}
-                    </button>
+                    <form v-if="renaming.on" class="space-y-1.5 px-3 py-2" @submit.prevent="saveRename">
+                        <input v-model="renaming.text" maxlength="30" dir="auto" class="w-full rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" @keydown.esc.stop.prevent="renaming.on = false" />
+                        <p v-if="renaming.error" class="text-xs text-red-600">{{ renaming.error }}</p>
+                        <div class="flex gap-1.5">
+                            <button type="submit" class="flex-1 rounded-lg bg-[var(--accent-600)] px-2 py-1 text-xs font-medium text-white">{{ t('common.save', 'حفظ') }}</button>
+                            <button type="button" @click="renaming.on = false" class="rounded-lg px-2 py-1 text-xs">{{ t('common.cancel', 'إلغاء') }}</button>
+                        </div>
+                    </form>
+                    <template v-else>
+                        <button v-for="(a, i) in ctxActions" :key="i" @click="ctxDo(a.run, a.keep)" class="flex w-full items-center gap-2 px-3 py-1.5 text-start hover:bg-gray-100 dark:hover:bg-gray-700" :class="a.danger ? 'text-red-600' : ''">
+                            <component :is="a.icon" class="h-4 w-4 shrink-0 opacity-70" /> {{ a.label }}
+                        </button>
+                    </template>
                 </div>
                 <div v-if="tip" class="pointer-events-none fixed z-[70] rounded-md bg-gray-900/90 px-2 py-1 text-xs font-semibold tabular-nums text-white shadow" :style="{ left: tip.cx + 16 + 'px', top: tip.cy + 18 + 'px' }" dir="ltr">{{ tip.text }}</div>
             </Teleport>
@@ -1533,7 +1563,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                     </div>
                     <LibraryMap3D v-if="view === '3d'" :floor="floor" :shelves="preview" :highlight="selected ? { id: selected.id ?? selected._key } : null" editable :can-drag="(id) => canMove(byPreviewId(id))"
                         @pick="(id) => (selectedKey = byPreviewId(id)?._key ?? null)" @move="on3dMove" @context="on3dContext" @dragging="on3dDragging" />
-                    <p v-if="view === '3d'" class="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-white/90 px-3 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-800/90 dark:text-gray-300">{{ t('library.map.edit3d_hint', 'اسحب أي رف لتحريكه · اسحب الأرض لتدوير المشهد · زر الماوس الأيمن على أي عنصر لخياراته') }}</p>
+                    <p v-if="view === '3d'" class="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-white/90 px-3 py-1.5 text-xs text-gray-600 shadow dark:bg-gray-800/90 dark:text-gray-300">{{ t('library.map.edit3d_hint', 'اسحب أي رف لتحريكه داخل غرفته (Alt لنقله لغرفة أخرى) · اسحب الأرض لتدوير المشهد · زر الماوس الأيمن على أي عنصر لخياراته') }}</p>
 
                     <div v-if="view === 'plan'" class="absolute bottom-3 end-3 flex gap-1.5">
                         <button @click="zoomAt(zoom / 1.5)" class="rounded-lg bg-white/95 p-2 shadow ring-1 ring-black/5 dark:bg-gray-700"><MagnifyingGlassMinusIcon class="h-5 w-5" /></button>
