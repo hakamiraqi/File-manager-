@@ -856,7 +856,8 @@ export class LibraryScene {
         this.avatar.position.copy(this.world(pos.x, pos.y, 0));
         // Arrow points to local -Z after the extrude rotation; plan heading 0 = +x.
         this.avatar.rotation.y = -pos.heading - Math.PI / 2;
-        this.avatarHeading = pos.heading;
+        // The camera chases the way the reader faces only when the map is set to turn with them.
+        this.avatarHeading = pos.mapHeading ?? pos.routeHeading ?? pos.heading;
     }
 
     /** Camera modes: the whole room from above, or chasing the walker. */

@@ -14,6 +14,8 @@ export const compassOffset = { get: () => { try { const v = localStorage.getItem
 
 /** Plan bearing of a vector, degrees clockwise from the plan's "up" (towards y = 0). */
 export const planBearing = (dx, dy) => ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
+export const toPlanHeading = (deg) => { const r = (deg * Math.PI) / 180; return Math.atan2(-Math.cos(r), Math.sin(r)); };
+/** Signed difference a − b in degrees, in (−180, 180]. */
 export const angleDiff = (a, b) => { const d = (((a - b) % 360) + 540) % 360 - 180; return d; };
 export function circularMean(list) {
     const s = list.reduce((acc, a) => [acc[0] + Math.sin((a * Math.PI) / 180), acc[1] + Math.cos((a * Math.PI) / 180)], [0, 0]);
@@ -74,13 +76,16 @@ export function createStepTracker({ onStep, onHeading }) {
     }
     function orientation(e) {
         let h = null;
-        if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading; // iPhone
+        let accuracy = null; // degrees of doubt (iPhone only); negative = not calibrated
+        if (typeof e.webkitCompassHeading === 'number') { h = e.webkitCompassHeading; accuracy = e.webkitCompassAccuracy ?? null; } // iPhone
         else if (e.absolute && typeof e.alpha === 'number') h = (360 - e.alpha) % 360; // Android
         if (h === null) return;
+        // A phone lying face down gives a heading that jumps about.
+        const tilt = typeof e.beta === 'number' ? Math.abs(e.beta) : 45;
         // Screen turned sideways changes what "forward" is.
         const screenAngle = (screen.orientation?.angle ?? window.orientation ?? 0) || 0;
         heading = (h + screenAngle + 360) % 360;
-        onHeading?.(heading);
+        onHeading?.(heading, { accuracy, tilt });
     }
 
     const orientationEvent = 'ondeviceorientationabsolute' in window ? 'deviceorientationabsolute' : 'deviceorientation';
