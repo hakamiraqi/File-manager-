@@ -29,7 +29,7 @@ const frame = computed(() => (turned.value ? { w: D.value, h: W.value } : { w: W
 const turnT = computed(() => (turned.value ? `translate(${D.value} 0) rotate(90)` : ''));
 /** A plan point in the turned frame the view box uses. */
 const vp = (p) => (turned.value ? { x: D.value - p.y, y: p.x } : { x: p.x, y: p.y });
-const upright = (rot = 0) => -(rot || 0) - (turned.value ? 90 : 0);
+const upright = (rot = 0) => -(rot || 0) - (turned.value ? 90 : 0) - spin.value;
 
 // View box: the whole plan, or zoomed in. -------------------------------------------------------
 const M = 0.8;
@@ -120,6 +120,18 @@ const routePts = computed(() => (props.route?.points?.length >= 2 ? poly(props.r
 const target = computed(() => props.shelves.find((s) => s.id === props.highlight?.id) ?? null);
 const beaconSpots = computed(() => (props.beacons?.ids ?? []).map((id) => props.shelves.find((s) => s.id === id)).filter(Boolean).map((s) => ({ id: s.id, ...stickerStand(s), near: s.id === props.beacons.nearest })));
 const heading = computed(() => ((props.avatar?.heading ?? 0) * 180) / Math.PI);
+// Heading up while walking (when the reader lets the map turn): the way you face is the top of
+// the screen, like a satnav. Labels stay upright.
+const spin = computed(() => {
+    const h = props.avatar?.mapHeading;
+    if (!props.follow || h === null || h === undefined) return 0;
+    return -90 - ((h * 180) / Math.PI + (turned.value ? 90 : 0));
+});
+const spinT = computed(() => {
+    if (!spin.value || !props.avatar) return '';
+    const q = vp(props.avatar);
+    return `rotate(${spin.value} ${q.x} ${q.y})`;
+});
 
 watch(() => [props.avatar, props.follow], () => {
     if (props.follow && props.avatar) centreOn(props.avatar, 14);
@@ -150,7 +162,7 @@ defineExpose(api);
     <div ref="el" class="absolute inset-0 touch-none select-none bg-gray-100 dark:bg-gray-900" dir="ltr"
         @pointerdown="down" @pointermove="move" @pointerup="up" @pointercancel="up" @wheel="wheel">
         <svg class="h-full w-full" :viewBox="viewBox" preserveAspectRatio="xMidYMid meet">
-            <g :transform="turnT">
+            <g :transform="spinT"><g :transform="turnT">
                 <rect x="0" y="0" :width="W" :height="D" class="fill-white stroke-gray-300 dark:fill-gray-800 dark:stroke-gray-600" stroke-width="0.08" />
                 <polygon v-for="h in halls" :key="h.id" :points="poly(outline(h))" :class="h.kind === 'corridor' ? 'fill-slate-100 dark:fill-slate-700/60' : 'fill-amber-50/70 dark:fill-gray-700/60'" stroke="#475569" stroke-width="0.12" stroke-linejoin="round" />
                 <g v-for="s in things" :key="s.id" :transform="`translate(${s.x} ${s.y}) rotate(${s.rotation || 0})`" @click="pick(s.id)" class="cursor-pointer">
@@ -209,7 +221,7 @@ defineExpose(api);
                     <circle r="0.34" fill="#2563eb" stroke="#fff" stroke-width="0.08" />
                     <path d="M0.62 0 L0.18 0.28 L0.18 -0.28 Z" fill="#2563eb" stroke="#fff" stroke-width="0.04" />
                 </g>
-            </g>
+            </g></g>
         </svg>
     </div>
 </template>

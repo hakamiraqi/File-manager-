@@ -14,7 +14,7 @@ import LibraryMap3D from '@/Components/Library/Map/LibraryMap3D.vue';
 import LibraryMap2D from '@/Components/Library/Map/LibraryMap2D.vue';
 import Maneuver from '@/Components/Library/Map/Maneuver.vue';
 import { findRoute, isLift, directions, pointAt, standingPoints, hallAt, isHall, storeyOf, routeOnStorey, outline } from '@/Components/Library/Map/route.js';
-import { createStepTracker, requestSensors, sensorsSupported, stepLength as stepLengthStore, compassOffset, planBearing, angleDiff, circularMean } from '@/Components/Library/Map/stepTracker.js';
+import { createStepTracker, requestSensors, sensorsSupported, stepLength as stepLengthStore, compassOffset, planBearing, angleDiff, circularMean, toPlanHeading } from '@/Components/Library/Map/stepTracker.js';
 import QrScanner from '@/Components/Library/Map/QrScanner.vue';
 import { isSticker, nearestStickers } from '@/Components/Library/Map/stickers.js';
 import { sectionColor } from '@/Components/Library/Map/colors.js';
@@ -210,10 +210,16 @@ const arrived = ref(false);
 let raf = null;
 let lastT = 0;
 const avatar = computed(() => {
-    if (walkRoute.value && (walking.value || arrived.value)) return pointAt(walkRoute.value, walked.value);
+    let pos = null;
+    if (walkRoute.value && (walking.value || arrived.value)) pos = pointAt(walkRoute.value, walked.value);
     // Standing still at a scanned sticker: show «أنت هنا», facing the way to go.
-    if (here.value) return { x: here.value.x, y: here.value.y, heading: walkRoute.value ? pointAt(walkRoute.value, 0.01).heading : -Math.PI / 2 };
-    return null;
+    else if (here.value) pos = { x: here.value.x, y: here.value.y, heading: walkRoute.value ? pointAt(walkRoute.value, 0.01).heading : -Math.PI / 2 };
+    if (!pos) return null;
+    // While walking for real the arrow turns with the phone, once the compass is trusted; where
+    // you stand still comes only from your steps along the route.
+    const routeHeading = pos.heading;
+    const heading = live.value && facingRad.value !== null ? facingRad.value : routeHeading;
+    return { ...pos, heading, routeHeading, mapHeading: spinMap.value && walking.value ? heading : null };
 });
 const currentStep = computed(() => {
     if (!steps.value.length) return null;
@@ -260,7 +266,7 @@ function jump(delta) {
     const i = Math.min(steps.value.length - 1, Math.max(0, (currentStep.value?.index ?? 0) + delta));
     walked.value = steps.value[i].at;
 }
-onBeforeUnmount(() => { cancelAnimationFrame(raf); stopLive(); });
+onBeforeUnmount(() => { cancelAnimationFrame(raf); stopLive(); clearInterval(headingTimer); });
 
 // Live walking: each real step moves the reader along the route. ------------------------------
 const canLive = typeof window !== 'undefined' && window.isSecureContext && sensorsSupported();
@@ -273,6 +279,41 @@ let tracker = null;
 let wrongSteps = 0;
 let samples = [];
 let liveStartedFrom = null;
+
+// «السهم والخريطة يدوران مع اتجاهك» (2026-11-07, by request). The compass only says where the
+// phone points once we know how the plan sits against north (learnt from the first steps on a
+// straight stretch, and kept fresh on every straight step after). Until then, or while the
+// reading is doubtful, the arrow keeps the route's direction, so it never shows a wrong way.
+const SPIN_KEY = 'library.map.spinMap';
+const spinMap = ref((() => { try { return localStorage.getItem(SPIN_KEY) !== '0'; } catch { return true; } })());
+watch(spinMap, (v) => { try { localStorage.setItem(SPIN_KEY, v ? '1' : '0'); } catch {} });
+const compassState = ref('off'); // off | learning | on | doubtful
+const facingDeg = ref(null); // smoothed, plan degrees clockwise from plan "up"
+const facingRad = computed(() => (compassState.value === 'on' && facingDeg.value !== null ? toPlanHeading(facingDeg.value) : null));
+let rawFacing = null;
+let lastHeadingAt = 0;
+let doubtSince = 0;
+let headingTimer = null;
+function onHeading(heading, { accuracy, tilt } = {}) {
+    const now = performance.now();
+    lastHeadingAt = now;
+    // iPhone says how sure it is; a phone lying face down points nowhere useful.
+    const doubtful = (accuracy !== null && accuracy !== undefined && (accuracy < 0 || accuracy > 35)) || tilt > 165;
+    if (doubtful) { doubtSince ||= now; if (now - doubtSince > 600) compassState.value = 'doubtful'; return; }
+    doubtSince = 0;
+    const offset = compassOffset.get();
+    if (offset === null) { compassState.value = 'learning'; return; }
+    rawFacing = (heading - offset + 360) % 360;
+    if (compassState.value !== 'on') { compassState.value = 'on'; facingDeg.value = rawFacing; }
+}
+// Ten updates a second, eased, so a shaky hand doesn't spin the arrow.
+function easeHeading() {
+    if (compassState.value === 'on' && performance.now() - lastHeadingAt > 1500) compassState.value = 'off';
+    if (compassState.value !== 'on' || rawFacing === null) return;
+    const d = angleDiff(rawFacing, facingDeg.value ?? rawFacing);
+    if (Math.abs(d) < 2) return;
+    facingDeg.value = ((facingDeg.value ?? rawFacing) + d * (Math.abs(d) > 60 ? 0.5 : 0.3) + 360) % 360;
+}
 
 async function startLive() {
     if (!walkRoute.value) return;
@@ -293,11 +334,20 @@ async function startLive() {
     wrongSteps = 0;
     samples = [];
     liveStartedFrom = { ...origin.value };
-    tracker = createStepTracker({ onStep });
+    compassState.value = compassOffset.get() === null ? 'learning' : 'off';
+    facingDeg.value = null;
+    rawFacing = null;
+    clearInterval(headingTimer);
+    headingTimer = setInterval(easeHeading, 100);
+    tracker = createStepTracker({ onStep, onHeading });
 }
 function stopLive() {
     tracker?.stop();
     tracker = null;
+    clearInterval(headingTimer);
+    headingTimer = null;
+    compassState.value = 'off';
+    facingDeg.value = null;
     live.value = false;
     wrongWay.value = false;
 }
@@ -314,11 +364,16 @@ function onStep({ heading }) {
         }
         if (offset !== null) {
             const facing = (heading - offset + 360) % 360;
-            if (Math.abs(angleDiff(facing, segBearing)) > 110) {
+            const off = angleDiff(facing, segBearing);
+            if (Math.abs(off) > 110) {
                 wrongSteps++;
                 if (wrongSteps >= 3) wrongWay.value = true;
                 return;
             }
+            // Walking straight along the route: nudge the learnt offset, so a different library,
+            // a phone held a little askew or a nearby steel bookcase doesn't leave it wrong.
+            const nearTurn = steps.value.some((st) => Math.abs(st.at - walked.value) < 1.2);
+            if (Math.abs(off) < 30 && !nearTurn) compassOffset.set((offset + off * 0.08 + 360) % 360);
         }
     }
     wrongSteps = 0;
@@ -499,6 +554,9 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                                 <p v-if="live" class="mt-1 flex items-center gap-1.5 text-[11px] opacity-80">
                                     <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
                                     {{ t('library.map.live_on', 'يتابع خطواتك · :n خطوة', { n: stepCount }) }}
+                                    <template v-if="compassState === 'learning'"> · {{ t('library.map.compass_learning', 'امشِ بضع خطوات مستقيمة ليتعرّف على اتجاهك') }}</template>
+                                    <template v-else-if="compassState === 'doubtful'"> · {{ t('library.map.compass_doubtful', 'البوصلة غير دقيقة: امسك الهاتف أمامك، أو حرّكه على شكل 8') }}</template>
+                                    <template v-else-if="compassState === 'on'"> · {{ t('library.map.compass_on', 'السهم يتبع اتجاهك') }}</template>
                                 </p>
                             </template>
                         </div>
@@ -584,6 +642,10 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                 <div class="absolute end-3 top-24 flex flex-col gap-2">
                     <button v-if="!embedded" @click="toggleFull" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="full ? t('library.map.exit_full', 'خروج من ملء الشاشة') : t('library.map.full', 'ملء الشاشة')">
                         <component :is="full ? ArrowsPointingInIcon : ArrowsPointingOutIcon" class="h-5 w-5" />
+                    </button>
+                    <button v-if="walking" @click="spinMap = !spinMap" class="rounded-xl p-2.5 shadow ring-1" :class="spinMap ? 'bg-blue-600 text-white ring-blue-700' : 'bg-white/95 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10'"
+                        :title="spinMap ? t('library.map.spin_on', 'الخريطة تدور مع اتجاهك (اضغط لتثبيتها)') : t('library.map.spin_off', 'الخريطة ثابتة (اضغط لتدور مع اتجاهك)')" :aria-pressed="spinMap">
+                        <svg viewBox="0 0 24 24" class="h-5 w-5"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.5" /><path d="M12 4.5 15 12h-6z" fill="#ef4444" /><path d="M12 19.5 9 12h6z" fill="currentColor" opacity=".55" /></svg>
                     </button>
                     <button @click="setFlat(!flat)" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="flat ? t('library.map.to_3d', 'عرض ثلاثي الأبعاد') : t('library.map.to_2d', 'خريطة مسطحة (أخف)')">
                         <component :is="flat ? CubeIcon : Squares2X2Icon" class="h-5 w-5" />
