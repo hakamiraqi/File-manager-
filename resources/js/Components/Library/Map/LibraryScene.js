@@ -145,10 +145,15 @@ function floorTexture(dark) {
 }
 
 export class LibraryScene {
-    constructor(container, { dark = false, onPick = null } = {}) {
+    constructor(container, { dark = false, onPick = null, onMove = null, onContext = null, canDrag = null } = {}) {
         this.container = container;
         this.dark = dark;
         this.onPick = onPick;
+        // In the map editor (2026-11-07, by request): bookcases and furniture can be dragged on the
+        // floor in 3D too, and a right click opens the item's menu.
+        this.onMove = onMove;
+        this.onContext = onContext;
+        this.canDrag = canDrag;
         this.items = new Map(); // id → { group, data, materials }
         this.clock = new THREE.Clock();
         this.mode = 'overview';
@@ -215,6 +220,23 @@ export class LibraryScene {
         };
         renderer.domElement.addEventListener('pointerdown', this.onDown);
         renderer.domElement.addEventListener('pointerup', this.onUp);
+        this.dragging = null;
+        this.floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        // Capture phase: runs before the orbit controls, so grabbing a bookcase doesn't turn the room.
+        this.onGrab = (e) => this.grab(e);
+        this.onDragMove = (e) => this.dragMove(e);
+        this.onDrop = (e) => this.drop(e);
+        this.onMenu = (e) => {
+            if (!this.onContext) return;
+            e.preventDefault();
+            const id = this.hitId(e);
+            if (id !== null) this.onContext(id, e.clientX, e.clientY);
+        };
+        renderer.domElement.addEventListener('pointerdown', this.onGrab, { capture: true });
+        renderer.domElement.addEventListener('pointermove', this.onDragMove);
+        renderer.domElement.addEventListener('pointerup', this.onDrop);
+        renderer.domElement.addEventListener('pointercancel', this.onDrop);
+        renderer.domElement.addEventListener('contextmenu', this.onMenu);
 
         this.resizeObserver = new ResizeObserver(() => this.resize());
         this.resizeObserver.observe(container);
@@ -636,13 +658,66 @@ export class LibraryScene {
         }
     }
 
-    pick(e) {
-        if (!this.onPick) return;
+    aim(e) {
         const rect = this.renderer.domElement.getBoundingClientRect();
         this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
         this.raycaster.setFromCamera(this.pointer, this.camera);
+    }
+
+    hitId(e) {
+        this.aim(e);
         const hit = this.raycaster.intersectObjects(this.root.children, true).find((h) => h.object.userData.itemId !== undefined);
-        this.onPick(hit ? hit.object.userData.itemId : null);
+        return hit ? hit.object.userData.itemId : null;
+    }
+
+    pick(e) {
+        if (!this.onPick) return;
+        this.onPick(this.hitId(e));
+    }
+
+    /** Plan point under the pointer, on the floor. */
+    floorPoint(e) {
+        this.aim(e);
+        const v = new THREE.Vector3();
+        if (!this.raycaster.ray.intersectPlane(this.floorPlane, v)) return null;
+        return { x: v.x + this.floorData.width / 2, y: v.z + this.floorData.depth / 2 };
+    }
+
+    grab(e) {
+        if (!this.onMove || e.button !== 0 || !e.isPrimary) return;
+        const id = this.hitId(e);
+        const it = id !== null ? this.items.get(id) : null;
+        if (!it || ['hall', 'corridor', 'door', 'qr'].includes(it.data.kind) || (this.canDrag && !this.canDrag(id))) return;
+        const p = this.floorPoint(e);
+        if (!p) return;
+        this.controls.enabled = false;
+        this.dragging = { id, it, dx: it.data.x - p.x, dy: it.data.y - p.y, x: it.data.x, y: it.data.y, moved: false, start: { x: e.clientX, y: e.clientY } };
+        this.renderer.domElement.setPointerCapture?.(e.pointerId);
+        this.container.style.cursor = 'grabbing';
+    }
+
+    dragMove(e) {
+        const d = this.dragging;
+        if (!d) return;
+        if (!d.moved && Math.hypot(e.clientX - d.start.x, e.clientY - d.start.y) < 5) return;
+        d.moved = true;
+        const p = this.floorPoint(e);
+        if (!p) return;
+        const snap = (v) => Math.round(v * 4) / 4;
+        d.x = Math.min(this.floorData.width, Math.max(0, snap(p.x + d.dx)));
+        d.y = Math.min(this.floorData.depth, Math.max(0, snap(p.y + d.dy)));
+        d.it.group.position.copy(this.world(d.x, d.y));
+        this.onDragTip?.(d.id, d.x, d.y, e.clientX, e.clientY);
+    }
+
+    drop() {
+        const d = this.dragging;
+        if (!d) return;
+        this.dragging = null;
+        this.controls.enabled = this.mode !== 'follow';
+        this.container.style.cursor = '';
+        this.onDragTip?.(null);
+        if (d.moved) this.onMove(d.id, d.x, d.y);
     }
 
     /** Marks the target bookcase: section colour glows, a pin bobs over it, the level lights up. */
@@ -870,6 +945,11 @@ export class LibraryScene {
         this.resizeObserver.disconnect();
         this.renderer.domElement.removeEventListener('pointerdown', this.onDown);
         this.renderer.domElement.removeEventListener('pointerup', this.onUp);
+        this.renderer.domElement.removeEventListener('pointerdown', this.onGrab, { capture: true });
+        this.renderer.domElement.removeEventListener('pointermove', this.onDragMove);
+        this.renderer.domElement.removeEventListener('pointerup', this.onDrop);
+        this.renderer.domElement.removeEventListener('pointercancel', this.onDrop);
+        this.renderer.domElement.removeEventListener('contextmenu', this.onMenu);
         this.controls.dispose();
         this.clearGroup(this.scene);
         this.renderer.dispose();
