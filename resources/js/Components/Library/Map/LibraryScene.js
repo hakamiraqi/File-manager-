@@ -458,9 +458,10 @@ export class LibraryScene {
         let bookCount = 0;
         const bookSpots = [];
         // With the library's real stock (2026-11-07, by request) every copy is one book on its
-        // level; copies with no level fill the levels from eye height down. Without stock data (the
-        // editor, or a library that has not entered any) the bookcases are filled for the look.
-        const real = this.stock && Object.keys(this.stock).length > 0;
+        // level; copies with no level fill the levels from eye height down. A bookcase with no copies
+        // on it is empty, even when no book has a place yet (by request). Only the map editor, which
+        // has no stock, fills them for the look.
+        const real = !!this.stock;
         for (const s of shelves) {
             const r = rng(s.id ? Number(s.id) * 13 + 7 : Math.round(s.x * 31 + s.y * 17));
             const faces = s.double_sided ? [1, -1] : [1];
