@@ -40,6 +40,7 @@ class MapController extends Controller
         return Inertia::render('Library/Map', [
             'floor' => $this->map->floor(),
             'shelves' => $this->map->shelves(),
+            'stock' => (object) $this->map->stock(),
             'target' => $book ? $this->bookPayload($book) : null,
             'canEdit' => (bool) $request->user()?->canManageLibrary(),
             // ?at=12 comes from the QR sticker on bookcase 12: «أنت هنا».
@@ -75,6 +76,15 @@ class MapController extends Controller
         $books = Book::withAvailability()->with('copies')->search($q)->orderBy('title')->limit(8)->get();
 
         return response()->json(['books' => $books->map(fn ($b) => $this->bookPayload($b))->values()]);
+    }
+
+    /** «كتب هذا الرف»: covers and copies of the books on one bookcase. */
+    public function shelfBooks(Request $request, LibraryShelf $shelf): JsonResponse
+    {
+        abort_unless($request->user() || PublicSite::library(), 403);
+        abort_unless($shelf->kind === 'shelf', 404);
+
+        return response()->json(['books' => $this->map->booksOn($shelf)]);
     }
 
     public function edit(): Response

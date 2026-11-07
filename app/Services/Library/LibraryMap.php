@@ -131,6 +131,81 @@ class LibraryMap
         ]);
     }
 
+    /**
+     * The real stock on every bookcase (2026-11-07, by request), so the 3D map draws as many
+     * books as there are copies: bookcase id → total and copies per level (0 = level not given).
+     *
+     * @return array<int, array{n:int, levels:array<int,int>}>
+     */
+    public function stock(): array
+    {
+        $out = [];
+        foreach ($this->placedGroups(['shelf_text', 'section_id']) as [$shelf, $level, $n]) {
+            $out[$shelf->id] ??= ['n' => 0, 'levels' => []];
+            $out[$shelf->id]['n'] += $n;
+            $out[$shelf->id]['levels'][$level ?? 0] = ($out[$shelf->id]['levels'][$level ?? 0] ?? 0) + $n;
+        }
+
+        return $out;
+    }
+
+    /**
+     * «كتب هذا الرف»: the books on one bookcase with their covers and copies, by level.
+     *
+     * @return list<array{id:int, title:string, authors:?string, cover_url:?string, level:?int, copies:int}>
+     */
+    public function booksOn(LibraryShelf $target, int $limit = 60): array
+    {
+        $found = [];
+        foreach ($this->placedGroups(['book_id', 'shelf_text', 'section_id']) as [$shelf, $level, $n, $row]) {
+            if ($shelf->id !== $target->id) {
+                continue;
+            }
+            $key = $row->book_id.'|'.($level ?? '');
+            $found[$key] ??= ['book_id' => (int) $row->book_id, 'level' => $level, 'copies' => 0];
+            $found[$key]['copies'] += $n;
+        }
+        $books = Book::whereIn('id', array_unique(array_column($found, 'book_id')))->get()->keyBy('id');
+
+        return collect($found)
+            ->filter(fn ($f) => $books->has($f['book_id']))
+            ->map(fn ($f) => [
+                'id' => $f['book_id'], 'title' => $books[$f['book_id']]->title, 'authors' => $books[$f['book_id']]->authors,
+                'cover_url' => $books[$f['book_id']]->cover_url, 'level' => $f['level'], 'copies' => $f['copies'],
+            ])
+            ->sortBy(fn ($b) => [$b['level'] ?? 99, mb_strtolower($b['title'])])
+            ->take($limit)->values()->all();
+    }
+
+    /**
+     * Copies (not lost) counted in groups, each group placed on a bookcase the way spotOf() does.
+     *
+     * @param  list<string>  $by  any of book_id, shelf_text, section_id
+     * @return \Generator<array{0:LibraryShelf, 1:?int, 2:int, 3:object}>
+     */
+    private function placedGroups(array $by): \Generator
+    {
+        $shelves = LibraryShelf::where('kind', 'shelf')->get();
+        if ($shelves->isEmpty()) {
+            return;
+        }
+        $copies = (new BookCopy)->getTable();
+        $books = (new Book)->getTable();
+        $cols = ['book_id' => "$copies.book_id", 'shelf_text' => "$copies.shelf", 'section_id' => "$books.section_id"];
+        $rows = BookCopy::query()
+            ->join($books, "$books.id", '=', "$copies.book_id")
+            ->where("$copies.status", '!=', BookCopy::LOST)
+            ->groupBy(array_map(fn ($c) => $cols[$c], $by))
+            ->selectRaw(implode(', ', array_map(fn ($c) => $cols[$c].' as '.$c, $by)).', count(*) as n')
+            ->toBase()->get();
+        foreach ($rows as $row) {
+            $spot = $this->spotOf(new BookCopy(['shelf' => $row->shelf_text]), $row->section_id ? (int) $row->section_id : null, $shelves);
+            if ($spot) {
+                yield [$spot[0], $spot[1], (int) $row->n, $row];
+            }
+        }
+    }
+
     /** "A3-2" → [shelf A3, 2]; "A3" → [shelf A3, null]; unknown → null. */
     public function parseShelf(?string $text, ?Collection $shelves = null): ?array
     {

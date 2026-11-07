@@ -27,6 +27,7 @@ Route::get('/library/map', [MapController::class, 'show'])->name('library.map');
 // The apps open the map through a signed link that signs the web view in (see Api\V1\LibraryController::mapLink).
 Route::get('/library/map/app', [MapController::class, 'app'])->middleware('throttle:30,1')->name('library.map.app');
 Route::get('/library/map/search', [MapController::class, 'search'])->middleware('throttle:60,1')->name('library.map.search');
+Route::get('/library/map/shelves/{shelf}/books', [MapController::class, 'shelfBooks'])->middleware('throttle:60,1')->name('library.map.shelf-books');
 
 Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->group(function () {
     Route::get('/my-loans', [LoanController::class, 'mine'])->name('my-loans');
