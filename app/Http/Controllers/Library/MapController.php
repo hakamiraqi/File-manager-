@@ -174,6 +174,7 @@ class MapController extends Controller
             'shelves.*.depth' => ['required', 'numeric', 'min:0.1', 'max:200'],
             'shelves.*.levels' => ['required', 'integer', 'min:1', 'max:10'],
             'shelves.*.double_sided' => ['boolean'],
+            'shelves.*.locked' => ['boolean'],
             'shelves.*.color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             // An obstacle's or a hall's outline: 3 to 64 corners, metres from its centre.
             'shelves.*.points' => ['nullable', 'required_if:shelves.*.kind,obstacle,hall', 'array', 'min:3', 'max:64'],
@@ -192,6 +193,7 @@ class MapController extends Controller
             foreach ($data['shelves'] as $row) {
                 $fields = collect($row)->only((new LibraryShelf)->getFillable())->all();
                 $fields['double_sided'] = (bool) ($row['double_sided'] ?? false);
+                $fields['locked'] = (bool) ($row['locked'] ?? false);
                 $obstacle = $row['kind'] === 'obstacle';
                 $fields['storey'] = (int) ($row['storey'] ?? 0);
                 $fields['rotation'] = (((int) $row['rotation']) % 360 + 360) % 360;

@@ -17,6 +17,7 @@ import {
     PlusIcon, TrashIcon, ArrowPathRoundedSquareIcon, DocumentDuplicateIcon, Squares2X2Icon, CubeIcon,
     MapPinIcon, SparklesIcon, CheckCircleIcon, ExclamationCircleIcon, ArrowUturnRightIcon, EyeIcon, MagnifyingGlassPlusIcon, MagnifyingGlassMinusIcon, QrCodeIcon, ShieldCheckIcon, PencilIcon, HomeModernIcon, BuildingOffice2Icon, ArrowsRightLeftIcon, ChevronDoubleUpIcon, RectangleGroupIcon, Square2StackIcon, RectangleStackIcon,
     PhotoIcon, ClipboardDocumentCheckIcon, ArrowUturnLeftIcon, ArrowsPointingOutIcon, XMarkIcon, InformationCircleIcon,
+    LockClosedIcon, LockOpenIcon, ArrowsPointingInIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -177,6 +178,125 @@ function bulkRotate(deg) {
     }
 }
 
+// «مثل كانفا» (2026-11-07, by request): handles round the selected hall, bookcase or wall to make it
+// bigger or smaller (corners and sides) and a round handle above it to turn it. «قفل» stops a
+// hall, bookcase or the whole plan from being moved by mistake.
+const boxSize = reactive({ w: 0, h: 0 });
+let boxObs = null;
+onMounted(() => {
+    boxObs = new ResizeObserver(([en]) => { boxSize.w = en.contentRect.width; boxSize.h = en.contentRect.height; });
+    if (planBox.value) boxObs.observe(planBox.value);
+});
+onBeforeUnmount(() => boxObs?.disconnect());
+/** Metres that one screen pixel covers now, so handles stay the same size on screen. */
+const mpp = computed(() => {
+    const k = Math.min(boxSize.w / (floor.width + 1.2), boxSize.h / (floor.depth + 1.2)) * zoom.value;
+    return k > 0 ? 1 / k : 0.05;
+});
+const coarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+const hR = computed(() => mpp.value * (coarse ? 11 : 6.5));
+const lockAll = ref(false);
+try { lockAll.value = localStorage.getItem('library.map.lock_all') === '1'; } catch {}
+watch(lockAll, (v) => { try { localStorage.setItem('library.map.lock_all', v ? '1' : '0'); } catch {} });
+const canMove = (it) => !lockAll.value && !it?.locked;
+const lockedNote = ref('');
+let lockedTimer = null;
+function flashLocked(it) {
+    lockedNote.value = lockAll.value ? t('library.map.locked_all_note', 'التحريك مقفل. افتح القفل من شريط الأدوات للتعديل.') : t('library.map.locked_note', ':code مقفل. افتح القفل من لوحته للتحريك.', { code: it.code });
+    clearTimeout(lockedTimer);
+    lockedTimer = setTimeout(() => (lockedNote.value = ''), 2600);
+}
+/** The selected item's box, in its own (unturned) frame. */
+const handleBox = computed(() => {
+    const it = selected.value;
+    if (!it || multi.value.size || ['door', 'qr'].includes(it.kind) || tool.value || drawing.value || calib.value) return null;
+    if (it.points?.length >= 3) {
+        const xs = it.points.map((q) => q[0]), ys = it.points.map((q) => q[1]);
+        return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys), locked: !canMove(it) };
+    }
+    return { x0: -it.width / 2, x1: it.width / 2, y0: -it.depth / 2, y1: it.depth / 2, locked: !canMove(it) };
+});
+const HANDLES = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+const shownHandles = computed(() => {
+    const b = handleBox.value;
+    if (!b) return [];
+    const wide = b.x1 - b.x0 > hR.value * 5, deep = b.y1 - b.y0 > hR.value * 5;
+    return HANDLES.filter(([hx, hy]) => (hx || wide) && (hy || deep)).map(([hx, hy]) => ({
+        hx, hy,
+        x: hx < 0 ? b.x0 : hx > 0 ? b.x1 : (b.x0 + b.x1) / 2,
+        y: hy < 0 ? b.y0 : hy > 0 ? b.y1 : (b.y0 + b.y1) / 2,
+        cursor: hx && hy ? (hx === hy ? 'nwse-resize' : 'nesw-resize') : hx ? 'ew-resize' : 'ns-resize',
+    }));
+});
+const rotating = ref(false);
+function startResize(e, h) {
+    const it = selected.value;
+    if (!it || !canMove(it)) return;
+    drag = { resize: [h.hx, h.hy], item: it, start: { x: it.x, y: it.y, points: it.points?.length >= 3 ? it.points.map((q) => [...q]) : null, box: { ...handleBox.value } } };
+    e.target.setPointerCapture?.(e.pointerId);
+}
+function startRotate(e) {
+    const it = selected.value;
+    if (!it || !canMove(it)) return;
+    drag = { rotate: true, item: it };
+    rotating.value = true;
+    e.target.setPointerCapture?.(e.pointerId);
+}
+function resizeTo(p, keepShape) {
+    const { item: it, start: st, resize: [hx, hy] } = drag;
+    const a = ((it.rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    const dx = p.x - st.x, dy = p.y - st.y;
+    const lx = dx * c + dy * sn, ly = -dx * sn + dy * c;
+    const b = st.box, bw = b.x1 - b.x0, bd = b.y1 - b.y0;
+    const minW = st.points ? 0.5 : 0.3, minD = st.points ? 0.5 : 0.1;
+    const sl = (v) => (snap.value ? Math.round(v * 20) / 20 : Math.round(v * 100) / 100); // 5 cm steps
+    let { x0, x1, y0, y1 } = b;
+    if (hx > 0) x1 = Math.max(x0 + minW, sl(lx));
+    if (hx < 0) x0 = Math.min(x1 - minW, sl(lx));
+    if (hy > 0) y1 = Math.max(y0 + minD, sl(ly));
+    if (hy < 0) y0 = Math.min(y1 - minD, sl(ly));
+    if (keepShape && hx && hy) {
+        // Shift on a corner keeps the shape, like Canva.
+        const k = Math.max((x1 - x0) / bw, (y1 - y0) / bd);
+        if (hx > 0) x1 = x0 + bw * k; else x0 = x1 - bw * k;
+        if (hy > 0) y1 = y0 + bd * k; else y0 = y1 - bd * k;
+    }
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    if (st.points) {
+        const sx = (x1 - x0) / bw, sy = (y1 - y0) / bd;
+        it.points = st.points.map(([px, py]) => [+(x0 + (px - b.x0) * sx - cx).toFixed(2), +(y0 + (py - b.y0) * sy - cy).toFixed(2)]);
+    }
+    it.width = +(x1 - x0).toFixed(2);
+    it.depth = +(y1 - y0).toFixed(2);
+    it.x = +(st.x + cx * c - cy * sn).toFixed(2);
+    it.y = +(st.y + cx * sn + cy * c).toFixed(2);
+}
+function rotateTo(p, fine) {
+    const it = drag.item;
+    const ang = (Math.atan2(p.y - it.y, p.x - it.x) * 180) / Math.PI + 90;
+    const step = fine ? 1 : 15;
+    setRotation(it, Math.round(ang / step) * step);
+}
+function toggleLock(it) {
+    it.locked = !it.locked;
+}
+
+// «ملء الشاشة» (2026-11-07, by request): the editor takes the whole screen, without the side bar
+// and the top bar, so the plan has all the room there is.
+const full = ref(false);
+function toggleFull() {
+    full.value = !full.value;
+    try {
+        if (full.value && !document.fullscreenElement) document.documentElement.requestFullscreen?.()?.catch?.(() => {});
+        else if (!full.value && document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {});
+    } catch {}
+}
+function onFullChange() {
+    if (!document.fullscreenElement && full.value) full.value = false;
+}
+onMounted(() => document.addEventListener('fullscreenchange', onFullChange));
+onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullChange));
+
 const touches = new Map();
 let pinch = null;
 let pan = null;
@@ -214,6 +334,7 @@ function gestureMove(e) {
     if (pan) {
         const p = touches.get(e.pointerId);
         if (!pan.moved && Math.hypot(p.x - pan.x, p.y - pan.y) < 5) return;
+        if (!pan.moved && pan.locked) flashLocked(pan.locked);
         pan.moved = true;
         box.scrollLeft = pan.sl - (p.x - pan.x);
         box.scrollTop = pan.st - (p.y - pan.y);
@@ -548,8 +669,14 @@ function startDrag(e, item) {
     }
     if (multi.value.size && !multi.value.has(item._key)) multi.value = new Set();
     selectedKey.value = multi.value.size ? null : item._key;
+    if (!canMove(item)) {
+        // Locked: it is chosen, and dragging it moves round the plan instead.
+        const b = boxPoint(e);
+        pan = { x: b.x, y: b.y, sl: planBox.value.scrollLeft, st: planBox.value.scrollTop, moved: false, locked: item };
+        return;
+    }
     const p = toPlan(e);
-    const group = multi.value.size ? items.value.filter((o) => o !== item && multi.value.has(o._key)) : isHallKind(item) ? contents(item) : null;
+    const group = multi.value.size ? items.value.filter((o) => o !== item && multi.value.has(o._key) && !o.locked) : isHallKind(item) ? contents(item) : null;
     drag = { item, dx: item.x - p.x, dy: item.y - p.y, moved: false, children: group?.map((o) => ({ o, dx: o.x - item.x, dy: o.y - item.y })) ?? null };
     e.target.setPointerCapture?.(e.pointerId);
 }
@@ -564,6 +691,8 @@ function onMove(e) {
     if (rect.value) { rect.value.b = rect.value.kind === 'select' ? snapPoint(toPlan(e)) : snapToHalls(snapPoint(toPlan(e))); return; }
     if (!drag) return;
     const p = toPlan(e);
+    if (drag.resize) { resizeTo(p, e.shiftKey); return; }
+    if (drag.rotate) { rotateTo(p, e.shiftKey || e.altKey); return; }
     if (drag.vertex !== undefined) {
         // Plan point → the obstacle's own (unrotated) coordinates.
         const it = drag.item, a = (-(it.rotation || 0) * Math.PI) / 180;
@@ -610,6 +739,8 @@ function onMove(e) {
 function endDrag() {
     if (rect.value) finishRect();
     if (drag?.vertex !== undefined) recentre(drag.item);
+    if (drag?.resize || drag?.rotate) { skipClick = true; setTimeout(() => (skipClick = false), 50); }
+    rotating.value = false;
     drag = null;
     if (pending) commit();
 }
@@ -683,6 +814,7 @@ function recentre(it, absolute = false) {
 }
 function startVertexDrag(e, item, index, insert = false) {
     selectedKey.value = item._key;
+    if (!canMove(item)) { flashLocked(item); return; }
     if (insert) {
         const a = item.points[index - 1], b = item.points[index % item.points.length];
         item.points.splice(index, 0, [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
@@ -736,7 +868,7 @@ function onKey(e) {
     if (multi.value.size && !typing) {
         const step = e.shiftKey ? 1 : 0.25;
         const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-        if (moves[e.key]) { e.preventDefault(); for (const i of multiItems.value) { i.x = clamp(+(i.x + moves[e.key][0]).toFixed(2), 0, floor.width); i.y = clamp(+(i.y + moves[e.key][1]).toFixed(2), 0, floor.depth); } }
+        if (moves[e.key]) { e.preventDefault(); for (const i of multiItems.value.filter(canMove)) { i.x = clamp(+(i.x + moves[e.key][0]).toFixed(2), 0, floor.width); i.y = clamp(+(i.y + moves[e.key][1]).toFixed(2), 0, floor.depth); } }
         else if (e.key === 'Delete') bulkRemove();
         else if (e.key === 'Escape') multi.value = new Set();
         return;
@@ -745,6 +877,7 @@ function onKey(e) {
     const step = e.shiftKey ? 1 : 0.25;
     const s = selected.value;
     const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (!canMove(s) && (moves[e.key] || e.key === 'Delete' || e.key === 'r' || e.key === 'R' || e.key === 'ر')) { flashLocked(s); return; }
     if (moves[e.key]) { e.preventDefault(); s.x = clamp(s.x + moves[e.key][0], 0, floor.width); s.y = clamp(s.y + moves[e.key][1], 0, floor.depth); }
     else if (e.key === 'r' || e.key === 'R' || e.key === 'ر') rotate();
     else if (e.key === 'Delete') remove();
@@ -1100,8 +1233,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
             </div>
         </template>
 
-        <div class="space-y-4 p-4 sm:p-6">
-            <LibraryTabs />
+        <div :class="full ? 'fixed inset-0 z-40 flex flex-col gap-2 bg-gray-50 p-2 dark:bg-gray-900' : 'space-y-4 p-4 sm:p-6'">
+            <LibraryTabs v-if="!full" />
 
             <!-- Toolbar: one row that scrolls sideways on phones, so the plan stays in sight -->
             <div class="flex items-center gap-2 overflow-x-auto whitespace-nowrap rounded-2xl [scrollbar-width:thin] max-sm:-mx-1 sm:flex-wrap [&>*]:shrink-0 border border-gray-200 bg-white p-2 shadow-sm dark:border-gray-700 dark:bg-gray-800">
@@ -1113,6 +1246,8 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <button @click="openWizard" class="inline-flex items-center gap-1.5 rounded-lg bg-[#1f2a44] px-3 py-1.5 text-sm font-medium text-white hover:brightness-110"><BuildingOffice2Icon class="h-4 w-4" /> {{ t('library.map.wizard', 'معالج البناء') }}</button>
                 <button @click="bgPanel = !bgPanel; view = 'plan'" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="bgPanel ? 'bg-sky-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PhotoIcon class="h-4 w-4" /> {{ t('library.map.bg', 'مخطط البناية') }}</button>
                 <button @click="multiMode = !multiMode; if (!multiMode) multi = new Set(); else selectedKey = null" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="multiMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleStackIcon class="h-4 w-4" /> {{ t('library.map.multi', 'تحديد عدة رفوف') }}</button>
+                <button @click="lockAll = !lockAll" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="lockAll ? 'bg-slate-700 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'" :title="t('library.map.lock_all_hint', 'يمنع تحريك أو تغيير حجم أي شيء بالخطأ. الاختيار وتعديل البيانات يبقى ممكناً.')"><component :is="lockAll ? LockClosedIcon : LockOpenIcon" class="h-4 w-4" /> {{ lockAll ? t('library.map.locked_all', 'التحريك مقفل') : t('library.map.lock_all', 'قفل التحريك') }}</button>
+                <button @click="toggleFull" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="full ? 'bg-[#1f2a44] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><component :is="full ? ArrowsPointingInIcon : ArrowsPointingOutIcon" class="h-4 w-4" /> {{ full ? t('library.map.exit_full', 'خروج من ملء الشاشة') : t('library.map.full', 'ملء الشاشة') }}</button>
                 <button @click="runCheck" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ClipboardDocumentCheckIcon class="h-4 w-4" /> {{ t('library.map.check', 'فحص الخريطة') }}</button>
                 <button @click="pickTool('hall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'hall' ? 'bg-slate-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><HomeModernIcon class="h-4 w-4" /> {{ t('library.map.kind.hall', 'قاعة / غرفة') }}</button>
                 <button @click="pickTool('corridor')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="tool === 'corridor' ? 'bg-slate-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.kind.corridor', 'ممر') }}</button>
@@ -1195,9 +1330,10 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <button @click="addStorey" class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm text-[var(--accent-700)] hover:bg-[var(--accent-50)]"><PlusIcon class="h-4 w-4" /> {{ t('library.map.add_storey', 'طابق') }}</button>
             </div>
 
-            <div class="grid gap-4 lg:grid-cols-[1fr_20rem]">
+            <div class="grid lg:grid-cols-[1fr_20rem]" :class="full ? 'min-h-0 flex-1 gap-2 max-lg:overflow-y-auto lg:grid-rows-[minmax(0,1fr)]' : 'gap-4'">
                 <!-- Plan or 3D -->
-                <div class="relative h-[62dvh] min-h-[380px] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                <div class="relative min-h-[380px] overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" :class="full ? 'h-full max-lg:h-[78dvh]' : 'h-[62dvh]'">
+                    <p v-if="lockedNote" class="pointer-events-none absolute inset-x-0 top-3 z-10 mx-auto flex w-fit items-center gap-1.5 rounded-full bg-slate-800/90 px-3 py-1.5 text-xs text-white shadow"><LockClosedIcon class="h-4 w-4" /> {{ lockedNote }}</p>
                     <div v-show="view === 'plan'" ref="planBox" dir="ltr" class="h-full w-full overflow-auto overscroll-contain"
                         @pointerdown.capture="gestureDown" @pointermove.capture="gestureMove" @pointerup.capture="gestureUp" @pointercancel.capture="gestureUp" @wheel="onWheel">
                         <svg ref="svg" :viewBox="`-0.6 -0.6 ${floor.width + 1.2} ${floor.depth + 1.2}`" class="block touch-none select-none" :class="placingEntrance || drawing || tool || calib ? 'cursor-crosshair' : bgMove ? 'cursor-move' : ''"
@@ -1219,7 +1355,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                     <polygon :points="polyPoints(s)" :fill="s.kind === 'corridor' ? '#e2e8f0' : '#fbf8f2'" class="dark:opacity-30" stroke-linejoin="miter"
                                         :stroke="s._key === selectedKey ? '#f59e0b' : '#475569'" :stroke-width="s._key === selectedKey ? 0.2 : 0.15" />
                                     <text :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="s.kind === 'corridor' ? fontSize * 0.9 : fontSize * 1.6" font-weight="700" :fill="s.kind === 'corridor' ? '#64748b' : '#94a3b8'" opacity="0.9" class="pointer-events-none">{{ s.code }}</text>
-                                    <template v-if="s._key === selectedKey">
+                                    <template v-if="s._key === selectedKey && canMove(s)">
                                         <circle v-for="m in midPoints(s)" :key="'m' + m[2]" :cx="m[0]" :cy="m[1]" r="0.16" fill="#fff" fill-opacity="0.7" stroke="#f59e0b" stroke-width="0.04" class="cursor-copy" @pointerdown.stop="startVertexDrag($event, s, m[2], true)" />
                                         <circle v-for="(p, i) in s.points" :key="'v' + i" :cx="p[0]" :cy="p[1]" r="0.24" fill="#f59e0b" stroke="#fff" stroke-width="0.05" class="cursor-move" @pointerdown.stop="startVertexDrag($event, s, i)" @dblclick.stop="removeVertex(s, i)" />
                                     </template>
@@ -1245,7 +1381,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 <template v-if="s.kind === 'obstacle' && s.points?.length >= 3">
                                     <polygon :points="polyPoints(s)" :fill="s.color || 'url(#hazard)'" fill-opacity="0.85" stroke-linejoin="round"
                                         :stroke="s._key === selectedKey ? '#f59e0b' : '#facc15'" :stroke-width="s._key === selectedKey ? 0.09 : 0.06" />
-                                    <template v-if="s._key === selectedKey">
+                                    <template v-if="s._key === selectedKey && canMove(s)">
                                         <circle v-for="m in midPoints(s)" :key="'m' + m[2]" :cx="m[0]" :cy="m[1]" r="0.11" fill="#fff" fill-opacity="0.7" stroke="#f59e0b" stroke-width="0.03" class="cursor-copy" @pointerdown.stop="startVertexDrag($event, s, m[2], true)" />
                                         <circle v-for="(p, i) in s.points" :key="'v' + i" :cx="p[0]" :cy="p[1]" r="0.16" fill="#f59e0b" stroke="#fff" stroke-width="0.04" class="cursor-move" @pointerdown.stop="startVertexDrag($event, s, i)" @dblclick.stop="removeVertex(s, i)" />
                                     </template>
@@ -1262,6 +1398,11 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 <!-- Front face: where readers stand. -->
                                 <line v-if="s.kind === 'shelf'" :x1="-s.width / 2 + 0.05" :y1="s.depth / 2" :x2="s.width / 2 - 0.05" :y2="s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
                                 <line v-if="s.kind === 'shelf' && s.double_sided" :x1="-s.width / 2 + 0.05" :y1="-s.depth / 2" :x2="s.width / 2 - 0.05" :y2="-s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
+                                <g v-if="s.locked" :transform="`translate(${(s.points?.length >= 3 ? Math.max(...s.points.map((q) => q[0])) : s.width / 2) - 0.25} ${(s.points?.length >= 3 ? Math.min(...s.points.map((q) => q[1])) : -s.depth / 2) + 0.25}) rotate(${-s.rotation})`" class="pointer-events-none">
+                                    <circle r="0.22" fill="#334155" stroke="#fff" stroke-width="0.04" />
+                                    <rect x="-0.1" y="-0.02" width="0.2" height="0.14" rx="0.02" fill="#fff" />
+                                    <path d="M-0.06 -0.02 v-0.05 a0.06 0.06 0 0 1 0.12 0 v0.05" fill="none" stroke="#fff" stroke-width="0.03" />
+                                </g>
                                 <rect v-if="multi.has(s._key)" :x="-s.width / 2 - 0.12" :y="-s.depth / 2 - 0.12" :width="s.width + 0.24" :height="s.depth + 0.24" rx="0.08" fill="rgba(37,99,235,0.15)" stroke="#2563eb" stroke-width="0.08" stroke-dasharray="0.2 0.1" class="pointer-events-none" />
                                 <text v-if="!['wall', 'gate', 'obstacle', 'hall', 'corridor', 'door', 'stairs', 'qr'].includes(s.kind)" :transform="`rotate(${-s.rotation})`" text-anchor="middle" dominant-baseline="central" :font-size="fontSize" font-weight="700" fill="#fff" style="paint-order: stroke" stroke="rgba(0,0,0,0.35)" :stroke-width="fontSize / 8">{{ s.code }}</text>
                             </g>
@@ -1277,6 +1418,19 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <g v-if="drawing" class="pointer-events-none">
                                 <polyline :points="drawPath" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="0.06" stroke-dasharray="0.15 0.08" />
                                 <circle v-for="(p, i) in drawing.points" :key="i" :cx="p.x" :cy="p.y" :r="i === 0 ? 0.2 : 0.12" :fill="i === 0 ? '#fff' : '#f59e0b'" stroke="#f59e0b" stroke-width="0.05" />
+                            </g>
+                            <!-- «مثل كانفا»: size handles, and the round handle above to turn it. -->
+                            <g v-if="handleBox && view === 'plan'" :transform="corners(selected)">
+                                <rect :x="handleBox.x0" :y="handleBox.y0" :width="handleBox.x1 - handleBox.x0" :height="handleBox.y1 - handleBox.y0" fill="none" :stroke="handleBox.locked ? '#64748b' : '#2563eb'" :stroke-width="hR * 0.3" :stroke-dasharray="`${hR} ${hR * 0.6}`" class="pointer-events-none" />
+                                <template v-if="!handleBox.locked">
+                                    <line x1="0" :y1="handleBox.y0" x2="0" :y2="handleBox.y0 - hR * 4" stroke="#2563eb" :stroke-width="hR * 0.3" class="pointer-events-none" />
+                                    <g :transform="`translate(0 ${handleBox.y0 - hR * 4})`" class="cursor-grab" @pointerdown.stop="startRotate">
+                                        <circle :r="hR * 1.15" fill="#fff" stroke="#2563eb" :stroke-width="hR * 0.3" />
+                                        <path :d="`M ${-hR * 0.55} 0 A ${hR * 0.55} ${hR * 0.55} 0 1 1 0 ${hR * 0.55}`" fill="none" stroke="#2563eb" :stroke-width="hR * 0.25" class="pointer-events-none" />
+                                    </g>
+                                    <text v-if="rotating" x="0" :y="handleBox.y0 - hR * 6.5" :transform="`rotate(${-selected.rotation} 0 ${handleBox.y0 - hR * 6.5})`" text-anchor="middle" dominant-baseline="central" :font-size="hR * 2.4" font-weight="800" fill="#2563eb" style="paint-order: stroke" stroke="#fff" :stroke-width="hR * 0.5" class="pointer-events-none">{{ selected.rotation }}°</text>
+                                    <rect v-for="h in shownHandles" :key="`${h.hx}${h.hy}`" :x="h.x - hR" :y="h.y - hR" :width="hR * 2" :height="hR * 2" :rx="hR * 0.35" fill="#fff" stroke="#2563eb" :stroke-width="hR * 0.3" :style="{ cursor: h.cursor }" @pointerdown.stop="startResize($event, h)" />
+                                </template>
                             </g>
                             <g v-if="storey === 0" :transform="`translate(${floor.entrance.x} ${floor.entrance.y})`" class="cursor-grab" @pointerdown.stop="startEntranceDrag">
                                 <circle r="0.45" fill="#10b981" stroke="#fff" stroke-width="0.08" />
@@ -1301,11 +1455,12 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 </div>
 
                 <!-- Properties -->
-                <aside class="space-y-4">
+                <aside class="space-y-4" :class="full ? 'lg:min-h-0 lg:overflow-y-auto' : ''">
                     <section v-if="multi.size" class="space-y-3 rounded-2xl border-2 border-blue-200 bg-white p-4 text-sm dark:border-blue-800 dark:bg-gray-800">
                         <div class="flex items-center gap-2">
                             <RectangleStackIcon class="h-5 w-5 text-blue-600" />
                             <h3 class="flex-1 font-semibold">{{ t('library.map.multi_count', ':n محدد (:s رف)', { n: multi.size, s: multiShelves.length }) }}</h3>
+                            <button @click="multiItems.forEach((i) => (i.locked = !multiItems.every((x) => x.locked)))" class="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.lock_selected', 'قفل المحدد / فتحه')"><component :is="multiItems.every((x) => x.locked) ? LockClosedIcon : LockOpenIcon" class="h-5 w-5" /></button>
                             <button @click="bulkRotate(90)" class="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.rotate', 'تدوير 90°')"><ArrowPathRoundedSquareIcon class="h-5 w-5" /></button>
                             <button @click="bulkRemove" class="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-5 w-5" /></button>
                             <button @click="multi = new Set()" class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.unselect', 'إلغاء التحديد')"><XMarkIcon class="h-5 w-5" /></button>
@@ -1348,9 +1503,10 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <span class="h-3 w-3 rounded-full" :style="{ background: fill(selected) }" />
                             <h3 class="font-semibold">{{ kindLabel(selected.kind) }}</h3>
                             <div class="ms-auto flex gap-1">
-                                <button @click="rotate" class="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.rotate', 'تدوير 90°')"><ArrowPathRoundedSquareIcon class="h-5 w-5" /></button>
+                                <button @click="toggleLock(selected)" class="rounded-lg p-1.5" :class="selected.locked ? 'bg-slate-700 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'" :title="selected.locked ? t('library.map.unlock', 'فتح القفل') : t('library.map.lock', 'قفل (لا يتحرك بالخطأ)')"><component :is="selected.locked ? LockClosedIcon : LockOpenIcon" class="h-5 w-5" /></button>
+                                <button @click="canMove(selected) ? rotate() : flashLocked(selected)" class="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.rotate', 'تدوير 90°')"><ArrowPathRoundedSquareIcon class="h-5 w-5" /></button>
                                 <button @click="duplicate" class="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.duplicate', 'تكرار بجانبه')"><DocumentDuplicateIcon class="h-5 w-5" /></button>
-                                <button @click="remove" class="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-5 w-5" /></button>
+                                <button @click="canMove(selected) ? remove() : flashLocked(selected)" class="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-5 w-5" /></button>
                             </div>
                         </div>
                         <label class="block text-sm">
@@ -1451,7 +1607,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
             </div>
 
             <!-- Save bar -->
-            <div class="sticky bottom-0 z-20 -mx-4 border-t border-gray-200 bg-white/95 backdrop-blur sm:-mx-6 dark:border-gray-700 dark:bg-gray-900/95">
+            <div class="sticky bottom-0 z-20 border-t border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95" :class="full ? '-mx-2 -mb-2' : '-mx-4 sm:-mx-6'">
                 <div class="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
                     <p class="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
                         <template v-if="errorList.length"><ExclamationCircleIcon class="h-5 w-5 shrink-0 text-red-500" /><span class="truncate text-red-600">{{ errorList[0] }}</span></template>
