@@ -6,7 +6,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -184,6 +184,7 @@ function save() {
                 <Link :href="route('exams.manage.index')" class="text-gray-400 hover:text-gray-600"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
                 <h2 class="min-w-0 flex-1 truncate text-lg font-semibold">{{ form.title?.[form.languages[0]] || t('exam.edit', 'تعديل الامتحان') }}</h2>
                 <Link :href="route('exams.show', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><EyeIcon class="h-4 w-4" /> {{ t('exam.preview', 'معاينة') }}</Link>
+                <Link :href="route('exams.manage.print', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print', 'طباعة') }}</Link>
                 <Link :href="route('exams.manage.results', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ChartBarIcon class="h-4 w-4" /> {{ t('exam.results', 'النتائج') }}</Link>
                 <button @click="save" :disabled="form.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">{{ t('action.save', 'حفظ') }}</button>
             </div>
@@ -393,11 +394,11 @@ function save() {
             <section class="space-y-2 rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-600">
                 <p class="text-sm font-medium">{{ t('exam.import_title', 'استيراد أسئلة') }}</p>
                 <p class="text-xs text-gray-500">
-                    {{ t('exam.import_hint', 'ملف Excel أو CSV بأعمدة: النوع، السؤال، الخيار 1…، الإجابة، الدرجة — أو ملف نص بصيغة Aiken. تُضاف الأسئلة في آخر الامتحان. احفظ تعديلاتك أولاً.') }}
+                    {{ t('exam.import_hint', 'ملف Excel أو CSV بأعمدة: النوع، السؤال، الخيار 1…، الإجابة، الدرجة — أو ملف Aiken أو GIFT أو Moodle XML (.xml). تُضاف الأسئلة في آخر الامتحان. احفظ تعديلاتك أولاً.') }}
                     <a :href="route('exams.manage.import.template')" class="text-[var(--accent-600)] underline">{{ t('exam.import_template', 'تنزيل النموذج') }}</a>
                 </p>
                 <form @submit.prevent="importQuestions" class="flex flex-wrap items-center gap-2">
-                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt" @input="importForm.file = $event.target.files[0]" class="text-sm" />
+                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt,.gift,.xml" @input="importForm.file = $event.target.files[0]" class="text-sm" />
                     <button :disabled="!importForm.file || importForm.processing || form.isDirty" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('exam.import', 'استيراد') }}</button>
                     <span v-if="form.isDirty" class="text-xs text-amber-600">{{ t('exam.save_first', 'احفظ التعديلات قبل الاستيراد.') }}</span>
                 </form>

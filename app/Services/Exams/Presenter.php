@@ -173,6 +173,44 @@ class Presenter
         };
     }
 
+    /** One question on paper, with its answer when printing the key. */
+    public function forPrint(Question $q, Exam $exam, bool $key): array
+    {
+        $locale = app()->getLocale();
+        $langs = $exam->languages ?? [];
+        $text = fn ($v) => Question::pick($v, $locale, $langs);
+        $data = [
+            'id' => $q->id,
+            'type' => $q->type,
+            'body' => $q->type === Question::CLOZE ? preg_replace('/\[\[(\*?)(.+?)\]\]/u', '________', $text($q->body)) : $text($q->body),
+            'points' => $q->type === Question::RANDOM ? $q->slotPoints() : $q->points,
+            'choices' => in_array($q->type, [Question::SINGLE, Question::MULTIPLE, Question::TRUE_FALSE, Question::ORDERING], true)
+                ? $q->choices->map(fn (Choice $c) => ['body' => $text($c->body), 'is_correct' => $key && $c->is_correct])->values()->all() : [],
+        ];
+        if ($q->type === Question::ORDERING) {
+            // On paper too the right order would give the answer away.
+            $data['choices'] = collect($data['choices'])->sortBy(fn ($c) => crc32($q->id.$c['body']))->values()->all();
+        }
+        if (in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true)) {
+            $data['items'] = $q->choices->map(fn (Choice $c) => $text($c->body))->values()->all();
+            $data['targets'] = $q->choices->map(fn (Choice $c) => $text($c->match))->unique(fn ($m) => Grader::normalize($m))
+                ->sortBy(fn ($m) => crc32($q->id.$m))->values()->all();
+        }
+        if ($q->type === Question::HOTSPOT) {
+            $data['image'] = self::imageUrl($q->settings['image'] ?? null);
+            $data['zones'] = $key ? array_values((array) ($q->settings['zones'] ?? [])) : [];
+        }
+        if ($q->type === Question::RANDOM) {
+            $data['count'] = (int) ($q->settings['count'] ?? 0);
+            $data['category'] = \App\Models\Exams\BankCategory::whereKey($q->settings['category_id'] ?? 0)->value('name');
+        }
+        if ($key && ! in_array($q->type, [Question::SINGLE, Question::MULTIPLE, Question::TRUE_FALSE], true)) {
+            $data['answer'] = $this->review($q, $exam, null, true)['correct'];
+        }
+
+        return $data;
+    }
+
     /** The whole exam for the editor, every language kept. */
     public function forEditor(Exam $exam): array
     {

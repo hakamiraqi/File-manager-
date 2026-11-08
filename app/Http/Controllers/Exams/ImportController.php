@@ -25,15 +25,13 @@ class ImportController extends Controller
     public function questions(Request $request, Exam $exam, SpreadsheetReader $reader, QuestionImporter $importer): RedirectResponse
     {
         abort_unless($exam->isManageableBy($request->user()), 404);
-        $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:xlsx,csv,txt']],
-            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken (.txt).']);
+        $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:'.implode(',', QuestionImporter::EXTENSIONS)]],
+            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift) أو Moodle XML (.xml).']);
 
         $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());
         $lang = $exam->languages[0] ?? 'ar';
-        $result = $ext === 'txt'
-            ? $importer->fromAiken((string) file_get_contents($file->getRealPath()), $lang)
-            : $importer->fromRows($reader->read($file->getRealPath(), $ext), $lang);
+        $result = $importer->fromFile($file->getRealPath(), $ext, $lang, $reader);
 
         $skipped = $result['skipped'];
         $good = [];

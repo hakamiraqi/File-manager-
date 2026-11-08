@@ -31,6 +31,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/questions/{question}/to-bank', [$bank, 'fromExam'])->name('bank.from-exam');
         Route::post('/{exam}/from-bank', [$bank, 'toExam'])->whereNumber('exam')->name('bank.to-exam');
 
+        Route::get('/{exam}/print', [ManageController::class, 'print'])->whereNumber('exam')->name('print');
         Route::get('/{exam}/results', [ResultController::class, 'index'])->whereNumber('exam')->name('results');
         Route::get('/{exam}/export', [ResultController::class, 'export'])->whereNumber('exam')->name('export');
         Route::post('/{exam}/regrade', [ResultController::class, 'regrade'])->whereNumber('exam')->name('regrade');

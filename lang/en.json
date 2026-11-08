@@ -545,7 +545,7 @@
     "exam.cloze_hint_select": "A list to pick from: [[*Basra|Mosul|Erbil]] — the star marks the right one; options are shown shuffled.",
     "exam.cloze_hint_langs": "Every language has the same blanks in the same order. Partial credit by the number of right blanks.",
     "exam.import_title": "Import questions",
-    "exam.import_hint": "An Excel or CSV file with the columns Type, Question, Choice 1…, Answer, Points — or an Aiken text file. Questions are added at the end. Save your changes first.",
+    "exam.import_hint": "An Excel or CSV file with the columns Type, Question, Choice 1…, Answer, Points — or an Aiken, GIFT or Moodle XML (.xml) text file. Questions are added at the end. Save your changes first.",
     "exam.import_template": "Download the template",
     "exam.import": "Import",
     "exam.save_first": "Save your changes before importing.",
@@ -582,7 +582,7 @@
     "exam.bank_empty": "No categories yet. Create one (e.g. “Chemistry — term 1”) and add questions to it.",
     "exam.shared": "Shared with teachers",
     "exam.delete_category": "Delete the category and its questions",
-    "exam.bank_import": "Import questions (Excel/CSV/Aiken):",
+    "exam.bank_import": "Import questions (Excel/CSV/Aiken/GIFT/Moodle XML):",
     "exam.bank_hint": "To add questions from an exam: “To the bank” under each question in the exam editor. To use them: “From the bank” or a random slot in the editor.",
     "exam.edit_category": "Edit the category",
     "exam.category_name": "Name",
@@ -606,5 +606,13 @@
     "exam.distribution": "Score distribution",
     "exam.discrimination": "Discrimination",
     "exam.stats_hint": "Worked out from each student's first submitted attempt. Random questions from the bank are left out of the question analysis, since not every student had them.",
-    "exam.discrimination_hint": "Discrimination = whether stronger students get it right more often: above 0.3 good, below 0.2 weak, and a negative value calls for checking the key."
+    "exam.discrimination_hint": "Discrimination = whether stronger students get it right more often: above 0.3 good, below 0.2 weak, and a negative value calls for checking the key.",
+    "exam.print": "Print",
+    "exam.paper": "Question paper",
+    "exam.answer_key": "Answer key",
+    "exam.print_pdf": "Print / PDF",
+    "exam.student_name": "Student name",
+    "exam.student_number": "Number",
+    "exam.print_random": ":n random questions from “:c” (drawn for each student in the online exam).",
+    "exam.print_upload": "Handed in as an attachment."
 }

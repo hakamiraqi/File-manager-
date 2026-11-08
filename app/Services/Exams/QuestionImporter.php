@@ -5,7 +5,7 @@ namespace App\Services\Exams;
 use App\Models\Exams\Question;
 
 /**
- * Turns an Excel/CSV sheet or an Aiken text file into questions in the editor's shape
+ * Turns an Excel/CSV sheet, an Aiken or GIFT text file, or a Moodle XML export into questions in the editor's shape
  * (texts in the exam's first language). The editor's own checks run on the result.
  *
  * Sheet columns (Arabic or English headers): النوع | السؤال | الخيار 1..8 | الإجابة | الدرجة | التغذية الراجعة
@@ -26,6 +26,27 @@ class QuestionImporter
         'essay' => ['essay', 'مقالي', 'مقال'],
         'description' => ['description', 'نص', 'نص توضيحي'],
     ];
+
+    public const EXTENSIONS = ['xlsx', 'csv', 'txt', 'gift', 'xml'];
+
+    /** Any of the accepted files: .txt is GIFT when it looks like it, Aiken otherwise. */
+    public function fromFile(string $path, string $ext, string $lang, \App\Services\SpreadsheetReader $reader): array
+    {
+        if (in_array($ext, ['xlsx', 'csv'], true)) {
+            return $this->fromRows($reader->read($path, $ext), $lang);
+        }
+        $text = (string) file_get_contents($path);
+        if ($ext === 'xml') {
+            return $this->fromMoodleXml($text, $lang);
+        }
+
+        return $ext === 'gift' || self::looksLikeGift($text) ? $this->fromGift($text, $lang) : $this->fromAiken($text, $lang);
+    }
+
+    public static function looksLikeGift(string $text): bool
+    {
+        return preg_match('/\{\s*(?:[=~#]|T(?:RUE)?\s*\}|F(?:ALSE)?\s*\}|\})/u', $text) === 1;
+    }
 
     /** @return array{questions: array, skipped: array<int, string>} */
     public function fromRows(array $rows, string $lang): array
@@ -234,5 +255,213 @@ class QuestionImporter
         }
 
         return $map;
+    }
+
+    // ---- GIFT (Moodle's text format) ----
+
+    /** @return array{questions: array, skipped: array<int, string>} */
+    public function fromGift(string $text, string $lang): array
+    {
+        $text = preg_replace('/^\xEF\xBB\xBF/', '', str_replace("\r", '', $text));
+        // Escaped specials become placeholders so they are not read as syntax.
+        $esc = ['\\~' => "\u{E000}", '\\=' => "\u{E001}", '\\#' => "\u{E002}", '\\{' => "\u{E003}", '\\}' => "\u{E004}", '\\:' => "\u{E005}", '\\n' => "\n"];
+        $text = strtr($text, $esc);
+        $unescape = fn (string $t) => trim(strtr($t, ["\u{E000}" => '~', "\u{E001}" => '=', "\u{E002}" => '#', "\u{E003}" => '{', "\u{E004}" => '}', "\u{E005}" => ':']));
+
+        $questions = [];
+        $skipped = [];
+        $line = 1;
+        foreach (preg_split('/\n\s*\n/u', $text) as $block) {
+            $start = $line;
+            $line += substr_count($block, "\n") + 2;
+            $block = trim(preg_replace('/^\s*\/\/.*$/mu', '', $block));
+            if ($block === '' || str_starts_with($block, '$CATEGORY')) {
+                continue;
+            }
+            $block = preg_replace('/^::.*?::/su', '', $block);   // the title
+            if (! preg_match('/^(.*?)\{(.*)\}(.*)$/su', $block, $m)) {
+                $questions[$start] = $this->question('description', $this->giftText($unescape($block)), $lang);
+
+                continue;
+            }
+            $before = $this->giftText($unescape($m[1]));
+            $after = $this->giftText($unescape($m[3]));
+            $body = $after === '' ? $before : trim($before.' ____ '.$after);
+            [$inside, $general] = array_pad(explode('####', $m[2], 2), 2, '');
+            $q = $this->giftAnswers(trim($inside), $body, $lang, $unescape);
+            if ($q === null) {
+                $skipped[$start] = 'صيغة GIFT غير مفهومة.';
+
+                continue;
+            }
+            if (trim($general) !== '') {
+                $q['feedback'] = [$lang => $this->giftText($unescape($general))];
+            }
+            $questions[$start] = $q;
+        }
+
+        return ['questions' => $questions, 'skipped' => $skipped];
+    }
+
+    private function giftAnswers(string $inside, string $body, string $lang, callable $unescape): ?array
+    {
+        if ($inside === '') {
+            return $this->question('essay', $body, $lang);
+        }
+        if (preg_match('/^(T|TRUE|F|FALSE)\b/u', $inside, $tf)) {
+            $true = in_array($tf[1], ['T', 'TRUE'], true);
+
+            return $this->question('true_false', $body, $lang, [
+                ['body' => [$lang => $lang === 'ar' ? 'صح' : 'True'], 'is_correct' => $true],
+                ['body' => [$lang => $lang === 'ar' ? 'خطأ' : 'False'], 'is_correct' => ! $true],
+            ]);
+        }
+        if (str_starts_with($inside, '#')) {
+            $value = trim(preg_replace('/#.*$/su', '', substr($inside, 1)));   // per-answer feedback dropped
+            $value = ltrim($value, '=');
+            if (preg_match('/^(-?[\d.]+)\.\.(-?[\d.]+)$/u', $value, $r)) {
+                $answer = ((float) $r[1] + (float) $r[2]) / 2;
+                $tolerance = abs((float) $r[2] - (float) $r[1]) / 2;
+            } else {
+                [$answer, $tolerance] = array_pad(explode(':', $value, 2), 2, '0');
+            }
+            if (Grader::toNumber($answer) === null) {
+                return null;
+            }
+
+            return $this->question('numeric', $body, $lang, [], ['answer' => (string) $answer, 'tolerance' => (string) $tolerance]);
+        }
+
+        // Answers: =right ~wrong ~%50%partly; each may end in #feedback.
+        preg_match_all('/([=~])\s*(%-?[\d.]+%)?((?:(?![=~]).)*)/su', $inside, $parts, PREG_SET_ORDER);
+        $answers = [];
+        foreach ($parts as $p) {
+            $t = preg_replace('/#.*$/su', '', $p[3]);
+            $weight = $p[2] !== '' ? (float) trim($p[2], '%') : ($p[1] === '=' ? 100 : 0);
+            $answers[] = ['mark' => $p[1], 'weight' => $weight, 'text' => $unescape($t)];
+        }
+        $answers = array_values(array_filter($answers, fn ($a) => $a['text'] !== ''));
+        if ($answers === []) {
+            return null;
+        }
+
+        if (collect($answers)->every(fn ($a) => $a['mark'] === '=' && str_contains($a['text'], '->'))) {
+            return $this->question('matching', $body, $lang, array_map(function ($a) use ($lang) {
+                [$item, $match] = array_map('trim', explode('->', $a['text'], 2));
+
+                return ['body' => [$lang => $item], 'match' => [$lang => $match]];
+            }, $answers));
+        }
+        if (collect($answers)->every(fn ($a) => $a['mark'] === '=')) {
+            return $this->question('short', $body, $lang, [], ['answers' => array_column($answers, 'text')]);
+        }
+        $right = collect($answers)->filter(fn ($a) => $a['weight'] > 0)->count();
+
+        return $this->question($right > 1 ? 'multiple' : 'single', $body, $lang, array_map(fn ($a) => [
+            'body' => [$lang => $a['text']], 'is_correct' => $a['weight'] > 0,
+        ], $answers));
+    }
+
+    /** GIFT text: a format marker such as [html] dropped, HTML reduced to text. */
+    private function giftText(string $t): string
+    {
+        $t = preg_replace('/^\[(html|moodle|plain|markdown)\]/iu', '', trim($t));
+
+        return self::plain($t);
+    }
+
+    // ---- Moodle XML ----
+
+    /** @return array{questions: array, skipped: array<int, string>} */
+    public function fromMoodleXml(string $xml, string $lang): array
+    {
+        $previous = libxml_use_internal_errors(true);
+        $doc = simplexml_load_string($xml, 'SimpleXMLElement', LIBXML_NONET | LIBXML_NOCDATA);
+        libxml_use_internal_errors($previous);
+        if ($doc === false || $doc->getName() !== 'quiz') {
+            return ['questions' => [], 'skipped' => [1 => 'ليس ملف Moodle XML (يبدأ بـ <quiz>).']];
+        }
+
+        $questions = [];
+        $skipped = [];
+        $n = 0;
+        foreach ($doc->question as $x) {
+            $n++;
+            $type = (string) $x['type'];
+            if ($type === 'category') {
+                continue;
+            }
+            $body = self::plain((string) $x->questiontext->text);
+            $points = (float) ((string) $x->defaultgrade ?: 1);
+            $answers = [];
+            foreach ($x->answer as $a) {
+                $answers[] = ['text' => self::plain((string) $a->text), 'fraction' => (float) $a['fraction'], 'tolerance' => (string) $a->tolerance];
+            }
+
+            $q = match ($type) {
+                'multichoice' => $this->question(((string) $x->single) === 'false' ? 'multiple' : 'single', $body, $lang,
+                    array_map(fn ($a) => ['body' => [$lang => $a['text']], 'is_correct' => $a['fraction'] > 0], $answers)),
+                'truefalse' => $this->question('true_false', $body, $lang, [
+                    ['body' => [$lang => $lang === 'ar' ? 'صح' : 'True'], 'is_correct' => collect($answers)->contains(fn ($a) => in_array(mb_strtolower($a['text']), ['true', 'صح'], true) && $a['fraction'] > 0)],
+                    ['body' => [$lang => $lang === 'ar' ? 'خطأ' : 'False'], 'is_correct' => collect($answers)->contains(fn ($a) => in_array(mb_strtolower($a['text']), ['false', 'خطأ'], true) && $a['fraction'] > 0)],
+                ]),
+                'shortanswer' => $this->question('short', $body, $lang, [], [
+                    'answers' => collect($answers)->where('fraction', '>=', 100)->pluck('text')->all(),
+                    'case_sensitive' => ((string) $x->usecase) === '1',
+                ]),
+                'numerical' => ($best = collect($answers)->sortByDesc('fraction')->first())
+                    ? $this->question('numeric', $body, $lang, [], ['answer' => $best['text'], 'tolerance' => $best['tolerance'] !== '' ? $best['tolerance'] : '0'])
+                    : null,
+                'matching' => $this->question('matching', $body, $lang, $this->moodlePairs($x, $lang)),
+                'essay' => $this->question('essay', $body, $lang),
+                'description' => $this->question('description', $body, $lang),
+                default => null,
+            };
+            if ($q === null) {
+                $skipped[$n] = 'نوع Moodle غير مدعوم: '.$type;
+
+                continue;
+            }
+            $q['points'] = $type === 'description' ? 0 : $points;
+            $feedback = self::plain((string) $x->generalfeedback->text);
+            if ($feedback !== '') {
+                $q['feedback'] = [$lang => $feedback];
+            }
+            $questions[$n] = $q;
+        }
+
+        return ['questions' => $questions, 'skipped' => $skipped];
+    }
+
+    /** A matching question's pairs (a SimpleXML list cannot go through collect(): its keys repeat). */
+    private function moodlePairs(\SimpleXMLElement $x, string $lang): array
+    {
+        $pairs = [];
+        foreach ($x->subquestion as $sq) {
+            $item = self::plain((string) $sq->text);
+            if ($item !== '') {
+                $pairs[] = ['body' => [$lang => $item], 'match' => [$lang => self::plain((string) $sq->answer->text)]];
+            }
+        }
+
+        return $pairs;
+    }
+
+    /** A question in the editor's shape, texts in one language. */
+    private function question(string $type, string $body, string $lang, array $choices = [], array $settings = []): array
+    {
+        return [
+            'id' => null, 'type' => $type, 'body' => [$lang => $body], 'points' => 1, 'settings' => $settings, 'feedback' => [],
+            'choices' => array_map(fn ($c) => ['id' => null, 'body' => $c['body'], 'match' => $c['match'] ?? [], 'is_correct' => (bool) ($c['is_correct'] ?? false)], $choices),
+        ];
+    }
+
+    /** HTML to plain text: paragraphs and line breaks kept as new lines. */
+    public static function plain(string $html): string
+    {
+        $t = preg_replace('/<\s*(br|\/p|\/div|\/li)\b[^>]*>/iu', "\n", $html);
+        $t = html_entity_decode(strip_tags($t), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return trim(preg_replace("/[ \t]+/u", ' ', preg_replace("/\n{3,}/u", "\n\n", $t)));
     }
 }

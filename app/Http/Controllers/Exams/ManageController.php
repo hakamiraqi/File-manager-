@@ -317,6 +317,31 @@ class ManageController extends Controller
         return $out;
     }
 
+    /** The exam on paper: questions with space to answer, or the answer key (?key=1). */
+    public function print(Request $request, Exam $exam): Response
+    {
+        $this->authorizeExam($request, $exam);
+        $key = $request->boolean('key');
+
+        return Inertia::render('Exams/Manage/Print', [
+            'exam' => [
+                'id' => $exam->id,
+                'title' => $exam->text('title'),
+                'description' => $exam->text('description'),
+                'subject' => $exam->subject,
+                'stage' => $exam->stage,
+                'department' => $exam->department,
+                'duration' => $exam->duration_minutes,
+                'max_score' => $exam->maxScore(),
+                'dir' => $this->presenter->dir($exam),
+                'lang' => $exam->languages[0] ?? 'ar',
+            ],
+            'answerKey' => $key,
+            'site' => config('app.name'),
+            'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => $this->presenter->forPrint($q, $exam, $key))->values(),
+        ]);
+    }
+
     /** A picture for a question (hotspot): kept privately, named by its content. */
     public function image(Request $request): JsonResponse
     {

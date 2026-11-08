@@ -118,14 +118,12 @@ class BankController extends Controller
     public function import(Request $request, BankCategory $category, SpreadsheetReader $reader, QuestionImporter $importer): RedirectResponse
     {
         abort_unless($category->isEditableBy($request->user()), 404);
-        $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:xlsx,csv,txt']],
-            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken (.txt).']);
+        $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:'.implode(',', QuestionImporter::EXTENSIONS)]],
+            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift) أو Moodle XML (.xml).']);
         $lang = in_array($request->input('lang'), Exam::LANGUAGES, true) ? $request->input('lang') : 'ar';
         $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());
-        $result = $ext === 'txt'
-            ? $importer->fromAiken((string) file_get_contents($file->getRealPath()), $lang)
-            : $importer->fromRows($reader->read($file->getRealPath(), $ext), $lang);
+        $result = $importer->fromFile($file->getRealPath(), $ext, $lang, $reader);
 
         $added = 0;
         $skipped = $result['skipped'];
