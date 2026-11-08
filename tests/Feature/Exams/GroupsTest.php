@@ -96,4 +96,21 @@ class GroupsTest extends TestCase
         $this->actingAs($student)->withServerVariables($hall)->get(route('exams.attempts.take', $attempt))->assertOk();
         $this->actingAs($student)->withServerVariables(['REMOTE_ADDR' => '8.8.8.8'])->get(route('exams.attempts.take', $attempt))->assertRedirect(route('exams.show', $exam));
     }
+
+    public function test_login_cards_give_the_groups_students_new_passwords(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'is_master_admin' => true, 'can_manage_users' => true]);
+        $student = User::factory()->create();
+        $teacher = User::factory()->create(['is_examiner' => true]);
+        $group = Group::create(['user_id' => $admin->id, 'name' => 'أ']);
+        $group->members()->attach([$student->id, $teacher->id]);
+        $teacherHash = $teacher->password;
+
+        $cards = $this->actingAs($admin)->post(route('exams.manage.groups.cards', $group))->assertOk()
+            ->assertInertia(fn (AssertableInertia $p) => $p->component('Exams/Manage/Cards')->has('cards', 1))
+            ->viewData('page')['props']['cards'];
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check($cards[0]['password'], $student->fresh()->password));
+        $this->assertSame($teacherHash, $teacher->fresh()->password);
+        $this->actingAs($teacher)->post(route('exams.manage.groups.cards', $group))->assertNotFound();
+    }
 }

@@ -27,6 +27,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::put('/groups/{group}', [$groups, 'update'])->name('groups.update');
         Route::delete('/groups/{group}', [$groups, 'destroy'])->name('groups.destroy');
         Route::post('/groups/{group}/members', [$groups, 'addMembers'])->name('groups.members.store');
+        Route::post('/groups/{group}/cards', [$groups, 'cards'])->name('groups.cards');
         Route::delete('/groups/{group}/members/{user}', [$groups, 'removeMember'])->name('groups.members.destroy');
 
         $bank = \App\Http\Controllers\Exams\BankController::class;

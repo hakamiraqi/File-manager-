@@ -85,6 +85,25 @@ class GroupController extends Controller
         return back()->with('success', 'أُزيل الطالب من المجموعة.');
     }
 
+    /**
+     * Login cards for the hall: every student in the group gets a new password, printed once
+     * on a card with the address and their e-mail. Teachers and admins in the group are left alone.
+     */
+    public function cards(Request $request, Group $group): Response
+    {
+        abort_unless($group->isEditableBy($request->user()) && $request->user()->hasAdminCapability('can_manage_users'), 404);
+        $cards = $group->members()->where('role', '!=', 'admin')->where('is_examiner', false)->orderBy('name')->get()
+            ->map(function (User $u) {
+                $password = strtolower(\Illuminate\Support\Str::password(8, symbols: false));
+                $u->forceFill(['password' => \Illuminate\Support\Facades\Hash::make($password)])->save();
+
+                return ['name' => $u->name, 'email' => $u->email, 'password' => $password];
+            });
+        ActivityLog::record('exam.cards', "أعاد كلمات مرور {$cards->count()} طالباً وطبع بطاقات دخول للمجموعة \"{$group->name}\"");
+
+        return Inertia::render('Exams/Manage/Cards', ['group' => $group->name, 'cards' => $cards, 'address' => rtrim(config('app.url'), '/'), 'site' => config('app.name')]);
+    }
+
     private function validated(Request $request): array
     {
         return $request->validate([

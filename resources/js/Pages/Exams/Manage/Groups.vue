@@ -30,6 +30,8 @@ const removeGroup = () => router.delete(route('exams.manage.groups.destroy', toD
 // Members
 const memberForm = useForm({ emails: '' });
 const addMembers = () => memberForm.post(route('exams.manage.groups.members.store', props.current), { preserveScroll: true, onSuccess: () => memberForm.reset() });
+const cardsOpen = ref(false);
+const printCards = () => { cardsOpen.value = false; router.post(route('exams.manage.groups.cards', props.current)); };
 const removeMember = (m) => router.delete(route('exams.manage.groups.members.destroy', [props.current, m.id]), { preserveScroll: true });
 
 // New accounts from a sheet, straight into this group; the file of passwords comes back.
@@ -88,6 +90,7 @@ async function importStudents() {
                         <p class="text-lg font-semibold">{{ currentGroup().name }}</p>
                         <p class="text-xs text-gray-500">{{ [currentGroup().stage, currentGroup().department].filter(Boolean).join(' · ') }}<span v-if="currentGroup().owner"> · {{ currentGroup().owner }}</span></p>
                     </div>
+                    <button v-if="currentGroup().editable && canImport && members.length" @click="cardsOpen = true" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.login_cards', 'بطاقات دخول') }}</button>
                     <template v-if="currentGroup().editable">
                         <button @click="openGroup(currentGroup())" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.edit', 'تعديل')"><PencilSquareIcon class="h-4 w-4" /></button>
                         <button @click="toDelete = currentGroup()" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('action.delete', 'حذف')"><TrashIcon class="h-4 w-4" /></button>
@@ -136,6 +139,15 @@ async function importStudents() {
                     <button :disabled="groupForm.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white">{{ t('action.save', 'حفظ') }}</button>
                 </div>
             </form>
+        </Modal>
+        <Modal :show="cardsOpen" @close="cardsOpen = false" max-width="sm">
+            <div class="space-y-4 p-6">
+                <p class="text-sm">{{ t('exam.cards_q', 'يأخذ كل طالب في المجموعة كلمة مرور جديدة تُطبع على بطاقته، وتتوقف كلمات مرورهم الحالية. تُعرض البطاقات مرة واحدة فقط. متابعة؟') }}</p>
+                <div class="flex justify-end gap-2">
+                    <button @click="cardsOpen = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
+                    <button @click="printCards" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white">{{ t('exam.make_cards', 'إنشاء البطاقات') }}</button>
+                </div>
+            </div>
         </Modal>
         <Modal :show="!!toDelete" @close="toDelete = null" max-width="sm">
             <div class="space-y-4 p-6">

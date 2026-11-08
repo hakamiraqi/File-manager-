@@ -718,5 +718,12 @@
     "exam.submit_q": "Submit :n's attempt now with the saved answers?",
     "exam.submit_all_q": "Submit every running attempt now? (end of the session)",
     "exam.minutes_label": "Minutes",
-    "exam.announcement": "From the invigilator"
+    "exam.announcement": "From the invigilator",
+    "exam.login_cards": "Login cards",
+    "exam.cards_q": "Each student in the group gets a new password printed on their card, and their current passwords stop working. The cards are shown only once. Go on?",
+    "exam.make_cards": "Make the cards",
+    "exam.cards_once": "The passwords will not be shown again: print them now.",
+    "exam.card_address": "Address",
+    "exam.card_email": "E-mail",
+    "exam.card_password": "Password"
 }
