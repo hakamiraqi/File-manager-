@@ -34,13 +34,14 @@ jobs:
           cache: npm
       - name: Install
         run: |
+          cp .env.example .env
+          touch database/database.sqlite
           composer install --no-interaction --no-progress --prefer-dist
           npm ci --no-audit --no-fund
       - name: Build the pages
         run: npm run build
       - name: Tests
         run: |
-          cp .env.example .env
           php artisan key:generate
           php artisan test tests/Feature/Exams tests/Feature/Auth
 
