@@ -16,6 +16,9 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::put('/{exam}', [ManageController::class, 'update'])->whereNumber('exam')->name('update');
         Route::delete('/{exam}', [ManageController::class, 'destroy'])->whereNumber('exam')->name('destroy');
         Route::post('/{exam}/duplicate', [ManageController::class, 'duplicate'])->whereNumber('exam')->name('duplicate');
+        Route::post('/{exam}/import', [\App\Http\Controllers\Exams\ImportController::class, 'questions'])->whereNumber('exam')->name('import');
+        Route::get('/import/template', [\App\Http\Controllers\Exams\ImportController::class, 'questionsTemplate'])->name('import.template');
+        Route::post('/students/import', [\App\Http\Controllers\Exams\ImportController::class, 'students'])->name('students.import');
 
         Route::get('/{exam}/results', [ResultController::class, 'index'])->whereNumber('exam')->name('results');
         Route::get('/{exam}/export', [ResultController::class, 'export'])->whereNumber('exam')->name('export');

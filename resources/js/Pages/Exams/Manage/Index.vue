@@ -1,15 +1,43 @@
 <script setup>
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { PlusIcon, PencilSquareIcon, ChartBarIcon, DocumentDuplicateIcon, TrashIcon } from '@heroicons/vue/24/outline';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import Modal from '@/Components/Modal.vue';
 
 defineProps({ exams: Array });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(document.documentElement.lang || 'ar', { dateStyle: 'medium' }) : '—');
 const toDelete = ref(null);
+const page = usePage();
+const canImportStudents = computed(() => !!page.props.permissions?.admin?.users);
+
+// Student accounts from Excel: the answer is a file with each new account and its password.
+const studentsOpen = ref(false);
+const studentsFile = ref(null);
+const studentsBusy = ref(false);
+const studentsError = ref('');
+async function importStudents() {
+    studentsBusy.value = true;
+    studentsError.value = '';
+    try {
+        const body = new FormData();
+        body.append('file', studentsFile.value);
+        const res = await window.axios.post(route('exams.manage.students.import'), body, { responseType: 'blob' });
+        const url = URL.createObjectURL(res.data);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'students-accounts.csv';
+        a.click();
+        URL.revokeObjectURL(url);
+        studentsOpen.value = false;
+    } catch (e) {
+        try { studentsError.value = JSON.parse(await e.response.data.text()).message; } catch { studentsError.value = t('exam.import_failed', 'تعذّر الاستيراد.'); }
+    } finally {
+        studentsBusy.value = false;
+    }
+}
 
 const create = () => router.post(route('exams.manage.store'));
 const duplicate = (e) => router.post(route('exams.manage.duplicate', e.id));
@@ -22,6 +50,7 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
         <template #header>
             <div class="flex items-center justify-between gap-2">
                 <h2 class="text-lg font-semibold">{{ t('nav.exams_manage', 'إدارة الامتحانات') }}</h2>
+                <button v-if="canImportStudents" @click="studentsOpen = true" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.import_students', 'استيراد طلاب') }}</button>
                 <button @click="create" class="flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-sm text-white hover:bg-[var(--accent-700)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.new', 'امتحان جديد') }}</button>
             </div>
         </template>
@@ -72,6 +101,19 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
                 </table>
             </div>
         </div>
+
+        <Modal :show="studentsOpen" @close="studentsOpen = false" max-width="md">
+            <form @submit.prevent="importStudents" class="space-y-4 p-6">
+                <h3 class="text-lg font-semibold">{{ t('exam.import_students', 'استيراد طلاب') }}</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.students_hint', 'ملف Excel أو CSV بأعمدة: الاسم، البريد، كلمة المرور (اختياري؛ تُولَّد إن تُركت فارغة). يُنزَّل بعدها ملف فيه كل حساب وكلمة مروره — احفظه، فلا يظهر مرة أخرى.') }}</p>
+                <input type="file" accept=".xlsx,.csv" @input="studentsFile = $event.target.files[0]" class="block w-full text-sm" />
+                <p v-if="studentsError" class="text-sm text-red-600">{{ studentsError }}</p>
+                <div class="flex justify-end gap-2">
+                    <button type="button" @click="studentsOpen = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
+                    <button :disabled="!studentsFile || studentsBusy" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white disabled:opacity-50">{{ t('exam.import', 'استيراد') }}</button>
+                </div>
+            </form>
+        </Modal>
 
         <Modal :show="!!toDelete" @close="toDelete = null" max-width="md">
             <div class="space-y-4 p-6">

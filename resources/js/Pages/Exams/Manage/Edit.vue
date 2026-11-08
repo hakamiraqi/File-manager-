@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
@@ -64,6 +64,23 @@ function toggleLanguage(lang) {
 
 const totalPoints = computed(() => form.questions.filter((q) => q.type !== 'description').reduce((s, q) => s + Number(q.points || 0), 0));
 const errorsFor = (i) => Object.entries(form.errors).filter(([k]) => k.startsWith(`questions.${i}.`) || k === `questions.${i}`).map(([, v]) => v);
+
+// ---- Import questions (Excel / CSV / Aiken) ----
+const importForm = useForm({ file: null });
+const fileInput = ref(null);
+function importQuestions() {
+    importForm.post(route('exams.manage.import', props.exam.id), {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => {
+            importForm.reset();
+            if (fileInput.value) fileInput.value.value = '';
+            const fresh = fromProps(page.props.exam);
+            Object.keys(fresh).forEach((k) => (form[k] = fresh[k]));
+            form.defaults(fresh);
+        },
+    });
+}
 
 function save() {
     form.transform((data) => ({
@@ -251,6 +268,21 @@ function save() {
                 <ul v-if="errorsFor(i).length" class="space-y-0.5 text-xs text-red-600">
                     <li v-for="err in errorsFor(i)" :key="err">{{ err }}</li>
                 </ul>
+            </section>
+
+            <!-- Import -->
+            <section class="space-y-2 rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-600">
+                <p class="text-sm font-medium">{{ t('exam.import_title', 'استيراد أسئلة') }}</p>
+                <p class="text-xs text-gray-500">
+                    {{ t('exam.import_hint', 'ملف Excel أو CSV بأعمدة: النوع، السؤال، الخيار 1…، الإجابة، الدرجة — أو ملف نص بصيغة Aiken. تُضاف الأسئلة في آخر الامتحان. احفظ تعديلاتك أولاً.') }}
+                    <a :href="route('exams.manage.import.template')" class="text-[var(--accent-600)] underline">{{ t('exam.import_template', 'تنزيل النموذج') }}</a>
+                </p>
+                <form @submit.prevent="importQuestions" class="flex flex-wrap items-center gap-2">
+                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt" @input="importForm.file = $event.target.files[0]" class="text-sm" />
+                    <button :disabled="!importForm.file || importForm.processing || form.isDirty" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('exam.import', 'استيراد') }}</button>
+                    <span v-if="form.isDirty" class="text-xs text-amber-600">{{ t('exam.save_first', 'احفظ التعديلات قبل الاستيراد.') }}</span>
+                </form>
+                <p v-if="importForm.errors.file" class="text-xs text-red-600">{{ importForm.errors.file }}</p>
             </section>
 
             <!-- Add a question -->

@@ -114,7 +114,7 @@ class ManageController extends Controller
         if ($title === []) {
             throw ValidationException::withMessages(['title' => 'اكتب عنوان الامتحان.']);
         }
-        $questions = $this->checkQuestions($data['questions'] ?? [], $langs);
+        $questions = self::checkQuestions($data['questions'] ?? [], $langs);
 
         DB::transaction(function () use ($exam, $data, $langs, $title, $questions) {
             $exam->update([
@@ -191,7 +191,7 @@ class ManageController extends Controller
     }
 
     /** Validates each question by its type and cleans its texts to the exam's languages. */
-    private function checkQuestions(array $questions, array $langs): array
+    public static function checkQuestions(array $questions, array $langs): array
     {
         $errors = [];
         $out = [];
