@@ -255,6 +255,14 @@ function save() {
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.show_answers', 'إظهار الإجابات الصحيحة في المراجعة') }} <ToggleSwitch v-model="form.show_answers" /></label>
                     <label class="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm" :class="form.is_published ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-gray-700'">
                         {{ t('exam.publish', 'منشور (يراه الطلاب)') }} <ToggleSwitch v-model="form.is_published" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.practice', 'امتحان تدريبي') }}<span class="block text-xs text-gray-500">{{ t('exam.practice_hint', 'زر «تحقّق» لكل سؤال يُظهر الإجابة فوراً، وتُثبَّت بعده.') }}</span></span>
+                        <ToggleSwitch v-model="form.is_practice" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.seb_required', 'يُؤدّى في Safe Exam Browser فقط') }}<span class="block text-xs text-gray-500">{{ t('exam.seb_hint', 'متصفح مقفل للامتحانات الحضورية: لا تبويبات ولا تطبيقات أخرى.') }}</span></span>
+                        <ToggleSwitch v-model="form.seb_required" /></label>
+                    <label v-if="form.seb_required" class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.seb_keys', 'مفاتيح SEB (Config Key أو Browser Exam Key، سطر لكل مفتاح؛ فارغ = يكفي أن يكون المتصفح SEB)') }}</span>
+                        <textarea v-model="form.seb_keys" rows="2" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-xs dark:border-gray-600 dark:bg-gray-700" /></label>
                 </div>
             </section>
 

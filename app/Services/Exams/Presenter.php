@@ -33,6 +33,7 @@ class Presenter
             'score' => $exam->resultsVisibleTo($user) ? $exam->finalScoreFor($user) : null,
             'max_score' => $attempts->max('max_score'),
             'dir' => $this->dir($exam),
+            'is_practice' => $exam->is_practice,
         ];
     }
 
@@ -235,6 +236,9 @@ class Presenter
             'show_results' => $exam->show_results,
             'show_answers' => $exam->show_answers,
             'is_published' => $exam->is_published,
+            'is_practice' => $exam->is_practice,
+            'seb_required' => $exam->seb_required,
+            'seb_keys' => $exam->seb_keys,
             'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => $this->questionForEditor($q))->all(),
         ];
     }

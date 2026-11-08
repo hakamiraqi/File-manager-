@@ -614,5 +614,17 @@
     "exam.student_name": "Student name",
     "exam.student_number": "Number",
     "exam.print_random": ":n random questions from “:c” (drawn for each student in the online exam).",
-    "exam.print_upload": "Handed in as an attachment."
+    "exam.print_upload": "Handed in as an attachment.",
+    "exam.check": "Check",
+    "exam.checking": "Checking…",
+    "exam.right": "Right",
+    "exam.partly_right": "Partly right",
+    "exam.wrong": "Wrong",
+    "exam.practice": "Practice exam",
+    "exam.practice_hint": "A «Check» button on each question shows the answer at once; the answer is then fixed.",
+    "exam.seb_required": "Safe Exam Browser only",
+    "exam.seb_hint": "A locked browser for exams in the hall: no other tabs or apps.",
+    "exam.seb_keys": "SEB keys (Config Key or Browser Exam Key, one per line; empty = any SEB will do)",
+    "exam.seb_needed": "This exam is taken in Safe Exam Browser only. Open it from the hall's computers, or in SEB with the settings your teacher gives you.",
+    "exam.practice_note": "Practice exam: check each answer as soon as you write it."
 }

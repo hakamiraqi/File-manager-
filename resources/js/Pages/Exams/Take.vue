@@ -13,9 +13,11 @@ const { t } = useTrans();
 const state = reactive({});
 const touched = reactive({});
 const flags = reactive({});
+const checks = reactive({});   // practice: the result of «check», once per question
 for (const q of props.questions) {
     const saved = props.answers?.[q.id] ?? {};
     flags[q.id] = !!saved.flagged;
+    if (saved.checked) checks[q.id] = saved.checked;
     const r = saved.response ?? {};
     if (q.type === 'multiple') state[q.id] = { choices: r.choices ?? [] };
     else if (q.type === 'matching' || q.type === 'classify') state[q.id] = { pairs: r.pairs ?? {} };
@@ -113,9 +115,28 @@ async function upload(q, event) {
 const size = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.ceil(b / 1024) + ' KB');
 // A picture question: where the student clicked, in % of the picture.
 function pick(q, event) {
+    if (checks[q.id]) return;
     const box = event.currentTarget.getBoundingClientRect();
     state[q.id] = { x: Math.round(((event.clientX - box.left) / box.width) * 1000) / 10, y: Math.round(((event.clientY - box.top) / box.height) * 1000) / 10 };
     save(q);
+}
+// Practice: check one answer now; it cannot change afterwards.
+const CHECKABLE = ['single', 'multiple', 'true_false', 'short', 'numeric', 'matching', 'ordering', 'cloze', 'classify', 'hotspot'];
+const canCheck = (q) => props.exam.practice && CHECKABLE.includes(q.type);
+const checking = ref(null);
+async function check(q) {
+    if (checks[q.id] || !answered(q)) return;
+    clearTimeout(timers[q.id]);
+    checking.value = q.id;
+    try {
+        const res = await window.axios.post(route('exams.attempts.check', props.attempt.id), { question_id: q.id, response: state[q.id] });
+        checks[q.id] = res.data;
+    } catch (e) {
+        if (e.response?.status === 409) return finish();
+        failed.value = true;
+    } finally {
+        checking.value = null;
+    }
 }
 const choiceText = (q, id) => q.choices.find((c) => c.id === id)?.body ?? '';
 const words = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
@@ -229,19 +250,19 @@ onBeforeUnmount(() => {
                     <p v-else class="whitespace-pre-line text-base leading-loose" dir="auto">
                         <template v-for="(part, k) in current.parts" :key="k">
                             <span v-if="part.blank === undefined">{{ part.text }}</span>
-                            <select v-else-if="part.kind === 'select'" v-model="state[current.id].blanks[part.blank]" @change="save(current)"
+                            <select v-else-if="part.kind === 'select'" v-model="state[current.id].blanks[part.blank]" @change="save(current)" :disabled="!!checks[current.id]"
                                 :aria-label="t('exam.blank', 'فراغ') + ' ' + (part.blank + 1)"
                                 class="mx-1 inline-block rounded-md border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700">
                                 <option :value="undefined">—</option>
                                 <option v-for="o in part.options" :key="o" :value="o">{{ o }}</option>
                             </select>
-                            <input v-else v-model="state[current.id].blanks[part.blank]" @input="save(current, 800)" type="text" dir="auto"
+                            <input v-else v-model="state[current.id].blanks[part.blank]" @input="save(current, 800)" type="text" dir="auto" :disabled="!!checks[current.id]"
                                 :aria-label="t('exam.blank', 'فراغ') + ' ' + (part.blank + 1)"
                                 class="mx-1 inline-block w-36 rounded-md border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700" />
                         </template>
                     </p>
 
-                    <div class="mt-4">
+                    <fieldset class="mt-4" :disabled="!!checks[current.id]">
                         <!-- One answer / true-false -->
                         <fieldset v-if="['single', 'true_false'].includes(current.type)" class="space-y-2">
                             <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
@@ -306,6 +327,8 @@ onBeforeUnmount(() => {
                             <p class="mb-2 text-xs text-gray-500">{{ t('exam.hotspot_hint', 'اضغط على المكان الصحيح في الصورة.') }}</p>
                             <div class="relative inline-block max-w-full cursor-crosshair select-none" @click="pick(current, $event)">
                                 <img :src="current.image" alt="" class="block max-h-[70vh] max-w-full rounded-lg" draggable="false" />
+                                <span v-for="(z, k) in checks[current.id]?.zones ?? []" :key="k" class="pointer-events-none absolute border-2 border-emerald-500 bg-emerald-400/20"
+                                    :style="{ left: z.x + '%', top: z.y + '%', width: z.w + '%', height: z.h + '%' }" />
                                 <span v-if="state[current.id].x !== null" class="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[var(--accent-600)] shadow"
                                     :style="{ left: state[current.id].x + '%', top: state[current.id].y + '%' }" />
                             </div>
@@ -320,6 +343,19 @@ onBeforeUnmount(() => {
                                 <button @click="move(current, i, 1)" :disabled="i === state[current.id].order.length - 1" class="rounded p-1 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700" :aria-label="t('exam.move_down', 'إلى الأسفل')"><ArrowDownIcon class="h-4 w-4" /></button>
                             </li>
                         </ol>
+                    </fieldset>
+
+                    <!-- Practice: check now -->
+                    <div v-if="canCheck(current)" class="mt-4">
+                        <button v-if="!checks[current.id]" @click="check(current)" :disabled="!answered(current) || checking === current.id"
+                            class="rounded-lg border border-[var(--accent-600)] px-4 py-1.5 text-sm text-[var(--accent-700)] disabled:opacity-40 dark:text-white">
+                            {{ checking === current.id ? t('exam.checking', 'يتحقّق…') : t('exam.check', 'تحقّق') }}
+                        </button>
+                        <div v-else class="rounded-lg p-3 text-sm" :class="checks[current.id].fraction >= 1 ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200' : checks[current.id].fraction > 0 ? 'bg-amber-50 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200' : 'bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200'">
+                            <p class="font-medium">{{ checks[current.id].fraction >= 1 ? t('exam.right', 'إجابة صحيحة') : checks[current.id].fraction > 0 ? t('exam.partly_right', 'صحيحة جزئياً') : t('exam.wrong', 'إجابة خاطئة') }}</p>
+                            <p v-if="checks[current.id].correct && checks[current.id].correct.length" class="mt-1">{{ t('exam.correct_answer', 'الإجابة الصحيحة') }}: <span dir="auto">{{ checks[current.id].correct.join(' · ') }}</span></p>
+                            <p v-if="checks[current.id].feedback" class="mt-1 whitespace-pre-line" dir="auto">{{ checks[current.id].feedback }}</p>
+                        </div>
                     </div>
                 </article>
 

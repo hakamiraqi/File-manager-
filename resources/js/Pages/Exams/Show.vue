@@ -10,7 +10,7 @@ const { t } = useTrans();
 const page = usePage();
 const form = useForm({ password: '' });
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const canStart = computed(() => props.exam.in_progress || (props.exam.window === 'open' && props.exam.attempts_used < props.exam.max_attempts));
+const canStart = computed(() => (!props.exam.seb_required || props.exam.in_seb) && (props.exam.in_progress || (props.exam.window === 'open' && props.exam.attempts_used < props.exam.max_attempts)));
 const grading = { highest: 'أعلى درجة', average: 'المعدّل', first: 'المحاولة الأولى', last: 'المحاولة الأخيرة' };
 
 function start() {
@@ -42,6 +42,10 @@ function start() {
                     <div v-if="exam.max_attempts > 1"><dt class="text-xs text-gray-500">{{ t('exam.grading', 'الدرجة المعتمدة') }}</dt><dd class="font-medium">{{ t('exam.grading_' + exam.grading_method, grading[exam.grading_method]) }}</dd></div>
                 </dl>
 
+                <p v-if="exam.seb_required && !exam.in_seb" class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                    {{ t('exam.seb_needed', 'هذا الامتحان يُؤدّى في متصفح Safe Exam Browser فقط. افتحه من أجهزة القاعة أو من SEB بالإعدادات التي يعطيها الأستاذ.') }}
+                </p>
+                <p v-if="exam.is_practice" class="mt-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-800 dark:bg-sky-900/30 dark:text-sky-200">{{ t('exam.practice_note', 'امتحان تدريبي: تحقّق من كل إجابة فور كتابتها.') }}</p>
                 <p v-if="page.props.errors.exam" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ page.props.errors.exam }}</p>
 
                 <form v-if="canStart" @submit.prevent="start" class="mt-5 flex flex-wrap items-end gap-3">

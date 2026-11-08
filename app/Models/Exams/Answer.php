@@ -9,11 +9,11 @@ class Answer extends Model
 {
     protected $table = 'exam_answers';
 
-    protected $fillable = ['exam_attempt_id', 'exam_question_id', 'response', 'flagged', 'points', 'comment'];
+    protected $fillable = ['exam_attempt_id', 'exam_question_id', 'response', 'flagged', 'points', 'comment', 'checked_at'];
 
     protected function casts(): array
     {
-        return ['response' => 'array', 'flagged' => 'boolean', 'points' => 'float'];
+        return ['response' => 'array', 'flagged' => 'boolean', 'points' => 'float', 'checked_at' => 'datetime'];
     }
 
     public function attempt(): BelongsTo

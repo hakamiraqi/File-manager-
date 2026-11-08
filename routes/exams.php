@@ -44,6 +44,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
     Route::post('/{exam}/start', [ExamController::class, 'start'])->whereNumber('exam')->middleware('throttle:20,1')->name('start');
     Route::get('/attempts/{attempt}', [ExamController::class, 'take'])->name('attempts.take');
     Route::post('/attempts/{attempt}/answers', [ExamController::class, 'save'])->middleware('throttle:240,1')->name('attempts.save');
+    Route::post('/attempts/{attempt}/check', [ExamController::class, 'check'])->middleware('throttle:240,1')->name('attempts.check');
     Route::post('/attempts/{attempt}/upload', [ExamController::class, 'upload'])->middleware('throttle:30,1')->name('attempts.upload');
     Route::get('/answers/{answer}/file', [ExamController::class, 'file'])->name('answers.file');
     Route::get('/images/{name}', [ExamController::class, 'image'])->where('name', '[a-f0-9]{64}\.[a-z]{3,4}')->name('image');

@@ -57,6 +57,8 @@ class ExamController extends Controller
             'exam' => $this->presenter->card($exam, $user) + [
                 'description' => $exam->text('description'),
                 'needs_password' => filled($exam->password),
+                'seb_required' => $exam->seb_required,
+                'in_seb' => $exam->sebAllows($request),
                 'grading_method' => $exam->grading_method,
                 'pass_mark' => $exam->pass_mark,
             ],
@@ -76,6 +78,9 @@ class ExamController extends Controller
     {
         $user = $request->user();
         abort_unless($exam->is_published, 404);
+        if (! $exam->sebAllows($request)) {
+            return back()->withErrors(['exam' => self::SEB_MESSAGE]);
+        }
         $exam->load(['overrides' => fn ($q) => $q->where('user_id', $user->id)]);
 
         $open = $exam->attempts()->where('user_id', $user->id)->whereNull('submitted_at')->latest('id')->first();
@@ -149,7 +154,11 @@ class ExamController extends Controller
             $attempt->update(['ip' => $request->ip()]);
         }
         $exam = $attempt->exam;
+        if (! $exam->sebAllows($request)) {
+            return redirect()->route('exams.show', $exam)->withErrors(['exam' => self::SEB_MESSAGE]);
+        }
         $answers = $attempt->answers()->get()->keyBy('exam_question_id');
+        $questions = $attempt->orderedQuestions();
 
         return Inertia::render('Exams/Take', [
             'attempt' => [
@@ -157,9 +166,10 @@ class ExamController extends Controller
                 'number' => $attempt->number,
                 'seconds_left' => $attempt->secondsLeft(),
             ],
-            'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar'],
-            'questions' => $attempt->orderedQuestions()->map(fn (Question $q) => $this->presenter->forStudent($q, $exam, $attempt))->values(),
-            'answers' => $answers->map(fn (Answer $a) => ['response' => $a->response, 'flagged' => $a->flagged]),
+            'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice],
+            'questions' => $questions->map(fn (Question $q) => $this->presenter->forStudent($q, $exam, $attempt))->values(),
+            'answers' => $answers->map(fn (Answer $a) => ['response' => $a->response, 'flagged' => $a->flagged,
+                'checked' => $a->checked_at && ($q = $questions->firstWhere('id', $a->exam_question_id)) ? $this->checkResult($q, $exam, $a) : null]),
         ]);
     }
 
@@ -180,9 +190,10 @@ class ExamController extends Controller
             || $attempt->exam->questions()->whereKey($data['question_id'])->exists(), 422);
 
         // The whole response (validated() would keep only its `text` key, the one with its own rule).
-        // A file question's answer is set by upload() only, never by the page.
+        // A file question's answer is set by upload() only, never by the page; a checked practice answer is final.
         $response = $request->input('response');
-        $values = Question::whereKey($data['question_id'])->value('type') === Question::UPLOAD
+        $checked = Answer::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $data['question_id'])->whereNotNull('checked_at')->exists();
+        $values = $checked || Question::whereKey($data['question_id'])->value('type') === Question::UPLOAD
             ? [] : ['response' => is_array($response) ? $response : null];
         if (array_key_exists('flagged', $data)) {
             $values['flagged'] = $data['flagged'];
@@ -190,6 +201,45 @@ class ExamController extends Controller
         Answer::updateOrCreate(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $data['question_id']], $values);
 
         return response()->json(['saved' => true, 'seconds_left' => $attempt->secondsLeft()]);
+    }
+
+    public const SEB_MESSAGE = 'هذا الامتحان يُؤدّى في متصفح Safe Exam Browser فقط، وبإعداداته المعتمدة.';
+
+    /** Practice: marks one answer now and shows the right one; the answer cannot change after. */
+    public function check(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->own($request, $attempt);
+        $exam = $attempt->exam;
+        abort_unless($exam->is_practice, 404);
+        $data = $request->validate(['question_id' => ['required', 'integer'], 'response' => ['nullable', 'array']]);
+        if ($attempt->isSubmitted() || $attempt->isExpired(Attempt::GRACE_SECONDS)) {
+            return response()->json(['message' => 'انتهى وقت المحاولة.', 'closed' => true], 409);
+        }
+        $question = $attempt->orderedQuestions()->firstWhere('id', (int) $data['question_id']);
+        abort_unless($question && $question->isGraded() && ! $question->isManual(), 422);
+
+        $answer = Answer::firstOrNew(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $question->id]);
+        if (! $answer->checked_at) {
+            $response = $request->input('response');
+            $answer->response = is_array($response) ? $response : null;
+            $answer->checked_at = now();
+            $answer->save();
+        }
+
+        return response()->json($this->checkResult($question, $exam, $answer));
+    }
+
+    private function checkResult(Question $question, Exam $exam, Answer $answer): array
+    {
+        $fraction = $this->grader->fraction($question, $answer->response);
+        $review = $this->presenter->review($question, $exam, null, true);
+
+        return [
+            'fraction' => round($fraction, 2),
+            'correct' => $fraction >= 0.999 ? null : $review['correct'],
+            'feedback' => $review['feedback'],
+            'zones' => $review['zones'] ?? [],
+        ];
     }
 
     /** A file question's answer: the file replaces any earlier one. */

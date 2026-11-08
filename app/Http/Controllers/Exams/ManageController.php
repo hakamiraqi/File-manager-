@@ -98,6 +98,9 @@ class ManageController extends Controller
             'show_results' => ['required', Rule::in(Exam::SHOW_RESULTS)],
             'show_answers' => ['boolean'],
             'is_published' => ['boolean'],
+            'is_practice' => ['boolean'],
+            'seb_required' => ['boolean'],
+            'seb_keys' => ['nullable', 'string', 'max:5000'],
             'questions' => ['array', 'max:500'],
             'questions.*.id' => ['nullable', 'integer'],
             'questions.*.type' => ['required', Rule::in(Question::TYPES)],
@@ -127,6 +130,7 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
+                'is_practice', 'seb_required', 'seb_keys',
             ])->all());
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');

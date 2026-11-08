@@ -22,6 +22,7 @@ class Exam extends Model
         'user_id', 'title', 'description', 'subject', 'stage', 'department', 'languages', 'direction',
         'duration_minutes', 'opens_at', 'closes_at', 'max_attempts', 'grading_method', 'pass_mark', 'password',
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
+        'is_practice', 'seb_required', 'seb_keys',
     ];
 
     protected $hidden = ['password'];
@@ -41,6 +42,8 @@ class Exam extends Model
             'shuffle_choices' => 'boolean',
             'show_answers' => 'boolean',
             'is_published' => 'boolean',
+            'is_practice' => 'boolean',
+            'seb_required' => 'boolean',
         ];
     }
 
@@ -82,6 +85,40 @@ class Exam extends Model
     public function text(string $field, ?string $locale = null): string
     {
         return self::pick($this->{$field}, $locale ?? app()->getLocale(), $this->languages ?? []);
+    }
+
+    /**
+     * Whether this request may sit the exam: anything when Safe Exam Browser is not required;
+     * otherwise SEB itself and, when the examiner gave its keys, the right configuration.
+     * SEB sends SHA-256(page URL + key) in X-SafeExamBrowser-ConfigKeyHash (Config Key)
+     * and X-SafeExamBrowser-RequestHash (Browser Exam Key).
+     */
+    public function sebAllows(\Illuminate\Http\Request $request): bool
+    {
+        if (! $this->seb_required) {
+            return true;
+        }
+        if (! str_contains((string) $request->userAgent(), 'SEB')) {
+            return false;
+        }
+        $keys = preg_split('/\s+/', trim((string) $this->seb_keys), -1, PREG_SPLIT_NO_EMPTY);
+        if ($keys === []) {
+            return true;
+        }
+        $hashes = array_map('strtolower', array_filter([
+            $request->header('X-SafeExamBrowser-ConfigKeyHash'), $request->header('X-SafeExamBrowser-RequestHash'),
+        ]));
+        // Behind the proxy the request may look like http; SEB hashed the address it opened.
+        $urls = array_unique([$request->fullUrl(), rtrim((string) config('app.url'), '/').$request->getRequestUri()]);
+        foreach ($keys as $key) {
+            foreach ($urls as $url) {
+                if (in_array(hash('sha256', $url.$key), $hashes, true)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     public function overrideFor(User $user): ?Override
