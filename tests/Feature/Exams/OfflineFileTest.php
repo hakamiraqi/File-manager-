@@ -28,12 +28,9 @@ class OfflineFileTest extends TestCase
         $attempt = Attempt::firstOrFail();
         $qid = $exam->questions()->value('id');
 
-        $token = null;
+        $token = $attempt->offlineToken();
         $this->actingAs($student)->get(route('exams.attempts.take', $attempt))
-            ->assertInertia(function (AssertableInertia $p) use (&$token) {
-                $p->where('offline_token', fn ($t) => strlen($t) === 64);
-                $token = $p->toArray()['props']['offline_token'];
-            });
+            ->assertInertia(fn (AssertableInertia $p) => $p->where('offline_token', $token));
 
         $file = fn (array $data) => UploadedFile::fake()->createWithContent('answers.json', json_encode($data));
         $good = ['kind' => 'examnest-offline-answers', 'attempt' => $attempt->id, 'token' => $token, 'saved_at' => now()->toIso8601String(),
