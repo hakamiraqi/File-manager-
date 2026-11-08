@@ -9,7 +9,7 @@ import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import NotificationBell from '@/Components/NotificationBell.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { UserGroupIcon,
+import { UserGroupIcon, EyeIcon,
     Bars3Icon,
     XMarkIcon,
     ShieldCheckIcon,
@@ -31,6 +31,9 @@ const nav = computed(() => [
             { label: t('exam.bank', 'بنك الأسئلة'), href: route('exams.manage.bank'), icon: ArchiveBoxIcon, active: route().current('exams.manage.bank') },
             { label: t('exam.groups', 'الصفوف والمجموعات'), href: route('exams.manage.groups'), icon: UserGroupIcon, active: route().current('exams.manage.groups') },
         ]
+        : []),
+    ...(page.props.permissions?.invigilate
+        ? [{ label: t('exam.monitor', 'المراقبة'), href: route('exams.monitor.index'), icon: EyeIcon, active: route().current('exams.monitor.*') }]
         : []),
 ]);
 

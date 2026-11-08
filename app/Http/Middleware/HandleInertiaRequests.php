@@ -46,6 +46,7 @@ class HandleInertiaRequests extends Middleware
             'permissions' => $user ? [
                 'is_admin' => $user->isAdmin(),
                 'manage_exams' => $user->canManageExams(),
+                'invigilate' => $user->canInvigilate(),
                 'admin' => $user->isAdmin() ? [
                     'appearance' => $user->hasAdminCapability('can_manage_appearance'),
                     'users' => $user->hasAdminCapability('can_manage_users'),

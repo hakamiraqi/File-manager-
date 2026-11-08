@@ -166,14 +166,30 @@ const clock = computed(() => {
 // ---- Submitting ----
 const confirmOpen = ref(false);
 const submitting = ref(false);
-async function finish() {
+async function finish(closedByServer = false) {
     if (submitting.value) return;
     submitting.value = true;
+    if (closedByServer === true) return router.visit(route('exams.attempts.result', props.attempt.id));
     // Let pending saves land first.
     for (const id of Object.keys(timers)) clearTimeout(timers[id]);
     await Promise.allSettled(props.questions.map((q) => window.axios.post(route('exams.attempts.save', props.attempt.id), { question_id: q.id, response: state[q.id], flagged: flags[q.id] }).catch(() => null)));
     router.post(route('exams.attempts.submit', props.attempt.id));
 }
+
+// ---- Heartbeat: the invigilator sees the student connected; more time and announcements come back ----
+const announcements = ref([]);
+const seenNotes = new Set();
+async function ping() {
+    try {
+        const res = await window.axios.post(route('exams.attempts.ping', props.attempt.id));
+        if (res.data.closed) return finish(true);
+        if (res.data.seconds_left !== null && res.data.seconds_left !== undefined) secondsLeft.value = res.data.seconds_left;
+        for (const a of res.data.announcements ?? []) {
+            if (!seenNotes.has(a.id)) { seenNotes.add(a.id); announcements.value.push(a); }
+        }
+    } catch (e) { /* the next ping, or the autosave, will tell */ }
+}
+let heartbeat;
 
 // ---- What the browser reports (shown to the examiner) ----
 function report(type, meta = null) {
@@ -185,6 +201,8 @@ const onPaste = () => report('paste');
 const onLeave = (e) => { if (saving.value) { e.preventDefault(); e.returnValue = ''; } };
 
 onMounted(() => {
+    heartbeat = setInterval(ping, 20000);
+    ping();
     tick = setInterval(() => {
         if (secondsLeft.value === null) return;
         secondsLeft.value--;
@@ -200,6 +218,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
     clearInterval(tick);
+    clearInterval(heartbeat);
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('blur', onBlur);
     document.removeEventListener('paste', onPaste);
@@ -220,6 +239,12 @@ onBeforeUnmount(() => {
             <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
         </header>
         <FlashMessages />
+        <div v-if="announcements.length" class="mx-auto mt-3 max-w-6xl space-y-1 px-4" role="status" aria-live="polite">
+            <p v-for="a in announcements" :key="a.id" class="flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/40 dark:text-sky-100">
+                <span class="font-semibold">{{ t('exam.announcement', 'من المراقب') }}:</span> <span class="flex-1" dir="auto">{{ a.body }}</span>
+                <button @click="announcements.splice(announcements.indexOf(a), 1)" class="text-sky-500">×</button>
+            </p>
+        </div>
 
         <div class="mx-auto grid max-w-6xl gap-4 p-4 lg:grid-cols-4">
             <!-- Question map -->

@@ -81,6 +81,7 @@ class User extends Authenticatable
     }
 
     /** Invigilators watch exams in the hall; teachers and admins can too. */
+    // (Admins and teachers watch the exams they manage; invigilators every exam.)
     public function canInvigilate(): bool
     {
         return $this->canManageExams() || (bool) $this->is_invigilator;

@@ -54,6 +54,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Gate::define('manage-exams', fn ($user) => $user->canManageExams());
+        Gate::define('invigilate', fn ($user) => $user->canInvigilate());
 
         Gate::define('access-settings-page', fn ($user) => $user->hasAdminCapability('can_manage_settings')
             || $user->hasAdminCapability('can_manage_appearance'));

@@ -106,6 +106,27 @@ class Exam extends Model
         return $ranges === [] || \Symfony\Component\HttpFoundation\IpUtils::checkIp((string) $request->ip(), $ranges);
     }
 
+    /** Who may watch the exam in the hall: its owner, admins, and invigilators. */
+    public function isMonitorableBy(User $user): bool
+    {
+        return $this->isManageableBy($user) || (bool) $user->is_invigilator;
+    }
+
+    /**
+     * The students expected to sit it: its groups' members, or (given to everyone) those who
+     * started it or were marked present.
+     */
+    public function roster(): \Illuminate\Support\Collection
+    {
+        if ($this->groups()->exists()) {
+            return User::whereHas('examGroups', fn ($g) => $g->whereIn('exam_groups.id', $this->groups()->pluck('exam_groups.id')))
+                ->orderBy('name')->get(['id', 'name', 'email', 'exam_time_multiplier']);
+        }
+        $ids = $this->attempts()->pluck('user_id')->merge(\Illuminate\Support\Facades\DB::table('exam_attendance')->where('exam_id', $this->id)->pluck('user_id'));
+
+        return User::whereIn('id', $ids->unique())->orderBy('name')->get(['id', 'name', 'email', 'exam_time_multiplier']);
+    }
+
     /** Teachers invited to mark this exam's hand-marked answers (beside its owner). */
     public function markers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
     {

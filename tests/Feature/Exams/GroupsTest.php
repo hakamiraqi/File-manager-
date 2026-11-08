@@ -15,7 +15,7 @@ class GroupsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function put(User $teacher, Exam $exam, array $settings = [])
+    private function saveExam(User $teacher, Exam $exam, array $settings = [])
     {
         return $this->actingAs($teacher)->put(route('exams.manage.update', $exam), $settings + [
             'title' => ['ar' => 'امتحان'], 'languages' => ['ar'], 'direction' => 'auto', 'max_attempts' => 1,
@@ -36,7 +36,7 @@ class GroupsTest extends TestCase
         $this->assertTrue($group->members()->whereKey($inside->id)->exists());
 
         $exam = Exam::create(['user_id' => $teacher->id, 'title' => ['ar' => 'امتحان'], 'languages' => ['ar']]);
-        $this->put($teacher, $exam, ['group_ids' => [$group->id]])->assertSessionHasNoErrors();
+        $this->saveExam($teacher, $exam, ['group_ids' => [$group->id]])->assertSessionHasNoErrors();
 
         $this->actingAs($inside)->get(route('exams.index'))->assertInertia(fn (AssertableInertia $p) => $p->has('exams', 1));
         $this->actingAs($outside)->get(route('exams.index'))->assertInertia(fn (AssertableInertia $p) => $p->has('exams', 0));
@@ -47,7 +47,7 @@ class GroupsTest extends TestCase
 
         // A group that has exams cannot be deleted (they would open to everyone).
         $this->actingAs($teacher)->delete(route('exams.manage.groups.destroy', $group))->assertSessionHasErrors('group');
-        $this->put($teacher, $exam, ['group_ids' => []]);
+        $this->saveExam($teacher, $exam, ['group_ids' => []]);
         $this->actingAs($outside)->get(route('exams.index'))->assertInertia(fn (AssertableInertia $p) => $p->has('exams', 1));
         $this->actingAs($teacher)->delete(route('exams.manage.groups.destroy', $group))->assertRedirect();
         $this->assertSame(0, Group::count());
@@ -81,8 +81,8 @@ class GroupsTest extends TestCase
         $teacher = User::factory()->create(['is_examiner' => true]);
         $student = User::factory()->create();
         $exam = Exam::create(['user_id' => $teacher->id, 'title' => ['ar' => 'امتحان'], 'languages' => ['ar']]);
-        $this->put($teacher, $exam, ['allowed_ips' => '10.0.0.0/8 not-an-ip'])->assertSessionHasErrors('allowed_ips');
-        $this->put($teacher, $exam, ['access_code' => 'K7M2QX', 'allowed_ips' => "192.168.1.0/24\n10.1.2.3"])->assertSessionHasNoErrors();
+        $this->saveExam($teacher, $exam, ['allowed_ips' => '10.0.0.0/8 not-an-ip'])->assertSessionHasErrors('allowed_ips');
+        $this->saveExam($teacher, $exam, ['access_code' => 'K7M2QX', 'allowed_ips' => "192.168.1.0/24\n10.1.2.3"])->assertSessionHasNoErrors();
 
         $this->actingAs($student)->get(route('exams.show', $exam))
             ->assertInertia(fn (AssertableInertia $p) => $p->where('exam.needs_access_code', true)->where('exam.in_network', false));

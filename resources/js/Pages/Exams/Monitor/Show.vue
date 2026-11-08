@@ -1,0 +1,217 @@
+<script setup>
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import { Head, Link } from '@inertiajs/vue3';
+import AppLayout from '@/Layouts/AppLayout.vue';
+import Modal from '@/Components/Modal.vue';
+import { useTrans } from '@/Composables/useTrans';
+import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline';
+
+const props = defineProps({ exam: Object, data: Object });
+const { t } = useTrans();
+
+// ---- Live rows: polled every 5 seconds (it is a LAN; no sockets needed) ----
+const live = ref(props.data);
+const lastUpdate = ref(Date.now());
+const stale = ref(false);
+async function refresh() {
+    try {
+        live.value = (await window.axios.get(route('exams.monitor.data', props.exam.id))).data;
+        lastUpdate.value = Date.now();
+        stale.value = false;
+    } catch {
+        stale.value = true;
+    }
+}
+let poll;
+let tick;
+const now = ref(Date.now());
+onMounted(() => {
+    poll = setInterval(refresh, 5000);
+    tick = setInterval(() => (now.value = Date.now()), 1000);
+});
+onBeforeUnmount(() => { clearInterval(poll); clearInterval(tick); });
+
+// Seconds left run down between polls.
+const left = (r) => {
+    if (r.attempt?.seconds_left == null) return null;
+    return Math.max(0, r.attempt.seconds_left - Math.floor((now.value - lastUpdate.value) / 1000));
+};
+const clock = (s) => (s === null ? '—' : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`);
+const since = (iso) => (iso ? Math.max(0, Math.round((now.value - new Date(iso).getTime()) / 1000)) : null);
+
+const STATUS = {
+    not_started: ['لم يبدأ', 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'],
+    working: ['يؤدّي', 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'],
+    disconnected: ['منقطع', 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'],
+    time_up: ['انتهى وقته', 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300'],
+    submitted: ['سلّم', 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300'],
+    absent: ['غائب', 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'],
+};
+const EVENTS = { hidden: 'غادر الصفحة', blur: 'ترك النافذة', paste: 'لصق', ip_changed: 'تغيّر الجهاز' };
+
+const filter = ref('all');
+const search = ref('');
+const rows = computed(() => live.value.rows.filter((r) =>
+    (filter.value === 'all' || r.status === filter.value) &&
+    (!search.value || (r.user.name + ' ' + r.user.email + ' ' + (r.seat ?? '')).toLowerCase().includes(search.value.toLowerCase()))));
+
+// ---- Actions ----
+const busy = ref(false);
+async function act(url, body = {}) {
+    busy.value = true;
+    try { await window.axios.post(url, body); await refresh(); } finally { busy.value = false; }
+}
+const setPresent = (r, present) => act(route('exams.monitor.attendance', [props.exam.id, r.user.id]), { present, seat: r.seat, note: r.note });
+const saveSeat = (r, seat) => act(route('exams.monitor.attendance', [props.exam.id, r.user.id]), { present: r.present ?? true, seat, note: r.note });
+
+const dialog = ref(null);   // { kind: 'extend'|'reopen'|'submit'|'submit_all', row }
+const minutes = ref(10);
+async function confirmDialog() {
+    const d = dialog.value;
+    if (d.kind === 'extend') await act(route('exams.monitor.extend', d.row.attempt.id), { minutes: minutes.value });
+    if (d.kind === 'reopen') await act(route('exams.monitor.reopen', d.row.attempt.id), { minutes: minutes.value });
+    if (d.kind === 'submit') await act(route('exams.monitor.submit', d.row.attempt.id));
+    if (d.kind === 'submit_all') await act(route('exams.monitor.submit-all', props.exam.id));
+    dialog.value = null;
+}
+
+const code = ref(props.exam.access_code);
+async function newCode(clear = false) {
+    code.value = (await window.axios.post(route('exams.monitor.access-code', props.exam.id), { clear })).data.access_code;
+}
+const note = ref('');
+async function announce() {
+    if (!note.value.trim()) return;
+    await act(route('exams.monitor.announce', props.exam.id), { body: note.value });
+    note.value = '';
+}
+const showCode = ref(false);
+</script>
+
+<template>
+    <Head :title="t('exam.monitor', 'المراقبة') + ' — ' + exam.title" />
+    <AppLayout>
+        <template #header>
+            <div class="flex flex-wrap items-center gap-2">
+                <Link :href="route('exams.monitor.index')" class="text-gray-400 hover:text-gray-600"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
+                <h2 class="min-w-0 flex-1 truncate text-lg font-semibold" dir="auto">{{ exam.title }}</h2>
+                <span v-if="stale" class="flex items-center gap-1 text-xs text-red-600"><ExclamationTriangleIcon class="h-4 w-4" /> {{ t('exam.monitor_stale', 'لا اتصال بالسيرفر') }}</span>
+                <button @click="refresh" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.refresh', 'تحديث')"><ArrowPathIcon class="h-4 w-4" /></button>
+                <Link :href="route('exams.monitor.sheet', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('exam.attendance_sheet', 'كشف الحضور') }}</Link>
+            </div>
+        </template>
+
+        <div class="space-y-4 p-4 sm:p-6">
+            <!-- Counts -->
+            <div class="grid grid-cols-3 gap-2 sm:grid-cols-7">
+                <button v-for="k in ['all', 'not_started', 'working', 'disconnected', 'time_up', 'submitted', 'absent']" :key="k" @click="filter = k"
+                    class="rounded-xl border bg-white p-2 text-center dark:bg-gray-800" :class="filter === k ? 'border-[var(--accent-600)] ring-1 ring-[var(--accent-500)]' : 'border-gray-200 dark:border-gray-700'">
+                    <p class="text-xl font-semibold">{{ k === 'all' ? live.counts.total : live.counts[k] ?? 0 }}</p>
+                    <p class="text-xs text-gray-500">{{ k === 'all' ? t('exam.all', 'الكل') : t('exam.status_' + k, STATUS[k][0]) }}</p>
+                </button>
+            </div>
+
+            <!-- Hall tools -->
+            <div class="grid gap-3 lg:grid-cols-3">
+                <div class="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+                    <KeyIcon class="h-5 w-5 text-gray-400" />
+                    <div class="min-w-0 flex-1">
+                        <p class="text-xs text-gray-500">{{ t('exam.access_code_short', 'رمز الدخول') }}</p>
+                        <button @click="showCode = true" class="font-mono text-lg font-bold tracking-widest" :title="t('exam.show_big', 'عرض بخط كبير')">{{ code || '—' }}</button>
+                    </div>
+                    <button @click="newCode()" class="rounded-lg border border-gray-300 px-2 py-1 text-xs dark:border-gray-600">{{ t('exam.new_code', 'رمز جديد') }}</button>
+                    <button v-if="code" @click="newCode(true)" class="rounded-lg border border-gray-300 px-2 py-1 text-xs dark:border-gray-600">{{ t('exam.no_code', 'بلا رمز') }}</button>
+                </div>
+                <form @submit.prevent="announce" class="flex items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 lg:col-span-2 dark:border-gray-700 dark:bg-gray-800">
+                    <MegaphoneIcon class="h-5 w-5 text-gray-400" />
+                    <input v-model="note" maxlength="500" :placeholder="t('exam.announce_ph', 'رسالة لكل الطلاب في هذا الامتحان (مثلاً: بقيت 10 دقائق)')" class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    <button :disabled="busy || !note.trim()" class="rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-sm text-white disabled:opacity-40">{{ t('exam.send', 'إرسال') }}</button>
+                </form>
+            </div>
+            <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
+
+            <!-- Students -->
+            <div class="flex flex-wrap items-center gap-2">
+                <input v-model="search" :placeholder="t('exam.search_student', 'بحث بالاسم أو المقعد')" class="w-64 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                <span class="flex-1" />
+                <button v-if="(live.counts.working ?? 0) + (live.counts.disconnected ?? 0) + (live.counts.time_up ?? 0)" @click="dialog = { kind: 'submit_all' }"
+                    class="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 dark:border-red-700 dark:text-red-300">{{ t('exam.submit_all', 'تسليم كل المحاولات الجارية') }}</button>
+            </div>
+            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-gray-700/50">
+                        <tr>
+                            <th class="px-3 py-2 text-start">{{ t('exam.student', 'الطالب') }}</th>
+                            <th class="px-2 py-2">{{ t('exam.present', 'حاضر') }}</th>
+                            <th class="px-2 py-2">{{ t('exam.seat', 'المقعد') }}</th>
+                            <th class="px-2 py-2">{{ t('exam.status', 'الحالة') }}</th>
+                            <th class="px-2 py-2">{{ t('exam.progress', 'الإنجاز') }}</th>
+                            <th class="px-2 py-2">{{ t('exam.time_left', 'المتبقي') }}</th>
+                            <th class="px-2 py-2">{{ t('exam.alerts', 'تنبيهات') }}</th>
+                            <th class="px-3 py-2" />
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="r in rows" :key="r.user.id" class="border-t border-gray-100 dark:border-gray-700">
+                            <td class="px-3 py-2">
+                                <p class="font-medium">{{ r.user.name }} <span v-if="r.user.extra_time" class="text-xs text-sky-600" :title="t('exam.extra_time', 'وقت إضافي')">⏱</span></p>
+                                <p class="text-xs text-gray-400" dir="ltr">{{ r.user.email }}<span v-if="r.attempt?.ip"> · {{ r.attempt.ip }}</span></p>
+                            </td>
+                            <td class="px-2 py-2 text-center whitespace-nowrap">
+                                <button @click="setPresent(r, true)" class="rounded px-1.5 py-0.5 text-xs" :class="r.present === true ? 'bg-emerald-600 text-white' : 'border border-gray-300 dark:border-gray-600'">✓</button>
+                                <button @click="setPresent(r, false)" class="ms-1 rounded px-1.5 py-0.5 text-xs" :class="r.present === false ? 'bg-red-600 text-white' : 'border border-gray-300 dark:border-gray-600'">✗</button>
+                            </td>
+                            <td class="px-2 py-2 text-center"><input :value="r.seat" @change="saveSeat(r, $event.target.value)" class="w-16 rounded border-gray-300 py-0.5 text-center text-xs dark:border-gray-600 dark:bg-gray-700" /></td>
+                            <td class="px-2 py-2 text-center">
+                                <span class="rounded-full px-2 py-0.5 text-xs whitespace-nowrap" :class="STATUS[r.status][1]">{{ t('exam.status_' + r.status, STATUS[r.status][0]) }}</span>
+                                <p v-if="r.status === 'disconnected'" class="text-[10px] text-gray-400">{{ Math.round(since(r.attempt.last_seen) / 60) }} {{ t('exam.min_ago', 'د') }}</p>
+                            </td>
+                            <td class="px-2 py-2 text-center text-xs">
+                                <template v-if="r.attempt">
+                                    {{ r.attempt.answered }} / {{ r.attempt.questions }}
+                                    <div class="mx-auto mt-1 h-1.5 w-16 rounded-full bg-gray-200 dark:bg-gray-700"><div class="h-1.5 rounded-full bg-[var(--accent-500)]" :style="{ width: Math.min(100, (r.attempt.answered / Math.max(1, r.attempt.questions)) * 100) + '%' }" /></div>
+                                </template>
+                            </td>
+                            <td class="px-2 py-2 text-center font-mono text-xs" :class="left(r) !== null && left(r) < 300 ? 'text-red-600' : ''">{{ clock(left(r)) }}</td>
+                            <td class="px-2 py-2 text-xs">
+                                <span v-for="(n, type) in r.attempt?.events ?? {}" :key="type" class="me-1 inline-block rounded bg-red-50 px-1.5 text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.event_' + type, EVENTS[type] ?? type) }} ×{{ n }}</span>
+                            </td>
+                            <td class="px-3 py-2 text-end whitespace-nowrap">
+                                <template v-if="r.attempt && r.status !== 'submitted'">
+                                    <button @click="minutes = 10; dialog = { kind: 'extend', row: r }" class="rounded border border-gray-300 px-2 py-0.5 text-xs dark:border-gray-600">{{ t('exam.extend', '+ وقت') }}</button>
+                                    <button @click="dialog = { kind: 'submit', row: r }" class="ms-1 rounded border border-red-300 px-2 py-0.5 text-xs text-red-700 dark:border-red-700 dark:text-red-300">{{ t('exam.force_submit', 'تسليم') }}</button>
+                                </template>
+                                <button v-else-if="r.status === 'submitted'" @click="minutes = 10; dialog = { kind: 'reopen', row: r }" class="rounded border border-gray-300 px-2 py-0.5 text-xs dark:border-gray-600">{{ t('exam.reopen', 'إعادة فتح') }}</button>
+                            </td>
+                        </tr>
+                        <tr v-if="!rows.length"><td colspan="8" class="p-6 text-center text-sm text-gray-500">{{ t('exam.monitor_no_students', 'لا طلاب هنا. امتحان بلا مجموعة يُظهر من بدأه أو سُجّل حضوره.') }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <Modal :show="!!dialog" @close="dialog = null" max-width="sm">
+            <div v-if="dialog" class="space-y-4 p-6">
+                <p class="text-sm font-medium">
+                    <template v-if="dialog.kind === 'extend'">{{ t('exam.extend_q', 'وقت إضافي لـ :n', { n: dialog.row.user.name }) }}</template>
+                    <template v-else-if="dialog.kind === 'reopen'">{{ t('exam.reopen_q', 'إعادة فتح محاولة :n؟ تُلغى درجتها حتى يسلّم من جديد.', { n: dialog.row.user.name }) }}</template>
+                    <template v-else-if="dialog.kind === 'submit'">{{ t('exam.submit_q', 'تسليم محاولة :n الآن بإجاباتها المحفوظة؟', { n: dialog.row.user.name }) }}</template>
+                    <template v-else>{{ t('exam.submit_all_q', 'تسليم كل المحاولات الجارية الآن؟ (نهاية الجلسة)') }}</template>
+                </p>
+                <label v-if="dialog.kind === 'extend' || dialog.kind === 'reopen'" class="block text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.minutes_label', 'دقائق') }}</span>
+                    <input v-model.number="minutes" type="number" min="1" max="600" class="w-28 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                <div class="flex justify-end gap-2">
+                    <button @click="dialog = null" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
+                    <button @click="confirmDialog" :disabled="busy" class="rounded-lg px-4 py-2 text-sm text-white" :class="dialog.kind.startsWith('submit') ? 'bg-red-600' : 'bg-[var(--accent-600)]'">{{ t('action.confirm', 'تأكيد') }}</button>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- The code, big enough for the whole hall -->
+        <div v-if="showCode" @click="showCode = false" class="fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center bg-white dark:bg-gray-900">
+            <p class="text-2xl text-gray-500">{{ exam.title }}</p>
+            <p class="mt-6 font-mono text-[18vw] font-bold leading-none tracking-widest">{{ code || '—' }}</p>
+            <p class="mt-6 text-lg text-gray-400">{{ t('exam.access_code_short', 'رمز الدخول') }}</p>
+        </div>
+    </AppLayout>
+</template>

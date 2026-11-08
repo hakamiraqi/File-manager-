@@ -210,8 +210,30 @@ class ExamController extends Controller
             $values['flagged'] = $data['flagged'];
         }
         Answer::updateOrCreate(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $data['question_id']], $values);
+        $attempt->forceFill(['last_seen_at' => now()])->saveQuietly();
 
         return response()->json(['saved' => true, 'seconds_left' => $attempt->secondsLeft()]);
+    }
+
+    /**
+     * The page's heartbeat: the attempt is still open (the invigilator sees it as connected),
+     * the deadline as it is now (the invigilator may have given more time), and the hall's
+     * announcements. A closed attempt (time up, or submitted by the invigilator) says so.
+     */
+    public function ping(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->own($request, $attempt);
+        if ($attempt->isSubmitted() || $this->closeIfExpired($attempt)) {
+            return response()->json(['closed' => true]);
+        }
+        $attempt->forceFill(['last_seen_at' => now()])->saveQuietly();
+
+        return response()->json([
+            'closed' => false,
+            'seconds_left' => $attempt->secondsLeft(),
+            'announcements' => DB::table('exam_announcements')->where('exam_id', $attempt->exam_id)
+                ->where('created_at', '>=', $attempt->started_at)->orderBy('id')->get(['id', 'body', 'created_at']),
+        ]);
     }
 
     public const NETWORK_MESSAGE = 'هذا الامتحان يُؤدّى من أجهزة القاعة فقط.';

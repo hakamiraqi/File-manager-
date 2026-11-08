@@ -17,7 +17,7 @@ class Attempt extends Model
 
     protected $fillable = [
         'exam_id', 'user_id', 'number', 'started_at', 'deadline_at', 'submitted_at',
-        'score', 'max_score', 'needs_grading', 'question_order', 'drawn', 'ip',
+        'score', 'max_score', 'needs_grading', 'question_order', 'drawn', 'ip', 'last_seen_at',
     ];
 
     protected function casts(): array
@@ -30,7 +30,7 @@ class Attempt extends Model
             'max_score' => 'float',
             'needs_grading' => 'boolean',
             'question_order' => 'array',
-            'drawn' => 'array',
+            'last_seen_at' => 'datetime', 'drawn' => 'array',
         ];
     }
 

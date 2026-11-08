@@ -54,6 +54,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
     Route::post('/{exam}/start', [ExamController::class, 'start'])->whereNumber('exam')->middleware('throttle:20,1')->name('start');
     Route::get('/attempts/{attempt}', [ExamController::class, 'take'])->name('attempts.take');
     Route::post('/attempts/{attempt}/answers', [ExamController::class, 'save'])->middleware('throttle:240,1')->name('attempts.save');
+    Route::post('/attempts/{attempt}/ping', [ExamController::class, 'ping'])->middleware('throttle:60,1')->name('attempts.ping');
     Route::post('/attempts/{attempt}/check', [ExamController::class, 'check'])->middleware('throttle:240,1')->name('attempts.check');
     Route::post('/attempts/{attempt}/upload', [ExamController::class, 'upload'])->middleware('throttle:30,1')->name('attempts.upload');
     Route::get('/answers/{answer}/file', [ExamController::class, 'file'])->name('answers.file');
@@ -61,4 +62,20 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
     Route::post('/attempts/{attempt}/events', [ExamController::class, 'event'])->middleware('throttle:120,1')->name('attempts.event');
     Route::post('/attempts/{attempt}/submit', [ExamController::class, 'submit'])->name('attempts.submit');
     Route::get('/attempts/{attempt}/result', [ExamController::class, 'result'])->name('attempts.result');
+});
+
+// Invigilating: the hall during an exam.
+Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor')->name('exams.monitor.')->group(function () {
+    $m = \App\Http\Controllers\Exams\MonitorController::class;
+    Route::get('/', [$m, 'index'])->name('index');
+    Route::get('/{exam}', [$m, 'show'])->whereNumber('exam')->name('show');
+    Route::get('/{exam}/data', [$m, 'data'])->whereNumber('exam')->name('data');
+    Route::get('/{exam}/sheet', [$m, 'sheet'])->whereNumber('exam')->name('sheet');
+    Route::post('/{exam}/attendance/{user}', [$m, 'attendance'])->whereNumber('exam')->name('attendance');
+    Route::post('/{exam}/access-code', [$m, 'accessCode'])->whereNumber('exam')->name('access-code');
+    Route::post('/{exam}/announce', [$m, 'announce'])->whereNumber('exam')->name('announce');
+    Route::post('/{exam}/submit-all', [$m, 'submitAll'])->whereNumber('exam')->name('submit-all');
+    Route::post('/attempts/{attempt}/extend', [$m, 'extend'])->name('extend');
+    Route::post('/attempts/{attempt}/submit', [$m, 'submit'])->name('submit');
+    Route::post('/attempts/{attempt}/reopen', [$m, 'reopen'])->name('reopen');
 });
