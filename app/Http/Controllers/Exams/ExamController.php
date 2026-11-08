@@ -15,8 +15,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /** The student's side: the list of exams, sitting one, and the result. */
 class ExamController extends Controller
@@ -175,14 +180,73 @@ class ExamController extends Controller
             || $attempt->exam->questions()->whereKey($data['question_id'])->exists(), 422);
 
         // The whole response (validated() would keep only its `text` key, the one with its own rule).
+        // A file question's answer is set by upload() only, never by the page.
         $response = $request->input('response');
-        $values = ['response' => is_array($response) ? $response : null];
+        $values = Question::whereKey($data['question_id'])->value('type') === Question::UPLOAD
+            ? [] : ['response' => is_array($response) ? $response : null];
         if (array_key_exists('flagged', $data)) {
             $values['flagged'] = $data['flagged'];
         }
         Answer::updateOrCreate(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $data['question_id']], $values);
 
         return response()->json(['saved' => true, 'seconds_left' => $attempt->secondsLeft()]);
+    }
+
+    /** A file question's answer: the file replaces any earlier one. */
+    public function upload(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->own($request, $attempt);
+        $data = $request->validate(['question_id' => ['required', 'integer'], 'file' => ['required', 'file']]);
+        if ($attempt->isSubmitted() || $attempt->isExpired(Attempt::GRACE_SECONDS)) {
+            return response()->json(['message' => 'انتهى وقت المحاولة.', 'closed' => true], 409);
+        }
+        $question = $attempt->orderedQuestions()->firstWhere('id', (int) $data['question_id']);
+        abort_unless($question && $question->type === Question::UPLOAD, 422);
+
+        $file = $request->file('file');
+        $maxMb = (int) ($question->settings['max_mb'] ?? 10);
+        $types = array_filter(explode(',', (string) ($question->settings['types'] ?? '')));
+        $ext = strtolower($file->getClientOriginalExtension());
+        if ($file->getSize() > $maxMb * 1024 * 1024) {
+            throw ValidationException::withMessages(['file' => "الملف أكبر من {$maxMb} ميغابايت."]);
+        }
+        if ($types && ! in_array($ext, $types, true)) {
+            throw ValidationException::withMessages(['file' => 'نوع الملف غير مقبول؛ المقبول: '.implode('، ', $types).'.']);
+        }
+        if (in_array($ext, ['php', 'phtml', 'phar', 'exe', 'bat', 'cmd', 'sh', 'js', 'html', 'htm', 'svg'], true)) {
+            throw ValidationException::withMessages(['file' => 'نوع الملف غير مقبول.']);
+        }
+
+        $answer = Answer::firstOrNew(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $question->id]);
+        $old = $answer->response['file'] ?? null;
+        $path = $file->storeAs(self::UPLOADS.'/'.$attempt->id, Str::uuid().($ext ? '.'.$ext : ''), 'local');
+        $answer->response = ['file' => $path, 'name' => mb_substr($file->getClientOriginalName(), 0, 200), 'size' => $file->getSize()];
+        $answer->save();
+        if ($old && $old !== $path) {
+            Storage::disk('local')->delete($old);
+        }
+
+        return response()->json(['name' => $answer->response['name'], 'size' => $answer->response['size'], 'seconds_left' => $attempt->secondsLeft()]);
+    }
+
+    public const UPLOADS = 'exam-uploads';
+
+    /** A file a student uploaded, for them and the examiner. */
+    public function file(Request $request, Answer $answer): StreamedResponse
+    {
+        $this->own($request, $answer->attempt, allowManager: true);
+        $path = $answer->response['file'] ?? null;
+        abort_unless($path && Storage::disk('local')->exists($path), 404);
+
+        return Storage::disk('local')->download($path, $answer->response['name'] ?? basename($path));
+    }
+
+    /** A question's picture. */
+    public function image(string $name): BinaryFileResponse
+    {
+        abort_unless(ManageController::imageExists($name), 404);
+
+        return response()->file(Storage::disk('local')->path(ManageController::IMAGES.'/'.$name), ['Cache-Control' => 'private, max-age=86400']);
     }
 
     /** The browser reports leaving the tab, pasting and so on; the examiner sees them with the attempt. */

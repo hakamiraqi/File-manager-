@@ -14,7 +14,8 @@ const page = usePage();
 
 const TYPE_LABELS = {
     single: 'اختيار من متعدد (إجابة واحدة)', multiple: 'اختيار من متعدد (عدة إجابات)', true_false: 'صح / خطأ',
-    short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي', description: 'نص توضيحي (بلا درجة)', random: 'أسئلة عشوائية من البنك',
+    short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي',
+    classify: 'تصنيف (عناصر في فئات)', upload: 'رفع ملف', hotspot: 'نقطة على صورة', description: 'نص توضيحي (بلا درجة)', random: 'أسئلة عشوائية من البنك',
 };
 const LANG_LABELS = { ar: 'العربية', en: 'English', ku: 'کوردی' };
 const typeLabel = (type) => t('exam.type_' + type, TYPE_LABELS[type]);
@@ -40,6 +41,9 @@ function addQuestion(type) {
     if (type === 'single' || type === 'multiple') q.choices = [choice(), choice(), choice(), choice()];
     if (type === 'true_false') q.choices = [choice({ ar: 'صح', en: 'True', ku: 'ڕاست' }, true), choice({ ar: 'خطأ', en: 'False', ku: 'هەڵە' })];
     if (type === 'matching' || type === 'ordering') q.choices = [choice(), choice(), choice()];
+    if (type === 'classify') q.choices = [choice(), choice(), choice(), choice()];
+    if (type === 'upload') q.settings = { max_mb: 10, types: 'pdf,jpg,png,docx' };
+    if (type === 'hotspot') q.settings = { image: '', image_url: null, zones: [] };
     if (type === 'numeric') q.settings = { answer: '', tolerance: '0' };
     if (type === 'random') q.settings = { category_id: props.categories[0]?.id ?? '', count: 5 };
     form.questions.push(q);
@@ -90,6 +94,50 @@ function addFromBank() {
             form.defaults(fresh);
         },
     });
+}
+// ---- A picture question: upload the picture, then drag on it to mark the right areas ----
+const imageUploading = ref(null);
+async function uploadImage(q, i, event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    imageUploading.value = i;
+    const data = new FormData();
+    data.append('image', file);
+    try {
+        const res = await window.axios.post(route('exams.manage.images.store'), data);
+        q.settings = { ...q.settings, image: res.data.image, image_url: res.data.url, zones: q.settings.zones ?? [] };
+    } catch (e) {
+        form.setError(`questions.${i}.settings`, e.response?.data?.errors?.image?.[0] ?? t('exam.upload_failed', 'تعذّر رفع الملف.'));
+    } finally {
+        imageUploading.value = null;
+    }
+}
+const drawing = ref(null);
+const pct = (event, box) => ({
+    x: Math.max(0, Math.min(100, ((event.clientX - box.left) / box.width) * 100)),
+    y: Math.max(0, Math.min(100, ((event.clientY - box.top) / box.height) * 100)),
+});
+function startZone(q, event) {
+    const box = event.currentTarget.getBoundingClientRect();
+    const p = pct(event, box);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    drawing.value = { q, box, from: p, zone: { x: p.x, y: p.y, w: 0, h: 0 } };
+}
+function moveZone(event) {
+    const d = drawing.value;
+    if (!d) return;
+    const p = pct(event, d.box);
+    d.zone = { x: Math.min(d.from.x, p.x), y: Math.min(d.from.y, p.y), w: Math.abs(p.x - d.from.x), h: Math.abs(p.y - d.from.y) };
+}
+function endZone() {
+    const d = drawing.value;
+    drawing.value = null;
+    if (!d) return;
+    // A click without dragging marks a small square around the point.
+    const z = d.zone.w < 1 || d.zone.h < 1 ? { x: Math.max(0, d.from.x - 4), y: Math.max(0, d.from.y - 4), w: 8, h: 8 } : d.zone;
+    const round = (v) => Math.round(v * 10) / 10;
+    d.q.settings.zones = [...(d.q.settings.zones ?? []), { x: round(z.x), y: round(z.y), w: round(z.w), h: round(z.h) }];
 }
 const errorsFor = (i) => Object.entries(form.errors).filter(([k]) => k.startsWith(`questions.${i}.`) || k === `questions.${i}`).map(([, v]) => v);
 
@@ -265,13 +313,41 @@ function save() {
                     <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.tolerance', 'هامش الخطأ المسموح ±') }}</span><input v-model="q.settings.tolerance" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                 </div>
 
-                <div v-else-if="q.type === 'matching'" class="space-y-2">
+                <div v-else-if="q.type === 'matching' || q.type === 'classify'" class="space-y-2">
+                    <p v-if="q.type === 'classify'" class="text-xs text-gray-500">{{ t('exam.classify_edit_hint', 'لكل عنصر اكتب فئته؛ اكتب اسم الفئة نفسه للعناصر التي تنتمي إليها. فئتان على الأقل، والدرجة جزئية.') }}</p>
                     <div v-for="(c, j) in q.choices" :key="c.id ?? 'm' + j" class="grid items-start gap-2 sm:grid-cols-[1fr_1fr_auto]">
                         <LangInput v-model="c.body" :languages="form.languages" :placeholder="t('exam.item', 'العنصر')" />
-                        <LangInput v-model="c.match" :languages="form.languages" :placeholder="t('exam.match', 'ما يقابله')" />
+                        <LangInput v-model="c.match" :languages="form.languages" :placeholder="q.type === 'classify' ? t('exam.category', 'الفئة') : t('exam.match', 'ما يقابله')" />
                         <button @click="q.choices.splice(j, 1)" class="mt-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
                     </div>
-                    <button @click="q.choices.push(choice())" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.add_pair', 'زوج') }}</button>
+                    <button @click="q.choices.push(choice())" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ q.type === 'classify' ? t('exam.add_item', 'عنصر') : t('exam.add_pair', 'زوج') }}</button>
+                </div>
+
+                <div v-else-if="q.type === 'upload'" class="grid gap-3 sm:grid-cols-2">
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.max_mb', 'أقصى حجم (ميغابايت)') }}</span>
+                        <input v-model="q.settings.max_mb" type="number" min="1" max="50" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.file_types', 'الأنواع المقبولة (فارغ = أي نوع)') }}</span>
+                        <input v-model="q.settings.types" dir="ltr" placeholder="pdf,jpg,png,docx" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <p class="text-xs text-gray-500 sm:col-span-2">{{ t('exam.upload_hint', 'يرفع الطالب ملفاً واحداً، ويُصحَّح يدوياً من صفحة النتائج.') }}</p>
+                </div>
+
+                <div v-else-if="q.type === 'hotspot'" class="space-y-2">
+                    <label class="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">
+                        <input type="file" accept="image/*" class="sr-only" @change="uploadImage(q, i, $event)" />
+                        {{ imageUploading === i ? t('exam.uploading', 'يرفع…') : q.settings.image ? t('exam.replace_image', 'تغيير الصورة') : t('exam.upload_image', 'رفع الصورة') }}
+                    </label>
+                    <template v-if="q.settings.image_url">
+                        <p class="text-xs text-gray-500">{{ t('exam.hotspot_edit_hint', 'اسحب على الصورة لتحديد منطقة صحيحة (أو اضغط لمربّع صغير). أي نقرة للطالب داخل منطقة تُحسب صحيحة.') }}</p>
+                        <div class="relative inline-block max-w-full cursor-crosshair touch-none select-none" @pointerdown.prevent="startZone(q, $event)" @pointermove="moveZone" @pointerup="endZone">
+                            <img :src="q.settings.image_url" alt="" class="block max-h-[60vh] max-w-full rounded-lg" draggable="false" />
+                            <span v-for="(z, k) in q.settings.zones" :key="k" class="absolute border-2 border-emerald-500 bg-emerald-400/25"
+                                :style="{ left: z.x + '%', top: z.y + '%', width: z.w + '%', height: z.h + '%' }">
+                                <button type="button" @pointerdown.stop @click.stop="q.settings.zones.splice(k, 1)" class="absolute -top-2.5 rounded-full bg-white p-0.5 text-red-500 shadow ltr:-right-2.5 rtl:-left-2.5"><TrashIcon class="h-3 w-3" /></button>
+                            </span>
+                            <span v-if="drawing && drawing.q === q" class="pointer-events-none absolute border-2 border-dashed border-[var(--accent-600)]"
+                                :style="{ left: drawing.zone.x + '%', top: drawing.zone.y + '%', width: drawing.zone.w + '%', height: drawing.zone.h + '%' }" />
+                        </div>
+                    </template>
                 </div>
 
                 <div v-else-if="q.type === 'ordering'" class="space-y-2">

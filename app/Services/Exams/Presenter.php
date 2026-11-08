@@ -69,11 +69,11 @@ class Presenter
             'type' => $q->type,
             'body' => $text($q->body),
             'points' => $q->points,
-            'choices' => $q->type === Question::MATCHING || ! in_array($q->type, Question::CHOICE_TYPES, true) ? [] : $choices
+            'choices' => in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true) || ! in_array($q->type, Question::CHOICE_TYPES, true) ? [] : $choices
                 ->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body)])->all(),
         ];
 
-        if ($q->type === Question::MATCHING) {
+        if (in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true)) {
             $data['items'] = $choices->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body)])->all();
             $data['targets'] = $choices->sortBy(fn (Choice $c) => crc32($attempt->id.'-m-'.$c->id))
                 ->unique(fn (Choice $c) => Grader::normalize($text($c->match)))
@@ -90,6 +90,13 @@ class Presenter
                 return ['blank' => $p['blank'], 'kind' => $p['kind'], 'options' => $options];
             })->all();
             $data['body'] = '';
+        }
+        if ($q->type === Question::UPLOAD) {
+            $data['max_mb'] = (int) ($q->settings['max_mb'] ?? 10);
+            $data['types'] = $q->settings['types'] ?? '';
+        }
+        if ($q->type === Question::HOTSPOT) {
+            $data['image'] = self::imageUrl($q->settings['image'] ?? null);
         }
         if ($q->type === Question::ESSAY) {
             $data['min_words'] = $q->settings['min_words'] ?? null;
@@ -112,7 +119,7 @@ class Presenter
                 Question::SINGLE, Question::TRUE_FALSE, Question::MULTIPLE => $q->choices->where('is_correct', true)->map(fn ($c) => $text($c->body))->values()->all(),
                 Question::SHORT => array_values((array) ($q->settings['answers'] ?? [])),
                 Question::NUMERIC => [($q->settings['answer'] ?? '').(filled($q->settings['tolerance'] ?? null) ? ' ± '.$q->settings['tolerance'] : '')],
-                Question::MATCHING => $q->choices->map(fn ($c) => $text($c->body).' ← '.$text($c->match))->all(),
+                Question::MATCHING, Question::CLASSIFY => $q->choices->map(fn ($c) => $text($c->body).' ← '.$text($c->match))->all(),
                 Question::ORDERING => $q->choices->sortBy('position')->map(fn ($c) => $text($c->body))->values()->all(),
                 Question::CLOZE => collect(Cloze::blanks($text($q->body)))->map(fn ($b) => ($b['blank'] + 1).': '.($b['answers'][0] ?? ''))->all(),
                 default => null,
@@ -129,7 +136,17 @@ class Presenter
             'correct' => $correct,
             'feedback' => $showAnswers ? $text($q->feedback) : '',
             'comment' => $answer?->comment,
-        ];
+        ] + ($q->type === Question::HOTSPOT ? [
+            'image' => self::imageUrl($q->settings['image'] ?? null),
+            'point' => isset($answer?->response['x']) ? ['x' => (float) $answer->response['x'], 'y' => (float) $answer->response['y']] : null,
+            'zones' => $showAnswers ? array_values((array) ($q->settings['zones'] ?? [])) : [],
+        ] : []);
+    }
+
+    /** Where the page loads a question's picture (kept privately, served to signed-in users). */
+    public static function imageUrl(?string $name): ?string
+    {
+        return $name ? route('exams.image', $name) : null;
     }
 
     /** A response in words, for the review and the examiner. */
@@ -146,9 +163,11 @@ class Presenter
             Question::MULTIPLE => collect($response['choices'] ?? [])->map(fn ($id) => isset($byId[(int) $id]) ? $text($byId[(int) $id]->body) : null)->filter()->implode('، ') ?: null,
             Question::SHORT, Question::ESSAY => $response['text'] ?? null,
             Question::NUMERIC => isset($response['value']) ? (string) $response['value'] : null,
-            Question::MATCHING => collect($response['pairs'] ?? [])->map(fn ($target, $item) => isset($byId[(int) $item], $byId[(int) $target])
+            Question::MATCHING, Question::CLASSIFY => collect($response['pairs'] ?? [])->map(fn ($target, $item) => isset($byId[(int) $item], $byId[(int) $target])
                 ? $text($byId[(int) $item]->body).' ← '.$text($byId[(int) $target]->match) : null)->filter()->implode(' · ') ?: null,
             Question::CLOZE => collect($response['blanks'] ?? [])->filter(fn ($v) => trim((string) $v) !== '')->map(fn ($v, $i) => ((int) $i + 1).': '.$v)->implode(' · ') ?: null,
+            Question::UPLOAD => $response['name'] ?? null,
+            Question::HOTSPOT => isset($response['x'], $response['y']) ? sprintf('(%.0f%%، %.0f%%)', $response['x'], $response['y']) : null,
             Question::ORDERING => collect($response['order'] ?? [])->map(fn ($id) => isset($byId[(int) $id]) ? $text($byId[(int) $id]->body) : null)->filter()->implode(' ← ') ?: null,
             default => null,
         };
@@ -190,7 +209,7 @@ class Presenter
             'body' => $q->body ?: (object) [],
             'feedback' => $q->feedback ?: (object) [],
             'points' => $q->points,
-            'settings' => $q->settings ?: (object) [],
+            'settings' => ($q->settings ?: []) + ($q->type === Question::HOTSPOT ? ['image_url' => self::imageUrl($q->settings['image'] ?? null)] : []) ?: (object) [],
             'choices' => $q->choices->map(fn (Choice $c) => [
                 'id' => $c->id, 'body' => $c->body ?: (object) [], 'match' => $c->match ?: (object) [], 'is_correct' => $c->is_correct,
             ])->all(),

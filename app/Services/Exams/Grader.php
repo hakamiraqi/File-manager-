@@ -12,6 +12,8 @@ use App\Models\Exams\Question;
  *   single / true_false {choice: id}     multiple {choices: [id]}     short / essay {text}
  *   numeric {value}                      matching {pairs: {itemId: targetId}}     ordering {order: [id]}
  *   cloze {blanks: {0: 'typed text', 1: 'picked option'}}
+ *   classify {pairs: {itemId: idOfAChoiceInTheCategory}}  (graded like matching)
+ *   upload {file, name, size} (stored by ExamController::upload)   hotspot {x, y} in % of the picture
  */
 class Grader
 {
@@ -30,10 +32,10 @@ class Grader
             $max += $question->points;
             $answer = $answers[$question->id] ?? null;
 
-            if ($question->type === Question::ESSAY) {
+            if ($question->isManual()) {
                 if ($answer && $answer->points !== null) {
                     $score += $answer->points;   // already marked by hand
-                } elseif ($answer && filled($answer->response['text'] ?? null)) {
+                } elseif ($answer && Question::hasManualAnswer($answer->response)) {
                     $needsGrading = true;
                 } elseif ($answer) {
                     $answer->update(['points' => 0]);
@@ -63,8 +65,8 @@ class Grader
         // Only questions still in the attempt count.
         $ids = $attempt->orderedQuestions()->pluck('id')->all();
         $answers = $answers->filter(fn (Answer $a) => in_array($a->exam_question_id, $ids, true));
-        $pending = $answers->contains(fn (Answer $a) => $a->question?->type === Question::ESSAY
-            && $a->points === null && filled($a->response['text'] ?? null));
+        $pending = $answers->contains(fn (Answer $a) => $a->question?->isManual()
+            && $a->points === null && Question::hasManualAnswer($a->response));
         $attempt->update(['score' => round((float) $answers->sum('points'), 2), 'needs_grading' => $pending]);
 
         return $attempt;
@@ -119,6 +121,7 @@ class Grader
                 return abs($given - $expected) <= $tolerance + 1e-9 ? 1.0 : 0.0;
 
             case Question::MATCHING:
+            case Question::CLASSIFY:
                 $pairs = (array) ($response['pairs'] ?? []);
                 if ($choices->isEmpty()) {
                     return 0.0;
@@ -144,6 +147,20 @@ class Grader
                 }
 
                 return $right / count($accepted);
+
+            case Question::HOTSPOT:
+                $x = self::toNumber($response['x'] ?? null);
+                $y = self::toNumber($response['y'] ?? null);
+                if ($x === null || $y === null) {
+                    return 0.0;
+                }
+                foreach ((array) ($question->settings['zones'] ?? []) as $z) {
+                    if ($x >= $z['x'] && $x <= $z['x'] + $z['w'] && $y >= $z['y'] && $y <= $z['y'] + $z['h']) {
+                        return 1.0;
+                    }
+                }
+
+                return 0.0;
 
             case Question::ORDERING:
                 $order = collect($response['order'] ?? [])->map(fn ($id) => (int) $id)->values();

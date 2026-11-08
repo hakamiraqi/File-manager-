@@ -8,9 +8,11 @@ use App\Models\Exams\Choice;
 use App\Models\Exams\Exam;
 use App\Models\Exams\Question;
 use App\Services\Exams\Presenter;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -239,6 +241,13 @@ class ManageController extends Controller
                 if ($type === Question::MATCHING && $choices->contains(fn ($c) => $c['match'] === [])) {
                     $errors["questions.$i.choices"] = "السؤال $n: لكل عنصر ما يقابله.";
                 }
+                if ($type === Question::CLASSIFY) {
+                    if ($choices->contains(fn ($c) => $c['match'] === [])) {
+                        $errors["questions.$i.choices"] = "السؤال $n: اختر فئة لكل عنصر.";
+                    } elseif ($choices->map(fn ($c) => \App\Services\Exams\Grader::normalize(reset($c['match'])))->unique()->count() < 2) {
+                        $errors["questions.$i.choices"] = "السؤال $n: يحتاج فئتين على الأقل.";
+                    }
+                }
             } else {
                 $choices = collect();
             }
@@ -269,7 +278,25 @@ class ManageController extends Controller
                     'max_words' => isset($settings['max_words']) && $settings['max_words'] !== '' ? (int) $settings['max_words'] : null,
                 ], fn ($v) => $v !== null);
             }
-            if (! in_array($type, [Question::SHORT, Question::NUMERIC, Question::ESSAY], true)) {
+            if ($type === Question::UPLOAD) {
+                $types = collect(preg_split('/[\s,،;]+/u', strtolower((string) ($settings['types'] ?? ''))))
+                    ->map(fn ($t) => ltrim($t, '.'))->filter(fn ($t) => preg_match('/^[a-z0-9]{1,8}$/', $t))->unique()->values();
+                $settings = ['max_mb' => max(1, min(50, (int) ($settings['max_mb'] ?? 10))), 'types' => $types->implode(',')];
+            }
+            if ($type === Question::HOTSPOT) {
+                $image = (string) ($settings['image'] ?? '');
+                $zones = collect($settings['zones'] ?? [])->map(fn ($z) => [
+                    'x' => round(max(0, min(100, (float) ($z['x'] ?? 0))), 2), 'y' => round(max(0, min(100, (float) ($z['y'] ?? 0))), 2),
+                    'w' => round(max(0, min(100, (float) ($z['w'] ?? 0))), 2), 'h' => round(max(0, min(100, (float) ($z['h'] ?? 0))), 2),
+                ])->filter(fn ($z) => $z['w'] >= 1 && $z['h'] >= 1)->values()->all();
+                if (! self::imageExists($image)) {
+                    $errors["questions.$i.settings"] = "السؤال $n: ارفع الصورة.";
+                } elseif ($zones === []) {
+                    $errors["questions.$i.settings"] = "السؤال $n: ارسم على الصورة منطقة الإجابة الصحيحة.";
+                }
+                $settings = ['image' => $image, 'zones' => $zones];
+            }
+            if (! in_array($type, [Question::SHORT, Question::NUMERIC, Question::ESSAY, Question::UPLOAD, Question::HOTSPOT], true)) {
                 $settings = [];
             }
 
@@ -288,6 +315,26 @@ class ManageController extends Controller
         }
 
         return $out;
+    }
+
+    /** A picture for a question (hotspot): kept privately, named by its content. */
+    public function image(Request $request): JsonResponse
+    {
+        $request->validate(['image' => ['required', 'image', 'mimes:jpg,jpeg,png,gif,webp', 'max:8192']]);
+        $file = $request->file('image');
+        $name = hash_file('sha256', $file->getRealPath()).'.'.strtolower($file->extension());
+        if (! Storage::disk('local')->exists(self::IMAGES.'/'.$name)) {
+            Storage::disk('local')->putFileAs(self::IMAGES, $file, $name);
+        }
+
+        return response()->json(['image' => $name, 'url' => \App\Services\Exams\Presenter::imageUrl($name)]);
+    }
+
+    public const IMAGES = 'exam-images';
+
+    public static function imageExists(string $name): bool
+    {
+        return preg_match('/^[a-f0-9]{64}\.(jpg|jpeg|png|gif|webp)$/', $name) === 1 && Storage::disk('local')->exists(self::IMAGES.'/'.$name);
     }
 
     private function authorizeExam(Request $request, Exam $exam): void

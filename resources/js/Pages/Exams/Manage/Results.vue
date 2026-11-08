@@ -76,7 +76,10 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                     <div v-if="open[a.id]" class="space-y-3 border-t border-gray-100 p-4 dark:border-gray-700">
                         <div v-for="essay in a.essays" :key="essay.id" class="space-y-2" :dir="exam.dir">
                             <p class="text-sm font-medium" dir="auto">{{ essay.question }}</p>
-                            <p class="whitespace-pre-line rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-700" dir="auto">{{ essay.text || t('exam.no_answer', 'بلا إجابة') }}</p>
+                            <a v-if="essay.file" :href="essay.file.url" class="flex items-center gap-2 rounded-lg bg-gray-50 p-3 text-sm text-[var(--accent-700)] hover:underline dark:bg-gray-700 dark:text-white" dir="auto">
+                                <ArrowDownTrayIcon class="h-4 w-4" /> {{ essay.file.name }}
+                            </a>
+                            <p v-else class="whitespace-pre-line rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-700" dir="auto">{{ essay.text || t('exam.no_answer', 'بلا إجابة') }}</p>
                             <div class="flex flex-wrap items-end gap-2">
                                 <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.points', 'درجة') }} / {{ essay.max }}</span>
                                     <input v-model="markFor(essay).points" type="number" min="0" :max="essay.max" step="0.25" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>

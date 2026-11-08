@@ -18,7 +18,9 @@ for (const q of props.questions) {
     flags[q.id] = !!saved.flagged;
     const r = saved.response ?? {};
     if (q.type === 'multiple') state[q.id] = { choices: r.choices ?? [] };
-    else if (q.type === 'matching') state[q.id] = { pairs: r.pairs ?? {} };
+    else if (q.type === 'matching' || q.type === 'classify') state[q.id] = { pairs: r.pairs ?? {} };
+    else if (q.type === 'upload') state[q.id] = { name: r.name ?? null, size: r.size ?? null };
+    else if (q.type === 'hotspot') state[q.id] = { x: r.x ?? null, y: r.y ?? null };
     else if (q.type === 'ordering') {
         state[q.id] = { order: r.order?.length ? r.order : q.choices.map((c) => c.id) };
         touched[q.id] = !!r.order?.length;
@@ -35,7 +37,9 @@ const answered = (q) => {
     const s = state[q.id];
     if (!s) return false;
     if (q.type === 'multiple') return s.choices.length > 0;
-    if (q.type === 'matching') return Object.keys(s.pairs).length > 0;
+    if (q.type === 'matching' || q.type === 'classify') return Object.keys(s.pairs).length > 0;
+    if (q.type === 'upload') return !!s.name;
+    if (q.type === 'hotspot') return s.x !== null;
     if (q.type === 'ordering') return touched[q.id];
     if (q.type === 'numeric') return String(s.value).trim() !== '';
     if (q.type === 'cloze') return Object.values(s.blanks).some((v) => String(v ?? '').trim() !== '');
@@ -82,6 +86,36 @@ function move(q, i, step) {
     [order[i], order[j]] = [order[j], order[i]];
     touched[q.id] = true;
     save(q, 300);
+}
+// A file question: sent at once, the server keeps it as the answer.
+const uploading = ref(null);
+const uploadError = ref('');
+async function upload(q, event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > q.max_mb * 1024 * 1024) { uploadError.value = t('exam.file_too_big', 'الملف أكبر من المسموح.'); return; }
+    uploading.value = q.id;
+    uploadError.value = '';
+    const form = new FormData();
+    form.append('question_id', q.id);
+    form.append('file', file);
+    try {
+        const res = await window.axios.post(route('exams.attempts.upload', props.attempt.id), form);
+        state[q.id] = { name: res.data.name, size: res.data.size };
+    } catch (e) {
+        if (e.response?.status === 409) return finish();
+        uploadError.value = e.response?.data?.errors?.file?.[0] ?? e.response?.data?.message ?? t('exam.upload_failed', 'تعذّر رفع الملف.');
+    } finally {
+        uploading.value = null;
+    }
+}
+const size = (b) => (b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.ceil(b / 1024) + ' KB');
+// A picture question: where the student clicked, in % of the picture.
+function pick(q, event) {
+    const box = event.currentTarget.getBoundingClientRect();
+    state[q.id] = { x: Math.round(((event.clientX - box.left) / box.width) * 1000) / 10, y: Math.round(((event.clientY - box.top) / box.height) * 1000) / 10 };
+    save(q);
 }
 const choiceText = (q, id) => q.choices.find((c) => c.id === id)?.body ?? '';
 const words = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
@@ -242,8 +276,9 @@ onBeforeUnmount(() => {
                             </p>
                         </div>
 
-                        <!-- Matching: a list per item -->
-                        <div v-else-if="current.type === 'matching'" class="space-y-2">
+                        <!-- Matching and sorting into categories: a list per item -->
+                        <div v-else-if="current.type === 'matching' || current.type === 'classify'" class="space-y-2">
+                            <p v-if="current.type === 'classify'" class="text-xs text-gray-500">{{ t('exam.classify_hint', 'ضع كل عنصر في فئته.') }}</p>
                             <div v-for="item in current.items" :key="item.id" class="grid items-center gap-2 rounded-lg border border-gray-200 p-3 sm:grid-cols-2 dark:border-gray-600">
                                 <span class="text-sm" dir="auto">{{ item.body }}</span>
                                 <select :value="state[current.id].pairs[item.id] ?? ''" @change="pair(current, item.id, $event.target.value)"
@@ -251,6 +286,28 @@ onBeforeUnmount(() => {
                                     <option value="">{{ t('exam.choose', '— اختر —') }}</option>
                                     <option v-for="target in current.targets" :key="target.id" :value="target.id">{{ target.body }}</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- A file -->
+                        <div v-else-if="current.type === 'upload'" class="space-y-2">
+                            <label class="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-gray-300 p-6 text-sm text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700">
+                                <input type="file" class="sr-only" :accept="current.types ? current.types.split(',').map((x) => '.' + x).join(',') : undefined" @change="upload(current, $event)" :disabled="uploading === current.id" />
+                                <span v-if="uploading === current.id">{{ t('exam.uploading', 'يرفع…') }}</span>
+                                <span v-else>{{ state[current.id].name ? t('exam.replace_file', 'استبدال الملف') : t('exam.choose_file', 'اختر ملفاً') }}</span>
+                                <span class="text-xs text-gray-400">{{ t('exam.max_size', 'الحد') }} {{ current.max_mb }} MB<template v-if="current.types"> · {{ current.types }}</template></span>
+                            </label>
+                            <p v-if="state[current.id].name" class="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400" dir="auto"><CheckIcon class="h-4 w-4" /> {{ state[current.id].name }} ({{ size(state[current.id].size) }})</p>
+                            <p v-if="uploadError" class="text-sm text-red-600">{{ uploadError }}</p>
+                        </div>
+
+                        <!-- A place on a picture -->
+                        <div v-else-if="current.type === 'hotspot'">
+                            <p class="mb-2 text-xs text-gray-500">{{ t('exam.hotspot_hint', 'اضغط على المكان الصحيح في الصورة.') }}</p>
+                            <div class="relative inline-block max-w-full cursor-crosshair select-none" @click="pick(current, $event)">
+                                <img :src="current.image" alt="" class="block max-h-[70vh] max-w-full rounded-lg" draggable="false" />
+                                <span v-if="state[current.id].x !== null" class="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[var(--accent-600)] shadow"
+                                    :style="{ left: state[current.id].x + '%', top: state[current.id].y + '%' }" />
                             </div>
                         </div>
 

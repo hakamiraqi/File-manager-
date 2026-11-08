@@ -19,16 +19,23 @@ class Question extends Model
     public const ORDERING = 'ordering';       // put the items in the right order
     public const CLOZE = 'cloze';             // blanks in the text: typed, or picked from a list
     public const ESSAY = 'essay';             // marked by hand
+    public const CLASSIFY = 'classify';       // sort the items into categories (several items per category)
+    public const UPLOAD = 'upload';           // the student uploads a file; marked by hand
+    public const HOTSPOT = 'hotspot';         // click the right place on a picture
     public const DESCRIPTION = 'description'; // text or media for the questions after it, no mark
     public const RANDOM = 'random';           // a slot: N questions drawn from a bank category per student
 
     public const TYPES = [
         self::SINGLE, self::MULTIPLE, self::TRUE_FALSE, self::SHORT, self::NUMERIC,
-        self::MATCHING, self::ORDERING, self::CLOZE, self::ESSAY, self::DESCRIPTION, self::RANDOM,
+        self::MATCHING, self::ORDERING, self::CLOZE, self::ESSAY, self::CLASSIFY, self::UPLOAD, self::HOTSPOT,
+        self::DESCRIPTION, self::RANDOM,
     ];
 
+    /** Types a person marks. */
+    public const MANUAL_TYPES = [self::ESSAY, self::UPLOAD];
+
     /** Types whose answer is picked from the choices. */
-    public const CHOICE_TYPES = [self::SINGLE, self::MULTIPLE, self::TRUE_FALSE, self::MATCHING, self::ORDERING];
+    public const CHOICE_TYPES = [self::SINGLE, self::MULTIPLE, self::TRUE_FALSE, self::MATCHING, self::ORDERING, self::CLASSIFY];
 
     protected $table = 'exam_questions';
 
@@ -58,6 +65,17 @@ class Question extends Model
     public function isGraded(): bool
     {
         return ! in_array($this->type, [self::DESCRIPTION, self::RANDOM], true);
+    }
+
+    public function isManual(): bool
+    {
+        return in_array($this->type, self::MANUAL_TYPES, true);
+    }
+
+    /** Whether a hand-marked answer has anything in it to mark. */
+    public static function hasManualAnswer(?array $response): bool
+    {
+        return filled($response['text'] ?? null) || filled($response['file'] ?? null);
     }
 
     /** Points a random slot is worth in all: each drawn question × how many. */

@@ -43,7 +43,14 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
                     <div class="min-w-0 flex-1">
                         <p class="text-xs text-gray-500">{{ t('exam.question', 'السؤال') }} {{ i + 1 }} · {{ r.earned ?? '—' }} / {{ r.points }}</p>
                         <p class="mt-1 whitespace-pre-line" dir="auto">{{ r.body }}</p>
-                        <p class="mt-2 text-sm"><span class="text-gray-500">{{ t('exam.your_answer', 'إجابتك') }}:</span> <span dir="auto" class="whitespace-pre-line">{{ r.given ?? t('exam.no_answer', 'بلا إجابة') }}</span></p>
+                        <div v-if="r.image" class="relative mt-2 inline-block max-w-full">
+                            <img :src="r.image" alt="" class="block max-h-80 max-w-full rounded-lg" />
+                            <span v-for="(z, k) in r.zones" :key="k" class="absolute border-2 border-emerald-500 bg-emerald-400/20"
+                                :style="{ left: z.x + '%', top: z.y + '%', width: z.w + '%', height: z.h + '%' }" />
+                            <span v-if="r.point" class="absolute h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-[var(--accent-600)] shadow"
+                                :style="{ left: r.point.x + '%', top: r.point.y + '%' }" />
+                        </div>
+                        <p v-if="r.type !== 'hotspot'" class="mt-2 text-sm"><span class="text-gray-500">{{ t('exam.your_answer', 'إجابتك') }}:</span> <span dir="auto" class="whitespace-pre-line">{{ r.given ?? t('exam.no_answer', 'بلا إجابة') }}</span></p>
                         <p v-if="r.correct && r.correct.length && state(r) !== 'right'" class="mt-1 text-sm text-emerald-700 dark:text-emerald-400">
                             {{ t('exam.correct_answer', 'الإجابة الصحيحة') }}: <span dir="auto">{{ r.correct.join(' · ') }}</span>
                         </p>

@@ -70,12 +70,13 @@ class ResultController extends Controller
                 'percent' => $a->percent(),
                 'needs_grading' => $a->needs_grading,
                 'events' => $a->events->countBy('type'),
-                'essays' => $a->answers->filter(fn (Answer $ans) => $ans->question?->type === Question::ESSAY)
+                'essays' => $a->answers->filter(fn (Answer $ans) => $ans->question?->isManual())
                     ->map(fn (Answer $ans) => [
                         'id' => $ans->id,
                         'question' => Question::pick($ans->question->body, app()->getLocale(), $exam->languages ?? []),
                         'max' => $a->drawn[$ans->exam_question_id] ?? $ans->question->points,
                         'text' => $ans->response['text'] ?? '',
+                        'file' => isset($ans->response['file']) ? ['name' => $ans->response['name'] ?? '', 'url' => route('exams.answers.file', $ans)] : null,
                         'points' => $ans->points,
                         'comment' => $ans->comment,
                     ])->values(),
