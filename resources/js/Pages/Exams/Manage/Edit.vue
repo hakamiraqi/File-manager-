@@ -15,7 +15,7 @@ const page = usePage();
 const TYPE_LABELS = {
     single: 'اختيار من متعدد (إجابة واحدة)', multiple: 'اختيار من متعدد (عدة إجابات)', true_false: 'صح / خطأ',
     short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي',
-    classify: 'تصنيف (عناصر في فئات)', upload: 'رفع ملف', hotspot: 'نقطة على صورة', description: 'نص توضيحي (بلا درجة)', random: 'أسئلة عشوائية من البنك',
+    classify: 'تصنيف (عناصر في فئات)', upload: 'رفع ملف', hotspot: 'نقطة على صورة', calculated: 'محسوب (أرقام مختلفة لكل طالب)', description: 'نص توضيحي (بلا درجة)', random: 'أسئلة عشوائية من البنك',
 };
 const LANG_LABELS = { ar: 'العربية', en: 'English', ku: 'کوردی' };
 const typeLabel = (type) => t('exam.type_' + type, TYPE_LABELS[type]);
@@ -44,6 +44,10 @@ function addQuestion(type) {
     if (type === 'classify') q.choices = [choice(), choice(), choice(), choice()];
     if (type === 'upload') q.settings = { max_mb: 10, types: 'pdf,jpg,png,docx' };
     if (type === 'hotspot') q.settings = { image: '', image_url: null, zones: [] };
+    if (type === 'calculated') {
+        q.body = Object.fromEntries(form.languages.map((l) => [l, l === 'ar' ? 'سيارة سرعتها {v} م/ث تسير {t} ثانية. كم متراً تقطع؟' : 'A car at {v} m/s drives for {t} s. How many metres does it go?']));
+        q.settings = { vars: [{ name: 'v', min: 10, max: 30, decimals: 0 }, { name: 't', min: 5, max: 20, decimals: 0 }], formula: 'v * t', tolerance: '0', decimals: '' };
+    }
     if (type === 'numeric') q.settings = { answer: '', tolerance: '0' };
     if (type === 'random') q.settings = { category_id: props.categories[0]?.id ?? '', count: 5 };
     form.questions.push(q);
@@ -261,6 +265,11 @@ function save() {
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
                         <span>{{ t('exam.seb_required', 'يُؤدّى في Safe Exam Browser فقط') }}<span class="block text-xs text-gray-500">{{ t('exam.seb_hint', 'متصفح مقفل للامتحانات الحضورية: لا تبويبات ولا تطبيقات أخرى.') }}</span></span>
                         <ToggleSwitch v-model="form.seb_required" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.double_marking', 'تصحيح مزدوج للمقالي والملفات') }}<span class="block text-xs text-gray-500">{{ t('exam.double_marking_hint', 'مصحّحان مستقلان؛ تُعتمد المتوسط إذا تقاربت درجتاهما. أضف المصحّحين من صفحة النتائج.') }}</span></span>
+                        <ToggleSwitch v-model="form.double_marking" /></label>
+                    <label v-if="form.double_marking" class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.marking_tolerance', 'أقصى فرق مقبول بين المصحّحَين (% من درجة السؤال)') }}</span>
+                        <input v-model="form.marking_tolerance" type="number" min="0" max="100" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label v-if="form.seb_required" class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.seb_keys', 'مفاتيح SEB (Config Key أو Browser Exam Key، سطر لكل مفتاح؛ فارغ = يكفي أن يكون المتصفح SEB)') }}</span>
                         <textarea v-model="form.seb_keys" rows="2" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-xs dark:border-gray-600 dark:bg-gray-700" /></label>
                 </div>
@@ -330,6 +339,23 @@ function save() {
                         <button @click="q.choices.splice(j, 1)" class="mt-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
                     </div>
                     <button @click="q.choices.push(choice())" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ q.type === 'classify' ? t('exam.add_item', 'عنصر') : t('exam.add_pair', 'زوج') }}</button>
+                </div>
+
+                <div v-else-if="q.type === 'calculated'" class="space-y-2">
+                    <p class="text-xs text-gray-500">{{ t('exam.calc_hint', 'اكتب المتغيرات في نص السؤال بين { } مثل {v}. يأخذ كل طالب قيماً مختلفة من المدى، والإجابة ناتج المعادلة عليها.') }}</p>
+                    <div v-for="(v, j) in q.settings.vars" :key="j" class="flex flex-wrap items-end gap-2" dir="ltr">
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calc_var', 'المتغير') }}</span><input v-model="v.name" class="w-20 rounded-lg border-gray-300 font-mono text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calc_min', 'من') }}</span><input v-model="v.min" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calc_max', 'إلى') }}</span><input v-model="v.max" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calc_decimals', 'منازل عشرية') }}</span><input v-model="v.decimals" type="number" min="0" max="6" class="w-20 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <button @click="q.settings.vars.splice(j, 1)" class="mb-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
+                    </div>
+                    <button @click="q.settings.vars.push({ name: '', min: 1, max: 10, decimals: 0 })" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.calc_add_var', 'متغير') }}</button>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="text-sm sm:col-span-3"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calc_formula', 'المعادلة (مثل v * t أو sqrt(a^2 + b^2))') }}</span><input v-model="q.settings.formula" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.tolerance_calc', 'هامش الخطأ (0.1 أو 2%)') }}</span><input v-model="q.settings.tolerance" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calc_round', 'تقريب الإجابة (منازل، اختياري)') }}</span><input v-model="q.settings.decimals" type="number" min="0" max="6" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    </div>
                 </div>
 
                 <div v-else-if="q.type === 'upload'" class="grid gap-3 sm:grid-cols-2">

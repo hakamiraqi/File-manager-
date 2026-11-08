@@ -22,13 +22,14 @@ class Question extends Model
     public const CLASSIFY = 'classify';       // sort the items into categories (several items per category)
     public const UPLOAD = 'upload';           // the student uploads a file; marked by hand
     public const HOTSPOT = 'hotspot';         // click the right place on a picture
+    public const CALCULATED = 'calculated';   // numbers in the text differ per student; the answer is a formula on them
     public const DESCRIPTION = 'description'; // text or media for the questions after it, no mark
     public const RANDOM = 'random';           // a slot: N questions drawn from a bank category per student
 
     public const TYPES = [
         self::SINGLE, self::MULTIPLE, self::TRUE_FALSE, self::SHORT, self::NUMERIC,
         self::MATCHING, self::ORDERING, self::CLOZE, self::ESSAY, self::CLASSIFY, self::UPLOAD, self::HOTSPOT,
-        self::DESCRIPTION, self::RANDOM,
+        self::CALCULATED, self::DESCRIPTION, self::RANDOM,
     ];
 
     /** Types a person marks. */

@@ -68,7 +68,7 @@ class Presenter
         $data = [
             'id' => $q->id,
             'type' => $q->type,
-            'body' => $text($q->body),
+            'body' => $q->type === Question::CALCULATED ? Calculated::render($text($q->body), Calculated::values($q, $attempt->id)) : $text($q->body),
             'points' => $q->points,
             'choices' => in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true) || ! in_array($q->type, Question::CHOICE_TYPES, true) ? [] : $choices
                 ->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body)])->all(),
@@ -108,11 +108,13 @@ class Presenter
     }
 
     /** The review after submitting: the answer, whether it was right and, if allowed, the correct one. */
-    public function review(Question $q, Exam $exam, ?\App\Models\Exams\Answer $answer, bool $showAnswers): array
+    public function review(Question $q, Exam $exam, ?\App\Models\Exams\Answer $answer, bool $showAnswers, ?int $attemptId = null): array
     {
         $locale = app()->getLocale();
         $langs = $exam->languages ?? [];
         $text = fn ($v) => Question::pick($v, $locale, $langs);
+        $attemptId ??= $answer?->exam_attempt_id;
+        $values = $q->type === Question::CALCULATED && $attemptId ? Calculated::values($q, $attemptId) : null;
 
         $correct = null;
         if ($showAnswers) {
@@ -122,6 +124,9 @@ class Presenter
                 Question::NUMERIC => [($q->settings['answer'] ?? '').(filled($q->settings['tolerance'] ?? null) ? ' ± '.$q->settings['tolerance'] : '')],
                 Question::MATCHING, Question::CLASSIFY => $q->choices->map(fn ($c) => $text($c->body).' ← '.$text($c->match))->all(),
                 Question::ORDERING => $q->choices->sortBy('position')->map(fn ($c) => $text($c->body))->values()->all(),
+                Question::CALCULATED => $values !== null && ($e = Calculated::expected($q, $values)) !== null
+                    ? [Calculated::format($e).(($q->settings['tolerance'] ?? '0') !== '0' ? ' ± '.$q->settings['tolerance'] : '')]
+                    : ['= '.($q->settings['formula'] ?? '')],
                 Question::CLOZE => collect(Cloze::blanks($text($q->body)))->map(fn ($b) => ($b['blank'] + 1).': '.($b['answers'][0] ?? ''))->all(),
                 default => null,
             };
@@ -130,7 +135,11 @@ class Presenter
         return [
             'id' => $q->id,
             'type' => $q->type,
-            'body' => $q->type === Question::CLOZE ? preg_replace('/\[\[.+?\]\]/u', '____', $text($q->body)) : $text($q->body),
+            'body' => match (true) {
+                $q->type === Question::CLOZE => preg_replace('/\[\[.+?\]\]/u', '____', $text($q->body)),
+                $values !== null => Calculated::render($text($q->body), $values),
+                default => $text($q->body),
+            },
             'points' => $q->points,
             'earned' => $answer?->points,
             'given' => $this->describeResponse($q, $answer?->response, $text),
@@ -163,7 +172,7 @@ class Presenter
             Question::SINGLE, Question::TRUE_FALSE => isset($byId[(int) ($response['choice'] ?? 0)]) ? $text($byId[(int) $response['choice']]->body) : null,
             Question::MULTIPLE => collect($response['choices'] ?? [])->map(fn ($id) => isset($byId[(int) $id]) ? $text($byId[(int) $id]->body) : null)->filter()->implode('، ') ?: null,
             Question::SHORT, Question::ESSAY => $response['text'] ?? null,
-            Question::NUMERIC => isset($response['value']) ? (string) $response['value'] : null,
+            Question::NUMERIC, Question::CALCULATED => isset($response['value']) ? (string) $response['value'] : null,
             Question::MATCHING, Question::CLASSIFY => collect($response['pairs'] ?? [])->map(fn ($target, $item) => isset($byId[(int) $item], $byId[(int) $target])
                 ? $text($byId[(int) $item]->body).' ← '.$text($byId[(int) $target]->match) : null)->filter()->implode(' · ') ?: null,
             Question::CLOZE => collect($response['blanks'] ?? [])->filter(fn ($v) => trim((string) $v) !== '')->map(fn ($v, $i) => ((int) $i + 1).': '.$v)->implode(' · ') ?: null,
@@ -239,6 +248,8 @@ class Presenter
             'is_practice' => $exam->is_practice,
             'seb_required' => $exam->seb_required,
             'seb_keys' => $exam->seb_keys,
+            'double_marking' => $exam->double_marking,
+            'marking_tolerance' => $exam->marking_tolerance,
             'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => $this->questionForEditor($q))->all(),
         ];
     }

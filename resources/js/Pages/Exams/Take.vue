@@ -27,7 +27,7 @@ for (const q of props.questions) {
         state[q.id] = { order: r.order?.length ? r.order : q.choices.map((c) => c.id) };
         touched[q.id] = !!r.order?.length;
     }
-    else if (q.type === 'numeric') state[q.id] = { value: r.value ?? '' };
+    else if (q.type === 'numeric' || q.type === 'calculated') state[q.id] = { value: r.value ?? '' };
     else if (q.type === 'cloze') state[q.id] = { blanks: { ...(r.blanks ?? {}) } };
     else if (q.type === 'short' || q.type === 'essay') state[q.id] = { text: r.text ?? '' };
     else state[q.id] = { choice: r.choice ?? null };
@@ -43,7 +43,7 @@ const answered = (q) => {
     if (q.type === 'upload') return !!s.name;
     if (q.type === 'hotspot') return s.x !== null;
     if (q.type === 'ordering') return touched[q.id];
-    if (q.type === 'numeric') return String(s.value).trim() !== '';
+    if (q.type === 'numeric' || q.type === 'calculated') return String(s.value).trim() !== '';
     if (q.type === 'cloze') return Object.values(s.blanks).some((v) => String(v ?? '').trim() !== '');
     if (q.type === 'short' || q.type === 'essay') return s.text.trim() !== '';
     return s.choice !== null;
@@ -121,7 +121,7 @@ function pick(q, event) {
     save(q);
 }
 // Practice: check one answer now; it cannot change afterwards.
-const CHECKABLE = ['single', 'multiple', 'true_false', 'short', 'numeric', 'matching', 'ordering', 'cloze', 'classify', 'hotspot'];
+const CHECKABLE = ['single', 'multiple', 'true_false', 'short', 'numeric', 'matching', 'ordering', 'cloze', 'classify', 'hotspot', 'calculated'];
 const canCheck = (q) => props.exam.practice && CHECKABLE.includes(q.type);
 const checking = ref(null);
 async function check(q) {
@@ -285,7 +285,7 @@ onBeforeUnmount(() => {
                         <input v-else-if="current.type === 'short'" v-model="state[current.id].text" @input="save(current, 800)" type="text" dir="auto"
                             class="w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" :placeholder="t('exam.your_answer', 'إجابتك')" />
 
-                        <input v-else-if="current.type === 'numeric'" v-model="state[current.id].value" @input="save(current, 800)" type="text" inputmode="decimal" dir="ltr"
+                        <input v-else-if="current.type === 'numeric' || current.type === 'calculated'" v-model="state[current.id].value" @input="save(current, 800)" type="text" inputmode="decimal" dir="ltr"
                             class="w-48 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" :placeholder="t('exam.number', 'رقم')" />
 
                         <div v-else-if="current.type === 'essay'">

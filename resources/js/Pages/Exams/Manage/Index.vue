@@ -75,8 +75,8 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
                     <tbody>
                         <tr v-for="e in exams" :key="e.id" class="border-t border-gray-100 dark:border-gray-700">
                             <td class="px-4 py-2.5">
-                                <Link :href="route('exams.manage.edit', e.id)" class="font-medium hover:text-[var(--accent-700)]" dir="auto">{{ e.title }}</Link>
-                                <p v-if="e.author" class="text-xs text-gray-400">{{ e.author }}</p>
+                                <Link :href="e.can_edit ? route('exams.manage.edit', e.id) : route('exams.manage.results', e.id)" class="font-medium hover:text-[var(--accent-700)]" dir="auto">{{ e.title }}</Link>
+                                <p v-if="e.author" class="text-xs text-gray-400">{{ e.author }}<span v-if="!e.can_edit"> · {{ t('exam.you_mark', 'أنت مصحّح') }}</span></p>
                             </td>
                             <td class="px-2 py-2.5 text-gray-600 dark:text-gray-300">{{ [e.subject, e.stage].filter(Boolean).join(' · ') || '—' }}</td>
                             <td class="px-2 py-2.5 text-center">{{ e.questions }}</td>
@@ -91,10 +91,10 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
                                 </span>
                             </td>
                             <td class="whitespace-nowrap px-4 py-2.5 text-end">
-                                <Link :href="route('exams.manage.edit', e.id)" class="inline-block rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.edit', 'تعديل')"><PencilSquareIcon class="h-4 w-4" /></Link>
+                                <Link v-if="e.can_edit" :href="route('exams.manage.edit', e.id)" class="inline-block rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.edit', 'تعديل')"><PencilSquareIcon class="h-4 w-4" /></Link>
                                 <Link :href="route('exams.manage.results', e.id)" class="inline-block rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.results', 'النتائج')"><ChartBarIcon class="h-4 w-4" /></Link>
-                                <button @click="duplicate(e)" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.duplicate', 'نسخ')"><DocumentDuplicateIcon class="h-4 w-4" /></button>
-                                <button @click="toDelete = e" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('action.delete', 'حذف')"><TrashIcon class="h-4 w-4" /></button>
+                                <button v-if="e.can_edit" @click="duplicate(e)" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.duplicate', 'نسخ')"><DocumentDuplicateIcon class="h-4 w-4" /></button>
+                                <button v-if="e.can_edit" @click="toDelete = e" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('action.delete', 'حذف')"><TrashIcon class="h-4 w-4" /></button>
                             </td>
                         </tr>
                     </tbody>

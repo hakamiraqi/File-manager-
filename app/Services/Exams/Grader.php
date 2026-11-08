@@ -13,6 +13,7 @@ use App\Models\Exams\Question;
  *   numeric {value}                      matching {pairs: {itemId: targetId}}     ordering {order: [id]}
  *   cloze {blanks: {0: 'typed text', 1: 'picked option'}}
  *   classify {pairs: {itemId: idOfAChoiceInTheCategory}}  (graded like matching)
+ *   calculated {value} (against the formula on the attempt's own numbers)
  *   upload {file, name, size} (stored by ExamController::upload)   hotspot {x, y} in % of the picture
  */
 class Grader
@@ -44,7 +45,7 @@ class Grader
                 continue;
             }
 
-            $points = round($this->fraction($question, $answer?->response ?? []) * $question->points, 2);
+            $points = round($this->fraction($question, $answer?->response ?? [], $attempt->id) * $question->points, 2);
             if ($answer) {
                 $answer->update(['points' => $points]);
             } else {
@@ -73,7 +74,7 @@ class Grader
     }
 
     /** 0..1 of the question's points. */
-    public function fraction(Question $question, ?array $response): float
+    public function fraction(Question $question, ?array $response, ?int $attemptId = null): float
     {
         $response ??= [];
         $choices = $question->choices;
@@ -147,6 +148,14 @@ class Grader
                 }
 
                 return $right / count($accepted);
+
+            case Question::CALCULATED:
+                $given = self::toNumber($response['value'] ?? null);
+                if ($given === null || $attemptId === null) {
+                    return 0.0;
+                }
+
+                return Calculated::isRight($question, $given, Calculated::values($question, $attemptId)) ? 1.0 : 0.0;
 
             case Question::HOTSPOT:
                 $x = self::toNumber($response['x'] ?? null);

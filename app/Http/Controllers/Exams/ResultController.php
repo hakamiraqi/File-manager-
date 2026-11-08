@@ -7,6 +7,7 @@ use App\Models\ActivityLog;
 use App\Models\Exams\Answer;
 use App\Models\Exams\Attempt;
 use App\Models\Exams\Exam;
+use App\Models\Exams\Mark;
 use App\Models\Exams\Override;
 use App\Models\Exams\Question;
 use App\Models\User;
@@ -26,9 +27,11 @@ class ResultController extends Controller
 
     public function index(Request $request, Exam $exam): Response
     {
-        $this->authorizeExam($request, $exam);
+        $me = $request->user();
+        abort_unless($exam->isMarkableBy($me), 404);
+        $canManage = $exam->isManageableBy($me);
         $exam->load('questions.choices');
-        $attempts = $exam->attempts()->with(['user:id,name,email', 'answers.question', 'events'])->orderBy('user_id')->orderBy('number')->get();
+        $attempts = $exam->attempts()->with(['user:id,name,email', 'answers.question', 'answers.marks.user:id,name', 'events'])->orderBy('user_id')->orderBy('number')->get();
         $graded = $exam->questions->filter(fn (Question $q) => $q->isGraded());
         $submitted = $attempts->whereNotNull('submitted_at')->whereNotNull('score');
         $stats = (new Statistics)->analyse($graded->values(), $attempts);
@@ -40,7 +43,11 @@ class ResultController extends Controller
                 'max_score' => $exam->maxScore(),
                 'pass_mark' => $exam->pass_mark,
                 'dir' => $this->presenter->dir($exam),
+                'double_marking' => $exam->double_marking,
+                'marking_tolerance' => $exam->marking_tolerance,
             ],
+            'can_manage' => $canManage,
+            'markers' => $exam->markers()->get(['users.id', 'name', 'email'])->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]),
             'summary' => [
                 'attempts' => $attempts->count(),
                 'students' => $attempts->pluck('user_id')->unique()->count(),
@@ -80,7 +87,7 @@ class ResultController extends Controller
                         'file' => isset($ans->response['file']) ? ['name' => $ans->response['name'] ?? '', 'url' => route('exams.answers.file', $ans)] : null,
                         'points' => $ans->points,
                         'comment' => $ans->comment,
-                    ])->values(),
+                    ] + $this->marking($exam, $ans, $me, $canManage))->values(),
             ]),
             'overrides' => $exam->overrides()->with('user:id,name,email')->get()->map(fn (Override $o) => [
                 'id' => $o->id,
@@ -93,21 +100,98 @@ class ResultController extends Controller
         ]);
     }
 
-    /** Marks one essay answer by hand. */
+    /**
+     * Marks one hand-marked answer. Single marking sets its points. With double marking each
+     * marker gives a mark; two marks within the exam's tolerance give their average, two far
+     * apart wait for the owner, whose mark with «final» settles the answer.
+     */
     public function grade(Request $request, Answer $answer): RedirectResponse
     {
         $attempt = $answer->attempt;
-        $this->authorizeExam($request, $attempt->exam);
+        $exam = $attempt->exam;
+        $me = $request->user();
+        abort_unless($exam->isMarkableBy($me), 404);
         $max = $attempt->drawn[$answer->exam_question_id] ?? $answer->question->points;
         $data = $request->validate([
             'points' => ['required', 'numeric', 'min:0', 'max:'.$max],
             'comment' => ['nullable', 'string', 'max:5000'],
+            'final' => ['sometimes', 'boolean'],
         ]);
-        $answer->update($data);
+
+        if (! $exam->double_marking || (($data['final'] ?? false) && $exam->isManageableBy($me))) {
+            $answer->update(['points' => $data['points'], 'comment' => $data['comment'] ?? null]);
+        } else {
+            Mark::updateOrCreate(['exam_answer_id' => $answer->id, 'user_id' => $me->id], ['points' => $data['points'], 'comment' => $data['comment'] ?? null]);
+            $this->settle($exam, $answer, $max);
+        }
         $this->grader->retotal($attempt);
-        ActivityLog::record('exam.graded', "صحّح إجابة في الامتحان \"{$attempt->exam->text('title')}\"", $attempt->exam);
+        ActivityLog::record('exam.graded', "صحّح إجابة في الامتحان \"{$exam->text('title')}\"", $exam);
 
         return back()->with('success', 'تم حفظ الدرجة.');
+    }
+
+    /** Double marking: the answer's points from its marks, or none while they disagree. */
+    private function settle(Exam $exam, Answer $answer, float $max): void
+    {
+        $marks = $answer->marks()->get();
+        if ($marks->count() < 2) {
+            $answer->update(['points' => null]);
+
+            return;
+        }
+        $spread = $marks->max('points') - $marks->min('points');
+        $agreed = $spread <= $max * $exam->marking_tolerance / 100 + 1e-9;
+        $answer->update([
+            'points' => $agreed ? round($marks->avg('points'), 2) : null,
+            'comment' => $agreed ? ($marks->pluck('comment')->filter()->implode("\n") ?: null) : $answer->comment,
+        ]);
+    }
+
+    /** What the marking page shows of an answer's marks; others' marks stay hidden until you mark (blind marking). */
+    private function marking(Exam $exam, Answer $answer, User $me, bool $canManage): array
+    {
+        if (! $exam->double_marking) {
+            return ['marks' => [], 'status' => null, 'my_mark' => null];
+        }
+        $marks = $answer->marks;
+        $mine = $marks->firstWhere('user_id', $me->id);
+        $max = $answer->question->points;
+        $status = match (true) {
+            $marks->count() === 0 => 'unmarked',
+            $marks->count() === 1 => 'second_needed',
+            $answer->points === null => 'disputed',
+            $marks->max('points') - $marks->min('points') > $max * $exam->marking_tolerance / 100 + 1e-9 => 'settled',
+            default => 'agreed',
+        };
+
+        return [
+            'status' => $status,
+            'my_mark' => $mine ? ['points' => $mine->points, 'comment' => $mine->comment] : null,
+            'marks' => $mine || $canManage ? $marks->map(fn (Mark $m) => [
+                'name' => $m->user?->name, 'points' => $m->points, 'comment' => $m->comment, 'mine' => $m->user_id === $me->id,
+            ])->values() : [],
+        ];
+    }
+
+    public function addMarker(Request $request, Exam $exam): RedirectResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $data = $request->validate(['email' => ['required', 'email', 'exists:users,email']], ['email.exists' => 'لا يوجد مستخدم بهذا البريد.']);
+        $user = User::where('email', $data['email'])->firstOrFail();
+        if (! $user->canManageExams()) {
+            return back()->withErrors(['email' => 'المصحّح يجب أن يكون حساب أستاذ.']);
+        }
+        $exam->markers()->syncWithoutDetaching([$user->id]);
+
+        return back()->with('success', 'أُضيف المصحّح.');
+    }
+
+    public function removeMarker(Request $request, Exam $exam, User $user): RedirectResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $exam->markers()->detach($user->id);
+
+        return back()->with('success', 'أُزيل المصحّح.');
     }
 
     /** Re-marks every submitted attempt (after fixing a wrong key). Hand marks are kept. */

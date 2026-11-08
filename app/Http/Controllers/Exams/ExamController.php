@@ -231,8 +231,8 @@ class ExamController extends Controller
 
     private function checkResult(Question $question, Exam $exam, Answer $answer): array
     {
-        $fraction = $this->grader->fraction($question, $answer->response);
-        $review = $this->presenter->review($question, $exam, null, true);
+        $fraction = $this->grader->fraction($question, $answer->response, $answer->exam_attempt_id);
+        $review = $this->presenter->review($question, $exam, null, true, $answer->exam_attempt_id);
 
         return [
             'fraction' => round($fraction, 2),
@@ -284,7 +284,8 @@ class ExamController extends Controller
     /** A file a student uploaded, for them and the examiner. */
     public function file(Request $request, Answer $answer): StreamedResponse
     {
-        $this->own($request, $answer->attempt, allowManager: true);
+        $attempt = $answer->attempt;
+        abort_unless($attempt->user_id === $request->user()->id || $attempt->exam->isMarkableBy($request->user()), 404);
         $path = $answer->response['file'] ?? null;
         abort_unless($path && Storage::disk('local')->exists($path), 404);
 
@@ -345,7 +346,7 @@ class ExamController extends Controller
             'visible' => $visible,
             'review' => $visible
                 ? $attempt->orderedQuestions()->filter(fn (Question $q) => $q->isGraded())
-                    ->map(fn (Question $q) => $this->presenter->review($q, $exam, $answers[$q->id] ?? null, $exam->show_answers))->values()
+                    ->map(fn (Question $q) => $this->presenter->review($q, $exam, $answers[$q->id] ?? null, $exam->show_answers, $attempt->id))->values()
                 : [],
         ]);
     }

@@ -12,7 +12,7 @@ const { t } = useTrans();
 
 const TYPE_LABELS = {
     single: 'اختيار (إجابة واحدة)', multiple: 'اختيار (عدة إجابات)', true_false: 'صح / خطأ', short: 'إجابة قصيرة', numeric: 'رقمي',
-    matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي', classify: 'تصنيف', upload: 'رفع ملف', hotspot: 'نقطة على صورة', description: 'نص توضيحي',
+    matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي', classify: 'تصنيف', upload: 'رفع ملف', hotspot: 'نقطة على صورة', calculated: 'محسوب', description: 'نص توضيحي',
 };
 
 // Category form (new or edit)

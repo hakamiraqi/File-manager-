@@ -22,7 +22,7 @@ class Exam extends Model
         'user_id', 'title', 'description', 'subject', 'stage', 'department', 'languages', 'direction',
         'duration_minutes', 'opens_at', 'closes_at', 'max_attempts', 'grading_method', 'pass_mark', 'password',
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-        'is_practice', 'seb_required', 'seb_keys',
+        'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
     ];
 
     protected $hidden = ['password'];
@@ -44,6 +44,8 @@ class Exam extends Model
             'is_published' => 'boolean',
             'is_practice' => 'boolean',
             'seb_required' => 'boolean',
+            'double_marking' => 'boolean',
+            'marking_tolerance' => 'integer',
         ];
     }
 
@@ -75,6 +77,18 @@ class Exam extends Model
     public function scopeManageableBy(Builder $q, User $user): Builder
     {
         return $user->isAdmin() ? $q : $q->where('user_id', $user->id);
+    }
+
+    /** Teachers invited to mark this exam's hand-marked answers (beside its owner). */
+    public function markers(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'exam_markers')->withTimestamps();
+    }
+
+    /** The owner and admins, and invited markers: they see the results and mark answers. */
+    public function isMarkableBy(User $user): bool
+    {
+        return $this->isManageableBy($user) || ($user->canManageExams() && $this->markers()->whereKey($user->id)->exists());
     }
 
     public function isManageableBy(User $user): bool

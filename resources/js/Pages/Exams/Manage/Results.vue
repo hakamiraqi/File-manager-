@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
+const props = defineProps({ exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const open = ref({});
@@ -13,11 +13,21 @@ const tab = ref('attempts');
 
 // Marking an essay
 const marks = ref({});
-function mark(essay) {
-    const m = marks.value[essay.id] ?? { points: essay.points ?? '', comment: essay.comment ?? '' };
-    router.put(route('exams.manage.answers.grade', essay.id), m, { preserveScroll: true });
+const startMark = (essay) => (props.exam.double_marking
+    ? { points: essay.my_mark?.points ?? '', comment: essay.my_mark?.comment ?? '' }
+    : { points: essay.points ?? '', comment: essay.comment ?? '' });
+function mark(essay, final = false) {
+    const m = marks.value[essay.id] ?? startMark(essay);
+    router.put(route('exams.manage.answers.grade', essay.id), { ...m, final }, { preserveScroll: true });
 }
-const markFor = (essay) => (marks.value[essay.id] ??= { points: essay.points ?? '', comment: essay.comment ?? '' });
+const markFor = (essay) => (marks.value[essay.id] ??= startMark(essay));
+const STATUS = { unmarked: ['لم يُصحَّح', 'bg-gray-100 text-gray-600'], second_needed: ['ينتظر المصحّح الثاني', 'bg-amber-100 text-amber-700'],
+    disputed: ['خلاف بين المصحّحَين — يحسمه صاحب الامتحان', 'bg-red-100 text-red-700'], agreed: ['متّفق (المتوسط)', 'bg-emerald-100 text-emerald-700'], settled: ['حُسم', 'bg-emerald-100 text-emerald-700'] };
+
+// Markers
+const markerForm = useForm({ email: '' });
+const addMarker = () => markerForm.post(route('exams.manage.markers.store', props.exam.id), { preserveScroll: true, onSuccess: () => markerForm.reset() });
+const removeMarker = (m) => router.delete(route('exams.manage.markers.destroy', [props.exam.id, m.id]), { preserveScroll: true });
 
 const regrade = () => router.post(route('exams.manage.regrade', props.exam.id), {}, { preserveScroll: true });
 
@@ -40,8 +50,8 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
             <div class="flex items-center gap-2">
                 <Link :href="route('exams.manage.edit', exam.id)" class="text-gray-400 hover:text-gray-600"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
                 <h2 class="min-w-0 flex-1 truncate text-lg font-semibold" :dir="exam.dir">{{ t('exam.results', 'النتائج') }} · {{ exam.title }}</h2>
-                <button @click="regrade" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('exam.regrade', 'إعادة التصحيح') }}</button>
-                <a :href="route('exams.manage.export', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><ArrowDownTrayIcon class="h-4 w-4" /> Excel</a>
+                <button v-if="can_manage" @click="regrade" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('exam.regrade', 'إعادة التصحيح') }}</button>
+                <a v-if="can_manage" :href="route('exams.manage.export', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><ArrowDownTrayIcon class="h-4 w-4" /> Excel</a>
             </div>
         </template>
 
@@ -55,9 +65,9 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
             </div>
 
             <div class="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-                <button v-for="k in ['attempts', 'stats', 'questions', 'overrides']" :key="k" @click="tab = k"
+                <button v-for="k in ['attempts', 'stats', 'questions', ...(can_manage ? ['overrides'] : []), ...(can_manage && exam.double_marking ? ['markers'] : [])]" :key="k" @click="tab = k"
                     class="-mb-px border-b-2 px-4 py-2 text-sm" :class="tab === k ? 'border-[var(--accent-600)] font-medium text-[var(--accent-700)] dark:text-white' : 'border-transparent text-gray-500'">
-                    {{ { attempts: t('exam.tab_attempts', 'المحاولات'), stats: t('exam.tab_stats', 'الإحصاءات'), questions: t('exam.tab_questions', 'تحليل الأسئلة'), overrides: t('exam.tab_overrides', 'الاستثناءات') }[k] }}
+                    {{ { attempts: t('exam.tab_attempts', 'المحاولات'), stats: t('exam.tab_stats', 'الإحصاءات'), questions: t('exam.tab_questions', 'تحليل الأسئلة'), overrides: t('exam.tab_overrides', 'الاستثناءات'), markers: t('exam.tab_markers', 'المصحّحون') }[k] }}
                 </button>
             </div>
 
@@ -83,12 +93,18 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                                 <ArrowDownTrayIcon class="h-4 w-4" /> {{ essay.file.name }}
                             </a>
                             <p v-else class="whitespace-pre-line rounded-lg bg-gray-50 p-3 text-sm dark:bg-gray-700" dir="auto">{{ essay.text || t('exam.no_answer', 'بلا إجابة') }}</p>
+                            <div v-if="essay.status" class="flex flex-wrap items-center gap-2 text-xs">
+                                <span class="rounded-full px-2 py-0.5" :class="STATUS[essay.status][1]">{{ t('exam.mark_' + essay.status, STATUS[essay.status][0]) }}</span>
+                                <span v-for="(m, k) in essay.marks" :key="k" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-gray-700 dark:text-gray-300" :title="m.comment">{{ m.mine ? t('exam.my_mark', 'درجتي') : m.name }}: {{ m.points }}</span>
+                                <span v-if="essay.points !== null" class="font-medium">{{ t('exam.final_mark', 'المعتمدة') }}: {{ essay.points }}</span>
+                            </div>
                             <div class="flex flex-wrap items-end gap-2">
-                                <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.points', 'درجة') }} / {{ essay.max }}</span>
+                                <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ exam.double_marking ? t('exam.my_mark', 'درجتي') : t('exam.points', 'درجة') }} / {{ essay.max }}</span>
                                     <input v-model="markFor(essay).points" type="number" min="0" :max="essay.max" step="0.25" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                                 <label class="min-w-[12rem] flex-1 text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.comment', 'ملاحظة للطالب') }}</span>
                                     <input v-model="markFor(essay).comment" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                                 <button @click="mark(essay)" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white">{{ t('action.save', 'حفظ') }}</button>
+                                <button v-if="exam.double_marking && can_manage && essay.status === 'disputed'" @click="mark(essay, true)" class="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:text-red-300">{{ t('exam.settle', 'اعتمادها نهائية') }}</button>
                             </div>
                         </div>
                     </div>
@@ -144,6 +160,21 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 </table>
                 <p class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-gray-700">{{ t('exam.facility_hint', 'السهولة = متوسط ما حصّله الطلاب من درجة السؤال. أقل من 30% قد يعني سؤالاً صعباً جداً أو مفتاحاً خاطئاً.') }}
                     {{ t('exam.discrimination_hint', 'التمييز = هل يجيب عنه المتفوقون أكثر من غيرهم: فوق 0.3 جيد، تحت 0.2 ضعيف، والسالب يستحق مراجعة المفتاح.') }}</p>
+            </div>
+
+            <!-- Markers (double marking) -->
+            <div v-else-if="tab === 'markers'" class="space-y-3">
+                <form @submit.prevent="addMarker" class="flex flex-wrap items-end gap-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                    <label class="min-w-[16rem] flex-1 text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.marker_email', 'بريد الأستاذ المصحّح') }}</span>
+                        <input v-model="markerForm.email" type="email" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <span v-if="markerForm.errors.email" class="text-xs text-red-600">{{ markerForm.errors.email }}</span></label>
+                    <button :disabled="markerForm.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white disabled:opacity-50">{{ t('exam.add_marker', 'إضافة') }}</button>
+                    <p class="w-full text-xs text-gray-500">{{ t('exam.markers_hint', 'يرى المصحّح صفحة النتائج ويصحّح، ولا يعدّل الامتحان. لا يرى درجة زميله قبل أن يضع درجته. أنت أيضاً مصحّح.') }}</p>
+                </form>
+                <div v-for="m in markers" :key="m.id" class="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+                    <div class="min-w-0 flex-1"><p class="font-medium">{{ m.name }}</p><p class="text-xs text-gray-500">{{ m.email }}</p></div>
+                    <button @click="removeMarker(m)" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"><TrashIcon class="h-4 w-4" /></button>
+                </div>
             </div>
 
             <!-- Overrides -->

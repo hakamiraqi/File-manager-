@@ -37,6 +37,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/regrade', [ResultController::class, 'regrade'])->whereNumber('exam')->name('regrade');
         Route::post('/{exam}/overrides', [ResultController::class, 'override'])->whereNumber('exam')->name('overrides.store');
         Route::delete('/overrides/{override}', [ResultController::class, 'removeOverride'])->name('overrides.destroy');
+        Route::post('/{exam}/markers', [ResultController::class, 'addMarker'])->whereNumber('exam')->name('markers.store');
+        Route::delete('/{exam}/markers/{user}', [ResultController::class, 'removeMarker'])->whereNumber('exam')->name('markers.destroy');
         Route::put('/answers/{answer}', [ResultController::class, 'grade'])->name('answers.grade');
     });
 

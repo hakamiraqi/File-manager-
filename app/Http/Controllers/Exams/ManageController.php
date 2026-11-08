@@ -26,7 +26,10 @@ class ManageController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
-        $exams = Exam::manageableBy($user)->withCount(['questions', 'attempts'])
+        // Their own exams (all of them for an admin), and those they were invited to mark.
+        $exams = Exam::query()->when(! $user->isAdmin(), fn ($q) => $q->where(fn ($w) => $w->where('user_id', $user->id)
+            ->orWhereHas('markers', fn ($m) => $m->whereKey($user->id))))
+            ->withCount(['questions', 'attempts'])
             ->withCount(['attempts as pending_count' => fn ($q) => $q->where('needs_grading', true)])
             ->with('author:id,name')->latest('id')->get();
 
@@ -37,6 +40,7 @@ class ManageController extends Controller
                 'subject' => $e->subject,
                 'stage' => $e->stage,
                 'author' => $e->author?->name,
+                'can_edit' => $e->isManageableBy($user),
                 'is_published' => $e->is_published,
                 'questions' => $e->questions_count,
                 'attempts' => $e->attempts_count,
@@ -101,6 +105,8 @@ class ManageController extends Controller
             'is_practice' => ['boolean'],
             'seb_required' => ['boolean'],
             'seb_keys' => ['nullable', 'string', 'max:5000'],
+            'double_marking' => ['boolean'],
+            'marking_tolerance' => ['nullable', 'integer', 'min:0', 'max:100'],
             'questions' => ['array', 'max:500'],
             'questions.*.id' => ['nullable', 'integer'],
             'questions.*.type' => ['required', Rule::in(Question::TYPES)],
@@ -130,8 +136,8 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys',
-            ])->all());
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking',
+            ])->all() + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');
             $keep = [];
@@ -300,7 +306,13 @@ class ManageController extends Controller
                 }
                 $settings = ['image' => $image, 'zones' => $zones];
             }
-            if (! in_array($type, [Question::SHORT, Question::NUMERIC, Question::ESSAY, Question::UPLOAD, Question::HOTSPOT], true)) {
+            if ($type === Question::CALCULATED) {
+                [$settings, $error] = self::checkCalculated($settings, $body);
+                if ($error) {
+                    $errors["questions.$i.settings"] = "السؤال $n: $error";
+                }
+            }
+            if (! in_array($type, [Question::SHORT, Question::NUMERIC, Question::ESSAY, Question::UPLOAD, Question::HOTSPOT, Question::CALCULATED], true)) {
                 $settings = [];
             }
 
@@ -319,6 +331,51 @@ class ManageController extends Controller
         }
 
         return $out;
+    }
+
+    /** A calculated question's settings, cleaned, and what is wrong with them (or null). */
+    private static function checkCalculated(array $settings, array $body): array
+    {
+        $vars = collect($settings['vars'] ?? [])->map(fn ($v) => [
+            'name' => strtolower(trim((string) ($v['name'] ?? ''))),
+            'min' => \App\Services\Exams\Grader::toNumber($v['min'] ?? null),
+            'max' => \App\Services\Exams\Grader::toNumber($v['max'] ?? null),
+            'decimals' => max(0, min(6, (int) ($v['decimals'] ?? 0))),
+        ])->filter(fn ($v) => $v['name'] !== '')->unique('name')->values();
+        $formula = trim((string) ($settings['formula'] ?? ''));
+        $tolerance = trim((string) ($settings['tolerance'] ?? '0')) ?: '0';
+        $decimals = isset($settings['decimals']) && $settings['decimals'] !== '' && $settings['decimals'] !== null ? max(0, min(6, (int) $settings['decimals'])) : null;
+        $clean = ['vars' => $vars->all(), 'formula' => $formula, 'tolerance' => $tolerance, 'decimals' => $decimals];
+
+        if ($vars->isEmpty()) {
+            return [$clean, 'أضف متغيراً واحداً على الأقل، واكتبه في نص السؤال بين { }.'];
+        }
+        if ($bad = $vars->first(fn ($v) => ! preg_match('/^[a-z_][a-z0-9_]*$/', $v['name']) || in_array($v['name'], ['pi', 'e'], true))) {
+            return [$clean, "اسم المتغير «{$bad['name']}» يجب أن يكون حروفاً إنكليزية."];
+        }
+        if ($bad = $vars->first(fn ($v) => $v['min'] === null || $v['max'] === null || $v['min'] > $v['max'])) {
+            return [$clean, "حدّد أصغر وأكبر قيمة للمتغير {$bad['name']}."];
+        }
+        if ($missing = collect($body)->map(fn ($t) => $vars->pluck('name')->reject(fn ($n) => stripos($t, '{'.$n.'}') !== false)->first())->filter()->first()) {
+            return [$clean, "المتغير {{$missing}} غير موجود في نص السؤال."];
+        }
+        if ($unknown = array_diff(\App\Services\Exams\Formula::variables($formula), $vars->pluck('name')->all())) {
+            return [$clean, 'في المعادلة أسماء غير معرّفة: '.implode('، ', $unknown).'.'];
+        }
+        if (! preg_match('/^\d+(\.\d+)?%?$/', $tolerance)) {
+            return [$clean, 'هامش الخطأ رقم (0.1) أو نسبة (2%).'];
+        }
+        // The formula must work across the ranges: at the smallest, the largest and the middle values.
+        foreach (['min', 'max', 'mid'] as $at) {
+            $values = $vars->mapWithKeys(fn ($v) => [$v['name'] => $at === 'mid' ? ($v['min'] + $v['max']) / 2 : $v[$at]])->all();
+            try {
+                \App\Services\Exams\Formula::evaluate($formula, $values);
+            } catch (\InvalidArgumentException $e) {
+                return [$clean, ($formula === '' ? 'اكتب المعادلة.' : 'المعادلة: '.$e->getMessage())];
+            }
+        }
+
+        return [$clean, null];
     }
 
     /** The exam on paper: questions with space to answer, or the answer key (?key=1). */
