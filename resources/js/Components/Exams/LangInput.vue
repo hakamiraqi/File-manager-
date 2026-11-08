@@ -1,4 +1,5 @@
 <script setup>
+import RichEditor from '@/Components/Exams/RichEditor.vue';
 // One text in several languages: {ar: '...', en: '...'}. Each language gets its own box and direction.
 const props = defineProps({
     modelValue: { type: Object, default: () => ({}) },
@@ -6,6 +7,7 @@ const props = defineProps({
     multiline: { type: Boolean, default: false },
     rows: { type: Number, default: 3 },
     placeholder: { type: String, default: '' },
+    rich: { type: Boolean, default: false },   // formatted text (the editor's HTML)
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -21,8 +23,10 @@ function set(lang, value) {
     <div class="space-y-1.5">
         <div v-for="lang in languages" :key="lang" class="flex items-start gap-2">
             <span v-if="languages.length > 1" class="mt-2 w-8 shrink-0 rounded bg-gray-100 py-0.5 text-center text-[11px] font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-300">{{ LABELS[lang] ?? lang }}</span>
+            <RichEditor v-if="rich" class="w-full" :model-value="modelValue?.[lang] ?? ''" @update:model-value="set(lang, $event)"
+                :dir="RTL.includes(lang) ? 'rtl' : 'ltr'" :lang="lang" :placeholder="placeholder" />
             <textarea
-                v-if="multiline"
+                v-else-if="multiline"
                 :value="modelValue?.[lang] ?? ''"
                 @input="set(lang, $event.target.value)"
                 :rows="rows"

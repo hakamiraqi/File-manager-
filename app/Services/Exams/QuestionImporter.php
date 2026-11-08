@@ -27,7 +27,7 @@ class QuestionImporter
         'description' => ['description', 'نص', 'نص توضيحي'],
     ];
 
-    public const EXTENSIONS = ['xlsx', 'csv', 'txt', 'gift', 'xml'];
+    public const EXTENSIONS = ['xlsx', 'csv', 'txt', 'gift', 'xml', 'docx'];
 
     /** Any of the accepted files: .txt is GIFT when it looks like it, Aiken otherwise. */
     public function fromFile(string $path, string $ext, string $lang, \App\Services\SpreadsheetReader $reader): array
@@ -35,12 +35,27 @@ class QuestionImporter
         if (in_array($ext, ['xlsx', 'csv'], true)) {
             return $this->fromRows($reader->read($path, $ext), $lang);
         }
-        $text = (string) file_get_contents($path);
+        // Word: the questions written in Aiken or GIFT form, one paragraph per line.
+        $text = $ext === 'docx' ? self::docxText($path) : (string) file_get_contents($path);
         if ($ext === 'xml') {
             return $this->fromMoodleXml($text, $lang);
         }
 
         return $ext === 'gift' || self::looksLikeGift($text) ? $this->fromGift($text, $lang) : $this->fromAiken($text, $lang);
+    }
+
+    /** A Word file's text: each paragraph on its own line, tabs and line breaks kept. */
+    public static function docxText(string $path): string
+    {
+        $zip = new \ZipArchive;
+        if ($zip->open($path) !== true) {
+            return '';
+        }
+        $xml = (string) $zip->getFromName('word/document.xml');
+        $zip->close();
+        $xml = preg_replace(['#<w:tab/>#', '#<w:br[^>]*/>#', '#</w:p>#'], ["\t", "\n", "\n"], $xml);
+
+        return trim(html_entity_decode(strip_tags($xml), ENT_QUOTES | ENT_XML1, 'UTF-8'));
     }
 
     public static function looksLikeGift(string $text): bool

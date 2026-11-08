@@ -38,7 +38,7 @@ class BankController extends Controller
                 'id' => $q->id,
                 'type' => $q->type,
                 'points' => $q->points,
-                'body' => Question::pick($q->body, app()->getLocale()),
+                'body' => $q->plainBody([]),
                 'languages' => array_keys((array) $q->body),
             ]) : [],
         ]);
@@ -119,7 +119,7 @@ class BankController extends Controller
     {
         abort_unless($category->isEditableBy($request->user()), 404);
         $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:'.implode(',', QuestionImporter::EXTENSIONS)]],
-            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift) أو Moodle XML (.xml).']);
+            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift، أو Word .docx) أو Moodle XML (.xml).']);
         $lang = in_array($request->input('lang'), Exam::LANGUAGES, true) ? $request->input('lang') : 'ar';
         $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());

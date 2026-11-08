@@ -118,6 +118,7 @@ class ManageController extends Controller
             'questions' => ['array', 'max:500'],
             'questions.*.id' => ['nullable', 'integer'],
             'questions.*.type' => ['required', Rule::in(Question::TYPES)],
+            'questions.*.format' => ['nullable', 'in:text,html'],
             'questions.*.body' => ['nullable', 'array'],
             'questions.*.feedback' => ['nullable', 'array'],
             'questions.*.points' => ['nullable', 'numeric', 'min:0', 'max:1000'],
@@ -157,7 +158,7 @@ class ManageController extends Controller
             foreach ($questions as $i => $q) {
                 $question = isset($q['id'], $existing[$q['id']]) ? $existing[$q['id']] : new Question(['exam_id' => $exam->id]);
                 $question->fill([
-                    'type' => $q['type'], 'body' => $q['body'], 'feedback' => $q['feedback'] ?: null,
+                    'type' => $q['type'], 'format' => $q['format'] ?? 'text', 'body' => $q['body'], 'feedback' => $q['feedback'] ?: null,
                     'points' => $q['type'] === Question::DESCRIPTION ? 0 : $q['points'],
                     'settings' => $q['settings'] ?: null, 'position' => $i,
                 ])->save();
@@ -225,7 +226,10 @@ class ManageController extends Controller
         foreach (array_values($questions) as $i => $q) {
             $n = $i + 1;
             $type = $q['type'];
-            $body = Question::cleanTexts($q['body'] ?? [], $langs);
+            // Formatted text (the editor's HTML), cleaned; not for fill-in-the-blanks, whose
+            // brackets are read from plain text.
+            $format = ($q['format'] ?? 'text') === 'html' && $type !== Question::CLOZE ? 'html' : 'text';
+            $body = $format === 'html' ? self::cleanHtml($q['body'] ?? [], $langs) : Question::cleanTexts($q['body'] ?? [], $langs);
             if ($type === Question::RANDOM) {
                 $settings = (array) ($q['settings'] ?? []);
                 $category = \App\Models\Exams\BankCategory::find((int) ($settings['category_id'] ?? 0));
@@ -333,8 +337,9 @@ class ManageController extends Controller
             $out[] = [
                 'id' => $q['id'] ?? null,
                 'type' => $type,
+                'format' => $format,
                 'body' => $body,
-                'feedback' => Question::cleanTexts($q['feedback'] ?? [], $langs),
+                'feedback' => $format === 'html' ? self::cleanHtml($q['feedback'] ?? [], $langs) : Question::cleanTexts($q['feedback'] ?? [], $langs),
                 'points' => (float) ($q['points'] ?? 1),
                 'settings' => $settings,
                 'choices' => $choices->all(),
@@ -345,6 +350,14 @@ class ManageController extends Controller
         }
 
         return $out;
+    }
+
+    /** Formatted texts by language, cleaned; one with neither words nor media counts as empty. */
+    private static function cleanHtml(array $texts, array $langs): array
+    {
+        return collect($langs)->mapWithKeys(fn ($l) => [$l => \App\Services\Exams\HtmlCleaner::clean((string) ($texts[$l] ?? ''))])
+            ->filter(fn ($html) => trim(\App\Services\Exams\HtmlCleaner::text($html)) !== '' || preg_match('/<(img|audio|video)\b/', $html))
+            ->all();
     }
 
     /** An address (192.168.1.20) or a range (192.168.1.0/24), IPv4 or IPv6. */
@@ -432,8 +445,12 @@ class ManageController extends Controller
     /** A picture for a question (hotspot): kept privately, named by its content. */
     public function image(Request $request): JsonResponse
     {
-        $request->validate(['image' => ['required', 'image', 'mimes:jpg,jpeg,png,gif,webp', 'max:8192']]);
+        // Pictures for hotspot questions and formatted text; sound and video for formatted text.
+        $request->validate(['image' => ['required', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp3,ogg,oga,wav,m4a,mp4,webm', 'max:51200']]);
         $file = $request->file('image');
+        if (in_array(strtolower($file->extension()), ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) && $file->getSize() > 8 * 1024 * 1024) {
+            throw ValidationException::withMessages(['image' => 'الصورة أكبر من 8 ميغابايت.']);
+        }
         $name = hash_file('sha256', $file->getRealPath()).'.'.strtolower($file->extension());
         if (! Storage::disk('local')->exists(self::IMAGES.'/'.$name)) {
             Storage::disk('local')->putFileAs(self::IMAGES, $file, $name);
@@ -446,7 +463,7 @@ class ManageController extends Controller
 
     public static function imageExists(string $name): bool
     {
-        return preg_match('/^[a-f0-9]{64}\.(jpg|jpeg|png|gif|webp)$/', $name) === 1 && Storage::disk('local')->exists(self::IMAGES.'/'.$name);
+        return preg_match('/^[a-f0-9]{64}\.(jpg|jpeg|png|gif|webp|mp3|ogg|oga|wav|m4a|mp4|webm)$/', $name) === 1 && Storage::disk('local')->exists(self::IMAGES.'/'.$name);
     }
 
     private function authorizeExam(Request $request, Exam $exam): void

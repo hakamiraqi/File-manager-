@@ -40,7 +40,7 @@ class Question extends Model
 
     protected $table = 'exam_questions';
 
-    protected $fillable = ['exam_id', 'bank_category_id', 'type', 'body', 'feedback', 'points', 'settings', 'position'];
+    protected $fillable = ['exam_id', 'bank_category_id', 'type', 'format', 'body', 'feedback', 'points', 'settings', 'position'];
 
     protected function casts(): array
     {
@@ -66,6 +66,14 @@ class Question extends Model
     public function isGraded(): bool
     {
         return ! in_array($this->type, [self::DESCRIPTION, self::RANDOM], true);
+    }
+
+    /** The question's text in one language, without formatting (lists, tables, results). */
+    public function plainBody(?array $langs = null): string
+    {
+        $text = self::pick($this->body, app()->getLocale(), $langs ?? $this->exam?->languages ?? []);
+
+        return $this->format === 'html' ? \App\Services\Exams\HtmlCleaner::text($text) : $text;
     }
 
     public function isManual(): bool

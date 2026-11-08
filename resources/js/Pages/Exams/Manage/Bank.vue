@@ -89,7 +89,7 @@ const currentCategory = () => props.categories.find((c) => c.id === props.curren
 
                 <form v-if="currentCategory()?.editable" @submit.prevent="importFile" class="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-300 p-3 text-sm dark:border-gray-600">
                     <span class="text-gray-600 dark:text-gray-300">{{ t('exam.bank_import', 'استيراد أسئلة (Excel/CSV/Aiken/GIFT/Moodle XML):') }}</span>
-                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt,.gift,.xml" @input="importForm.file = $event.target.files[0]" class="text-sm" />
+                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt,.gift,.xml,.docx" @input="importForm.file = $event.target.files[0]" class="text-sm" />
                     <select v-model="importForm.lang" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
                         <option value="ar">العربية</option><option value="en">English</option><option value="ku">کوردی</option>
                     </select>

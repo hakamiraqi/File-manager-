@@ -69,6 +69,7 @@ class Presenter
             'id' => $q->id,
             'type' => $q->type,
             'body' => $q->type === Question::CALCULATED ? Calculated::render($text($q->body), Calculated::values($q, $attempt->id)) : $text($q->body),
+            'html' => $q->format === 'html',
             'points' => $q->points,
             'choices' => in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true) || ! in_array($q->type, Question::CHOICE_TYPES, true) ? [] : $choices
                 ->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body)])->all(),
@@ -140,6 +141,7 @@ class Presenter
                 $values !== null => Calculated::render($text($q->body), $values),
                 default => $text($q->body),
             },
+            'html' => $q->format === 'html',
             'points' => $q->points,
             'earned' => $answer?->points,
             'given' => $this->describeResponse($q, $answer?->response, $text),
@@ -193,6 +195,7 @@ class Presenter
             'id' => $q->id,
             'type' => $q->type,
             'body' => $q->type === Question::CLOZE ? preg_replace('/\[\[(\*?)(.+?)\]\]/u', '________', $text($q->body)) : $text($q->body),
+            'html' => $q->format === 'html',
             'points' => $q->type === Question::RANDOM ? $q->slotPoints() : $q->points,
             'choices' => in_array($q->type, [Question::SINGLE, Question::MULTIPLE, Question::TRUE_FALSE, Question::ORDERING], true)
                 ? $q->choices->map(fn (Choice $c) => ['body' => $text($c->body), 'is_correct' => $key && $c->is_correct])->values()->all() : [],
@@ -264,6 +267,7 @@ class Presenter
         return [
             'id' => $q->id,
             'type' => $q->type,
+            'format' => $q->format ?? 'text',
             'body' => $q->body ?: (object) [],
             'feedback' => $q->feedback ?: (object) [],
             'points' => $q->points,

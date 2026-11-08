@@ -1,4 +1,5 @@
 <script setup>
+import RichText from '@/Components/Exams/RichText.vue';
 import { computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -42,7 +43,7 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
                     <XCircleIcon v-else class="h-6 w-6 shrink-0 text-red-500" />
                     <div class="min-w-0 flex-1">
                         <p class="text-xs text-gray-500">{{ t('exam.question', 'السؤال') }} {{ i + 1 }} · {{ r.earned ?? '—' }} / {{ r.points }}</p>
-                        <p class="mt-1 whitespace-pre-line" dir="auto">{{ r.body }}</p>
+                        <RichText :text="r.body" :html="r.html" class="mt-1" />
                         <div v-if="r.image" class="relative mt-2 inline-block max-w-full">
                             <img :src="r.image" alt="" class="block max-h-80 max-w-full rounded-lg" />
                             <span v-for="(z, k) in r.zones" :key="k" class="absolute border-2 border-emerald-500 bg-emerald-400/20"

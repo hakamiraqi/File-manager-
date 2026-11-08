@@ -1,4 +1,5 @@
 <script setup>
+import RichText from '@/Components/Exams/RichText.vue';
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
@@ -373,7 +374,7 @@ onBeforeUnmount(() => {
                             <FlagIcon class="h-4 w-4" /> {{ t('exam.flag', 'راجع لاحقاً') }}
                         </button>
                     </div>
-                    <p v-if="current.type !== 'cloze'" class="whitespace-pre-line text-base leading-relaxed" dir="auto">{{ current.body }}</p>
+                    <RichText v-if="current.type !== 'cloze'" :text="current.body" :html="current.html" class="text-base leading-relaxed" />
                     <!-- Fill in the blanks: the text with its boxes and lists in place -->
                     <p v-else class="whitespace-pre-line text-base leading-loose" dir="auto">
                         <template v-for="(part, k) in current.parts" :key="k">
@@ -396,7 +397,7 @@ onBeforeUnmount(() => {
                             <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
                                 :class="state[current.id].choice === c.id ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700'">
                                 <input type="radio" :name="'q' + current.id" :value="c.id" v-model="state[current.id].choice" @change="save(current)" class="text-[var(--accent-600)]" />
-                                <span dir="auto">{{ c.body }}</span>
+                                <RichText :text="c.body" tag="span" />
                             </label>
                         </fieldset>
 
@@ -406,7 +407,7 @@ onBeforeUnmount(() => {
                             <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
                                 :class="state[current.id].choices.includes(c.id) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700'">
                                 <input type="checkbox" :checked="state[current.id].choices.includes(c.id)" @change="toggleMultiple(current, c.id)" class="rounded text-[var(--accent-600)]" />
-                                <span dir="auto">{{ c.body }}</span>
+                                <RichText :text="c.body" tag="span" />
                             </label>
                         </fieldset>
 
@@ -429,7 +430,7 @@ onBeforeUnmount(() => {
                         <div v-else-if="current.type === 'matching' || current.type === 'classify'" class="space-y-2">
                             <p v-if="current.type === 'classify'" class="text-xs text-gray-500">{{ t('exam.classify_hint', 'ضع كل عنصر في فئته.') }}</p>
                             <div v-for="item in current.items" :key="item.id" class="grid items-center gap-2 rounded-lg border border-gray-200 p-3 sm:grid-cols-2 dark:border-gray-600">
-                                <span class="text-sm" dir="auto">{{ item.body }}</span>
+                                <RichText :text="item.body" tag="span" class="text-sm" />
                                 <select :value="state[current.id].pairs[item.id] ?? ''" @change="pair(current, item.id, $event.target.value)"
                                     class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
                                     <option value="">{{ t('exam.choose', '— اختر —') }}</option>
@@ -466,7 +467,7 @@ onBeforeUnmount(() => {
                         <ol v-else-if="current.type === 'ordering'" class="space-y-2">
                             <li v-for="(id, i) in state[current.id].order" :key="id" class="flex items-center gap-2 rounded-lg border border-gray-200 p-2.5 text-sm dark:border-gray-600">
                                 <span class="w-6 text-center text-xs text-gray-400">{{ i + 1 }}</span>
-                                <span class="flex-1" dir="auto">{{ choiceText(current, id) }}</span>
+                                <RichText :text="choiceText(current, id)" tag="span" class="flex-1" />
                                 <button @click="move(current, i, -1)" :disabled="i === 0" class="rounded p-1 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700" :aria-label="t('exam.move_up', 'إلى الأعلى')"><ArrowUpIcon class="h-4 w-4" /></button>
                                 <button @click="move(current, i, 1)" :disabled="i === state[current.id].order.length - 1" class="rounded p-1 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700" :aria-label="t('exam.move_down', 'إلى الأسفل')"><ArrowDownIcon class="h-4 w-4" /></button>
                             </li>

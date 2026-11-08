@@ -545,7 +545,7 @@
     "exam.cloze_hint_select": "A list to pick from: [[*Basra|Mosul|Erbil]] — the star marks the right one; options are shown shuffled.",
     "exam.cloze_hint_langs": "Every language has the same blanks in the same order. Partial credit by the number of right blanks.",
     "exam.import_title": "Import questions",
-    "exam.import_hint": "An Excel or CSV file with the columns Type, Question, Choice 1…, Answer, Points — or an Aiken, GIFT or Moodle XML (.xml) text file. Questions are added at the end. Save your changes first.",
+    "exam.import_hint": "An Excel or CSV file with the columns Type, Question, Choice 1…, Answer, Points — or a Word file (.docx) or text in Aiken or GIFT form, or Moodle XML (.xml). Questions are added at the end. Save your changes first.",
     "exam.import_template": "Download the template",
     "exam.import": "Import",
     "exam.save_first": "Save your changes before importing.",
@@ -773,5 +773,9 @@
     "exam.dir_auto_short": "Automatic",
     "exam.locked_title": "The attempt is locked",
     "exam.locked_text": "You left the exam page or opened it again. Ask the invigilator for the resume code. Your answers are saved, and the time keeps running.",
-    "exam.continue": "Continue"
+    "exam.continue": "Continue",
+    "exam.rich_hint": "Formatting, tables, pictures, sound, video, equations",
+    "exam.rich_on": "Formatted ✓",
+    "exam.rich_off": "Formatted text",
+    "exam.math_hint": "Equations in any text: write them between $…$, e.g. $x^2 + \\frac{1}{2}$, or use “Formatted text” for the equation button, tables, pictures, sound and video."
 }

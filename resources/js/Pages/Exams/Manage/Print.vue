@@ -1,4 +1,5 @@
 <script setup>
+import RichText from '@/Components/Exams/RichText.vue';
 import { computed } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import { useTrans } from '@/Composables/useTrans';
@@ -45,13 +46,13 @@ const lines = (q) => ({ essay: 10, short: 1, numeric: 1, upload: 0 }[q.type] ?? 
             <p v-if="exam.description" class="mb-5 whitespace-pre-line text-sm">{{ exam.description }}</p>
 
             <section v-for="q in questions" :key="q.id" class="question mb-5">
-                <p v-if="q.type === 'description'" class="whitespace-pre-line rounded border border-gray-400 p-3 text-sm">{{ q.body }}</p>
+                <RichText v-if="q.type === 'description'" :text="q.body" :html="q.html" class="rounded border border-gray-400 p-3 text-sm" />
                 <template v-else>
                     <p class="flex gap-2">
                         <span class="font-bold">{{ number(q) }}.</span>
                         <span class="flex-1 whitespace-pre-line" dir="auto">
                             <template v-if="q.type === 'random'">{{ t('exam.print_random', ':n أسئلة عشوائية من «:c» (تُسحب لكل طالب عند الامتحان الإلكتروني).', { n: q.count, c: q.category }) }}</template>
-                            <template v-else>{{ q.body }}</template>
+                            <RichText v-else :text="q.body" :html="q.html" tag="span" />
                         </span>
                         <span class="text-xs whitespace-nowrap">({{ q.points }} {{ t('exam.points', 'درجة') }})</span>
                     </p>
@@ -59,7 +60,7 @@ const lines = (q) => ({ essay: 10, short: 1, numeric: 1, upload: 0 }[q.type] ?? 
                     <ol v-if="q.choices.length" class="mt-2 space-y-1 ps-6">
                         <li v-for="(c, i) in q.choices" :key="i" class="flex gap-2" :class="c.is_correct ? 'font-bold' : ''">
                             <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-black text-xs" :class="c.is_correct ? 'bg-black text-white' : ''">{{ q.type === 'ordering' ? '' : letter(i) }}</span>
-                            <span dir="auto">{{ c.body }}</span>
+                            <RichText :text="c.body" tag="span" />
                         </li>
                     </ol>
 

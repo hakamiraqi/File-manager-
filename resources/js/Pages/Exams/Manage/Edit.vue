@@ -1,4 +1,5 @@
 <script setup>
+import RichText from '@/Components/Exams/RichText.vue';
 import { computed, ref } from 'vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
@@ -65,6 +66,16 @@ function moveChoice(q, i, step) {
 }
 function setOnlyCorrect(q, c) {
     q.choices.forEach((x) => (x.is_correct = x === c));
+}
+// Plain text ↔ formatted: plain lines become paragraphs; formatting is dropped going back.
+function toggleFormat(q) {
+    const toHtml = q.format !== 'html';
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const strip = (h) => { const d = document.createElement('div'); d.innerHTML = h.replace(/<\/(p|div|li|tr)>/gi, '\n').replace(/<br\s*\/?>/gi, '\n'); return d.textContent.replace(/\n{3,}/g, '\n\n').trim(); };
+    for (const key of ['body', 'feedback']) {
+        q[key] = Object.fromEntries(Object.entries(q[key] || {}).map(([l, v]) => [l, toHtml ? (v ? v.split('\n').map((line) => `<p>${esc(line) || '<br>'}</p>`).join('') : '') : strip(v || '')]));
+    }
+    q.format = toHtml ? 'html' : 'text';
 }
 function toggleGroup(id) {
     const list = form.group_ids ?? (form.group_ids = []);
@@ -313,9 +324,10 @@ function save() {
             </section>
 
             <!-- Questions -->
-            <div class="flex items-center justify-between">
+            <div class="flex flex-wrap items-center justify-between gap-y-1">
                 <h3 class="font-semibold">{{ t('exam.questions', 'الأسئلة') }} ({{ form.questions.length }})</h3>
                 <span class="text-sm text-gray-500">{{ t('exam.total_points', 'مجموع الدرجات') }}: {{ totalPoints }}</span>
+                <p class="w-full text-xs text-gray-400">{{ t('exam.math_hint', 'المعادلات في أي نص: اكتبها بين $…$ مثل $x^2 + \\frac{1}{2}$، أو استعمل «نص منسّق» لزر المعادلة والجداول والصور والصوت والفيديو.') }}</p>
             </div>
 
             <section v-for="(q, i) in form.questions" :key="q.id ?? 'new' + i" class="space-y-3 rounded-xl border bg-white p-5 dark:bg-gray-800"
@@ -327,6 +339,9 @@ function save() {
                     </select>
                     <label v-if="q.type !== 'description'" class="flex items-center gap-1 text-sm">{{ t('exam.points', 'درجة') }}
                         <input v-model="q.points" type="number" min="0" step="0.25" class="w-20 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <button v-if="!['cloze', 'random'].includes(q.type)" type="button" @click="toggleFormat(q)"
+                        class="rounded-lg border px-2 py-0.5 text-xs" :class="q.format === 'html' ? 'border-[var(--accent-600)] text-[var(--accent-700)] dark:text-white' : 'border-gray-300 text-gray-500 dark:border-gray-600'"
+                        :title="t('exam.rich_hint', 'تنسيق، جداول، صور، صوت، فيديو، معادلات')">{{ q.format === 'html' ? t('exam.rich_on', 'نص منسّق ✓') : t('exam.rich_off', 'نص منسّق') }}</button>
                     <span class="flex-1" />
                     <button @click="moveQuestion(i, -1)" :disabled="i === 0" class="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"><ArrowUpIcon class="h-4 w-4" /></button>
                     <button @click="moveQuestion(i, 1)" :disabled="i === form.questions.length - 1" class="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"><ArrowDownIcon class="h-4 w-4" /></button>
@@ -343,7 +358,7 @@ function save() {
                     <p class="text-xs text-gray-500 sm:col-span-2">{{ t('exam.random_hint', 'كل طالب يأخذ أسئلة مختلفة من الفئة، والدرجة أعلاه لكل سؤال منها.') }}
                         <Link v-if="!categories.length" :href="route('exams.manage.bank')" class="text-[var(--accent-600)] underline">{{ t('exam.bank_create_first', 'أنشئ فئة في بنك الأسئلة أولاً') }}</Link></p>
                 </div>
-                <LangInput v-else v-model="q.body" :languages="form.languages" multiline :rows="2" :placeholder="q.type === 'description' ? t('exam.description_ph', 'نص أو قطعة تعود إليها الأسئلة التالية') : t('exam.question_ph', 'نص السؤال')" />
+                <LangInput v-else v-model="q.body" :languages="form.languages" multiline :rows="2" :rich="q.format === 'html'" :placeholder="q.type === 'description' ? t('exam.description_ph', 'نص أو قطعة تعود إليها الأسئلة التالية') : t('exam.question_ph', 'نص السؤال')" />
 
                 <!-- Choices: one / several / true-false -->
                 <div v-if="['single', 'multiple', 'true_false'].includes(q.type)" class="space-y-2">
@@ -453,7 +468,7 @@ function save() {
 
                 <details v-if="q.type !== 'description' && q.type !== 'random'" class="text-sm">
                     <summary class="cursor-pointer text-xs text-gray-500">{{ t('exam.feedback', 'تغذية راجعة تظهر في المراجعة') }}</summary>
-                    <div class="mt-2"><LangInput v-model="q.feedback" :languages="form.languages" multiline :rows="2" /></div>
+                    <div class="mt-2"><LangInput v-model="q.feedback" :languages="form.languages" multiline :rows="2" :rich="q.format === 'html'" /></div>
                 </details>
 
                 <ul v-if="errorsFor(i).length" class="space-y-0.5 text-xs text-red-600">
@@ -465,11 +480,11 @@ function save() {
             <section class="space-y-2 rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-600">
                 <p class="text-sm font-medium">{{ t('exam.import_title', 'استيراد أسئلة') }}</p>
                 <p class="text-xs text-gray-500">
-                    {{ t('exam.import_hint', 'ملف Excel أو CSV بأعمدة: النوع، السؤال، الخيار 1…، الإجابة، الدرجة — أو ملف Aiken أو GIFT أو Moodle XML (.xml). تُضاف الأسئلة في آخر الامتحان. احفظ تعديلاتك أولاً.') }}
+                    {{ t('exam.import_hint', 'ملف Excel أو CSV بأعمدة: النوع، السؤال، الخيار 1…، الإجابة، الدرجة — أو ملف Word (.docx) أو نص بصيغة Aiken أو GIFT، أو Moodle XML (.xml). تُضاف الأسئلة في آخر الامتحان. احفظ تعديلاتك أولاً.') }}
                     <a :href="route('exams.manage.import.template')" class="text-[var(--accent-600)] underline">{{ t('exam.import_template', 'تنزيل النموذج') }}</a>
                 </p>
                 <form @submit.prevent="importQuestions" class="flex flex-wrap items-center gap-2">
-                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt,.gift,.xml" @input="importForm.file = $event.target.files[0]" class="text-sm" />
+                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt,.gift,.xml,.docx" @input="importForm.file = $event.target.files[0]" class="text-sm" />
                     <button :disabled="!importForm.file || importForm.processing || form.isDirty" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('exam.import', 'استيراد') }}</button>
                     <span v-if="form.isDirty" class="text-xs text-amber-600">{{ t('exam.save_first', 'احفظ التعديلات قبل الاستيراد.') }}</span>
                 </form>

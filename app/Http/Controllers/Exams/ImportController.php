@@ -26,7 +26,7 @@ class ImportController extends Controller
     {
         abort_unless($exam->isManageableBy($request->user()), 404);
         $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:'.implode(',', QuestionImporter::EXTENSIONS)]],
-            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift) أو Moodle XML (.xml).']);
+            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift، أو Word .docx) أو Moodle XML (.xml).']);
 
         $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());

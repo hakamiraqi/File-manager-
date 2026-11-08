@@ -61,7 +61,7 @@ class ResultController extends Controller
                     'id' => $q->id,
                     'number' => $i + 1,
                     'type' => $q->type,
-                    'body' => Question::pick($q->body, app()->getLocale(), $q->exam->languages ?? []),
+                    'body' => $q->plainBody($exam->languages ?? []),
                     'points' => $q->points,
                     'facility' => $stats['items'][$q->id]['facility'],
                     'discrimination' => $stats['items'][$q->id]['discrimination'],
@@ -81,7 +81,7 @@ class ResultController extends Controller
                 'essays' => $a->answers->filter(fn (Answer $ans) => $ans->question?->isManual())
                     ->map(fn (Answer $ans) => [
                         'id' => $ans->id,
-                        'question' => Question::pick($ans->question->body, app()->getLocale(), $exam->languages ?? []),
+                        'question' => $ans->question->plainBody($exam->languages ?? []),
                         'max' => $a->drawn[$ans->exam_question_id] ?? $ans->question->points,
                         'text' => $ans->response['text'] ?? '',
                         'file' => isset($ans->response['file']) ? ['name' => $ans->response['name'] ?? '', 'url' => route('exams.answers.file', $ans)] : null,
