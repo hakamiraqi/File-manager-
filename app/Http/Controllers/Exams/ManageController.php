@@ -111,6 +111,9 @@ class ManageController extends Controller
             'access_code' => ['nullable', 'string', 'max:20'],
             'resume_code_required' => ['boolean'],
             'navigation' => ['nullable', 'in:free,sequential'],
+            'results_at' => ['nullable', 'date', 'required_if:show_results,at_date'],
+            'anonymous_marking' => ['boolean'],
+            'appeals_open' => ['boolean'],
             'calculator' => ['nullable', 'in:none,basic,scientific'],
             'questions.*.tags' => ['nullable', 'array', 'max:10'],
             'questions.*.difficulty' => ['nullable', 'integer'],
@@ -154,7 +157,7 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers',
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open',
             ])->all() + array_filter(['navigation' => $data['navigation'] ?? null, 'calculator' => $data['calculator'] ?? null]) + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');
@@ -362,6 +365,18 @@ class ManageController extends Controller
             }
             if (! in_array($type, [Question::SHORT, Question::NUMERIC, Question::ESSAY, Question::UPLOAD, Question::HOTSPOT, Question::CALCULATED, Question::DRAG_TEXT, Question::DRAG_IMAGE, Question::AUDIO], true)) {
                 $settings = [];
+            }
+            // Hand-marked questions may have a rubric: criteria, each worth some of the points.
+            if (in_array($type, Question::MANUAL_TYPES, true)) {
+                $rubric = collect($q['settings']['rubric'] ?? [])->map(fn ($c) => [
+                    'name' => trim(mb_substr((string) ($c['name'] ?? ''), 0, 120)), 'max' => round(max(0, (float) ($c['max'] ?? 0)), 2),
+                ])->filter(fn ($c) => $c['name'] !== '' && $c['max'] > 0)->values()->all();
+                if ($rubric !== []) {
+                    $settings['rubric'] = $rubric;
+                    if (abs(array_sum(array_column($rubric, 'max')) - (float) ($q['points'] ?? 1)) > 0.001) {
+                        $errors["questions.$i.settings"] = "السؤال $n: مجموع درجات معايير التصحيح يجب أن يساوي درجة السؤال.";
+                    }
+                }
             }
 
             $out[] = [

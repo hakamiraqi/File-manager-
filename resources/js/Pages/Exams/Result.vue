@@ -1,12 +1,19 @@
 <script setup>
 import RichText from '@/Components/Exams/RichText.vue';
-import { computed } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { computed, ref } from 'vue';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { CheckCircleIcon, XCircleIcon, MinusCircleIcon, ArrowRightIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, attempt: Object, visible: Boolean, review: Array });
+const props = defineProps({ exam: Object, attempt: Object, visible: Boolean, review: Array, appeals_open: Boolean, appeals: { type: Array, default: () => [] } });
+const appealFor = ref(null);
+const appealForm = useForm({ question_id: null, body: '' });
+function sendAppeal() {
+    appealForm.question_id = appealFor.value;
+    appealForm.post(route('exams.attempts.appeals.store', props.attempt.id), { preserveScroll: true, onSuccess: () => { appealFor.value = null; appealForm.reset(); } });
+}
+const appealsOf = (qid) => props.appeals.filter((a) => a.question_id === qid);
 const { t } = useTrans();
 const passed = computed(() => props.exam.pass_mark !== null && props.attempt.percent !== null ? props.attempt.percent >= props.exam.pass_mark : null);
 const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'right' : r.earned > 0 ? 'partial' : 'wrong');
@@ -63,6 +70,19 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
                             {{ t('exam.correct_answer', 'الإجابة الصحيحة') }}: <span dir="auto">{{ r.correct.join(' · ') }}</span>
                         </p>
                         <p v-if="r.feedback" class="mt-2 rounded-lg bg-gray-50 p-2 text-sm text-gray-600 dark:bg-gray-700 dark:text-gray-300" dir="auto">{{ r.feedback }}</p>
+                        <div v-for="ap in appealsOf(r.id)" :key="ap.id" class="mt-2 rounded-lg border border-gray-200 p-2 text-xs dark:border-gray-600">
+                            <p class="font-medium">{{ t('exam.my_appeal', 'اعتراضي') }}: <span :class="{ open: 'text-amber-600', accepted: 'text-emerald-600', rejected: 'text-gray-500' }[ap.status]">{{ { open: t('exam.appeal_open', 'قيد المراجعة'), accepted: t('exam.accepted', 'قُبل'), rejected: t('exam.rejected', 'رُفض') }[ap.status] }}</span></p>
+                            <p v-if="ap.reply" class="mt-1" dir="auto">{{ ap.reply }}</p>
+                        </div>
+                        <template v-if="appeals_open && !appealsOf(r.id).some((a) => a.status === 'open')">
+                            <button v-if="appealFor !== r.id" @click="appealFor = r.id" class="mt-2 text-xs text-[var(--accent-600)] underline">{{ t('exam.appeal', 'اعتراض على درجة هذا السؤال') }}</button>
+                            <form v-else @submit.prevent="sendAppeal" class="mt-2 space-y-2">
+                                <textarea v-model="appealForm.body" rows="3" dir="auto" :placeholder="t('exam.appeal_ph', 'اشرح لماذا تطلب مراجعة الدرجة')" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                                <p v-if="appealForm.errors.body || appealForm.errors.appeal" class="text-xs text-red-600">{{ appealForm.errors.body || appealForm.errors.appeal }}</p>
+                                <div class="flex gap-2"><button :disabled="appealForm.processing" class="rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-xs text-white">{{ t('exam.send', 'إرسال') }}</button>
+                                    <button type="button" @click="appealFor = null" class="rounded-lg border border-gray-300 px-3 py-1.5 text-xs dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button></div>
+                            </form>
+                        </template>
                         <p v-if="r.comment" class="mt-2 rounded-lg bg-sky-50 p-2 text-sm text-sky-800 dark:bg-sky-900/30 dark:text-sky-200" dir="auto">{{ t('exam.teacher_comment', 'ملاحظة المصحّح') }}: {{ r.comment }}</p>
                     </div>
                 </div>

@@ -298,8 +298,12 @@ function save() {
                         <select v-model="form.show_results" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
                             <option value="after_submit">{{ t('exam.after_submit', 'بعد التسليم مباشرة') }}</option>
                             <option value="after_close">{{ t('exam.after_close', 'بعد إغلاق الامتحان') }}</option>
+                            <option value="at_date">{{ t('exam.at_date', 'في موعد أحدّده') }}</option>
                             <option value="never">{{ t('exam.never', 'لا تُظهر') }}</option>
                         </select></label>
+                    <label v-if="form.show_results === 'at_date'" class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.results_at', 'موعد إعلان النتائج') }}</span>
+                        <input v-model="form.results_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <span v-if="form.errors.results_at" class="text-xs text-red-600">{{ form.errors.results_at }}</span></label>
                 </div>
                 <div>
                     <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.given_to', 'يُعطى إلى') }}</p>
@@ -343,6 +347,12 @@ function save() {
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
                         <span>{{ t('exam.double_marking', 'تصحيح مزدوج للمقالي والملفات') }}<span class="block text-xs text-gray-500">{{ t('exam.double_marking_hint', 'مصحّحان مستقلان؛ تُعتمد المتوسط إذا تقاربت درجتاهما. أضف المصحّحين من صفحة النتائج.') }}</span></span>
                         <ToggleSwitch v-model="form.double_marking" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.anonymous_marking', 'تصحيح دون أسماء') }}<span class="block text-xs text-gray-500">{{ t('exam.anonymous_hint', 'يرى المصحّح رقم ورقة بدل اسم الطالب') }}</span></span>
+                        <ToggleSwitch v-model="form.anonymous_marking" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.appeals_open', 'السماح بالاعتراض على الدرجات') }}<span class="block text-xs text-gray-500">{{ t('exam.appeals_hint', 'يرسل الطالب طلب مراجعة لسؤال من صفحة نتيجته') }}</span></span>
+                        <ToggleSwitch v-model="form.appeals_open" /></label>
                     <label v-if="form.double_marking" class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.marking_tolerance', 'أقصى فرق مقبول بين المصحّحَين (% من درجة السؤال)') }}</span>
                         <input v-model="form.marking_tolerance" type="number" min="0" max="100" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label v-if="form.seb_required" class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.seb_keys', 'مفاتيح SEB (Config Key أو Browser Exam Key، سطر لكل مفتاح؛ فارغ = يكفي أن يكون المتصفح SEB)') }}</span>
@@ -537,6 +547,19 @@ function save() {
                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                 </select>
 
+                <details v-if="['essay', 'upload', 'audio', 'drawing'].includes(q.type)" class="text-sm" :open="!!q.settings.rubric?.length">
+                    <summary class="cursor-pointer text-xs text-gray-500">{{ t('exam.rubric', 'معايير التصحيح (اختياري)') }}</summary>
+                    <div class="mt-2 space-y-1.5">
+                        <div v-for="(c, k) in q.settings.rubric ?? []" :key="k" class="flex items-center gap-2">
+                            <input v-model="c.name" :placeholder="t('exam.criterion', 'المعيار، مثل: الدقة العلمية')" class="flex-1 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <input v-model.number="c.max" type="number" min="0" step="0.25" class="w-20 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <button @click="q.settings.rubric.splice(k, 1)" class="rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
+                        </div>
+                        <button type="button" @click="q.settings = { ...q.settings, rubric: [...(q.settings.rubric ?? []), { name: '', max: 1 }] }" class="flex items-center gap-1 text-xs text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.add_criterion', 'معيار') }}</button>
+                        <p class="text-xs" :class="q.settings.rubric?.length && Math.abs((q.settings.rubric ?? []).reduce((s, c) => s + Number(c.max || 0), 0) - Number(q.points || 0)) > 0.001 ? 'text-red-600' : 'text-gray-500'">
+                            {{ t('exam.rubric_sum', 'المجموع :s من :p (يجب أن يساوي درجة السؤال)', { s: (q.settings.rubric ?? []).reduce((s, c) => s + Number(c.max || 0), 0), p: q.points }) }}</p>
+                    </div>
+                </details>
                 <div v-if="q.type !== 'description' && q.type !== 'random'" class="flex flex-wrap items-center gap-2 text-xs">
                     <select v-model="q.difficulty" class="rounded-lg border-gray-300 py-1 text-xs dark:border-gray-600 dark:bg-gray-700">
                         <option :value="null">{{ t('exam.difficulty', 'الصعوبة') }}: —</option><option :value="1">{{ t('exam.easy', 'سهل') }}</option><option :value="2">{{ t('exam.medium', 'متوسط') }}</option><option :value="3">{{ t('exam.hard', 'صعب') }}</option>

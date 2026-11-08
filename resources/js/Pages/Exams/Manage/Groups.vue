@@ -90,6 +90,7 @@ async function importStudents() {
                         <p class="text-lg font-semibold">{{ currentGroup().name }}</p>
                         <p class="text-xs text-gray-500">{{ [currentGroup().stage, currentGroup().department].filter(Boolean).join(' · ') }}<span v-if="currentGroup().owner"> · {{ currentGroup().owner }}</span></p>
                     </div>
+                    <Link :href="route('exams.manage.groups.gradebook', current)" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.gradebook', 'كشف الدرجات') }}</Link>
                     <button v-if="currentGroup().editable && canImport && members.length" @click="cardsOpen = true" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.login_cards', 'بطاقات دخول') }}</button>
                     <template v-if="currentGroup().editable">
                         <button @click="openGroup(currentGroup())" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.edit', 'تعديل')"><PencilSquareIcon class="h-4 w-4" /></button>

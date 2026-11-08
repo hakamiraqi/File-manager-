@@ -11,11 +11,11 @@ class Mark extends Model
 {
     protected $table = 'exam_marks';
 
-    protected $fillable = ['exam_answer_id', 'user_id', 'points', 'comment'];
+    protected $fillable = ['exam_answer_id', 'user_id', 'points', 'comment', 'rubric'];
 
     protected function casts(): array
     {
-        return ['points' => 'float'];
+        return ['points' => 'float', 'rubric' => 'array'];
     }
 
     public function answer(): BelongsTo

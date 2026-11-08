@@ -271,6 +271,22 @@ class ExamController extends Controller
         ]);
     }
 
+    /** A student asks for a question's mark to be looked at again (one open request per question). */
+    public function appeal(Request $request, Attempt $attempt): RedirectResponse
+    {
+        $this->own($request, $attempt);
+        $exam = $attempt->exam;
+        abort_unless($exam->appeals_open && $attempt->isSubmitted() && $exam->resultsVisibleTo($request->user()), 403);
+        $data = $request->validate(['question_id' => ['nullable', 'integer'], 'body' => ['required', 'string', 'min:5', 'max:3000']]);
+        $qid = isset($data['question_id']) && $attempt->orderedQuestions()->contains('id', (int) $data['question_id']) ? (int) $data['question_id'] : null;
+        if (\App\Models\Exams\Appeal::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $qid)->where('status', 'open')->exists()) {
+            return back()->withErrors(['appeal' => 'لك طلب مفتوح على هذا السؤال؛ انتظر الرد.']);
+        }
+        \App\Models\Exams\Appeal::create(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $qid, 'body' => $data['body']]);
+
+        return back()->with('success', 'أُرسل اعتراضك إلى الأستاذ.');
+    }
+
     /** Sequential exams: the student moved on; questions before this one close. */
     public function advance(Request $request, Attempt $attempt): JsonResponse
     {
@@ -464,6 +480,9 @@ class ExamController extends Controller
                 'needs_grading' => $attempt->needs_grading,
             ],
             'visible' => $visible,
+            'appeals_open' => $exam->appeals_open && $visible && $attempt->isSubmitted() && $attempt->user_id === $request->user()->id,
+            'appeals' => \App\Models\Exams\Appeal::where('exam_attempt_id', $attempt->id)->latest('id')->get()
+                ->map(fn ($ap) => ['id' => $ap->id, 'question_id' => $ap->exam_question_id, 'body' => $ap->body, 'status' => $ap->status, 'reply' => $ap->reply]),
             'review' => $visible
                 ? $attempt->orderedQuestions()->filter(fn (Question $q) => $q->isGraded())
                     ->map(fn (Question $q) => $this->presenter->review($q, $exam, $answers[$q->id] ?? null, $exam->show_answers, $attempt->id))->values()

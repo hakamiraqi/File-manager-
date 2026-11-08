@@ -104,6 +104,38 @@ class GroupController extends Controller
         return Inertia::render('Exams/Manage/Cards', ['group' => $group->name, 'cards' => $cards, 'address' => rtrim(config('app.url'), '/'), 'site' => config('app.name')]);
     }
 
+    /** The group's gradebook: each student's counted mark in each exam given to the group (or as CSV). */
+    public function gradebook(Request $request, Group $group): Response|\Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        abort_unless($request->user()->canManageExams(), 403);
+        $exams = $group->exams()->with('questions')->orderBy('opens_at')->orderBy('id')->get();
+        $students = $group->members()->orderBy('name')->get(['users.id', 'name', 'email']);
+        $rows = $students->map(fn (User $u) => [
+            'name' => $u->name, 'email' => $u->email,
+            'marks' => $exams->map(function ($e) use ($u) {
+                $score = $e->finalScoreFor($u);
+                $max = $e->maxScore();
+
+                return ['score' => $score, 'percent' => $score !== null && $max > 0 ? round($score / $max * 100, 1) : null];
+            })->values(),
+        ])->map(fn ($r) => $r + ['average' => collect($r['marks'])->pluck('percent')->filter(fn ($p) => $p !== null)->avg()])->values();
+        $columns = $exams->map(fn ($e) => ['id' => $e->id, 'title' => $e->text('title'), 'max' => $e->maxScore(), 'pass_mark' => $e->pass_mark])->values();
+
+        if ($request->boolean('csv')) {
+            return response()->streamDownload(function () use ($rows, $columns) {
+                $out = fopen('php://output', 'w');
+                fwrite($out, "\xEF\xBB\xBF");
+                fputcsv($out, array_merge(['الطالب', 'البريد'], $columns->map(fn ($c) => $c['title'].' (/'.$c['max'].')')->all(), ['المعدّل %']));
+                foreach ($rows as $r) {
+                    fputcsv($out, array_merge([$r['name'], $r['email']], collect($r['marks'])->map(fn ($m) => $m['score'] ?? '')->all(), [$r['average'] !== null ? round($r['average'], 1) : '']));
+                }
+                fclose($out);
+            }, 'gradebook-'.\Illuminate\Support\Str::slug($group->name ?: 'group').'-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+        }
+
+        return Inertia::render('Exams/Manage/Gradebook', ['group' => ['id' => $group->id, 'name' => $group->name, 'stage' => $group->stage], 'columns' => $columns, 'rows' => $rows]);
+    }
+
     private function validated(Request $request): array
     {
         return $request->validate([

@@ -27,6 +27,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::put('/groups/{group}', [$groups, 'update'])->name('groups.update');
         Route::delete('/groups/{group}', [$groups, 'destroy'])->name('groups.destroy');
         Route::post('/groups/{group}/members', [$groups, 'addMembers'])->name('groups.members.store');
+        Route::get('/groups/{group}/gradebook', [$groups, 'gradebook'])->name('groups.gradebook');
         Route::post('/groups/{group}/cards', [$groups, 'cards'])->name('groups.cards');
         Route::delete('/groups/{group}/members/{user}', [$groups, 'removeMember'])->name('groups.members.destroy');
 
@@ -46,6 +47,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/regrade', [ResultController::class, 'regrade'])->whereNumber('exam')->name('regrade');
         Route::post('/{exam}/overrides', [ResultController::class, 'override'])->whereNumber('exam')->name('overrides.store');
         Route::delete('/overrides/{override}', [ResultController::class, 'removeOverride'])->name('overrides.destroy');
+        Route::get('/{exam}/similarity', [ResultController::class, 'similarity'])->whereNumber('exam')->name('similarity');
+        Route::put('/appeals/{appeal}', [ResultController::class, 'replyAppeal'])->name('appeals.reply');
         Route::post('/{exam}/markers', [ResultController::class, 'addMarker'])->whereNumber('exam')->name('markers.store');
         Route::delete('/{exam}/markers/{user}', [ResultController::class, 'removeMarker'])->whereNumber('exam')->name('markers.destroy');
         Route::put('/answers/{answer}', [ResultController::class, 'grade'])->name('answers.grade');
@@ -55,6 +58,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
     Route::post('/{exam}/start', [ExamController::class, 'start'])->whereNumber('exam')->middleware('throttle:20,1')->name('start');
     Route::get('/attempts/{attempt}', [ExamController::class, 'take'])->name('attempts.take');
     Route::post('/attempts/{attempt}/answers', [ExamController::class, 'save'])->middleware('throttle:240,1')->name('attempts.save');
+    Route::post('/attempts/{attempt}/appeals', [ExamController::class, 'appeal'])->middleware('throttle:10,1')->name('attempts.appeals.store');
     Route::post('/attempts/{attempt}/advance', [ExamController::class, 'advance'])->middleware('throttle:240,1')->name('attempts.advance');
     Route::post('/attempts/{attempt}/unlock', [ExamController::class, 'unlock'])->middleware('throttle:10,1')->name('attempts.unlock');
     Route::post('/attempts/{attempt}/help', [ExamController::class, 'help'])->middleware('throttle:20,1')->name('attempts.help');

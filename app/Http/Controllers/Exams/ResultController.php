@@ -35,6 +35,15 @@ class ResultController extends Controller
         $graded = $exam->questions->filter(fn (Question $q) => $q->isGraded());
         $submitted = $attempts->whereNotNull('submitted_at')->whereNotNull('score');
         $stats = (new Statistics)->analyse($graded->values(), $attempts);
+        // Marking without names: a paper number until the owner shows the names.
+        $hidden = $exam->anonymous_marking && ! ($canManage && $request->boolean('names'));
+        $who = fn (Attempt $a) => $hidden
+            ? ['id' => null, 'name' => 'ورقة '.strtoupper(substr(hash_hmac('sha256', 'paper|'.$a->user_id.'|'.$exam->id, (string) config('app.key')), 0, 6)), 'email' => null]
+            : ['id' => $a->user?->id, 'name' => $a->user?->name, 'email' => $a->user?->email];
+        // Report by topic: how well each tag's questions went.
+        $byTag = $graded->flatMap(fn (Question $q) => collect($q->tags ?? [])->map(fn ($t) => ['tag' => $t, 'facility' => $stats['items'][$q->id]['facility']]))
+            ->filter(fn ($r) => $r['facility'] !== null)->groupBy('tag')
+            ->map(fn ($rows, $tag) => ['tag' => $tag, 'questions' => $rows->count(), 'facility' => round($rows->avg('facility'))])->sortBy('facility')->values();
 
         return Inertia::render('Exams/Manage/Results', [
             'exam' => [
@@ -45,7 +54,16 @@ class ResultController extends Controller
                 'dir' => $this->presenter->dir($exam),
                 'double_marking' => $exam->double_marking,
                 'marking_tolerance' => $exam->marking_tolerance,
+                'anonymous' => $exam->anonymous_marking,
+                'names_shown' => ! $hidden,
             ],
+            'by_tag' => $byTag,
+            'appeals' => \App\Models\Exams\Appeal::whereIn('exam_attempt_id', $attempts->pluck('id'))->with('question')->latest('id')->get()
+                ->map(fn ($ap) => [
+                    'id' => $ap->id, 'attempt' => $ap->exam_attempt_id, 'student' => $who($attempts->firstWhere('id', $ap->exam_attempt_id))['name'],
+                    'question' => $ap->question?->plainBody($exam->languages ?? []), 'body' => $ap->body, 'status' => $ap->status,
+                    'reply' => $ap->reply, 'created_at' => $ap->created_at->toIso8601String(),
+                ]),
             'can_manage' => $canManage,
             'markers' => $exam->markers()->get(['users.id', 'name', 'email'])->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]),
             'summary' => [
@@ -69,7 +87,7 @@ class ResultController extends Controller
             }),
             'attempts' => $attempts->map(fn (Attempt $a) => [
                 'id' => $a->id,
-                'user' => ['id' => $a->user?->id, 'name' => $a->user?->name, 'email' => $a->user?->email],
+                'user' => $who($a),
                 'number' => $a->number,
                 'started_at' => $a->started_at->toIso8601String(),
                 'submitted_at' => $a->submitted_at?->toIso8601String(),
@@ -87,6 +105,8 @@ class ResultController extends Controller
                         'file' => isset($ans->response['file']) ? ['name' => $ans->response['name'] ?? '', 'url' => route('exams.answers.file', $ans)] : null,
                         'points' => $ans->points,
                         'comment' => $ans->comment,
+                        'rubric' => $ans->question->settings['rubric'] ?? [],
+                        'rubric_scores' => $ans->rubric,
                     ] + $this->marking($exam, $ans, $me, $canManage))->values(),
             ]),
             'overrides' => $exam->overrides()->with('user:id,name,email')->get()->map(fn (Override $o) => [
@@ -113,15 +133,32 @@ class ResultController extends Controller
         abort_unless($exam->isMarkableBy($me), 404);
         $max = $attempt->drawn[$answer->exam_question_id] ?? $answer->question->points;
         $data = $request->validate([
-            'points' => ['required', 'numeric', 'min:0', 'max:'.$max],
+            'points' => ['required_without:rubric', 'nullable', 'numeric', 'min:0', 'max:'.$max],
             'comment' => ['nullable', 'string', 'max:5000'],
             'final' => ['sometimes', 'boolean'],
+            'rubric' => ['nullable', 'array'],
         ]);
+        // With a rubric, the mark is the sum of the criteria (each up to its own maximum).
+        $criteria = $answer->question->settings['rubric'] ?? [];
+        $rubric = null;
+        if ($criteria && is_array($request->input('rubric'))) {
+            $rubric = [];
+            foreach ($criteria as $k => $c) {
+                $v = (float) ($request->input("rubric.$k") ?? 0);
+                if ($v < 0 || $v > $c['max']) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['rubric' => "«{$c['name']}» من 0 إلى {$c['max']}."]);
+                }
+                $rubric[$k] = $v;
+            }
+            // Scaled when the question is worth more or less here (drawn from the bank into a slot).
+            $sum = array_sum($rubric);
+            $data['points'] = round($sum * $max / max(0.001, array_sum(array_column($criteria, 'max'))), 2);
+        }
 
         if (! $exam->double_marking || (($data['final'] ?? false) && $exam->isManageableBy($me))) {
-            $answer->update(['points' => $data['points'], 'comment' => $data['comment'] ?? null]);
+            $answer->update(['points' => $data['points'], 'comment' => $data['comment'] ?? null, 'rubric' => $rubric]);
         } else {
-            Mark::updateOrCreate(['exam_answer_id' => $answer->id, 'user_id' => $me->id], ['points' => $data['points'], 'comment' => $data['comment'] ?? null]);
+            Mark::updateOrCreate(['exam_answer_id' => $answer->id, 'user_id' => $me->id], ['points' => $data['points'], 'comment' => $data['comment'] ?? null, 'rubric' => $rubric]);
             $this->settle($exam, $answer, $max);
         }
         $this->grader->retotal($attempt);
@@ -173,7 +210,83 @@ class ResultController extends Controller
         ];
     }
 
-    public function addMarker(Request $request, Exam $exam): RedirectResponse
+    /**
+     * Answers too alike to be chance: essays sharing many five-word runs, and multiple-choice
+     * papers with the same wrong answers. For the examiner to look at, not proof of anything.
+     */
+    public function similarity(Request $request, Exam $exam): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($exam->isMarkableBy($request->user()), 404);
+        $attempts = $exam->attempts()->whereNotNull('submitted_at')->with(['user:id,name', 'answers.question'])->get()
+            ->sortBy('number')->unique('user_id')->values();
+        $pairs = [];
+
+        // Essays: shared five-word runs (Jaccard).
+        $shingles = [];
+        foreach ($attempts as $a) {
+            foreach ($a->answers as $ans) {
+                $text = \App\Services\Exams\Grader::normalize((string) ($ans->response['text'] ?? ''));
+                $words = preg_split('/\s+/u', $text, -1, PREG_SPLIT_NO_EMPTY);
+                if ($ans->question?->type !== Question::ESSAY || count($words) < 15) {
+                    continue;
+                }
+                $set = [];
+                for ($i = 0; $i + 5 <= count($words); $i++) {
+                    $set[implode(' ', array_slice($words, $i, 5))] = true;
+                }
+                $shingles[$ans->exam_question_id][$a->id] = $set;
+            }
+        }
+        foreach ($shingles as $qid => $byAttempt) {
+            $ids = array_keys($byAttempt);
+            for ($i = 0; $i < count($ids); $i++) {
+                for ($j = $i + 1; $j < count($ids); $j++) {
+                    $x = $byAttempt[$ids[$i]];
+                    $y = $byAttempt[$ids[$j]];
+                    $common = count(array_intersect_key($x, $y));
+                    $score = $common / max(1, count($x) + count($y) - $common);
+                    if ($score >= 0.3) {
+                        $pairs[] = ['kind' => 'essay', 'question' => $qid, 'a' => $ids[$i], 'b' => $ids[$j], 'score' => round($score * 100)];
+                    }
+                }
+            }
+        }
+
+        // Choices: the same wrong answers on the same questions.
+        $wrong = [];
+        foreach ($attempts as $a) {
+            foreach ($a->answers as $ans) {
+                if (in_array($ans->question?->type, [Question::SINGLE, Question::TRUE_FALSE], true) && $ans->points !== null && $ans->points <= 0 && isset($ans->response['choice'])) {
+                    $wrong[$a->id][$ans->exam_question_id] = (int) $ans->response['choice'];
+                }
+            }
+        }
+        $ids = array_keys($wrong);
+        for ($i = 0; $i < count($ids); $i++) {
+            for ($j = $i + 1; $j < count($ids); $j++) {
+                $same = count(array_intersect_assoc($wrong[$ids[$i]], $wrong[$ids[$j]]));
+                if ($same >= 3) {
+                    $pairs[] = ['kind' => 'choices', 'question' => null, 'a' => $ids[$i], 'b' => $ids[$j], 'score' => $same];
+                }
+            }
+        }
+
+        $hidden = $exam->anonymous_marking && ! ($exam->isManageableBy($request->user()) && $request->boolean('names'));
+        $name = fn ($id) => ($a = $attempts->firstWhere('id', $id)) ? ($hidden ? 'ورقة '.strtoupper(substr(hash_hmac('sha256', 'paper|'.$a->user_id.'|'.$exam->id, (string) config('app.key')), 0, 6)) : $a->user?->name) : null;
+
+        return response()->json(collect($pairs)->sortByDesc('score')->take(100)->map(fn ($p) => $p + ['a_name' => $name($p['a']), 'b_name' => $name($p['b'])])->values());
+    }
+
+    public function replyAppeal(Request $request, \App\Models\Exams\Appeal $appeal): RedirectResponse
+    {
+        abort_unless($appeal->attempt->exam->isMarkableBy($request->user()), 404);
+        $data = $request->validate(['status' => ['required', 'in:accepted,rejected'], 'reply' => ['nullable', 'string', 'max:5000']]);
+        $appeal->update($data + ['replied_by' => $request->user()->id, 'replied_at' => now()]);
+
+        return back()->with('success', 'تم الرد على الاعتراض.');
+    }
+
+        public function addMarker(Request $request, Exam $exam): RedirectResponse
     {
         $this->authorizeExam($request, $exam);
         $data = $request->validate(['email' => ['required', 'email', 'exists:users,email']], ['email.exists' => 'لا يوجد مستخدم بهذا البريد.']);

@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
+const props = defineProps({ by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const open = ref({});
@@ -13,13 +13,28 @@ const tab = ref('attempts');
 
 // Marking an essay
 const marks = ref({});
-const startMark = (essay) => (props.exam.double_marking
-    ? { points: essay.my_mark?.points ?? '', comment: essay.my_mark?.comment ?? '' }
-    : { points: essay.points ?? '', comment: essay.comment ?? '' });
+const startMark = (essay) => ({
+    ...(props.exam.double_marking ? { points: essay.my_mark?.points ?? '', comment: essay.my_mark?.comment ?? '' } : { points: essay.points ?? '', comment: essay.comment ?? '' }),
+    rubric: essay.rubric?.length ? essay.rubric.map((c, k) => essay.rubric_scores?.[k] ?? '') : null,
+});
 function mark(essay, final = false) {
     const m = marks.value[essay.id] ?? startMark(essay);
-    router.put(route('exams.manage.answers.grade', essay.id), { ...m, final }, { preserveScroll: true });
+    const body = { comment: m.comment, final };
+    if (m.rubric) body.rubric = m.rubric.map((v) => Number(v || 0)); else body.points = m.points;
+    router.put(route('exams.manage.answers.grade', essay.id), body, { preserveScroll: true });
 }
+const rubricTotal = (essay) => (markFor(essay).rubric ?? []).reduce((s, v) => s + Number(v || 0), 0);
+
+// Similar answers (looked for on request).
+const similar = ref(null);
+const similarLoading = ref(false);
+async function findSimilar() {
+    similarLoading.value = true;
+    try { similar.value = (await window.axios.get(route('exams.manage.similarity', { exam: props.exam.id, names: props.exam.names_shown && props.exam.anonymous ? 1 : undefined }))).data; } finally { similarLoading.value = false; }
+}
+// Appeals
+const replies = ref({});
+const replyTo = (ap, status) => router.put(route('exams.manage.appeals.reply', ap.id), { status, reply: replies.value[ap.id] ?? '' }, { preserveScroll: true });
 const markFor = (essay) => (marks.value[essay.id] ??= startMark(essay));
 const STATUS = { unmarked: ['لم يُصحَّح', 'bg-gray-100 text-gray-600'], second_needed: ['ينتظر المصحّح الثاني', 'bg-amber-100 text-amber-700'],
     disputed: ['خلاف بين المصحّحَين — يحسمه صاحب الامتحان', 'bg-red-100 text-red-700'], agreed: ['متّفق (المتوسط)', 'bg-emerald-100 text-emerald-700'], settled: ['حُسم', 'bg-emerald-100 text-emerald-700'] };
@@ -50,6 +65,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
             <div class="flex items-center gap-2">
                 <Link :href="route('exams.manage.edit', exam.id)" class="text-gray-400 hover:text-gray-600"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
                 <h2 class="min-w-0 flex-1 truncate text-lg font-semibold" :dir="exam.dir">{{ t('exam.results', 'النتائج') }} · {{ exam.title }}</h2>
+                <Link v-if="exam.anonymous && can_manage" :href="route('exams.manage.results', { exam: exam.id, names: exam.names_shown ? undefined : 1 })" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ exam.names_shown ? t('exam.hide_names', 'إخفاء الأسماء') : t('exam.show_names', 'إظهار الأسماء') }}</Link>
                 <button v-if="can_manage" @click="regrade" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('exam.regrade', 'إعادة التصحيح') }}</button>
                 <a v-if="can_manage" :href="route('exams.manage.export', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><ArrowDownTrayIcon class="h-4 w-4" /> Excel</a>
             </div>
@@ -65,9 +81,9 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
             </div>
 
             <div class="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-                <button v-for="k in ['attempts', 'stats', 'questions', ...(can_manage ? ['overrides'] : []), ...(can_manage && exam.double_marking ? ['markers'] : [])]" :key="k" @click="tab = k"
+                <button v-for="k in ['attempts', 'stats', 'questions', 'similar', ...(appeals.length ? ['appeals'] : []), ...(can_manage ? ['overrides'] : []), ...(can_manage && exam.double_marking ? ['markers'] : [])]" :key="k" @click="tab = k"
                     class="-mb-px border-b-2 px-4 py-2 text-sm" :class="tab === k ? 'border-[var(--accent-600)] font-medium text-[var(--accent-700)] dark:text-white' : 'border-transparent text-gray-500'">
-                    {{ { attempts: t('exam.tab_attempts', 'المحاولات'), stats: t('exam.tab_stats', 'الإحصاءات'), questions: t('exam.tab_questions', 'تحليل الأسئلة'), overrides: t('exam.tab_overrides', 'الاستثناءات'), markers: t('exam.tab_markers', 'المصحّحون') }[k] }}
+                    {{ { attempts: t('exam.tab_attempts', 'المحاولات'), stats: t('exam.tab_stats', 'الإحصاءات'), questions: t('exam.tab_questions', 'تحليل الأسئلة'), overrides: t('exam.tab_overrides', 'الاستثناءات'), markers: t('exam.tab_markers', 'المصحّحون'), similar: t('exam.tab_similar', 'التشابه'), appeals: t('exam.tab_appeals', 'الاعتراضات') + ' (' + appeals.filter((a) => a.status === 'open').length + ')' }[k] }}
                 </button>
             </div>
 
@@ -99,7 +115,15 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                                 <span v-if="essay.points !== null" class="font-medium">{{ t('exam.final_mark', 'المعتمدة') }}: {{ essay.points }}</span>
                             </div>
                             <div class="flex flex-wrap items-end gap-2">
-                                <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ exam.double_marking ? t('exam.my_mark', 'درجتي') : t('exam.points', 'درجة') }} / {{ essay.max }}</span>
+                                <div v-if="essay.rubric?.length" class="w-full space-y-1">
+                                    <label v-for="(c, k) in essay.rubric" :key="k" class="flex items-center gap-2 text-sm">
+                                        <span class="flex-1" dir="auto">{{ c.name }}</span>
+                                        <input v-model="markFor(essay).rubric[k]" type="number" min="0" :max="c.max" step="0.25" class="w-20 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                                        <span class="w-12 text-xs text-gray-500">/ {{ c.max }}</span>
+                                    </label>
+                                    <p class="text-xs text-gray-500">{{ t('exam.total', 'المجموع') }}: {{ rubricTotal(essay) }}</p>
+                                </div>
+                                <label v-else class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ exam.double_marking ? t('exam.my_mark', 'درجتي') : t('exam.points', 'درجة') }} / {{ essay.max }}</span>
                                     <input v-model="markFor(essay).points" type="number" min="0" :max="essay.max" step="0.25" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                                 <label class="min-w-[12rem] flex-1 text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.comment', 'ملاحظة للطالب') }}</span>
                                     <input v-model="markFor(essay).comment" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
@@ -138,6 +162,14 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                             <span v-for="b in 10" :key="b" class="flex-1">{{ (b - 1) * 10 }}</span>
                         </div>
                     </div>
+                    <div v-if="by_tag.length" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                        <p class="mb-2 text-sm font-medium">{{ t('exam.by_tag', 'حسب الموضوع (الوسوم)') }}</p>
+                        <div v-for="r in by_tag" :key="r.tag" class="flex items-center gap-3 py-1 text-sm">
+                            <span class="w-40 truncate" dir="auto">{{ r.tag }}</span>
+                            <div class="h-2 flex-1 rounded-full bg-gray-100 dark:bg-gray-700"><div class="h-2 rounded-full" :class="r.facility < 50 ? 'bg-red-400' : r.facility < 70 ? 'bg-amber-400' : 'bg-emerald-500'" :style="{ width: r.facility + '%' }" /></div>
+                            <span class="w-20 text-end text-xs text-gray-500">{{ r.facility }}% · {{ r.questions }} {{ t('exam.q_short', 'س') }}</span>
+                        </div>
+                    </div>
                     <p class="text-xs text-gray-500">{{ t('exam.stats_hint', 'تُحسب من أول محاولة مُسلّمة لكل طالب. الأسئلة العشوائية من البنك لا تدخل في تحليل الأسئلة لأن الطلاب لم يأخذوها جميعاً.') }}</p>
                 </template>
             </div>
@@ -160,6 +192,38 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 </table>
                 <p class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-gray-700">{{ t('exam.facility_hint', 'السهولة = متوسط ما حصّله الطلاب من درجة السؤال. أقل من 30% قد يعني سؤالاً صعباً جداً أو مفتاحاً خاطئاً.') }}
                     {{ t('exam.discrimination_hint', 'التمييز = هل يجيب عنه المتفوقون أكثر من غيرهم: فوق 0.3 جيد، تحت 0.2 ضعيف، والسالب يستحق مراجعة المفتاح.') }}</p>
+            </div>
+
+            <!-- Similar answers -->
+            <div v-else-if="tab === 'similar'" class="space-y-3">
+                <div class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">
+                    <p class="flex-1 text-gray-600 dark:text-gray-300">{{ t('exam.similar_hint', 'يبحث عن مقالات تتشارك عبارات طويلة، وأوراق تتطابق فيها الإجابات الخاطئة نفسها. للتنبيه فقط، لا دليل غش بذاته.') }}</p>
+                    <button @click="findSimilar" :disabled="similarLoading" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-white disabled:opacity-50">{{ similarLoading ? '…' : t('exam.find_similar', 'ابحث') }}</button>
+                </div>
+                <p v-if="similar && !similar.length" class="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-600">{{ t('exam.no_similar', 'لا تشابه لافت.') }}</p>
+                <div v-for="(p, k) in similar ?? []" :key="k" class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
+                    <span class="rounded-full px-2 py-0.5 text-xs" :class="p.kind === 'essay' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'">{{ p.kind === 'essay' ? t('exam.similar_essay', 'مقالي') : t('exam.similar_choices', 'أخطاء متطابقة') }}</span>
+                    <span class="flex-1">{{ p.a_name }} ↔ {{ p.b_name }}</span>
+                    <span class="font-semibold">{{ p.kind === 'essay' ? p.score + '%' : p.score + ' ' + t('exam.same_wrong', 'إجابة خاطئة متطابقة') }}</span>
+                    <Link :href="route('exams.attempts.result', p.a)" class="text-xs text-[var(--accent-600)] underline">A</Link>
+                    <Link :href="route('exams.attempts.result', p.b)" class="text-xs text-[var(--accent-600)] underline">B</Link>
+                </div>
+            </div>
+
+            <!-- Appeals -->
+            <div v-else-if="tab === 'appeals'" class="space-y-2">
+                <div v-for="ap in appeals" :key="ap.id" class="space-y-2 rounded-xl border bg-white p-4 text-sm dark:bg-gray-800" :class="ap.status === 'open' ? 'border-amber-300 dark:border-amber-700' : 'border-gray-200 dark:border-gray-700'">
+                    <p class="flex flex-wrap items-center gap-2"><span class="font-medium">{{ ap.student }}</span>
+                        <span v-if="ap.question" class="text-xs text-gray-500" dir="auto">· {{ ap.question }}</span>
+                        <span class="flex-1" /><Link :href="route('exams.attempts.result', ap.attempt)" class="text-xs text-[var(--accent-600)] underline">{{ t('exam.view', 'عرض') }}</Link></p>
+                    <p class="whitespace-pre-line rounded-lg bg-gray-50 p-2 dark:bg-gray-700" dir="auto">{{ ap.body }}</p>
+                    <template v-if="ap.status === 'open'">
+                        <textarea v-model="replies[ap.id]" rows="2" :placeholder="t('exam.reply_ph', 'الرد على الطالب (عدّل الدرجة من «تصحيح» إن لزم)')" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <div class="flex gap-2"><button @click="replyTo(ap, 'accepted')" class="rounded-lg bg-emerald-600 px-3 py-1.5 text-white">{{ t('exam.accept', 'قبول') }}</button>
+                            <button @click="replyTo(ap, 'rejected')" class="rounded-lg border border-gray-300 px-3 py-1.5 dark:border-gray-600">{{ t('exam.reject', 'رفض') }}</button></div>
+                    </template>
+                    <p v-else class="text-xs" :class="ap.status === 'accepted' ? 'text-emerald-700' : 'text-gray-500'">{{ ap.status === 'accepted' ? t('exam.accepted', 'قُبل') : t('exam.rejected', 'رُفض') }}<span v-if="ap.reply">: {{ ap.reply }}</span></p>
+                </div>
             </div>
 
             <!-- Markers (double marking) -->

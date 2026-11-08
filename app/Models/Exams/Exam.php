@@ -16,7 +16,7 @@ class Exam extends Model
 
     public const GRADING = ['highest', 'average', 'first', 'last'];
 
-    public const SHOW_RESULTS = ['after_submit', 'after_close', 'never'];
+    public const SHOW_RESULTS = ['after_submit', 'after_close', 'at_date', 'never'];
 
     protected $fillable = [
         'user_id', 'title', 'description', 'subject', 'stage', 'department', 'languages', 'direction',
@@ -24,6 +24,7 @@ class Exam extends Model
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
         'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
+        'results_at', 'anonymous_marking', 'appeals_open',
     ];
 
     protected $hidden = ['password'];
@@ -47,6 +48,9 @@ class Exam extends Model
             'seb_required' => 'boolean',
             'double_marking' => 'boolean',
             'resume_code_required' => 'boolean',
+            'results_at' => 'datetime',
+            'anonymous_marking' => 'boolean',
+            'appeals_open' => 'boolean',
             'bind_computers' => 'boolean',
             'marking_tolerance' => 'integer',
         ];
@@ -253,6 +257,7 @@ class Exam extends Model
         return match ($this->show_results) {
             'after_submit' => true,
             'after_close' => $this->windowFor($user) === 'closed',
+            'at_date' => $this->results_at !== null && now()->gte($this->results_at),
             default => false,
         };
     }

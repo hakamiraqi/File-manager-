@@ -9,7 +9,7 @@ class Answer extends Model
 {
     protected $table = 'exam_answers';
 
-    protected $fillable = ['exam_attempt_id', 'exam_question_id', 'response', 'flagged', 'points', 'comment', 'checked_at'];
+    protected $fillable = ['exam_attempt_id', 'exam_question_id', 'response', 'flagged', 'points', 'comment', 'checked_at', 'rubric'];
 
     public function marks(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
@@ -18,7 +18,7 @@ class Answer extends Model
 
     protected function casts(): array
     {
-        return ['response' => 'array', 'flagged' => 'boolean', 'points' => 'float', 'checked_at' => 'datetime'];
+        return ['response' => 'array', 'flagged' => 'boolean', 'points' => 'float', 'checked_at' => 'datetime', 'rubric' => 'array'];
     }
 
     public function attempt(): BelongsTo
