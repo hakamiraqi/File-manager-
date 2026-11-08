@@ -39,7 +39,7 @@ const PREFS = 'exam-reading';
 const reading = reactive(Object.assign({ font: '', size: 100, dir: '' }, (() => { try { return JSON.parse(localStorage.getItem(PREFS) || '{}'); } catch { return {}; } })()));
 const FONTS = [['', 'افتراضي'], ['Tahoma, sans-serif', 'Tahoma'], ['Arial, sans-serif', 'Arial'], ["'Times New Roman', serif", 'Times'], ["'Segoe UI', sans-serif", 'Segoe UI'], ["'Courier New', monospace", 'Courier']];
 function saveReading() { try { localStorage.setItem(PREFS, JSON.stringify(reading)); } catch {} }
-const readingStyle = computed(() => ({ fontFamily: reading.font || undefined, fontSize: reading.size + '%' }));
+const readingStyle = computed(() => ({ fontFamily: reading.font || undefined, '--rs': reading.size / 100 }));
 const readingOpen = ref(false);
 const { t } = useTrans();
 
@@ -408,7 +408,7 @@ onBeforeUnmount(() => {
             </nav>
 
             <!-- The question -->
-            <main class="order-1 space-y-4 lg:order-2 lg:col-span-3" :style="readingStyle" :dir="reading.dir || undefined">
+            <main class="exam-reading order-1 space-y-4 lg:order-2 lg:col-span-3" :style="readingStyle" :dir="reading.dir || undefined">
                 <article v-if="current" class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                     <div class="mb-3 flex items-center justify-between gap-2 text-xs text-gray-500">
                         <span v-if="current.type !== 'description'">{{ t('exam.question', 'السؤال') }} {{ number(current) }} · {{ current.points }} {{ t('exam.points', 'درجة') }}</span>
@@ -609,3 +609,15 @@ onBeforeUnmount(() => {
         </Modal>
     </div>
 </template>
+
+<style>
+/* Student's chosen text size: Tailwind sizes are rem-based, so scale them inside the exam area */
+.exam-reading { font-size: calc(1rem * var(--rs, 1)); }
+.exam-reading .text-xs { font-size: calc(.75rem * var(--rs, 1)); line-height: calc(1rem * var(--rs, 1)); }
+.exam-reading .text-sm { font-size: calc(.875rem * var(--rs, 1)); line-height: calc(1.25rem * var(--rs, 1)); }
+.exam-reading .text-base { font-size: calc(1rem * var(--rs, 1)); line-height: calc(1.5rem * var(--rs, 1)); }
+.exam-reading .text-lg { font-size: calc(1.125rem * var(--rs, 1)); line-height: calc(1.75rem * var(--rs, 1)); }
+.exam-reading .text-xl { font-size: calc(1.25rem * var(--rs, 1)); line-height: calc(1.75rem * var(--rs, 1)); }
+.exam-reading .text-2xl { font-size: calc(1.5rem * var(--rs, 1)); line-height: calc(2rem * var(--rs, 1)); }
+.exam-reading input, .exam-reading textarea, .exam-reading select { font-size: inherit; }
+</style>
