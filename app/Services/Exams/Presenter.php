@@ -249,6 +249,9 @@ class Presenter
             'seb_required' => $exam->seb_required,
             'seb_keys' => $exam->seb_keys,
             'double_marking' => $exam->double_marking,
+            'access_code' => $exam->access_code,
+            'allowed_ips' => $exam->allowed_ips,
+            'group_ids' => $exam->groups()->pluck('exam_groups.id')->all(),
             'marking_tolerance' => $exam->marking_tolerance,
             'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => $this->questionForEditor($q))->all(),
         ];

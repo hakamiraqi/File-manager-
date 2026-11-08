@@ -71,6 +71,8 @@ class ManageController extends Controller
 
         return Inertia::render('Exams/Manage/Edit', [
             'exam' => $this->presenter->forEditor($exam),
+            'groups' => \App\Models\Exams\Group::withCount('members')->orderBy('name')->get()
+                ->map(fn ($g) => ['id' => $g->id, 'name' => $g->name, 'stage' => $g->stage, 'members' => $g->members_count]),
             'attempts' => $exam->attempts()->count(),
             'languages' => Exam::LANGUAGES,
             'types' => Question::TYPES,
@@ -106,6 +108,10 @@ class ManageController extends Controller
             'seb_required' => ['boolean'],
             'seb_keys' => ['nullable', 'string', 'max:5000'],
             'double_marking' => ['boolean'],
+            'access_code' => ['nullable', 'string', 'max:20'],
+            'allowed_ips' => ['nullable', 'string', 'max:2000'],
+            'group_ids' => ['nullable', 'array'],
+            'group_ids.*' => ['integer', 'exists:exam_groups,id'],
             'marking_tolerance' => ['nullable', 'integer', 'min:0', 'max:100'],
             'questions' => ['array', 'max:500'],
             'questions.*.id' => ['nullable', 'integer'],
@@ -127,6 +133,11 @@ class ManageController extends Controller
             throw ValidationException::withMessages(['title' => 'اكتب عنوان الامتحان.']);
         }
         $questions = self::checkQuestions($data['questions'] ?? [], $langs);
+        $bad = collect(preg_split('/[\s,،]+/u', trim((string) ($data['allowed_ips'] ?? '')), -1, PREG_SPLIT_NO_EMPTY))
+            ->reject(fn ($r) => self::validRange($r));
+        if ($bad->isNotEmpty()) {
+            throw ValidationException::withMessages(['allowed_ips' => 'عناوين غير صالحة: '.$bad->implode('، ').' (مثال: 192.168.1.0/24).']);
+        }
 
         DB::transaction(function () use ($exam, $data, $langs, $title, $questions) {
             $exam->update([
@@ -136,7 +147,7 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys', 'double_marking',
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips',
             ])->all() + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');
@@ -160,6 +171,7 @@ class ManageController extends Controller
                 $question->choices()->whereNotIn('id', $keepChoices)->delete();
             }
             $exam->questions()->whereNotIn('id', $keep)->delete();
+            $exam->groups()->sync($data['group_ids'] ?? []);
         });
 
         ActivityLog::record('exam.updated', "حدّث الامتحان \"{$exam->text('title')}\"", $exam);
@@ -331,6 +343,18 @@ class ManageController extends Controller
         }
 
         return $out;
+    }
+
+    /** An address (192.168.1.20) or a range (192.168.1.0/24), IPv4 or IPv6. */
+    private static function validRange(string $range): bool
+    {
+        [$ip, $bits] = array_pad(explode('/', $range, 2), 2, null);
+        $v4 = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false;
+        if (! $v4 && filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false) {
+            return false;
+        }
+
+        return $bits === null || (ctype_digit($bits) && (int) $bits <= ($v4 ? 32 : 128));
     }
 
     /** A calculated question's settings, cleaned, and what is wrong with them (or null). */

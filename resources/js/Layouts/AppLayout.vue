@@ -9,7 +9,7 @@ import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import NotificationBell from '@/Components/NotificationBell.vue';
 import { useTrans } from '@/Composables/useTrans';
-import {
+import { UserGroupIcon,
     Bars3Icon,
     XMarkIcon,
     ShieldCheckIcon,
@@ -27,8 +27,9 @@ const nav = computed(() => [
     { label: t('nav.exams', 'امتحاناتي'), href: route('exams.index'), icon: ClipboardDocumentListIcon, active: route().current('exams.index') || route().current('exams.show') || route().current('exams.attempts.*') },
     ...(page.props.permissions?.manage_exams
         ? [
-            { label: t('nav.exams_manage', 'إدارة الامتحانات'), href: route('exams.manage.index'), icon: PencilSquareIcon, active: route().current('exams.manage.*') && !route().current('exams.manage.bank') },
+            { label: t('nav.exams_manage', 'إدارة الامتحانات'), href: route('exams.manage.index'), icon: PencilSquareIcon, active: route().current('exams.manage.*') && !route().current('exams.manage.bank') && !route().current('exams.manage.groups') },
             { label: t('exam.bank', 'بنك الأسئلة'), href: route('exams.manage.bank'), icon: ArchiveBoxIcon, active: route().current('exams.manage.bank') },
+            { label: t('exam.groups', 'الصفوف والمجموعات'), href: route('exams.manage.groups'), icon: UserGroupIcon, active: route().current('exams.manage.groups') },
         ]
         : []),
 ]);

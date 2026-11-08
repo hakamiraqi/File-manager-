@@ -31,7 +31,7 @@ class ExamController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
-        $exams = Exam::published()->withCount('questions')
+        $exams = Exam::published()->assignedTo($user)->withCount('questions')
             ->with(['attempts' => fn ($q) => $q->where('user_id', $user->id), 'overrides' => fn ($q) => $q->where('user_id', $user->id)])
             ->orderByRaw('closes_at is null, closes_at')->latest('id')->get();
 
@@ -47,7 +47,7 @@ class ExamController extends Controller
     public function show(Request $request, Exam $exam): Response
     {
         $user = $request->user();
-        abort_unless($exam->is_published || $exam->isManageableBy($user), 404);
+        abort_unless(($exam->is_published && $exam->isAssignedTo($user)) || $exam->isManageableBy($user), 404);
         $exam->load(['attempts' => fn ($q) => $q->where('user_id', $user->id)->orderBy('number'), 'overrides' => fn ($q) => $q->where('user_id', $user->id)])
             ->loadCount('questions');
         $exam->attempts->each(fn (Attempt $a) => $this->closeIfExpired($a));
@@ -57,6 +57,8 @@ class ExamController extends Controller
             'exam' => $this->presenter->card($exam, $user) + [
                 'description' => $exam->text('description'),
                 'needs_password' => filled($exam->password),
+                'needs_access_code' => filled($exam->access_code),
+                'in_network' => $exam->networkAllows($request),
                 'seb_required' => $exam->seb_required,
                 'in_seb' => $exam->sebAllows($request),
                 'grading_method' => $exam->grading_method,
@@ -77,9 +79,12 @@ class ExamController extends Controller
     public function start(Request $request, Exam $exam): RedirectResponse
     {
         $user = $request->user();
-        abort_unless($exam->is_published, 404);
+        abort_unless($exam->is_published && $exam->isAssignedTo($user), 404);
         if (! $exam->sebAllows($request)) {
             return back()->withErrors(['exam' => self::SEB_MESSAGE]);
+        }
+        if (! $exam->networkAllows($request)) {
+            return back()->withErrors(['exam' => self::NETWORK_MESSAGE]);
         }
         $exam->load(['overrides' => fn ($q) => $q->where('user_id', $user->id)]);
 
@@ -96,6 +101,9 @@ class ExamController extends Controller
         }
         if (filled($exam->password) && ! hash_equals((string) $exam->password, (string) $request->input('password'))) {
             return back()->withErrors(['password' => 'كلمة مرور الامتحان غير صحيحة.']);
+        }
+        if (filled($exam->access_code) && mb_strtoupper(trim((string) $request->input('access_code'))) !== mb_strtoupper($exam->access_code)) {
+            return back()->withErrors(['access_code' => 'رمز الدخول غير صحيح. يعلنه المراقب في القاعة.']);
         }
         if (! $exam->questions()->exists()) {
             return back()->withErrors(['exam' => 'لا توجد أسئلة في هذا الامتحان بعد.']);
@@ -157,6 +165,9 @@ class ExamController extends Controller
         if (! $exam->sebAllows($request)) {
             return redirect()->route('exams.show', $exam)->withErrors(['exam' => self::SEB_MESSAGE]);
         }
+        if (! $exam->networkAllows($request)) {
+            return redirect()->route('exams.show', $exam)->withErrors(['exam' => self::NETWORK_MESSAGE]);
+        }
         $answers = $attempt->answers()->get()->keyBy('exam_question_id');
         $questions = $attempt->orderedQuestions();
 
@@ -202,6 +213,8 @@ class ExamController extends Controller
 
         return response()->json(['saved' => true, 'seconds_left' => $attempt->secondsLeft()]);
     }
+
+    public const NETWORK_MESSAGE = 'هذا الامتحان يُؤدّى من أجهزة القاعة فقط.';
 
     public const SEB_MESSAGE = 'هذا الامتحان يُؤدّى في متصفح Safe Exam Browser فقط، وبإعداداته المعتمدة.';
 

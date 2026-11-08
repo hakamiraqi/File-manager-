@@ -23,6 +23,7 @@ class Exam extends Model
         'duration_minutes', 'opens_at', 'closes_at', 'max_attempts', 'grading_method', 'pass_mark', 'password',
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
+        'access_code', 'allowed_ips',
     ];
 
     protected $hidden = ['password'];
@@ -77,6 +78,32 @@ class Exam extends Model
     public function scopeManageableBy(Builder $q, User $user): Builder
     {
         return $user->isAdmin() ? $q : $q->where('user_id', $user->id);
+    }
+
+    /** The classes this exam is given to; none means every student. */
+    public function groups(): \Illuminate\Database\Eloquent\Relations\BelongsToMany
+    {
+        return $this->belongsToMany(Group::class, 'exam_exam_group', 'exam_id', 'exam_group_id');
+    }
+
+    /** Published exams this student may see: given to everyone, or to a group they are in. */
+    public function scopeAssignedTo(Builder $q, User $user): Builder
+    {
+        return $q->where(fn ($w) => $w->whereDoesntHave('groups')
+            ->orWhereHas('groups.members', fn ($m) => $m->whereKey($user->id)));
+    }
+
+    public function isAssignedTo(User $user): bool
+    {
+        return ! $this->groups()->exists() || $this->groups()->whereHas('members', fn ($m) => $m->whereKey($user->id))->exists();
+    }
+
+    /** Whether the request comes from the hall's network, when the exam is kept to it. */
+    public function networkAllows(\Illuminate\Http\Request $request): bool
+    {
+        $ranges = preg_split('/[\s,،]+/u', trim((string) $this->allowed_ips), -1, PREG_SPLIT_NO_EMPTY);
+
+        return $ranges === [] || \Symfony\Component\HttpFoundation\IpUtils::checkIp((string) $request->ip(), $ranges);
     }
 
     /** Teachers invited to mark this exam's hand-marked answers (beside its owner). */

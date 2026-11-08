@@ -21,6 +21,14 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/images', [ManageController::class, 'image'])->middleware('throttle:60,1')->name('images.store');
         Route::post('/students/import', [\App\Http\Controllers\Exams\ImportController::class, 'students'])->name('students.import');
 
+        $groups = \App\Http\Controllers\Exams\GroupController::class;
+        Route::get('/groups', [$groups, 'index'])->name('groups');
+        Route::post('/groups', [$groups, 'store'])->name('groups.store');
+        Route::put('/groups/{group}', [$groups, 'update'])->name('groups.update');
+        Route::delete('/groups/{group}', [$groups, 'destroy'])->name('groups.destroy');
+        Route::post('/groups/{group}/members', [$groups, 'addMembers'])->name('groups.members.store');
+        Route::delete('/groups/{group}/members/{user}', [$groups, 'removeMember'])->name('groups.members.destroy');
+
         $bank = \App\Http\Controllers\Exams\BankController::class;
         Route::get('/bank', [$bank, 'index'])->name('bank');
         Route::post('/bank/categories', [$bank, 'store'])->name('bank.categories.store');

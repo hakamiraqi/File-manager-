@@ -92,7 +92,8 @@ class ImportController extends Controller
     public function students(Request $request, SpreadsheetReader $reader): Response
     {
         abort_unless($request->user()->hasAdminCapability('can_manage_users'), 403);
-        $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:xlsx,csv,txt']]);
+        $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:xlsx,csv,txt'], 'group_id' => ['nullable', 'integer', 'exists:exam_groups,id']]);
+        $group = $request->filled('group_id') ? \App\Models\Exams\Group::find($request->integer('group_id')) : null;
         $file = $request->file('file');
         $rows = $reader->read($file->getRealPath(), $file->getClientOriginalExtension());
         if (count($rows) < 2) {
@@ -109,7 +110,7 @@ class ImportController extends Controller
 
         $created = [];
         $skipped = [];
-        DB::transaction(function () use ($rows, $nameCol, $emailCol, $passCol, &$created, &$skipped) {
+        DB::transaction(function () use ($rows, $nameCol, $emailCol, $passCol, $group, &$created, &$skipped) {
             foreach ($rows as $i => $row) {
                 $name = trim((string) ($row[$nameCol] ?? ''));
                 $email = mb_strtolower(trim((string) ($row[$emailCol] ?? '')));
@@ -121,16 +122,18 @@ class ImportController extends Controller
 
                     continue;
                 }
-                if (User::where('email', $email)->exists()) {
-                    $skipped[] = [$name, $email, 'موجود مسبقاً'];
+                if ($existing = User::where('email', $email)->first()) {
+                    $group?->members()->syncWithoutDetaching([$existing->id]);
+                    $skipped[] = [$name, $email, $group ? 'موجود مسبقاً؛ أُضيف إلى المجموعة' : 'موجود مسبقاً'];
 
                     continue;
                 }
                 $password = $passCol !== false && trim((string) ($row[$passCol] ?? '')) !== '' ? trim((string) $row[$passCol]) : Str::password(10, symbols: false);
-                User::create([
+                $user = User::create([
                     'name' => Str::limit($name ?: $email, 255, ''), 'email' => $email, 'password' => Hash::make($password),
                     'role' => 'user', 'is_active' => true, 'email_verified_at' => now(),
                 ]);
+                $group?->members()->attach($user->id);
                 $created[] = [$name, $email, $password];
             }
         });

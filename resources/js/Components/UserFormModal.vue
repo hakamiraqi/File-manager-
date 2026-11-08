@@ -63,6 +63,7 @@ const form = useForm({
     password: '',
     role: 'user',
     is_examiner: false,
+    is_invigilator: false,
     exam_time_multiplier: 1,
     is_active: true,
     can_manage_appearance: false,
@@ -86,6 +87,7 @@ watch(
                 form.is_active = props.user.is_active;
                 CAPABILITIES.forEach((c) => (form[c.key] = !!props.user[c.key]));
                 form.is_examiner = !!props.user.is_examiner;
+                form.is_invigilator = !!props.user.is_invigilator;
                 form.exam_time_multiplier = props.user.exam_time_multiplier ?? 1;
             } else {
                 form.reset();
@@ -217,6 +219,14 @@ function submit() {
                         <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.users.examiner_hint', 'ينشئ الامتحانات ويصحّحها ويرى نتائجها') }}</p>
                     </div>
                     <ToggleSwitch v-model="form.is_examiner" />
+                </label>
+                <label v-if="form.role !== 'admin' && !form.is_examiner" class="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300"><BookOpenIcon class="h-5 w-5" /></span>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ t('admin.users.invigilator_title', 'مراقب قاعة') }}</p>
+                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.users.invigilator_hint', 'يراقب الامتحانات الجارية ويسجّل الحضور، دون تعديل الأسئلة أو الدرجات') }}</p>
+                    </div>
+                    <ToggleSwitch v-model="form.is_invigilator" />
                 </label>
                 <label class="flex items-center gap-3 rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700">
                     <span class="min-w-0 flex-1">

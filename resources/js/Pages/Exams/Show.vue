@@ -8,7 +8,7 @@ import { ClockIcon, PlayIcon, ArrowRightIcon } from '@heroicons/vue/24/outline';
 const props = defineProps({ exam: Object, attempts: Array });
 const { t } = useTrans();
 const page = usePage();
-const form = useForm({ password: '' });
+const form = useForm({ password: '', access_code: '' });
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 const canStart = computed(() => (!props.exam.seb_required || props.exam.in_seb) && (props.exam.in_progress || (props.exam.window === 'open' && props.exam.attempts_used < props.exam.max_attempts)));
 const grading = { highest: 'أعلى درجة', average: 'المعدّل', first: 'المحاولة الأولى', last: 'المحاولة الأخيرة' };
@@ -53,6 +53,11 @@ function start() {
                         <span class="mb-1 block text-xs text-gray-500">{{ t('exam.password', 'كلمة مرور الامتحان') }}</span>
                         <input v-model="form.password" type="password" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                         <span v-if="form.errors.password" class="mt-1 block text-xs text-red-600">{{ form.errors.password }}</span>
+                    </label>
+                    <label v-if="exam.needs_access_code && !exam.in_progress" class="block text-sm">
+                        <span class="mb-1 block text-xs text-gray-500">{{ t('exam.access_code_student', 'رمز الدخول (يعلنه المراقب)') }}</span>
+                        <input v-model="form.access_code" dir="ltr" autocomplete="off" class="w-40 rounded-lg border-gray-300 font-mono text-sm uppercase tracking-widest dark:border-gray-600 dark:bg-gray-700" />
+                        <span v-if="form.errors.access_code" class="mt-1 block text-xs text-red-600">{{ form.errors.access_code }}</span>
                     </label>
                     <button :disabled="form.processing" class="flex items-center gap-2 rounded-lg bg-[var(--accent-600)] px-5 py-2 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">
                         <PlayIcon class="h-4 w-4" /> {{ exam.in_progress ? t('exam.resume', 'متابعة المحاولة') : t('exam.start_attempt', 'ابدأ المحاولة') }}

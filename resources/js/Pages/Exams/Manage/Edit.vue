@@ -8,7 +8,7 @@ import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] } });
+const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] } });
 const { t } = useTrans();
 const page = usePage();
 
@@ -65,6 +65,16 @@ function moveChoice(q, i, step) {
 }
 function setOnlyCorrect(q, c) {
     q.choices.forEach((x) => (x.is_correct = x === c));
+}
+function toggleGroup(id) {
+    const list = form.group_ids ?? (form.group_ids = []);
+    const i = list.indexOf(id);
+    i >= 0 ? list.splice(i, 1) : list.push(id);
+}
+// A code the invigilator announces in the hall: easy to read aloud, no 0/O or 1/I.
+function newAccessCode() {
+    const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+    form.access_code = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => chars[b % chars.length]).join('');
 }
 function toggleLanguage(lang) {
     const i = form.languages.indexOf(lang);
@@ -252,6 +262,25 @@ function save() {
                             <option value="after_close">{{ t('exam.after_close', 'بعد إغلاق الامتحان') }}</option>
                             <option value="never">{{ t('exam.never', 'لا تُظهر') }}</option>
                         </select></label>
+                </div>
+                <div>
+                    <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.given_to', 'يُعطى إلى') }}</p>
+                    <div class="flex flex-wrap gap-2">
+                        <button v-for="g in groups" :key="g.id" type="button" @click="toggleGroup(g.id)"
+                            class="rounded-full border px-3 py-1 text-sm" :class="form.group_ids?.includes(g.id) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'border-gray-300 dark:border-gray-600'">
+                            {{ g.name }} <span class="text-xs text-gray-400">({{ g.members }})</span>
+                        </button>
+                        <Link :href="route('exams.manage.groups')" class="rounded-full border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-500 dark:border-gray-600">+ {{ t('exam.groups', 'الصفوف والمجموعات') }}</Link>
+                    </div>
+                    <p class="mt-1 text-xs" :class="form.group_ids?.length ? 'text-gray-500' : 'text-amber-600'">{{ form.group_ids?.length ? t('exam.given_to_groups', 'يراه طلاب المجموعات المختارة فقط.') : t('exam.given_to_all', 'لم تُختر مجموعة: يراه كل الطلاب.') }}</p>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.access_code', 'رمز دخول القاعة (يعلنه المراقب عند البدء)') }}</span>
+                        <span class="flex gap-2"><input v-model="form.access_code" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-sm uppercase tracking-widest dark:border-gray-600 dark:bg-gray-700" />
+                            <button type="button" @click="newAccessCode" class="shrink-0 rounded-lg border border-gray-300 px-3 text-xs dark:border-gray-600">{{ t('exam.generate', 'توليد') }}</button></span></label>
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.allowed_ips', 'أجهزة القاعة فقط (عناوين أو نطاقات، مثل 192.168.1.0/24)') }}</span>
+                        <input v-model="form.allowed_ips" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <span v-if="form.errors.allowed_ips" class="text-xs text-red-600">{{ form.errors.allowed_ips }}</span></label>
                 </div>
                 <div class="grid gap-3 sm:grid-cols-2">
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_questions', 'خلط ترتيب الأسئلة') }} <ToggleSwitch v-model="form.shuffle_questions" /></label>

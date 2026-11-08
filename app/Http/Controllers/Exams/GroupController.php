@@ -1,0 +1,96 @@
+<?php
+
+namespace App\Http\Controllers\Exams;
+
+use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
+use App\Models\Exams\Group;
+use App\Models\User;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use Inertia\Inertia;
+use Inertia\Response;
+
+/** Classes and sections: who is in them, and so who sees an exam given to them. */
+class GroupController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        $user = $request->user();
+        $groups = Group::with('owner:id,name')->withCount(['members', 'exams'])->orderBy('stage')->orderBy('name')->get();
+        $current = $groups->firstWhere('id', (int) $request->query('group')) ?? $groups->first();
+
+        return Inertia::render('Exams/Manage/Groups', [
+            'groups' => $groups->map(fn (Group $g) => [
+                'id' => $g->id, 'name' => $g->name, 'stage' => $g->stage, 'department' => $g->department,
+                'members' => $g->members_count, 'exams' => $g->exams_count, 'owner' => $g->owner?->name,
+                'editable' => $g->isEditableBy($user),
+            ])->values(),
+            'current' => $current?->id,
+            'members' => $current ? $current->members()->orderBy('name')->get(['users.id', 'name', 'email'])
+                ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]) : [],
+            'canImport' => $user->hasAdminCapability('can_manage_users'),
+        ]);
+    }
+
+    public function store(Request $request): RedirectResponse
+    {
+        $group = Group::create($this->validated($request) + ['user_id' => $request->user()->id]);
+        ActivityLog::record('exam.group_created', "أنشأ المجموعة \"{$group->name}\"");
+
+        return redirect()->route('exams.manage.groups', ['group' => $group->id])->with('success', 'تم إنشاء المجموعة.');
+    }
+
+    public function update(Request $request, Group $group): RedirectResponse
+    {
+        abort_unless($group->isEditableBy($request->user()), 404);
+        $group->update($this->validated($request));
+
+        return back()->with('success', 'تم الحفظ.');
+    }
+
+    public function destroy(Request $request, Group $group): RedirectResponse
+    {
+        abort_unless($group->isEditableBy($request->user()), 404);
+        // An exam left with no group would open to every student.
+        if ($group->exams()->exists()) {
+            return back()->withErrors(['group' => 'المجموعة معطاة لامتحانات ('.$group->exams()->count().'). أزلها من إعدادات تلك الامتحانات أولاً.']);
+        }
+        $group->delete();
+
+        return redirect()->route('exams.manage.groups')->with('success', 'حُذفت المجموعة؛ الطلاب أنفسهم باقون.');
+    }
+
+    /** Adds students by e-mail, one per line (or separated by commas). */
+    public function addMembers(Request $request, Group $group): RedirectResponse
+    {
+        abort_unless($group->isEditableBy($request->user()), 404);
+        $emails = collect(preg_split('/[\s,،;]+/u', mb_strtolower((string) $request->input('emails')), -1, PREG_SPLIT_NO_EMPTY))->unique();
+        if ($emails->isEmpty()) {
+            throw ValidationException::withMessages(['emails' => 'اكتب بريد طالب واحد على الأقل.']);
+        }
+        $users = User::whereIn('email', $emails)->pluck('id', 'email');
+        $group->members()->syncWithoutDetaching($users->values());
+        $missing = $emails->diff($users->keys());
+
+        return back()->with('success', 'أُضيف '.$users->count().' طالباً.'.($missing->isNotEmpty() ? ' لا حساب لـ: '.$missing->implode('، ') : ''));
+    }
+
+    public function removeMember(Request $request, Group $group, User $user): RedirectResponse
+    {
+        abort_unless($group->isEditableBy($request->user()), 404);
+        $group->members()->detach($user->id);
+
+        return back()->with('success', 'أُزيل الطالب من المجموعة.');
+    }
+
+    private function validated(Request $request): array
+    {
+        return $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'stage' => ['nullable', 'string', 'max:100'],
+            'department' => ['nullable', 'string', 'max:255'],
+        ]);
+    }
+}
