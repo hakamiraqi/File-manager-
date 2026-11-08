@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
@@ -116,7 +116,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                     <div class="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
                         <div class="min-w-0 flex-1">
                             <p class="font-medium">{{ a.user.name }} <span class="text-xs text-gray-400">#{{ a.number }}</span></p>
-                            <p class="text-xs text-gray-500">{{ a.user.email }} · {{ fmt(a.started_at) }} → {{ a.submitted_at ? fmt(a.submitted_at) : t('exam.in_progress', 'جارٍ') }}</p>
+                            <p class="text-xs text-gray-500">{{ a.user.email }} · {{ fmt(a.started_at) }} – {{ a.submitted_at ? fmt(a.submitted_at) : t('exam.in_progress', 'جارٍ') }}</p>
                         </div>
                         <span v-for="(n, type) in a.events" :key="type" class="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.event_' + type, EVENT_LABELS[type]) }} × {{ n }}</span>
                         <span v-if="a.needs_grading" class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">{{ t('exam.pending_grading', 'بانتظار التصحيح') }}</span>
@@ -149,9 +149,9 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                                     <input v-model="markFor(essay).points" type="number" min="0" :max="essay.max" step="0.25" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                                 <label class="min-w-[12rem] flex-1 text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.comment', 'ملاحظة للطالب') }}</span>
                                     <input v-model="markFor(essay).comment" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                                <button v-if="ai_enabled && essay.text" type="button" @click="suggest(essay)" :disabled="suggestions[essay.id]?.loading" class="rounded-lg border border-violet-300 px-3 py-2 text-sm text-violet-700 disabled:opacity-50 dark:border-violet-700 dark:text-violet-300">✦ {{ suggestions[essay.id]?.loading ? '…' : t('exam.suggest', 'اقتراح درجة') }}</button>
+                                <button v-if="ai_enabled && essay.text" type="button" @click="suggest(essay)" :disabled="suggestions[essay.id]?.loading" class="rounded-lg border border-violet-300 px-3 py-2 text-sm text-violet-700 disabled:opacity-50 dark:border-violet-700 dark:text-violet-300"><SparklesIcon class="inline h-4 w-4 align-text-bottom" /> {{ suggestions[essay.id]?.loading ? '…' : t('exam.suggest', 'اقتراح درجة') }}</button>
                                 <button @click="mark(essay)" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white">{{ t('action.save', 'حفظ') }}</button>
-                                <p v-if="suggestions[essay.id]?.reason" class="w-full rounded-lg bg-violet-50 p-2 text-xs text-violet-900 dark:bg-violet-900/30 dark:text-violet-100" dir="auto">✦ {{ suggestions[essay.id].points }} — {{ suggestions[essay.id].reason }}</p>
+                                <p v-if="suggestions[essay.id]?.reason" class="w-full rounded-lg bg-violet-50 p-2 text-xs text-violet-900 dark:bg-violet-900/30 dark:text-violet-100" dir="auto"><SparklesIcon class="inline h-4 w-4 align-text-bottom" /> {{ suggestions[essay.id].points }} — {{ suggestions[essay.id].reason }}</p>
                                 <p v-if="suggestions[essay.id]?.error" class="w-full text-xs text-red-600">{{ suggestions[essay.id].error }}</p>
                                 <button v-if="exam.double_marking && can_manage && essay.status === 'disputed'" @click="mark(essay, true)" class="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:text-red-300">{{ t('exam.settle', 'اعتمادها نهائية') }}</button>
                             </div>
@@ -228,7 +228,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 <p v-if="similar && !similar.length" class="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-600">{{ t('exam.no_similar', 'لا تشابه لافت.') }}</p>
                 <div v-for="(p, k) in similar ?? []" :key="k" class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
                     <span class="rounded-full px-2 py-0.5 text-xs" :class="p.kind === 'essay' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'">{{ p.kind === 'essay' ? t('exam.similar_essay', 'مقالي') : t('exam.similar_choices', 'أخطاء متطابقة') }}</span>
-                    <span class="flex-1">{{ p.a_name }} ↔ {{ p.b_name }}</span>
+                    <span class="flex-1">{{ p.a_name }} <ArrowsRightLeftIcon class="inline h-4 w-4 align-text-bottom" /> {{ p.b_name }}</span>
                     <span class="font-semibold">{{ p.kind === 'essay' ? p.score + '%' : p.score + ' ' + t('exam.same_wrong', 'إجابة خاطئة متطابقة') }}</span>
                     <Link :href="route('exams.attempts.result', p.a)" class="text-xs text-[var(--accent-600)] underline">A</Link>
                     <Link :href="route('exams.attempts.result', p.b)" class="text-xs text-[var(--accent-600)] underline">B</Link>

@@ -1,4 +1,5 @@
 <script setup>
+import {  } from '@heroicons/vue/24/outline';
 import { computed } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import { Head } from '@inertiajs/vue3';
@@ -117,7 +118,7 @@ function submit() {
                     <p class="text-xs text-gray-500">{{ t('settings.ai_hint', 'يقترح درجة وسبباً للإجابات المقالية حسب معايير التصحيح، والأستاذ يقرّر. يحتاج مفتاح Anthropic API، ويُرسل نص السؤال والإجابة دون اسم الطالب. لا يعمل في نسخة السيرفر بدون إنترنت.') }}</p>
                     <div class="grid gap-3 sm:grid-cols-2">
                         <div>
-                            <InputLabel :value="t('settings.ai_key', 'مفتاح API') + (settings.ai_api_key_set ? ' ✓' : '')" />
+                            <InputLabel :value="t('settings.ai_key', 'مفتاح API') + (settings.ai_api_key_set ? ' (' + t('settings.saved', 'محفوظ') + ')' : '')" />
                             <TextInput type="password" v-model="form.ai_api_key" class="mt-1 block w-full" dir="ltr" autocomplete="off" :placeholder="settings.ai_api_key_set ? t('settings.ai_key_kept', 'محفوظ؛ اتركه فارغاً لإبقائه') : 'sk-ant-…'" />
                             <label v-if="settings.ai_api_key_set" class="mt-1 flex items-center gap-2 text-xs"><input type="checkbox" v-model="form.ai_clear" class="rounded" /> {{ t('settings.ai_clear', 'حذف المفتاح') }}</label>
                         </div>

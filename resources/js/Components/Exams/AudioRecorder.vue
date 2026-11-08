@@ -1,4 +1,5 @@
 <script setup>
+import { MicrophoneIcon, StopIcon, CheckIcon } from '@heroicons/vue/24/outline';
 import { ref, onBeforeUnmount } from 'vue';
 
 // A spoken answer: record from the microphone (up to the question's limit), listen, send.
@@ -46,13 +47,13 @@ const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
     <div class="space-y-2 rounded-lg border border-gray-200 p-4 dark:border-gray-600">
         <div class="flex flex-wrap items-center gap-3">
             <button v-if="state !== 'recording'" type="button" @click="start" :disabled="disabled" class="flex items-center gap-2 rounded-full bg-red-600 px-4 py-2 text-sm text-white disabled:opacity-40">
-                ● {{ state === 'ready' || saved ? 'تسجيل من جديد' : 'ابدأ التسجيل' }}
+                <MicrophoneIcon class="h-4 w-4" /> {{ state === 'ready' || saved ? 'تسجيل من جديد' : 'ابدأ التسجيل' }}
             </button>
-            <button v-else type="button" @click="stop" class="rounded-full bg-gray-800 px-4 py-2 text-sm text-white">■ إيقاف</button>
+            <button v-else type="button" @click="stop" class="rounded-full bg-gray-800 px-4 py-2 text-sm flex items-center gap-2 text-white"><StopIcon class="h-4 w-4" /> إيقاف</button>
             <span class="font-mono text-sm" :class="state === 'recording' ? 'text-red-600' : 'text-gray-500'">{{ clock(seconds) }} / {{ clock(maxSeconds) }}</span>
         </div>
         <audio v-if="url" :src="url" controls class="w-full" />
-        <p v-else-if="saved" class="text-sm text-emerald-700 dark:text-emerald-400">✓ {{ saved }}</p>
+        <p v-else-if="saved" class="text-sm text-emerald-700 dark:text-emerald-400"><CheckIcon class="inline h-4 w-4 align-text-bottom" /> {{ saved }}</p>
         <p v-if="error" class="text-sm text-red-600">{{ error }}</p>
     </div>
 </template>

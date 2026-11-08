@@ -1,4 +1,5 @@
 <script setup>
+import { CheckIcon } from '@heroicons/vue/24/outline';
 import { ref, onMounted } from 'vue';
 
 // Drawing or handwriting with the mouse, a pen or a finger; sent as a picture.
@@ -55,7 +56,7 @@ function send() {
             <input v-model.number="width" type="range" min="1" max="10" class="w-24" />
             <button type="button" @click="clear" :disabled="disabled" class="rounded border border-gray-300 px-2 py-0.5 dark:border-gray-600">مسح الكل</button>
             <span class="flex-1" />
-            <span v-if="saved && !dirty" class="text-xs text-emerald-700 dark:text-emerald-400">✓ محفوظ</span>
+            <span v-if="saved && !dirty" class="text-xs text-emerald-700 dark:text-emerald-400"><CheckIcon class="inline h-4 w-4 align-text-bottom" /> محفوظ</span>
             <button type="button" @click="send" :disabled="disabled || !dirty" class="rounded-lg bg-[var(--accent-600)] px-3 py-1 text-white disabled:opacity-40">حفظ الرسم</button>
         </div>
         <canvas ref="canvas" @pointerdown="down" @pointermove="move" @pointerup="up" @pointerleave="up"

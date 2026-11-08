@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon, HandRaisedIcon, ClockIcon, CheckIcon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, data: Object, computers: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -206,7 +206,7 @@ async function uploadOffline(event) {
                     <span v-if="distributeMsg" class="w-full text-xs text-gray-500">{{ distributeMsg }}</span>
                 </div>
             </div>
-            <p v-if="live.counts.help" class="rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">✋ {{ t('exam.help_waiting', ':n طالب يطلب المساعدة', { n: live.counts.help }) }}</p>
+            <p v-if="live.counts.help" class="rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ t('exam.help_waiting', ':n طالب يطلب المساعدة', { n: live.counts.help }) }}</p>
             <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
 
             <!-- Students -->
@@ -233,12 +233,12 @@ async function uploadOffline(event) {
                     <tbody>
                         <tr v-for="r in rows" :key="r.user.id" class="border-t border-gray-100 dark:border-gray-700">
                             <td class="px-3 py-2">
-                                <p class="font-medium">{{ r.user.name }} <span v-if="r.user.extra_time" class="text-xs text-sky-600" :title="t('exam.extra_time', 'وقت إضافي')">⏱</span></p>
+                                <p class="font-medium">{{ r.user.name }} <span v-if="r.user.extra_time" class="text-xs text-sky-600" :title="t('exam.extra_time', 'وقت إضافي')"><ClockIcon class="inline h-3.5 w-3.5 align-text-bottom" /></span></p>
                                 <p class="text-xs text-gray-400" dir="ltr">{{ r.user.email }}<span v-if="r.attempt?.ip"> · {{ r.attempt.ip }}</span></p>
                             </td>
                             <td class="px-2 py-2 text-center whitespace-nowrap">
-                                <button @click="setPresent(r, true)" class="rounded px-1.5 py-0.5 text-xs" :class="r.present === true ? 'bg-emerald-600 text-white' : 'border border-gray-300 dark:border-gray-600'">✓</button>
-                                <button @click="setPresent(r, false)" class="ms-1 rounded px-1.5 py-0.5 text-xs" :class="r.present === false ? 'bg-red-600 text-white' : 'border border-gray-300 dark:border-gray-600'">✗</button>
+                                <button @click="setPresent(r, true)" class="rounded px-1.5 py-0.5 text-xs" :class="r.present === true ? 'bg-emerald-600 text-white' : 'border border-gray-300 dark:border-gray-600'"><CheckIcon class="h-4 w-4" /></button>
+                                <button @click="setPresent(r, false)" class="ms-1 rounded px-1.5 py-0.5 text-xs" :class="r.present === false ? 'bg-red-600 text-white' : 'border border-gray-300 dark:border-gray-600'"><XMarkIcon class="h-4 w-4" /></button>
                             </td>
                             <td class="px-2 py-2 text-center">
                                 <select v-if="computers.length" :value="r.computer?.id ?? ''" @change="seat(r, $event.target.value)" class="rounded border-gray-300 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-700">
@@ -250,8 +250,8 @@ async function uploadOffline(event) {
                             </td>
                             <td class="px-2 py-2 text-center">
                                 <span class="rounded-full px-2 py-0.5 text-xs whitespace-nowrap" :class="STATUS[r.status][1]">{{ t('exam.status_' + r.status, STATUS[r.status][0]) }}</span>
-                                <p v-if="r.attempt?.help" class="mt-1"><button @click="helpDone(r)" class="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-semibold text-amber-950" :title="t('exam.help_done', 'تمّت المساعدة')">✋ {{ t('exam.help', 'مساعدة') }}</button></p>
-                                <p v-if="r.attempt?.locked" class="mt-1 text-xs text-red-700 dark:text-red-300">🔒 {{ r.attempt.locked.reason === 'left' ? t('exam.locked_left', 'غادر الصفحة') : t('exam.locked_reopened', 'فتحها من جديد') }} ·
+                                <p v-if="r.attempt?.help" class="mt-1"><button @click="helpDone(r)" class="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-semibold text-amber-950" :title="t('exam.help_done', 'تمّت المساعدة')"><HandRaisedIcon class="inline h-3.5 w-3.5 align-text-bottom" /> {{ t('exam.help', 'مساعدة') }}</button></p>
+                                <p v-if="r.attempt?.locked" class="mt-1 text-xs text-red-700 dark:text-red-300"><LockClosedIcon class="inline h-3.5 w-3.5 align-text-bottom" /> {{ r.attempt.locked.reason === 'left' ? t('exam.locked_left', 'غادر الصفحة') : t('exam.locked_reopened', 'فتحها من جديد') }} ·
                                     <b class="font-mono text-sm tracking-widest">{{ r.attempt.locked.code }}</b>
                                     <button @click="unlock(r)" class="ms-1 underline">{{ t('exam.unlock', 'فتح') }}</button></p>
                                 <p v-if="r.status === 'disconnected'" class="text-[10px] text-gray-400">{{ Math.round(since(r.attempt.last_seen) / 60) }} {{ t('exam.min_ago', 'د') }}</p>

@@ -10,7 +10,7 @@ import { Head, router } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon } from '@heroicons/vue/24/outline';
+import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, CalculatorIcon, PencilSquareIcon, HandRaisedIcon, StopIcon, SpeakerWaveIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object, offline_token: String, hall: { type: Object, default: () => ({}) } });
 
@@ -368,10 +368,10 @@ onBeforeUnmount(() => {
                 <ClockIcon class="h-4 w-4" /> {{ clock }}
             </span>
             <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
-            <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')">🧮</button>
-            <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')">📝</button>
+            <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
+            <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
             <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
-            <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')">✋ {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
+            <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
             <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
         </header>
         <div v-if="readingOpen" class="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
@@ -414,7 +414,7 @@ onBeforeUnmount(() => {
                         <span v-if="current.type !== 'description'">{{ t('exam.question', 'السؤال') }} {{ number(current) }} · {{ current.points }} {{ t('exam.points', 'درجة') }}</span>
                         <span v-else />
                         <span class="flex-1" />
-                        <button @click="readAloud(current)" class="hover:text-gray-700" :title="t('exam.read_aloud', 'قراءة السؤال بصوت')">{{ speaking ? '■' : '🔊' }}</button>
+                        <button @click="readAloud(current)" class="hover:text-gray-700" :title="t('exam.read_aloud', 'قراءة السؤال بصوت')"><StopIcon v-if="speaking" class="h-4 w-4" /><SpeakerWaveIcon v-else class="h-4 w-4" /></button>
                         <button v-if="current.type !== 'description'" @click="toggleFlag(current)" class="flex items-center gap-1" :class="flags[current.id] ? 'text-amber-600' : 'hover:text-gray-700'">
                             <FlagIcon class="h-4 w-4" /> {{ t('exam.flag', 'راجع لاحقاً') }}
                         </button>
@@ -580,13 +580,13 @@ onBeforeUnmount(() => {
         <!-- Locked: the invigilator's code opens it again -->
         <div v-if="locked" class="fixed inset-0 z-40 flex items-center justify-center bg-gray-900/80 p-4" role="dialog" aria-modal="true">
             <form @submit.prevent="unlockAttempt" class="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 text-center dark:bg-gray-800">
-                <p class="text-4xl">🔒</p>
+                <LockClosedIcon class="mx-auto h-12 w-12" />
                 <p class="font-semibold">{{ t('exam.locked_title', 'المحاولة مقفلة') }}</p>
                 <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.locked_text', 'خرجت من صفحة الامتحان أو فتحتها من جديد. اطلب من المراقب رمز المتابعة. إجاباتك محفوظة، والوقت مستمر.') }}</p>
                 <input v-model="unlockCode" inputmode="numeric" autocomplete="off" dir="ltr" class="w-40 rounded-lg border-gray-300 text-center font-mono text-2xl tracking-[0.4em] dark:border-gray-600 dark:bg-gray-700" />
                 <p v-if="unlockError" class="text-sm text-red-600">{{ unlockError }}</p>
                 <div class="flex justify-center gap-2">
-                    <button type="button" @click="toggleHelp" class="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600">✋ {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
+                    <button type="button" @click="toggleHelp" class="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
                     <button :disabled="!unlockCode" class="rounded-lg bg-[var(--accent-600)] px-5 py-2 text-sm text-white disabled:opacity-40">{{ t('exam.continue', 'متابعة') }}</button>
                 </div>
                 <p v-if="clock" class="font-mono text-sm text-gray-500">{{ clock }}</p>

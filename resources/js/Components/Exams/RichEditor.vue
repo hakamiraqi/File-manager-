@@ -1,4 +1,5 @@
 <script setup>
+import { ListBulletIcon, NumberedListIcon, TableCellsIcon, Bars3BottomRightIcon, Bars3Icon, Bars3BottomLeftIcon, VariableIcon, PaperClipIcon } from '@heroicons/vue/24/outline';
 import { ref, onMounted, watch } from 'vue';
 import RichText from '@/Components/Exams/RichText.vue';
 
@@ -71,16 +72,16 @@ const B = 'rounded px-1.5 py-0.5 text-xs hover:bg-gray-200 dark:hover:bg-gray-60
             <button type="button" :class="B" @mousedown.prevent="cmd('subscript')" title="منخفض">x₂</button>
             <button type="button" :class="B" @mousedown.prevent="cmd('superscript')" title="مرتفع">x²</button>
             <span class="mx-1 h-4 w-px bg-gray-300 dark:bg-gray-600" />
-            <button type="button" :class="B" @mousedown.prevent="cmd('insertUnorderedList')" title="قائمة نقطية">• ≡</button>
-            <button type="button" :class="B" @mousedown.prevent="cmd('insertOrderedList')" title="قائمة مرقّمة">1. ≡</button>
-            <button type="button" :class="B" @mousedown.prevent="table" title="جدول">▦</button>
+            <button type="button" :class="B" @mousedown.prevent="cmd('insertUnorderedList')" title="قائمة نقطية"><ListBulletIcon class="h-4 w-4" /></button>
+            <button type="button" :class="B" @mousedown.prevent="cmd('insertOrderedList')" title="قائمة مرقّمة"><NumberedListIcon class="h-4 w-4" /></button>
+            <button type="button" :class="B" @mousedown.prevent="table" title="جدول"><TableCellsIcon class="h-4 w-4" /></button>
             <span class="mx-1 h-4 w-px bg-gray-300 dark:bg-gray-600" />
-            <button type="button" :class="B" @mousedown.prevent="cmd('justifyRight')" title="يمين">⇥</button>
-            <button type="button" :class="B" @mousedown.prevent="cmd('justifyCenter')" title="وسط">↔</button>
-            <button type="button" :class="B" @mousedown.prevent="cmd('justifyLeft')" title="يسار">⇤</button>
+            <button type="button" :class="B" @mousedown.prevent="cmd('justifyRight')" title="يمين"><Bars3BottomRightIcon class="h-4 w-4" /></button>
+            <button type="button" :class="B" @mousedown.prevent="cmd('justifyCenter')" title="وسط"><Bars3Icon class="h-4 w-4" /></button>
+            <button type="button" :class="B" @mousedown.prevent="cmd('justifyLeft')" title="يسار"><Bars3BottomLeftIcon class="h-4 w-4" /></button>
             <span class="mx-1 h-4 w-px bg-gray-300 dark:bg-gray-600" />
-            <button type="button" :class="B" class="font-serif" @mousedown.prevent="equation" title="معادلة">∑ f(x)</button>
-            <button type="button" :class="B" @mousedown.prevent="fileInput.click()" :disabled="uploading" title="صورة أو صوت أو فيديو">{{ uploading ? '…' : '🖼 🔊 🎬' }}</button>
+            <button type="button" :class="B" class="font-serif" @mousedown.prevent="equation" title="معادلة"><VariableIcon class="h-4 w-4" /></button>
+            <button type="button" :class="B" @mousedown.prevent="fileInput.click()" :disabled="uploading" title="صورة أو صوت أو فيديو"><span v-if="uploading">…</span><PaperClipIcon v-else class="h-4 w-4" /></button>
             <input ref="fileInput" type="file" accept="image/*,audio/*,video/mp4,video/webm" class="hidden" @change="upload" />
             <span class="flex-1" />
             <button type="button" :class="B" @click="preview = !preview">{{ preview ? 'تحرير' : 'معاينة' }}</button>

@@ -1,4 +1,5 @@
 <script setup>
+import { CheckIcon } from '@heroicons/vue/24/outline';
 import { ref } from 'vue';
 
 // Labels onto a picture: pick a label, then click where it belongs (or drag it there).
@@ -22,7 +23,7 @@ const labelOf = (id) => props.labels.find((l) => l.id === Number(id))?.body;
         <div class="flex flex-wrap gap-2">
             <button v-for="l in labels" :key="l.id" type="button" draggable="true" @dragstart="$event.dataTransfer.setData('text/plain', l.id)" @click="picked = picked === l.id ? null : l.id" :disabled="disabled"
                 class="rounded-full border px-3 py-1 text-sm" :class="picked === l.id ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white' : modelValue?.[l.id] ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/30' : 'border-gray-300 dark:border-gray-600'" dir="auto">
-                {{ l.body }}<span v-if="modelValue?.[l.id]"> ✓</span>
+                {{ l.body }}<CheckIcon v-if="modelValue?.[l.id]" class="ms-1 inline h-3.5 w-3.5 align-text-bottom" />
             </button>
         </div>
         <div ref="pic" class="relative inline-block max-w-full select-none" :class="picked ? 'cursor-crosshair' : ''" @click="place($event, picked)" @dragover.prevent @drop.prevent="place($event, Number($event.dataTransfer.getData('text/plain')))">

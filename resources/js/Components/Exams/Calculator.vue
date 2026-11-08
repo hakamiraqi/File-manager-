@@ -1,4 +1,5 @@
 <script setup>
+import { BackspaceIcon } from '@heroicons/vue/24/outline';
 import { ref } from 'vue';
 
 // The exam's calculator: basic (+ − × ÷ %) or scientific (powers, roots, trigonometry, logs).
@@ -41,7 +42,7 @@ const SCI = ['(', ')', '^', '√(', 'sin(', 'cos(', 'tan(', 'π', 'log(', 'ln(',
         <div class="grid grid-cols-4 gap-1">
             <button v-for="k in KEYS" :key="k" type="button" @click="press(k)" class="rounded bg-gray-100 py-2 font-mono text-sm dark:bg-gray-700">{{ k }}</button>
             <button type="button" @click="expr = ''; result = ''" class="col-span-2 rounded bg-red-50 py-2 text-sm text-red-700 dark:bg-red-900/30">C</button>
-            <button type="button" @click="expr = expr.slice(0, -1)" class="rounded bg-gray-100 py-2 text-sm dark:bg-gray-700">⌫</button>
+            <button type="button" @click="expr = expr.slice(0, -1)" class="rounded bg-gray-100 py-2 text-sm dark:bg-gray-700"><BackspaceIcon class="mx-auto h-5 w-5" /></button>
             <button type="button" @click="evaluate" class="rounded bg-[var(--accent-600)] py-2 text-sm text-white">=</button>
         </div>
     </div>

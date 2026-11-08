@@ -1,7 +1,7 @@
 <script setup>
 import { Head, Link } from '@inertiajs/vue3';
 import { useTrans } from '@/Composables/useTrans';
-import { PrinterIcon, ArrowRightIcon } from '@heroicons/vue/24/outline';
+import { PrinterIcon, ArrowRightIcon, CheckIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 
 // The attendance sheet: name, seat, present, and room to sign.
 const props = defineProps({ exam: Object, site: String, rows: Array });
@@ -40,8 +40,8 @@ const date = new Date(props.exam.date).toLocaleDateString(document.documentEleme
                         <td class="border border-black px-2 py-1.5 text-center">{{ i + 1 }}</td>
                         <td class="border border-black px-2 py-1.5">{{ r.user.name }}</td>
                         <td class="border border-black px-2 py-1.5 text-center">{{ r.seat ?? '' }}</td>
-                        <td class="border border-black px-2 py-1.5 text-center">{{ r.present === true ? '✓' : r.present === false ? '✗' : '' }}</td>
-                        <td class="border border-black px-2 py-1.5 text-center">{{ r.status === 'submitted' ? '✓' : '' }}</td>
+                        <td class="border border-black px-2 py-1.5 text-center"><CheckIcon v-if="r.present === true" class="mx-auto h-4 w-4" /><XMarkIcon v-else-if="r.present === false" class="mx-auto h-4 w-4" /></td>
+                        <td class="border border-black px-2 py-1.5 text-center"><CheckIcon v-if="r.status === 'submitted'" class="mx-auto h-4 w-4" /></td>
                         <td class="border border-black px-2 py-1.5" />
                     </tr>
                 </tbody>

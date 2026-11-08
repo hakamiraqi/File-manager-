@@ -7,7 +7,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -246,7 +246,7 @@ function save() {
                     <div class="flex flex-wrap gap-2">
                         <button v-for="lang in languages" :key="lang" type="button" @click="toggleLanguage(lang)"
                             class="rounded-full border px-3 py-1 text-sm" :class="form.languages.includes(lang) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'border-gray-300 dark:border-gray-600'">
-                            {{ LANG_LABELS[lang] ?? lang }}<span v-if="form.languages[0] === lang"> ★</span>
+                            {{ LANG_LABELS[lang] ?? lang }}<StarIcon v-if="form.languages[0] === lang" class="ms-1 inline h-3.5 w-3.5 align-text-bottom" />
                         </button>
                     </div>
                 </div>
@@ -380,7 +380,7 @@ function save() {
                         <input v-model="q.points" type="number" min="0" step="0.25" class="w-20 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                     <button v-if="!['cloze', 'random'].includes(q.type)" type="button" @click="toggleFormat(q)"
                         class="rounded-lg border px-2 py-0.5 text-xs" :class="q.format === 'html' ? 'border-[var(--accent-600)] text-[var(--accent-700)] dark:text-white' : 'border-gray-300 text-gray-500 dark:border-gray-600'"
-                        :title="t('exam.rich_hint', 'تنسيق، جداول، صور، صوت، فيديو، معادلات')">{{ q.format === 'html' ? t('exam.rich_on', 'نص منسّق ✓') : t('exam.rich_off', 'نص منسّق') }}</button>
+                        :title="t('exam.rich_hint', 'تنسيق، جداول، صور، صوت، فيديو، معادلات')">{{ q.format === 'html' ? t('exam.rich_on', 'نص منسّق (مفعّل)') : t('exam.rich_off', 'نص منسّق') }}</button>
                     <span class="flex-1" />
                     <button @click="moveQuestion(i, -1)" :disabled="i === 0" class="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"><ArrowUpIcon class="h-4 w-4" /></button>
                     <button @click="moveQuestion(i, 1)" :disabled="i === form.questions.length - 1" class="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"><ArrowDownIcon class="h-4 w-4" /></button>
@@ -478,7 +478,7 @@ function save() {
                         <span class="mt-2 w-6 text-center text-xs text-gray-400">{{ j + 1 }}</span>
                         <div class="flex-1"><LangInput v-model="c.body" :languages="form.languages" :placeholder="t('exam.label', 'العلامة')" /></div>
                         <button type="button" @click="labelSlot[i] = j" class="mt-1 rounded-lg border px-2 py-1 text-xs" :class="labelSlot[i] === j ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : q.settings.zones?.[j] ? 'border-emerald-400 text-emerald-700' : 'border-amber-400 text-amber-700'">
-                            {{ q.settings.zones?.[j] ? t('exam.place_set', 'مكانها ✓') : t('exam.place_set_now', 'حدّد مكانها') }}</button>
+                            {{ q.settings.zones?.[j] ? t('exam.place_set', 'تم تحديد مكانها') : t('exam.place_set_now', 'حدّد مكانها') }}</button>
                         <button @click="q.choices.splice(j, 1); q.settings.zones?.splice(j, 1)" class="mt-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
                     </div>
                     <button @click="q.choices.push(choice())" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.add_label', 'علامة') }}</button>
