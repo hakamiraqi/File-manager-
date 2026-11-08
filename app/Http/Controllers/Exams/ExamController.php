@@ -127,8 +127,7 @@ class ExamController extends Controller
 
                 continue;
             }
-            $pool = Question::where('bank_category_id', $q->settings['category_id'] ?? 0)->whereNull('exam_id')
-                ->where('type', '!=', Question::RANDOM)->whereNotIn('id', array_keys($drawn))->pluck('id')->shuffle()
+            $pool = Question::randomPool($q->settings ?? [])->diff(array_keys($drawn))->shuffle()
                 ->take((int) ($q->settings['count'] ?? 0));
             foreach ($pool as $id) {
                 $drawn[$id] = $q->points;
@@ -194,7 +193,8 @@ class ExamController extends Controller
                 'number' => $attempt->number,
                 'seconds_left' => $attempt->secondsLeft(),
             ],
-            'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice],
+            'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice,
+                'sequential' => $exam->navigation === 'sequential', 'calculator' => $exam->calculator, 'position' => $attempt->position],
             'hall' => [
                 'locked' => $attempt->locked_at !== null,
                 'help' => $attempt->help_requested_at !== null,
@@ -223,6 +223,13 @@ class ExamController extends Controller
         if ($attempt->locked_at) {
             return response()->json(['message' => 'المحاولة مقفلة حتى رمز المراقب.', 'locked' => true], 423);
         }
+        // No going back: a question passed is closed.
+        if ($attempt->exam->navigation === 'sequential') {
+            $index = array_search((int) $data['question_id'], array_map('intval', $attempt->question_order ?? []), true);
+            if ($index !== false && $index < $attempt->position) {
+                return response()->json(['message' => 'لا رجوع إلى سؤال سابق في هذا الامتحان.', 'passed' => true], 422);
+            }
+        }
         abort_unless(in_array((int) $data['question_id'], $attempt->question_order ?? [], true)
             || $attempt->exam->questions()->whereKey($data['question_id'])->exists(), 422);
 
@@ -230,7 +237,7 @@ class ExamController extends Controller
         // A file question's answer is set by upload() only, never by the page; a checked practice answer is final.
         $response = $request->input('response');
         $checked = Answer::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $data['question_id'])->whereNotNull('checked_at')->exists();
-        $values = $checked || Question::whereKey($data['question_id'])->value('type') === Question::UPLOAD
+        $values = $checked || in_array(Question::whereKey($data['question_id'])->value('type'), Question::FILE_TYPES, true)
             ? [] : ['response' => is_array($response) ? $response : null];
         if (array_key_exists('flagged', $data)) {
             $values['flagged'] = $data['flagged'];
@@ -262,6 +269,18 @@ class ExamController extends Controller
             'announcements' => DB::table('exam_announcements')->where('exam_id', $attempt->exam_id)
                 ->where('created_at', '>=', $attempt->started_at)->orderBy('id')->get(['id', 'body', 'created_at']),
         ]);
+    }
+
+    /** Sequential exams: the student moved on; questions before this one close. */
+    public function advance(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->own($request, $attempt);
+        $to = (int) $request->validate(['to' => ['required', 'integer', 'min:0']])['to'];
+        if (! $attempt->isSubmitted()) {
+            $attempt->update(['position' => max($attempt->position, min($to, count($attempt->question_order ?? []) - 1))]);
+        }
+
+        return response()->json(['position' => $attempt->position]);
     }
 
     /** The invigilator's code opens a locked attempt again, on this page. */
@@ -345,11 +364,15 @@ class ExamController extends Controller
             return response()->json(['locked' => true], 423);
         }
         $question = $attempt->orderedQuestions()->firstWhere('id', (int) $data['question_id']);
-        abort_unless($question && $question->type === Question::UPLOAD, 422);
+        abort_unless($question && in_array($question->type, Question::FILE_TYPES, true), 422);
 
         $file = $request->file('file');
-        $maxMb = (int) ($question->settings['max_mb'] ?? 10);
-        $types = array_filter(explode(',', (string) ($question->settings['types'] ?? '')));
+        // A recording or a drawing comes from the page itself, in its own format.
+        [$maxMb, $types] = match ($question->type) {
+            Question::AUDIO => [25, ['webm', 'ogg', 'oga', 'mp4', 'm4a', 'wav', 'mp3']],
+            Question::DRAWING => [8, ['png']],
+            default => [(int) ($question->settings['max_mb'] ?? 10), array_filter(explode(',', (string) ($question->settings['types'] ?? '')))],
+        };
         $ext = strtolower($file->getClientOriginalExtension());
         if ($file->getSize() > $maxMb * 1024 * 1024) {
             throw ValidationException::withMessages(['file' => "الملف أكبر من {$maxMb} ميغابايت."]);

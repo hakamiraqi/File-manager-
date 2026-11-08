@@ -23,7 +23,7 @@ class Exam extends Model
         'duration_minutes', 'opens_at', 'closes_at', 'max_attempts', 'grading_method', 'pass_mark', 'password',
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
-        'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers',
+        'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
     ];
 
     protected $hidden = ['password'];

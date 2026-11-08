@@ -44,7 +44,14 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
                     <div class="min-w-0 flex-1">
                         <p class="text-xs text-gray-500">{{ t('exam.question', 'السؤال') }} {{ i + 1 }} · {{ r.earned ?? '—' }} / {{ r.points }}</p>
                         <RichText :text="r.body" :html="r.html" class="mt-1" />
-                        <div v-if="r.image" class="relative mt-2 inline-block max-w-full">
+                        <div v-if="r.marks" class="relative mt-2 inline-block max-w-full">
+                            <img :src="r.image" alt="" class="block max-h-80 max-w-full rounded-lg" />
+                            <template v-for="(m, k) in r.marks" :key="k">
+                                <span v-if="m.zone" class="absolute border-2 border-emerald-500 bg-emerald-400/20 text-[10px] text-emerald-800" :style="{ left: m.zone.x + '%', top: m.zone.y + '%', width: m.zone.w + '%', height: m.zone.h + '%' }">{{ m.label }}</span>
+                                <span v-if="m.at" class="absolute -translate-x-1/2 -translate-y-1/2 rounded bg-[var(--accent-600)] px-1 text-[10px] text-white" :style="{ left: m.at.x + '%', top: m.at.y + '%' }">{{ m.label }}</span>
+                            </template>
+                        </div>
+                        <div v-else-if="r.image" class="relative mt-2 inline-block max-w-full">
                             <img :src="r.image" alt="" class="block max-h-80 max-w-full rounded-lg" />
                             <span v-for="(z, k) in r.zones" :key="k" class="absolute border-2 border-emerald-500 bg-emerald-400/20"
                                 :style="{ left: z.x + '%', top: z.y + '%', width: z.w + '%', height: z.h + '%' }" />

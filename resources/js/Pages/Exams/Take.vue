@@ -1,5 +1,10 @@
 <script setup>
 import RichText from '@/Components/Exams/RichText.vue';
+import DragText from '@/Components/Exams/DragText.vue';
+import DragImage from '@/Components/Exams/DragImage.vue';
+import AudioRecorder from '@/Components/Exams/AudioRecorder.vue';
+import DrawingPad from '@/Components/Exams/DrawingPad.vue';
+import Calculator from '@/Components/Exams/Calculator.vue';
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
@@ -50,7 +55,9 @@ for (const q of props.questions) {
     const r = saved.response ?? {};
     if (q.type === 'multiple') state[q.id] = { choices: r.choices ?? [] };
     else if (q.type === 'matching' || q.type === 'classify') state[q.id] = { pairs: r.pairs ?? {} };
-    else if (q.type === 'upload') state[q.id] = { name: r.name ?? null, size: r.size ?? null };
+    else if (['upload', 'audio', 'drawing'].includes(q.type)) state[q.id] = { name: r.name ?? null, size: r.size ?? null };
+    else if (q.type === 'drag_text') state[q.id] = { blanks: { ...(r.blanks ?? {}) } };
+    else if (q.type === 'drag_image') state[q.id] = { places: { ...(r.places ?? {}) } };
     else if (q.type === 'hotspot') state[q.id] = { x: r.x ?? null, y: r.y ?? null };
     else if (q.type === 'ordering') {
         state[q.id] = { order: r.order?.length ? r.order : q.choices.map((c) => c.id) };
@@ -69,7 +76,9 @@ const answered = (q) => {
     if (!s) return false;
     if (q.type === 'multiple') return s.choices.length > 0;
     if (q.type === 'matching' || q.type === 'classify') return Object.keys(s.pairs).length > 0;
-    if (q.type === 'upload') return !!s.name;
+    if (['upload', 'audio', 'drawing'].includes(q.type)) return !!s.name;
+    if (q.type === 'drag_text') return Object.keys(s.blanks).length > 0;
+    if (q.type === 'drag_image') return Object.keys(s.places).length > 0;
     if (q.type === 'hotspot') return s.x !== null;
     if (q.type === 'ordering') return touched[q.id];
     if (q.type === 'numeric' || q.type === 'calculated') return String(s.value).trim() !== '';
@@ -175,8 +184,10 @@ const uploadError = ref('');
 async function upload(q, event) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
-    if (file.size > q.max_mb * 1024 * 1024) { uploadError.value = t('exam.file_too_big', 'الملف أكبر من المسموح.'); return; }
+    if (file) sendFile(q, file);
+}
+async function sendFile(q, file) {
+    if (q.max_mb && file.size > q.max_mb * 1024 * 1024) { uploadError.value = t('exam.file_too_big', 'الملف أكبر من المسموح.'); return; }
     uploading.value = q.id;
     uploadError.value = '';
     const form = new FormData();
@@ -201,7 +212,7 @@ function pick(q, event) {
     save(q);
 }
 // Practice: check one answer now; it cannot change afterwards.
-const CHECKABLE = ['single', 'multiple', 'true_false', 'short', 'numeric', 'matching', 'ordering', 'cloze', 'classify', 'hotspot', 'calculated'];
+const CHECKABLE = ['single', 'multiple', 'true_false', 'short', 'numeric', 'matching', 'ordering', 'cloze', 'classify', 'hotspot', 'calculated', 'drag_text', 'drag_image'];
 const canCheck = (q) => props.exam.practice && CHECKABLE.includes(q.type);
 const checking = ref(null);
 async function check(q) {
@@ -222,11 +233,41 @@ const choiceText = (q, id) => q.choices.find((c) => c.id === id)?.body ?? '';
 const words = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 
 // ---- Navigation: one question at a time ----
-const index = ref(0);
+// Sequential exams start where the student got to, and never go back.
+const index = ref(props.exam.sequential ? Math.min(props.exam.position ?? 0, props.questions.length - 1) : 0);
+const furthest = ref(props.exam.position ?? 0);
+const canGo = (i) => !props.exam.sequential || i >= furthest.value;
 const current = computed(() => props.questions[index.value]);
 function go(i) {
-    index.value = Math.max(0, Math.min(props.questions.length - 1, i));
+    const to = Math.max(0, Math.min(props.questions.length - 1, i));
+    if (!canGo(to)) return;
+    if (props.exam.sequential && to > furthest.value) {
+        const q = props.questions[index.value];
+        if (q && pending.has(q.id)) { clearTimeout(timers[q.id]); send(q); }
+        furthest.value = to;
+        window.axios.post(route('exams.attempts.advance', props.attempt.id), { to }).catch(() => {});
+    }
+    index.value = to;
     window.scrollTo({ top: 0 });
+}
+
+// ---- Tools: calculator, scratch paper (stays on this device), reading aloud ----
+const calcOpen = ref(false);
+const padOpen = ref(false);
+const scratch = ref((() => { try { return localStorage.getItem('exam-scratch-' + props.attempt.id) || ''; } catch { return ''; } })());
+const keepScratch = () => { try { localStorage.setItem('exam-scratch-' + props.attempt.id, scratch.value); } catch {} };
+const speaking = ref(false);
+function readAloud(q) {
+    if (!('speechSynthesis' in window)) return;
+    if (speaking.value) { speechSynthesis.cancel(); speaking.value = false; return; }
+    const div = document.createElement('div');
+    div.innerHTML = q.html ? q.body : '';
+    const text = [q.html ? div.textContent : q.body, ...(q.choices ?? []).map((c, i) => `${i + 1}. ${c.body}`)].join('. ');
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = /[\u0600-\u06FF]/.test(text) ? 'ar' : 'en';
+    u.onend = () => (speaking.value = false);
+    speaking.value = true;
+    speechSynthesis.speak(u);
 }
 function toggleFlag(q) {
     flags[q.id] = !flags[q.id];
@@ -327,6 +368,8 @@ onBeforeUnmount(() => {
                 <ClockIcon class="h-4 w-4" /> {{ clock }}
             </span>
             <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
+            <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')">🧮</button>
+            <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')">📝</button>
             <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
             <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')">✋ {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
             <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
@@ -354,7 +397,7 @@ onBeforeUnmount(() => {
             <!-- Question map -->
             <nav class="order-2 rounded-xl border border-gray-200 bg-white p-3 lg:order-1 dark:border-gray-700 dark:bg-gray-800" :aria-label="t('exam.questions', 'الأسئلة')">
                 <div class="grid grid-cols-6 gap-1.5 lg:grid-cols-5">
-                    <button v-for="(q, i) in questions" :key="q.id" @click="go(i)"
+                    <button v-for="(q, i) in questions" :key="q.id" @click="go(i)" :disabled="!canGo(i)"
                         class="relative flex h-9 items-center justify-center rounded-md border text-sm"
                         :class="[i === index ? 'border-[var(--accent-600)] ring-2 ring-[var(--accent-500)]' : 'border-gray-200 dark:border-gray-600',
                                  q.type === 'description' ? 'text-gray-400' : answered(q) ? 'bg-[var(--accent-50)] font-semibold text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : '']">
@@ -370,11 +413,13 @@ onBeforeUnmount(() => {
                     <div class="mb-3 flex items-center justify-between gap-2 text-xs text-gray-500">
                         <span v-if="current.type !== 'description'">{{ t('exam.question', 'السؤال') }} {{ number(current) }} · {{ current.points }} {{ t('exam.points', 'درجة') }}</span>
                         <span v-else />
+                        <span class="flex-1" />
+                        <button @click="readAloud(current)" class="hover:text-gray-700" :title="t('exam.read_aloud', 'قراءة السؤال بصوت')">{{ speaking ? '■' : '🔊' }}</button>
                         <button v-if="current.type !== 'description'" @click="toggleFlag(current)" class="flex items-center gap-1" :class="flags[current.id] ? 'text-amber-600' : 'hover:text-gray-700'">
                             <FlagIcon class="h-4 w-4" /> {{ t('exam.flag', 'راجع لاحقاً') }}
                         </button>
                     </div>
-                    <RichText v-if="current.type !== 'cloze'" :text="current.body" :html="current.html" class="text-base leading-relaxed" />
+                    <RichText v-if="current.type !== 'cloze' && current.type !== 'drag_text'" :text="current.body" :html="current.html" class="text-base leading-relaxed" />
                     <!-- Fill in the blanks: the text with its boxes and lists in place -->
                     <p v-else class="whitespace-pre-line text-base leading-loose" dir="auto">
                         <template v-for="(part, k) in current.parts" :key="k">
@@ -451,6 +496,27 @@ onBeforeUnmount(() => {
                             <p v-if="uploadError" class="text-sm text-red-600">{{ uploadError }}</p>
                         </div>
 
+                        <!-- Words into blanks -->
+                        <DragText v-else-if="current.type === 'drag_text'" :parts="current.parts" :words="current.words" :disabled="!!checks[current.id]"
+                            :model-value="state[current.id].blanks" @update:model-value="state[current.id].blanks = $event; save(current)" />
+
+                        <!-- Labels onto a picture -->
+                        <DragImage v-else-if="current.type === 'drag_image'" :image="current.image" :labels="current.labels" :disabled="!!checks[current.id]" :zones="checks[current.id]?.zones ?? []"
+                            :model-value="state[current.id].places" @update:model-value="state[current.id].places = $event; save(current)" />
+
+                        <!-- A spoken answer -->
+                        <div v-else-if="current.type === 'audio'">
+                            <AudioRecorder :key="current.id" :max-seconds="current.max_seconds" :saved="state[current.id].name" @recorded="sendFile(current, $event)" />
+                            <p v-if="uploading === current.id" class="mt-1 text-xs text-gray-500">{{ t('exam.uploading', 'يرفع…') }}</p>
+                            <p v-if="uploadError" class="mt-1 text-sm text-red-600">{{ uploadError }}</p>
+                        </div>
+
+                        <!-- Drawing / handwriting -->
+                        <div v-else-if="current.type === 'drawing'">
+                            <DrawingPad :key="current.id" :saved="state[current.id].name" @drawn="sendFile(current, $event)" />
+                            <p v-if="uploadError" class="mt-1 text-sm text-red-600">{{ uploadError }}</p>
+                        </div>
+
                         <!-- A place on a picture -->
                         <div v-else-if="current.type === 'hotspot'">
                             <p class="mb-2 text-xs text-gray-500">{{ t('exam.hotspot_hint', 'اضغط على المكان الصحيح في الصورة.') }}</p>
@@ -489,9 +555,10 @@ onBeforeUnmount(() => {
                 </article>
 
                 <div class="flex justify-between">
-                    <button @click="go(index - 1)" :disabled="index === 0" class="flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-40 dark:border-gray-600">
+                    <button v-if="!exam.sequential" @click="go(index - 1)" :disabled="index === 0" class="flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-40 dark:border-gray-600">
                         <ChevronRightIcon class="h-4 w-4 ltr:rotate-180" /> {{ t('exam.previous', 'السابق') }}
                     </button>
+                    <span v-if="exam.sequential" class="text-xs text-amber-600">{{ t('exam.no_going_back', 'لا رجوع إلى الأسئلة السابقة') }}</span>
                     <button v-if="index < questions.length - 1" @click="go(index + 1)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">
                         {{ t('exam.next', 'التالي') }} <ChevronLeftIcon class="h-4 w-4 ltr:rotate-180" />
                     </button>
@@ -500,6 +567,14 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
             </main>
+        </div>
+
+        <div v-if="calcOpen || padOpen" class="fixed bottom-4 z-30 flex flex-col items-end gap-2 ltr:right-4 rtl:left-4">
+            <Calculator v-if="calcOpen" :scientific="exam.calculator === 'scientific'" />
+            <div v-if="padOpen" class="w-72 rounded-xl border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                <p class="mb-1 text-xs text-gray-500">{{ t('exam.scratch_hint', 'مسودة على هذا الجهاز فقط؛ لا تُرسل ولا تُصحَّح.') }}</p>
+                <textarea v-model="scratch" @input="keepScratch" rows="8" dir="auto" class="w-full rounded border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+            </div>
         </div>
 
         <!-- Locked: the invigilator's code opens it again -->

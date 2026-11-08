@@ -110,6 +110,10 @@ class ManageController extends Controller
             'double_marking' => ['boolean'],
             'access_code' => ['nullable', 'string', 'max:20'],
             'resume_code_required' => ['boolean'],
+            'navigation' => ['nullable', 'in:free,sequential'],
+            'calculator' => ['nullable', 'in:none,basic,scientific'],
+            'questions.*.tags' => ['nullable', 'array', 'max:10'],
+            'questions.*.difficulty' => ['nullable', 'integer'],
             'bind_computers' => ['boolean'],
             'allowed_ips' => ['nullable', 'string', 'max:2000'],
             'group_ids' => ['nullable', 'array'],
@@ -151,14 +155,14 @@ class ManageController extends Controller
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
                 'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers',
-            ])->all() + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
+            ])->all() + array_filter(['navigation' => $data['navigation'] ?? null, 'calculator' => $data['calculator'] ?? null]) + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');
             $keep = [];
             foreach ($questions as $i => $q) {
                 $question = isset($q['id'], $existing[$q['id']]) ? $existing[$q['id']] : new Question(['exam_id' => $exam->id]);
                 $question->fill([
-                    'type' => $q['type'], 'format' => $q['format'] ?? 'text', 'body' => $q['body'], 'feedback' => $q['feedback'] ?: null,
+                    'type' => $q['type'], 'format' => $q['format'] ?? 'text', 'tags' => $q['tags'] ?: null, 'difficulty' => $q['difficulty'] ?? null, 'body' => $q['body'], 'feedback' => $q['feedback'] ?: null,
                     'points' => $q['type'] === Question::DESCRIPTION ? 0 : $q['points'],
                     'settings' => $q['settings'] ?: null, 'position' => $i,
                 ])->save();
@@ -228,7 +232,7 @@ class ManageController extends Controller
             $type = $q['type'];
             // Formatted text (the editor's HTML), cleaned; not for fill-in-the-blanks, whose
             // brackets are read from plain text.
-            $format = ($q['format'] ?? 'text') === 'html' && $type !== Question::CLOZE ? 'html' : 'text';
+            $format = ($q['format'] ?? 'text') === 'html' && ! in_array($type, Question::BLANK_TYPES, true) ? 'html' : 'text';
             $body = $format === 'html' ? self::cleanHtml($q['body'] ?? [], $langs) : Question::cleanTexts($q['body'] ?? [], $langs);
             if ($type === Question::RANDOM) {
                 $settings = (array) ($q['settings'] ?? []);
@@ -236,11 +240,18 @@ class ManageController extends Controller
                 $count = (int) ($settings['count'] ?? 0);
                 if (! $category || ! $category->isUsableBy(auth()->user())) {
                     $errors["questions.$i.settings"] = "السؤال $n: اختر فئة من بنك الأسئلة.";
-                } elseif ($count < 1 || $count > $category->questions()->count()) {
-                    $errors["questions.$i.settings"] = "السؤال $n: العدد بين 1 و{$category->questions()->count()} (أسئلة الفئة).";
                 }
-                $out[] = ['id' => $q['id'] ?? null, 'type' => $type, 'body' => $body, 'feedback' => [], 'points' => (float) ($q['points'] ?? 1),
-                    'settings' => ['category_id' => (int) ($settings['category_id'] ?? 0), 'count' => $count], 'choices' => []];
+                $slot = array_filter([
+                    'category_id' => (int) ($settings['category_id'] ?? 0), 'count' => $count,
+                    'difficulty' => in_array((int) ($settings['difficulty'] ?? 0), [1, 2, 3], true) ? (int) $settings['difficulty'] : null,
+                    'tag' => trim((string) ($settings['tag'] ?? '')) ?: null,
+                ], fn ($v) => $v !== null);
+                $available = $category ? Question::randomPool($slot)->count() : 0;
+                if ($category && $category->isUsableBy(auth()->user()) && ($count < 1 || $count > $available)) {
+                    $errors["questions.$i.settings"] = "السؤال $n: العدد بين 1 و{$available} (أسئلة الفئة المطابقة).";
+                }
+                $out[] = ['id' => $q['id'] ?? null, 'type' => $type, 'format' => 'text', 'tags' => [], 'difficulty' => null, 'body' => $body, 'feedback' => [], 'points' => (float) ($q['points'] ?? 1),
+                    'settings' => $slot, 'choices' => []];
 
                 continue;
             }
@@ -286,7 +297,26 @@ class ManageController extends Controller
                     $errors["questions.$i.settings"] = "السؤال $n: اكتب إجابة مقبولة واحدة على الأقل.";
                 }
             }
-            if ($type === Question::CLOZE) {
+            if ($type === Question::DRAG_TEXT) {
+                $settings = ['distractors' => collect($settings['distractors'] ?? [])->map(fn ($w) => trim((string) $w))->filter()->unique()->values()->all()];
+            }
+            if ($type === Question::DRAG_IMAGE) {
+                $image = (string) ($settings['image'] ?? '');
+                $zones = collect($settings['zones'] ?? [])->values()->map(fn ($z) => is_array($z) ? [
+                    'x' => round(max(0, min(100, (float) ($z['x'] ?? 0))), 2), 'y' => round(max(0, min(100, (float) ($z['y'] ?? 0))), 2),
+                    'w' => round(max(0, min(100, (float) ($z['w'] ?? 0))), 2), 'h' => round(max(0, min(100, (float) ($z['h'] ?? 0))), 2),
+                ] : null)->all();
+                if (! self::imageExists($image)) {
+                    $errors["questions.$i.settings"] = "السؤال $n: ارفع الصورة.";
+                } elseif ($choices->count() < 1 || collect(range(0, max(0, $choices->count() - 1)))->contains(fn ($k) => empty($zones[$k]) || $zones[$k]['w'] < 1 || $zones[$k]['h'] < 1)) {
+                    $errors["questions.$i.settings"] = "السؤال $n: لكل علامة حدّد مكانها على الصورة.";
+                }
+                $settings = ['image' => $image, 'zones' => array_slice($zones, 0, $choices->count())];
+            }
+            if ($type === Question::AUDIO) {
+                $settings = ['max_seconds' => max(10, min(600, (int) ($settings['max_seconds'] ?? 120)))];
+            }
+            if ($type === Question::CLOZE || $type === Question::DRAG_TEXT) {
                 $counts = collect($body)->map(fn ($t) => count(\App\Services\Exams\Cloze::blanks($t)))->unique();
                 if ($body !== [] && $counts->first() === 0) {
                     $errors["questions.$i.body"] = "السؤال $n: ضع فراغاً واحداً على الأقل بين [[ و ]].";
@@ -330,7 +360,7 @@ class ManageController extends Controller
                     $errors["questions.$i.settings"] = "السؤال $n: $error";
                 }
             }
-            if (! in_array($type, [Question::SHORT, Question::NUMERIC, Question::ESSAY, Question::UPLOAD, Question::HOTSPOT, Question::CALCULATED], true)) {
+            if (! in_array($type, [Question::SHORT, Question::NUMERIC, Question::ESSAY, Question::UPLOAD, Question::HOTSPOT, Question::CALCULATED, Question::DRAG_TEXT, Question::DRAG_IMAGE, Question::AUDIO], true)) {
                 $settings = [];
             }
 
@@ -338,6 +368,8 @@ class ManageController extends Controller
                 'id' => $q['id'] ?? null,
                 'type' => $type,
                 'format' => $format,
+                'tags' => collect($q['tags'] ?? [])->map(fn ($t) => trim(mb_substr((string) $t, 0, 50)))->filter()->unique()->values()->all(),
+                'difficulty' => in_array((int) ($q['difficulty'] ?? 0), [1, 2, 3], true) ? (int) $q['difficulty'] : null,
                 'body' => $body,
                 'feedback' => $format === 'html' ? self::cleanHtml($q['feedback'] ?? [], $langs) : Question::cleanTexts($q['feedback'] ?? [], $langs),
                 'points' => (float) ($q['points'] ?? 1),

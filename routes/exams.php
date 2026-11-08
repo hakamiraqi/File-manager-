@@ -55,13 +55,14 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
     Route::post('/{exam}/start', [ExamController::class, 'start'])->whereNumber('exam')->middleware('throttle:20,1')->name('start');
     Route::get('/attempts/{attempt}', [ExamController::class, 'take'])->name('attempts.take');
     Route::post('/attempts/{attempt}/answers', [ExamController::class, 'save'])->middleware('throttle:240,1')->name('attempts.save');
+    Route::post('/attempts/{attempt}/advance', [ExamController::class, 'advance'])->middleware('throttle:240,1')->name('attempts.advance');
     Route::post('/attempts/{attempt}/unlock', [ExamController::class, 'unlock'])->middleware('throttle:10,1')->name('attempts.unlock');
     Route::post('/attempts/{attempt}/help', [ExamController::class, 'help'])->middleware('throttle:20,1')->name('attempts.help');
     Route::post('/attempts/{attempt}/ping', [ExamController::class, 'ping'])->middleware('throttle:60,1')->name('attempts.ping');
     Route::post('/attempts/{attempt}/check', [ExamController::class, 'check'])->middleware('throttle:240,1')->name('attempts.check');
     Route::post('/attempts/{attempt}/upload', [ExamController::class, 'upload'])->middleware('throttle:30,1')->name('attempts.upload');
     Route::get('/answers/{answer}/file', [ExamController::class, 'file'])->name('answers.file');
-    Route::get('/images/{name}', [ExamController::class, 'image'])->where('name', '[a-f0-9]{64}\.[a-z]{3,4}')->name('image');
+    Route::get('/images/{name}', [ExamController::class, 'image'])->where('name', '[a-f0-9]{64}\.[a-z0-9]{2,4}')->name('image');
     Route::post('/attempts/{attempt}/events', [ExamController::class, 'event'])->middleware('throttle:120,1')->name('attempts.event');
     Route::post('/attempts/{attempt}/submit', [ExamController::class, 'submit'])->name('attempts.submit');
     Route::get('/attempts/{attempt}/result', [ExamController::class, 'result'])->name('attempts.result');

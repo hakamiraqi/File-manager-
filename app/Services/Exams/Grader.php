@@ -133,7 +133,24 @@ class Grader
 
                 return $right / $choices->count();
 
+            case Question::DRAG_IMAGE:
+                $places = (array) ($response['places'] ?? []);
+                $zones = array_values((array) ($question->settings['zones'] ?? []));
+                $labels = $choices->sortBy('position')->values();
+                if ($labels->isEmpty()) {
+                    return 0.0;
+                }
+                $right = $labels->filter(function ($c, $i) use ($places, $zones) {
+                    $p = $places[$c->id] ?? null;
+                    $z = $zones[$i] ?? null;
+
+                    return $p && $z && isset($p['x'], $p['y']) && $p['x'] >= $z['x'] && $p['x'] <= $z['x'] + $z['w'] && $p['y'] >= $z['y'] && $p['y'] <= $z['y'] + $z['h'];
+                })->count();
+
+                return $right / $labels->count();
+
             case Question::CLOZE:
+            case Question::DRAG_TEXT:
                 $accepted = Cloze::acceptedByBlank($question);
                 if ($accepted === []) {
                     return 0.0;

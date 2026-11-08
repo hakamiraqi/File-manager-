@@ -148,7 +148,7 @@ class MonitorController extends Controller
             return response()->json(['message' => 'المحاولة مُسلّمة. أعد فتحها أولاً إن كان الملف أحدث.'], 409);
         }
 
-        $ids = $attempt->orderedQuestions()->reject(fn ($q) => $q->type === \App\Models\Exams\Question::UPLOAD)->pluck('id')->all();
+        $ids = $attempt->orderedQuestions()->reject(fn ($q) => in_array($q->type, \App\Models\Exams\Question::FILE_TYPES, true))->pluck('id')->all();
         $count = 0;
         foreach ((array) ($data['answers'] ?? []) as $qid => $answer) {
             if (! in_array((int) $qid, $ids, true) || ! is_array($answer['response'] ?? null)) {

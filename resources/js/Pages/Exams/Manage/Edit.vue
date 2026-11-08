@@ -16,7 +16,8 @@ const page = usePage();
 const TYPE_LABELS = {
     single: 'اختيار من متعدد (إجابة واحدة)', multiple: 'اختيار من متعدد (عدة إجابات)', true_false: 'صح / خطأ',
     short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي',
-    classify: 'تصنيف (عناصر في فئات)', upload: 'رفع ملف', hotspot: 'نقطة على صورة', calculated: 'محسوب (أرقام مختلفة لكل طالب)', description: 'نص توضيحي (بلا درجة)', random: 'أسئلة عشوائية من البنك',
+    classify: 'تصنيف (عناصر في فئات)', upload: 'رفع ملف', hotspot: 'نقطة على صورة', calculated: 'محسوب (أرقام مختلفة لكل طالب)',
+    drag_text: 'سحب كلمات إلى الفراغات', drag_image: 'سحب علامات إلى صورة', audio: 'إجابة صوتية (تسجيل)', drawing: 'رسم أو كتابة بخط اليد', description: 'نص توضيحي (بلا درجة)', random: 'أسئلة عشوائية من البنك',
 };
 const LANG_LABELS = { ar: 'العربية', en: 'English', ku: 'کوردی' };
 const typeLabel = (type) => t('exam.type_' + type, TYPE_LABELS[type]);
@@ -28,6 +29,8 @@ function fromProps(exam) {
         ...q,
         settings: Array.isArray(q.settings) ? {} : q.settings || {},
         answersText: (q.settings?.answers || []).join('\n'),
+        distractorsText: (q.settings?.distractors || []).join('\n'),
+        tagsText: (q.tags || []).join('، '),
     }));
     return e;
 }
@@ -45,6 +48,9 @@ function addQuestion(type) {
     if (type === 'classify') q.choices = [choice(), choice(), choice(), choice()];
     if (type === 'upload') q.settings = { max_mb: 10, types: 'pdf,jpg,png,docx' };
     if (type === 'hotspot') q.settings = { image: '', image_url: null, zones: [] };
+    if (type === 'drag_image') { q.settings = { image: '', image_url: null, zones: [] }; q.choices = [choice(), choice(), choice()]; }
+    if (type === 'drag_text') { q.settings = { distractors: [] }; q.distractorsText = ''; }
+    if (type === 'audio') q.settings = { max_seconds: 120 };
     if (type === 'calculated') {
         q.body = Object.fromEntries(form.languages.map((l) => [l, l === 'ar' ? 'سيارة سرعتها {v} م/ث تسير {t} ثانية. كم متراً تقطع؟' : 'A car at {v} m/s drives for {t} s. How many metres does it go?']));
         q.settings = { vars: [{ name: 'v', min: 10, max: 30, decimals: 0 }, { name: 't', min: 5, max: 20, decimals: 0 }], formula: 'v * t', tolerance: '0', decimals: '' };
@@ -143,12 +149,13 @@ const pct = (event, box) => ({
     x: Math.max(0, Math.min(100, ((event.clientX - box.left) / box.width) * 100)),
     y: Math.max(0, Math.min(100, ((event.clientY - box.top) / box.height) * 100)),
 });
-function startZone(q, event) {
+function startZone(q, event, slot = undefined) {
     const box = event.currentTarget.getBoundingClientRect();
     const p = pct(event, box);
     event.currentTarget.setPointerCapture?.(event.pointerId);
-    drawing.value = { q, box, from: p, zone: { x: p.x, y: p.y, w: 0, h: 0 } };
+    drawing.value = { q, box, from: p, zone: { x: p.x, y: p.y, w: 0, h: 0 }, slot };
 }
+const labelSlot = ref({});   // drag_image: which label's place is being drawn, per question
 function moveZone(event) {
     const d = drawing.value;
     if (!d) return;
@@ -162,7 +169,14 @@ function endZone() {
     // A click without dragging marks a small square around the point.
     const z = d.zone.w < 1 || d.zone.h < 1 ? { x: Math.max(0, d.from.x - 4), y: Math.max(0, d.from.y - 4), w: 8, h: 8 } : d.zone;
     const round = (v) => Math.round(v * 10) / 10;
-    d.q.settings.zones = [...(d.q.settings.zones ?? []), { x: round(z.x), y: round(z.y), w: round(z.w), h: round(z.h) }];
+    const zone = { x: round(z.x), y: round(z.y), w: round(z.w), h: round(z.h) };
+    if (d.slot !== undefined) {
+        const zones = [...(d.q.settings.zones ?? [])];
+        zones[d.slot] = zone;
+        d.q.settings.zones = zones;
+        return;
+    }
+    d.q.settings.zones = [...(d.q.settings.zones ?? []), zone];
 }
 const errorsFor = (i) => Object.entries(form.errors).filter(([k]) => k.startsWith(`questions.${i}.`) || k === `questions.${i}`).map(([, v]) => v);
 
@@ -188,7 +202,9 @@ function save() {
         ...data,
         questions: data.questions.map((q) => ({
             ...q,
-            settings: q.type === 'short' ? { ...q.settings, answers: (q.answersText || '').split('\n').map((s) => s.trim()).filter(Boolean) } : q.settings,
+            tags: (q.tagsText || '').split(/[,،]/).map((s) => s.trim()).filter(Boolean),
+            settings: q.type === 'short' ? { ...q.settings, answers: (q.answersText || '').split('\n').map((s) => s.trim()).filter(Boolean) }
+                : q.type === 'drag_text' ? { distractors: (q.distractorsText || '').split('\n').map((s) => s.trim()).filter(Boolean) } : q.settings,
         })),
     })).put(route('exams.manage.update', props.exam.id), {
         preserveScroll: true,
@@ -266,6 +282,17 @@ function save() {
                             <option value="auto">{{ t('exam.dir_auto', 'حسب اللغة الأولى') }}</option>
                             <option value="rtl">{{ t('exam.dir_rtl', 'من اليمين لليسار') }}</option>
                             <option value="ltr">{{ t('exam.dir_ltr', 'من اليسار لليمين') }}</option>
+                        </select></label>
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.navigation', 'التنقل بين الأسئلة') }}</span>
+                        <select v-model="form.navigation" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option value="free">{{ t('exam.nav_free', 'حر (يرجع ويتقدّم)') }}</option>
+                            <option value="sequential">{{ t('exam.nav_sequential', 'بالترتيب بلا رجوع') }}</option>
+                        </select></label>
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calculator', 'آلة حاسبة') }}</span>
+                        <select v-model="form.calculator" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option value="none">{{ t('exam.calc_none', 'لا') }}</option>
+                            <option value="basic">{{ t('exam.calc_basic', 'عادية') }}</option>
+                            <option value="scientific">{{ t('exam.calc_scientific', 'علمية') }}</option>
                         </select></label>
                     <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.show_results', 'إظهار النتيجة للطالب') }}</span>
                         <select v-model="form.show_results" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
@@ -355,6 +382,12 @@ function save() {
                         </select></label>
                     <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.random_count', 'عدد الأسئلة لكل طالب') }}</span>
                         <input v-model="q.settings.count" type="number" min="1" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.difficulty', 'الصعوبة') }}</span>
+                        <select v-model="q.settings.difficulty" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option :value="undefined">{{ t('exam.any', 'أي مستوى') }}</option><option :value="1">{{ t('exam.easy', 'سهل') }}</option><option :value="2">{{ t('exam.medium', 'متوسط') }}</option><option :value="3">{{ t('exam.hard', 'صعب') }}</option>
+                        </select></label>
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.tag_filter', 'وسم (اختياري)') }}</span>
+                        <input v-model="q.settings.tag" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                     <p class="text-xs text-gray-500 sm:col-span-2">{{ t('exam.random_hint', 'كل طالب يأخذ أسئلة مختلفة من الفئة، والدرجة أعلاه لكل سؤال منها.') }}
                         <Link v-if="!categories.length" :href="route('exams.manage.bank')" class="text-[var(--accent-600)] underline">{{ t('exam.bank_create_first', 'أنشئ فئة في بنك الأسئلة أولاً') }}</Link></p>
                 </div>
@@ -418,6 +451,44 @@ function save() {
                     <p class="text-xs text-gray-500 sm:col-span-2">{{ t('exam.upload_hint', 'يرفع الطالب ملفاً واحداً، ويُصحَّح يدوياً من صفحة النتائج.') }}</p>
                 </div>
 
+                <div v-else-if="q.type === 'drag_text'" class="space-y-2">
+                    <p class="rounded-lg bg-gray-50 p-2 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">{{ t('exam.drag_text_hint', 'اكتب الكلمات الصحيحة في النص بين [[ و ]]، مثل: عاصمة العراق [[بغداد]]. يسحبها الطالب من قائمة فيها أيضاً الكلمات الخاطئة أدناه.') }}</p>
+                    <label class="block text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.distractors', 'كلمات خاطئة إضافية (سطر لكل كلمة)') }}</span>
+                        <textarea v-model="q.distractorsText" rows="3" dir="auto" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                </div>
+
+                <div v-else-if="q.type === 'drag_image'" class="space-y-2">
+                    <label class="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">
+                        <input type="file" accept="image/*" class="sr-only" @change="uploadImage(q, i, $event)" />
+                        {{ imageUploading === i ? t('exam.uploading', 'يرفع…') : q.settings.image ? t('exam.replace_image', 'تغيير الصورة') : t('exam.upload_image', 'رفع الصورة') }}
+                    </label>
+                    <div v-for="(c, j) in q.choices" :key="c.id ?? 'l' + j" class="flex items-start gap-2">
+                        <span class="mt-2 w-6 text-center text-xs text-gray-400">{{ j + 1 }}</span>
+                        <div class="flex-1"><LangInput v-model="c.body" :languages="form.languages" :placeholder="t('exam.label', 'العلامة')" /></div>
+                        <button type="button" @click="labelSlot[i] = j" class="mt-1 rounded-lg border px-2 py-1 text-xs" :class="labelSlot[i] === j ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : q.settings.zones?.[j] ? 'border-emerald-400 text-emerald-700' : 'border-amber-400 text-amber-700'">
+                            {{ q.settings.zones?.[j] ? t('exam.place_set', 'مكانها ✓') : t('exam.place_set_now', 'حدّد مكانها') }}</button>
+                        <button @click="q.choices.splice(j, 1); q.settings.zones?.splice(j, 1)" class="mt-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
+                    </div>
+                    <button @click="q.choices.push(choice())" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.add_label', 'علامة') }}</button>
+                    <template v-if="q.settings.image_url">
+                        <p class="text-xs text-gray-500">{{ t('exam.drag_image_hint', 'اختر «حدّد مكانها» لعلامة ثم اسحب على الصورة مكانها الصحيح.') }}</p>
+                        <div class="relative inline-block max-w-full cursor-crosshair touch-none select-none" @pointerdown.prevent="labelSlot[i] !== undefined && startZone(q, $event, labelSlot[i])" @pointermove="moveZone" @pointerup="endZone">
+                            <img :src="q.settings.image_url" alt="" class="block max-h-[60vh] max-w-full rounded-lg" draggable="false" />
+                            <span v-for="(z, k) in q.settings.zones" :key="k" v-show="z" class="absolute border-2 bg-emerald-400/20 text-[10px]" :class="labelSlot[i] === k ? 'border-[var(--accent-600)]' : 'border-emerald-500'"
+                                :style="z ? { left: z.x + '%', top: z.y + '%', width: z.w + '%', height: z.h + '%' } : {}">{{ k + 1 }}</span>
+                            <span v-if="drawing && drawing.q === q" class="pointer-events-none absolute border-2 border-dashed border-[var(--accent-600)]"
+                                :style="{ left: drawing.zone.x + '%', top: drawing.zone.y + '%', width: drawing.zone.w + '%', height: drawing.zone.h + '%' }" />
+                        </div>
+                    </template>
+                </div>
+
+                <div v-else-if="q.type === 'audio'" class="grid gap-3 sm:grid-cols-2">
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.max_seconds', 'أطول تسجيل (ثانية)') }}</span>
+                        <input v-model="q.settings.max_seconds" type="number" min="10" max="600" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <p class="text-xs text-gray-500 sm:col-span-2">{{ t('exam.audio_hint', 'يسجّل الطالب إجابته بالمايكروفون، وتستمع إليها وتصحّحها من صفحة النتائج.') }}</p>
+                </div>
+                <p v-else-if="q.type === 'drawing'" class="text-xs text-gray-500">{{ t('exam.drawing_hint', 'يرسم الطالب أو يكتب بخط يده على لوحة (فأرة أو قلم أو إصبع)، وتصحّحها يدوياً من صفحة النتائج.') }}</p>
+
                 <div v-else-if="q.type === 'hotspot'" class="space-y-2">
                     <label class="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">
                         <input type="file" accept="image/*" class="sr-only" @change="uploadImage(q, i, $event)" />
@@ -466,6 +537,12 @@ function save() {
                     <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
                 </select>
 
+                <div v-if="q.type !== 'description' && q.type !== 'random'" class="flex flex-wrap items-center gap-2 text-xs">
+                    <select v-model="q.difficulty" class="rounded-lg border-gray-300 py-1 text-xs dark:border-gray-600 dark:bg-gray-700">
+                        <option :value="null">{{ t('exam.difficulty', 'الصعوبة') }}: —</option><option :value="1">{{ t('exam.easy', 'سهل') }}</option><option :value="2">{{ t('exam.medium', 'متوسط') }}</option><option :value="3">{{ t('exam.hard', 'صعب') }}</option>
+                    </select>
+                    <input v-model="q.tagsText" :placeholder="t('exam.tags_ph', 'وسوم: الفصل 2، الأحماض')" class="min-w-[12rem] flex-1 rounded-lg border-gray-300 py-1 text-xs dark:border-gray-600 dark:bg-gray-700" />
+                </div>
                 <details v-if="q.type !== 'description' && q.type !== 'random'" class="text-sm">
                     <summary class="cursor-pointer text-xs text-gray-500">{{ t('exam.feedback', 'تغذية راجعة تظهر في المراجعة') }}</summary>
                     <div class="mt-2"><LangInput v-model="q.feedback" :languages="form.languages" multiline :rows="2" :rich="q.format === 'html'" /></div>
