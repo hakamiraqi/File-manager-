@@ -67,7 +67,7 @@ class BankTest extends TestCase
         $this->actingAs($teacher)->post(route('exams.manage.bank.to-exam', $exam), ['ids' => $category->questions()->pluck('id')->all()])
             ->assertSessionHasNoErrors();
         $this->assertSame(2, $exam->questions()->count());
-        $this->assertSame('جول', $exam->questions()->latest('id')->first()->choices()->where('is_correct', true)->first()->body['ar']);
+        $this->assertSame('جول', $exam->questions()->get()->last()->choices()->where('is_correct', true)->first()->body['ar']);
 
         // Exam → bank.
         $this->actingAs($teacher)->post(route('exams.manage.bank.from-exam', $exam->questions()->first()), ['category_id' => $category->id])
