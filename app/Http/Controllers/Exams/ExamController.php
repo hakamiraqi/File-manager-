@@ -157,7 +157,9 @@ class ExamController extends Controller
         abort_unless(in_array((int) $data['question_id'], $attempt->question_order ?? [], true)
             || $attempt->exam->questions()->whereKey($data['question_id'])->exists(), 422);
 
-        $values = ['response' => $data['response'] ?? null];
+        // The whole response (validated() would keep only its `text` key, the one with its own rule).
+        $response = $request->input('response');
+        $values = ['response' => is_array($response) ? $response : null];
         if (array_key_exists('flagged', $data)) {
             $values['flagged'] = $data['flagged'];
         }
