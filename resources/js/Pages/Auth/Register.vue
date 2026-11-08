@@ -1,0 +1,130 @@
+<script setup>
+import GuestLayout from '@/Layouts/GuestLayout.vue';
+import InputError from '@/Components/InputError.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
+import TextInput from '@/Components/TextInput.vue';
+import CaptchaField from '@/Components/CaptchaField.vue';
+import { readRecaptchaToken } from '@/Composables/useRecaptcha';
+import { useTrans } from '@/Composables/useTrans';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+
+const { t } = useTrans();
+
+const props = defineProps({
+    captcha: { type: Object, default: () => ({ enabled: false }) },
+});
+
+const form = useForm({
+    name: '',
+    email: '',
+    password: '',
+    password_confirmation: '',
+    captcha_answer: '',
+    'g-recaptcha-response': '',
+});
+
+const submit = () => {
+    if (props.captcha?.siteKey) {
+        form['g-recaptcha-response'] = readRecaptchaToken();
+    }
+
+    form.post(route('register'), {
+        onFinish: () => form.reset('password', 'password_confirmation'),
+    });
+};
+</script>
+
+<template>
+    <GuestLayout>
+        <Head :title="t('auth.register', 'التسجيل')" />
+
+        <form @submit.prevent="submit">
+            <div>
+                <InputLabel for="name" :value="t('auth.name', 'الاسم')" />
+
+                <TextInput
+                    id="name"
+                    type="text"
+                    class="mt-1 block w-full"
+                    v-model="form.name"
+                    required
+                    autofocus
+                    autocomplete="name"
+                />
+
+                <InputError class="mt-2" :message="form.errors.name" />
+            </div>
+
+            <div class="mt-4">
+                <InputLabel for="email" :value="t('auth.email', 'البريد الإلكتروني')" />
+
+                <TextInput
+                    id="email"
+                    type="email"
+                    class="mt-1 block w-full"
+                    v-model="form.email"
+                    required
+                    autocomplete="username"
+                />
+
+                <InputError class="mt-2" :message="form.errors.email" />
+            </div>
+
+            <div class="mt-4">
+                <InputLabel for="password" :value="t('auth.password', 'كلمة المرور')" />
+
+                <TextInput
+                    id="password"
+                    type="password"
+                    class="mt-1 block w-full"
+                    v-model="form.password"
+                    required
+                    autocomplete="new-password"
+                />
+
+                <InputError class="mt-2" :message="form.errors.password" />
+            </div>
+
+            <div class="mt-4">
+                <InputLabel
+                    for="password_confirmation"
+                    :value="t('auth.confirm_password', 'تأكيد كلمة المرور')"
+                />
+
+                <TextInput
+                    id="password_confirmation"
+                    type="password"
+                    class="mt-1 block w-full"
+                    v-model="form.password_confirmation"
+                    required
+                    autocomplete="new-password"
+                />
+
+                <InputError
+                    class="mt-2"
+                    :message="form.errors.password_confirmation"
+                />
+            </div>
+
+            <CaptchaField v-model="form.captcha_answer" :captcha="captcha" :error="form.errors.captcha_answer" />
+
+            <div class="mt-4 flex items-center justify-end">
+                <Link
+                    :href="route('login')"
+                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:text-gray-100 dark:focus:ring-offset-gray-800"
+                >
+                    {{ t('auth.have_account', 'لديك حساب بالفعل؟') }}
+                </Link>
+
+                <PrimaryButton
+                    class="ms-4"
+                    :class="{ 'opacity-25': form.processing }"
+                    :disabled="form.processing"
+                >
+                    {{ t('auth.register', 'إنشاء الحساب') }}
+                </PrimaryButton>
+            </div>
+        </form>
+    </GuestLayout>
+</template>

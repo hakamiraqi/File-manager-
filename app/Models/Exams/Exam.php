@@ -1,0 +1,157 @@
+<?php
+
+namespace App\Models\Exams;
+
+use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class Exam extends Model
+{
+    use Translatable;
+
+    public const LANGUAGES = ['ar', 'en', 'ku'];
+
+    public const GRADING = ['highest', 'average', 'first', 'last'];
+
+    public const SHOW_RESULTS = ['after_submit', 'after_close', 'never'];
+
+    protected $fillable = [
+        'user_id', 'title', 'description', 'subject', 'stage', 'department', 'languages', 'direction',
+        'duration_minutes', 'opens_at', 'closes_at', 'max_attempts', 'grading_method', 'pass_mark', 'password',
+        'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
+    ];
+
+    protected $hidden = ['password'];
+
+    protected function casts(): array
+    {
+        return [
+            'title' => 'array',
+            'description' => 'array',
+            'languages' => 'array',
+            'opens_at' => 'datetime',
+            'closes_at' => 'datetime',
+            'duration_minutes' => 'integer',
+            'max_attempts' => 'integer',
+            'pass_mark' => 'float',
+            'shuffle_questions' => 'boolean',
+            'shuffle_choices' => 'boolean',
+            'show_answers' => 'boolean',
+            'is_published' => 'boolean',
+        ];
+    }
+
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function questions(): HasMany
+    {
+        return $this->hasMany(Question::class)->orderBy('position')->orderBy('id');
+    }
+
+    public function attempts(): HasMany
+    {
+        return $this->hasMany(Attempt::class);
+    }
+
+    public function overrides(): HasMany
+    {
+        return $this->hasMany(Override::class);
+    }
+
+    public function scopePublished(Builder $q): Builder
+    {
+        return $q->where('is_published', true);
+    }
+
+    public function scopeManageableBy(Builder $q, User $user): Builder
+    {
+        return $user->isAdmin() ? $q : $q->where('user_id', $user->id);
+    }
+
+    public function isManageableBy(User $user): bool
+    {
+        return $user->canManageExams() && ($user->isAdmin() || $this->user_id === $user->id);
+    }
+
+    public function text(string $field, ?string $locale = null): string
+    {
+        return self::pick($this->{$field}, $locale ?? app()->getLocale(), $this->languages ?? []);
+    }
+
+    public function overrideFor(User $user): ?Override
+    {
+        return $this->overrides->firstWhere('user_id', $user->id)
+            ?? $this->overrides()->where('user_id', $user->id)->first();
+    }
+
+    /** The closing time for this student (an override may extend it). */
+    public function closesAtFor(User $user): ?\Illuminate\Support\Carbon
+    {
+        return $this->overrideFor($user)?->closes_at ?? $this->closes_at;
+    }
+
+    public function maxAttemptsFor(User $user): int
+    {
+        return $this->overrideFor($user)?->max_attempts ?? $this->max_attempts;
+    }
+
+    /** Minutes this student gets for one attempt (null = no limit). */
+    public function minutesFor(User $user): ?int
+    {
+        if (! $this->duration_minutes) {
+            return null;
+        }
+        $minutes = $this->duration_minutes * max(1, (float) ($user->exam_time_multiplier ?: 1));
+
+        return (int) ceil($minutes) + (int) ($this->overrideFor($user)?->extra_minutes ?? 0);
+    }
+
+    /** 'upcoming' | 'open' | 'closed' for this student. */
+    public function windowFor(User $user): string
+    {
+        if ($this->opens_at && now()->lt($this->opens_at)) {
+            return 'upcoming';
+        }
+        $closes = $this->closesAtFor($user);
+
+        return $closes && now()->gte($closes) ? 'closed' : 'open';
+    }
+
+    public function maxScore(): float
+    {
+        return (float) $this->questions->where('type', '!=', Question::DESCRIPTION)->sum('points');
+    }
+
+    /** May this student see their mark now? */
+    public function resultsVisibleTo(User $user): bool
+    {
+        return match ($this->show_results) {
+            'after_submit' => true,
+            'after_close' => $this->windowFor($user) === 'closed',
+            default => false,
+        };
+    }
+
+    /** The mark that counts for a student, by the exam's grading method (null = nothing marked yet). */
+    public function finalScoreFor(User $user): ?float
+    {
+        $scores = $this->attempts()->where('user_id', $user->id)->whereNotNull('submitted_at')
+            ->orderBy('number')->pluck('score')->filter(fn ($s) => $s !== null)->values();
+        if ($scores->isEmpty()) {
+            return null;
+        }
+
+        return (float) match ($this->grading_method) {
+            'average' => round($scores->avg(), 2),
+            'first' => $scores->first(),
+            'last' => $scores->last(),
+            default => $scores->max(),
+        };
+    }
+}

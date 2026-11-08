@@ -1,0 +1,92 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        font-family: 'Figtree', 'Cairo', sans-serif;
+    }
+
+    [dir='rtl'] {
+        font-family: 'Cairo', 'Figtree', sans-serif;
+    }
+}
+
+/*
+ * Each "skin" only overrides the --accent-* custom properties; every
+ * component references these variables (e.g. bg-[var(--accent-600)])
+ * instead of a fixed Tailwind color, so switching the active skin in
+ * Admin > Settings re-themes the whole app with no rebuild required.
+ */
+body[data-skin='indigo']  { --accent-50:#eef2ff; --accent-500:#6366f1; --accent-600:#4f46e5; --accent-700:#4338ca; }
+body[data-skin='slate']   { --accent-50:#f8fafc; --accent-500:#64748b; --accent-600:#475569; --accent-700:#334155; }
+body[data-skin='emerald'] { --accent-50:#ecfdf5; --accent-500:#10b981; --accent-600:#059669; --accent-700:#047857; }
+body[data-skin='rose']    { --accent-50:#fff1f2; --accent-500:#f43f5e; --accent-600:#e11d48; --accent-700:#be123c; }
+body[data-skin='amber']   { --accent-50:#fffbeb; --accent-500:#f59e0b; --accent-600:#d97706; --accent-700:#b45309; }
+body[data-skin='sky']     { --accent-50:#f0f9ff; --accent-500:#0ea5e9; --accent-600:#0284c7; --accent-700:#0369a1; }
+body[data-skin='violet']  { --accent-50:#f5f3ff; --accent-500:#8b5cf6; --accent-600:#7c3aed; --accent-700:#6d28d9; }
+body[data-skin='teal']    { --accent-50:#f0fdfa; --accent-500:#14b8a6; --accent-600:#0d9488; --accent-700:#0f766e; }
+body[data-skin='orange']  { --accent-50:#fff7ed; --accent-500:#f97316; --accent-600:#ea580c; --accent-700:#c2410c; }
+body[data-skin='zinc']    { --accent-50:#fafafa; --accent-500:#71717a; --accent-600:#52525b; --accent-700:#3f3f46; }
+body[data-skin='cyan']    { --accent-50:#ecfeff; --accent-500:#06b6d4; --accent-600:#0891b2; --accent-700:#0e7490; }
+body[data-skin='fuchsia'] { --accent-50:#fdf4ff; --accent-500:#d946ef; --accent-600:#c026d3; --accent-700:#a21caf; }
+
+/*
+ * Scrollbars (2026-11-06, by request): slim, rounded, in the skin's colour,
+ * with a clear hover state, in light and dark mode. Firefox uses the
+ * standard properties; Chrome, Edge and Safari use ::-webkit-scrollbar.
+ * The colours sit on body too, where the skin's --accent-* live.
+ */
+:root,
+body {
+    --scroll-thumb: color-mix(in srgb, var(--accent-600, #4f46e5) 32%, #9ca3af);
+    --scroll-thumb-hover: var(--accent-600, #4f46e5);
+    --scroll-track: transparent;
+}
+html.dark,
+html.dark body {
+    --scroll-thumb: color-mix(in srgb, var(--accent-500, #6366f1) 35%, #4b5563);
+    --scroll-thumb-hover: var(--accent-500, #6366f1);
+}
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+    :root, body { --scroll-thumb: #b4b9c4; }
+    html.dark, html.dark body { --scroll-thumb: #4b5563; }
+}
+
+/* Firefox only: in Chrome these would switch off the rounded ::-webkit-scrollbar look below. */
+@supports (-moz-appearance: none) {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+    }
+}
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: var(--scroll-track);
+}
+::-webkit-scrollbar-thumb {
+    background-color: var(--scroll-thumb);
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
+    min-height: 40px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scroll-thumb-hover);
+    border-width: 2px;
+}
+::-webkit-scrollbar-thumb:active {
+    background-color: var(--scroll-thumb-hover);
+    border-width: 1px;
+}
+::-webkit-scrollbar-corner {
+    background: transparent;
+}
+::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}

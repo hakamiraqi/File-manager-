@@ -1,0 +1,129 @@
+<script setup>
+import Checkbox from '@/Components/Checkbox.vue';
+import GuestLayout from '@/Layouts/GuestLayout.vue';
+import InputError from '@/Components/InputError.vue';
+import InputLabel from '@/Components/InputLabel.vue';
+import PrimaryButton from '@/Components/PrimaryButton.vue';
+import TextInput from '@/Components/TextInput.vue';
+import OauthButtons from '@/Components/OauthButtons.vue';
+import { useTrans } from '@/Composables/useTrans';
+import { Head, Link, useForm } from '@inertiajs/vue3';
+
+const { t } = useTrans();
+
+defineProps({
+    canResetPassword: {
+        type: Boolean,
+    },
+    status: {
+        type: String,
+    },
+    oauth: {
+        type: Object,
+        default: () => ({}),
+    },
+});
+
+const form = useForm({
+    email: '',
+    password: '',
+    remember: false,
+});
+
+const submit = () => {
+    form.post(route('login'), {
+        onFinish: () => form.reset('password'),
+    });
+};
+</script>
+
+<template>
+    <GuestLayout>
+        <Head :title="t('auth.login', 'تسجيل الدخول')" />
+
+        <div v-if="status" class="mb-4 text-sm font-medium text-green-600 dark:text-green-400">
+            {{ status }}
+        </div>
+
+        <form @submit.prevent="submit">
+            <div>
+                <InputLabel for="email" :value="t('auth.email', 'البريد الإلكتروني')" />
+
+                <TextInput
+                    id="email"
+                    type="email"
+                    class="mt-1 block w-full"
+                    v-model="form.email"
+                    required
+                    autofocus
+                    autocomplete="username"
+                />
+
+                <InputError class="mt-2" :message="form.errors.email" />
+            </div>
+
+            <div class="mt-4">
+                <InputLabel for="password" :value="t('auth.password', 'كلمة المرور')" />
+
+                <TextInput
+                    id="password"
+                    type="password"
+                    class="mt-1 block w-full"
+                    v-model="form.password"
+                    required
+                    autocomplete="current-password"
+                />
+
+                <InputError class="mt-2" :message="form.errors.password" />
+            </div>
+
+            <div class="mt-4 block">
+                <label class="flex items-center">
+                    <Checkbox name="remember" v-model:checked="form.remember" />
+                    <span class="ms-2 text-sm text-gray-600 dark:text-gray-400"
+                        >{{ t('auth.remember_me', 'تذكرني') }}</span
+                    >
+                </label>
+            </div>
+
+            <div class="mt-4 flex items-center justify-between">
+                <Link
+                    v-if="canResetPassword"
+                    :href="route('password.request')"
+                    class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:text-gray-100 dark:focus:ring-offset-gray-800"
+                >
+                    {{ t('auth.forgot_password', 'نسيت كلمة المرور؟') }}
+                </Link>
+
+                <PrimaryButton
+                    class="ms-4"
+                    :class="{ 'opacity-25': form.processing }"
+                    :disabled="form.processing"
+                >
+                    {{ t('auth.login', 'تسجيل الدخول') }}
+                </PrimaryButton>
+            </div>
+
+            <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                {{ t('auth.no_account', 'ليس لديك حساب؟') }}
+                <Link :href="route('register')" class="font-medium text-[var(--accent-600)] hover:underline">{{ t('auth.create_account', 'إنشاء حساب جديد') }}</Link>
+            </p>
+        </form>
+
+        <div class="mt-6">
+            <OauthButtons :oauth="oauth" />
+        </div>
+
+        <Link
+            v-if="$page.props.appSettings.guestAccessEnabled"
+            :href="route('guest.index')"
+            class="mt-6 flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+        >
+            {{ t('guest.browse_site', 'تصفح الموقع بدون تسجيل دخول') }}
+        </Link>
+
+        <p class="mt-6 text-center text-sm">
+            <a href="/download" class="font-medium text-[var(--accent-600)] hover:underline">{{ t('auth.download_apps', 'تنزيل التطبيقات (ويندوز، أندرويد، آيفون)') }}</a>
+        </p>
+    </GuestLayout>
+</template>

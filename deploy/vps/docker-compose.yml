@@ -1,0 +1,91 @@
+# FileNest on the VPS: nginx + PHP-FPM + MySQL + queue worker + scheduler.
+# Reached through the existing Caddy (network `headscale_default`) at https://exams.azoclinic.duckdns.org .
+# Run from the repo root:  docker compose --env-file .env -f deploy/vps/docker-compose.yml up -d --build
+# Container names start with examnest- so nothing clashes with the dental app or the other services.
+name: examnest
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: examnest-db
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-time-zone=+03:00 --skip-log-bin --performance-schema=OFF --max-connections=60 --innodb-buffer-pool-size=256M
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - examnest_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [default]
+
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      target: app
+    image: examnest-app:latest
+    container_name: examnest-app
+    restart: unless-stopped
+    env_file: ../../.env
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - examnest_storage:/var/www/html/storage
+      - ../../public/downloads:/var/www/html/public/downloads:ro
+    networks: [default]
+
+  # Thumbnails, document text extraction and video quality transcoding.
+  queue:
+    image: examnest-app:latest
+    container_name: examnest-queue
+    restart: unless-stopped
+    env_file: ../../.env
+    user: www-data
+    command: ["php", "artisan", "queue:work", "--tries=3", "--timeout=1800", "--sleep=3", "--max-time=3600"]
+    depends_on: [app]
+    volumes:
+      - examnest_storage:/var/www/html/storage
+    networks: [default]
+
+  # Trash purge (daily) and stale upload cleanup (hourly).
+  scheduler:
+    image: examnest-app:latest
+    container_name: examnest-scheduler
+    restart: unless-stopped
+    env_file: ../../.env
+    user: www-data
+    command: ["php", "artisan", "schedule:work"]
+    depends_on: [app]
+    volumes:
+      - examnest_storage:/var/www/html/storage
+    networks: [default]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/vps/Dockerfile
+      target: web
+    image: examnest-web:latest
+    container_name: examnest-web
+    restart: unless-stopped
+    depends_on: [app]
+    volumes:
+      - examnest_storage:/var/www/html/storage:ro
+      - ../../public/downloads:/var/www/html/public/downloads:ro
+    networks: [default, edge]
+
+volumes:
+  examnest_db:
+  examnest_storage:
+
+networks:
+  edge:
+    external: true
+    name: headscale_default

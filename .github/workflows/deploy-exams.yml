@@ -1,0 +1,119 @@
+name: Exam system — test and deploy
+
+# The exam system lives on the `exams` branch: its own code, database, users and containers
+# (examnest-*), at https://exams.azoclinic.duckdns.org on the same Oracle VPS as FileNest and the
+# dental app. Tests run first; the deploy only runs when they pass.
+#
+# Repository secret: VPS_SSH_KEY (the same one FileNest uses). Optional: VPS_HOST, VPS_USER.
+on:
+  push:
+    branches: [exams]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-exams
+  cancel-in-progress: false
+
+env:
+  APP_DIR: /home/ubuntu/examnest
+  SITE: https://exams.azoclinic.duckdns.org
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, zip, gd, bcmath, pdo_sqlite, sodium
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install
+        run: |
+          composer install --no-interaction --no-progress --prefer-dist
+          npm ci --no-audit --no-fund
+      - name: Build the pages
+        run: npm run build
+      - name: Tests
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+          php artisan test tests/Feature/Exams tests/Feature/Auth
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the VPS key
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::error::Secret VPS_SSH_KEY is not set on this repository."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          if [ "$(grep -c . ~/.ssh/vps_key)" -le 2 ] && grep -q -- '-----BEGIN' ~/.ssh/vps_key; then
+            python3 - <<'PY'
+          import os, re
+          p = os.path.expanduser('~/.ssh/vps_key')
+          t = open(p).read().strip()
+          m = re.match(r'(-----BEGIN [A-Z ]+-----)(.*?)(-----END [A-Z ]+-----)', t, re.S)
+          if m:
+              body = ''.join(m.group(2).split())
+              lines = [body[i:i+64] for i in range(0, len(body), 64)]
+              open(p, 'w').write(m.group(1) + '\n' + '\n'.join(lines) + '\n' + m.group(3) + '\n')
+          PY
+          fi
+          chmod 600 ~/.ssh/vps_key
+          ssh-keygen -y -f ~/.ssh/vps_key >/dev/null && echo "key reads OK"
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Server state before deploying
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "free -m; df -h / | tail -1; sudo docker ps -a --filter name=examnest --format '{{.Names}}  {{.Status}}'" || true
+
+      - name: Copy the code and deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          tar czf /tmp/app.tgz \
+            --exclude='./.git' --exclude='./.github' --exclude='./node_modules' --exclude='./vendor' \
+            --exclude='./.env' --exclude='./storage' --exclude='./public/build' --exclude='./public/downloads' \
+            --exclude='./public/storage' --exclude='./offline' --exclude='./tests' .
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "mkdir -p '$APP_DIR' && tar xzf - -C '$APP_DIR'" < /tmp/app.tgz
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "cd '$APP_DIR' && sh deploy/vps/deploy.sh" | tee /tmp/deploy.log
+
+      - name: Check the site answers
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$SITE/login" || true)
+            [ "$code" = 200 ] && { echo "Login page answers 200."; exit 0; }
+            sleep 6
+          done
+          echo "Login page did not answer 200 (last: $code)."; exit 1
+
+      - name: Server state after a failed deploy
+        if: failure()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo docker ps -a --filter name=examnest --format '{{.Names}}  {{.Status}}'; sudo docker logs --tail 80 examnest-app 2>&1" || true
