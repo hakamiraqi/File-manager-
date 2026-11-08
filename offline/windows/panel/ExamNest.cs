@@ -1,4 +1,4 @@
-﻿// FileNest control panel: one window that starts, watches and stops the
+﻿// ExamNest control panel: one window that starts, watches and stops the
 // whole offline system (MariaDB, PHP workers, Caddy, CoreDNS, scheduler) with
 // no console windows, like the XAMPP control panel. Lives next to config.txt
 // in the package root and sits in the tray; can start with Windows.
@@ -6,7 +6,7 @@
 // Built with the .NET Framework compiler that ships with Windows (C# 5):
 //   csc /target:winexe /codepage:65001 /win32icon:icon.ico /win32manifest:app.manifest
 //       /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Management.dll /r:System.Core.dll
-//       /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll FileNest.cs
+//       /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll ExamNest.cs
 //
 // Command line: --autostart (from the Windows Run key: start hidden in the
 // tray and start the system), --headless (no window, used by CI), --stop
@@ -34,11 +34,11 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: System.Reflection.AssemblyTitle("FileNest Control Panel")]
-[assembly: System.Reflection.AssemblyProduct("FileNest Offline")]
+[assembly: System.Reflection.AssemblyTitle("ExamNest Control Panel")]
+[assembly: System.Reflection.AssemblyProduct("ExamNest Offline")]
 [assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
 
-namespace FileNestPanel
+namespace ExamNestPanel
 {
     static class Program
     {
@@ -87,7 +87,7 @@ namespace FileNestPanel
             }
 
             bool created;
-            using (var mutex = new Mutex(true, "Local\\FileNestPanel", out created))
+            using (var mutex = new Mutex(true, "Local\\ExamNestPanel", out created))
             {
                 if (!created && (afterUpdate || rolledBack))
                 {
@@ -97,7 +97,7 @@ namespace FileNestPanel
                 if (!created)
                 {
                     // Already open: bring that window forward instead.
-                    try { EventWaitHandle.OpenExisting("Local\\FileNestPanelShow").Set(); } catch { }
+                    try { EventWaitHandle.OpenExisting("Local\\ExamNestPanelShow").Set(); } catch { }
                     return 0;
                 }
                 Application.EnableVisualStyles();
@@ -142,7 +142,7 @@ namespace FileNestPanel
 
     class Engine
     {
-        public const int DbPort = 3308;
+        public const int DbPort = 3309;   // 3308 is the FileNest server's, so both can run on one PC
         public readonly string Root;
         public volatile State CurrentState = State.Stopped;
         public string LastError = "";
@@ -185,7 +185,7 @@ namespace FileNestPanel
             int v;
             return int.TryParse(Get(key, ""), out v) ? v : def;
         }
-        public string ServerName { get { return Get("SERVER_NAME", "files.lan"); } }
+        public string ServerName { get { return Get("SERVER_NAME", "exams.lan"); } }
         // The name server is optional (2026-10-19, by request): devices can reach
         // the system by its IP, which avoids the stalls a router DNS can cause.
         public bool DnsOn { get { return GetInt("DNS", 1) != 0; } }
@@ -196,8 +196,8 @@ namespace FileNestPanel
         // Online access (2026-10-31, by request): a Cloudflare tunnel to a
         // site of the local web server that only this computer can reach
         // (TUNNEL_PORT), and the panel's remote control page (PANEL_PORT).
-        public int TunnelPort { get { return GetInt("TUNNEL_PORT", 18093); } }
-        public int PanelPort { get { return GetInt("PANEL_PORT", 18094); } }
+        public int TunnelPort { get { return GetInt("TUNNEL_PORT", 18095); } }
+        public int PanelPort { get { return GetInt("PANEL_PORT", 18096); } }
         public int ActiveTunnelPort;
         string Live(string key)
         {
@@ -222,7 +222,7 @@ namespace FileNestPanel
         }
         public static string DefaultBackupDir(string root)
         {
-            return Path.Combine(Path.GetPathRoot(root) ?? @"C:\", "FileNestBackups");
+            return Path.Combine(Path.GetPathRoot(root) ?? @"C:\", "ExamNestBackups");
         }
 
         Dictionary<string, string> LoadConfig()
@@ -471,7 +471,7 @@ namespace FileNestPanel
                     i => Spawn(P(@"coredns\coredns.exe"), "-conf \"" + P("Corefile") + "\"", Root, "coredns.log")),
                 new Service("scheduler", "المهام المجدولة", "-", 1,
                     i => Spawn(P(@"php\php.exe"), "artisan schedule:work", P("app"), "scheduler.log")),
-                // FileNest's background jobs (previews, text extraction, emails) run from the database queue.
+                // ExamNest's background jobs (previews, text extraction, emails) run from the database queue.
                 new Service("queue", "المعالجة في الخلفية", "-", 1,
                     i => Spawn(P(@"php\php.exe"), "artisan queue:work --sleep=3 --tries=3 --timeout=3500", P("app"), "queue.log")),
             };
@@ -521,7 +521,7 @@ namespace FileNestPanel
             // Activation (2026-10-17): the app works only once activated on
             // this computer, which it recognises by Windows' MachineGuid.
             Environment.SetEnvironmentVariable("OFFLINE_EDITION", "true");
-            Environment.SetEnvironmentVariable("FILENEST_MACHINE_GUID", MachineGuid());
+            Environment.SetEnvironmentVariable("EXAMNEST_MACHINE_GUID", MachineGuid());
             // The http port, for the app's link to the Wi-Fi/certificate page (2026-11-05).
             Environment.SetEnvironmentVariable("OFFLINE_HTTP_PORT", HttpPort.ToString());
             // PHP behind FastCGI does not always see this process's
@@ -583,8 +583,8 @@ namespace FileNestPanel
             if (!up)
                 throw new Exception("قاعدة البيانات لم تبدأ. " + Tail(ReadLog("mariadb.log"), 3));
             var c = Run(P(@"mariadb\bin\mariadb.exe"), "--user=root --host=127.0.0.1 --port=" + DbPort +
-                " -e \"CREATE DATABASE IF NOT EXISTS filenest CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\"", Root, 30000);
-            if (c.Code != 0) throw new Exception("تعذّر إنشاء قاعدة البيانات filenest: " + Tail(c.Output, 3));
+                " -e \"CREATE DATABASE IF NOT EXISTS examnest CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci\"", Root, 30000);
+            if (c.Code != 0) throw new Exception("تعذّر إنشاء قاعدة البيانات examnest: " + Tail(c.Output, 3));
 
             string env = P(@"app\.env");
             if (!File.Exists(env))
@@ -911,7 +911,7 @@ namespace FileNestPanel
         public void StopLeftovers(bool tunnel)
         {
             var found = FindOwn(tunnel);
-            var supervisors = found.Where(f => f.Item2 == "filenest.exe" || f.Item2 == "cmd.exe" || f.Item2 == "powershell.exe").ToList();
+            var supervisors = found.Where(f => f.Item2 == "examnest.exe" || f.Item2 == "cmd.exe" || f.Item2 == "powershell.exe").ToList();
             foreach (var f in supervisors) Kill(f.Item1, false);
 
             if (found.Any(f => f.Item2 == "mariadbd.exe" || f.Item2 == "mysqld.exe"))
@@ -969,7 +969,7 @@ namespace FileNestPanel
         public bool FirewallReady()
         {
             // The rule must also cover the ports in use (they can change in Settings).
-            var r = Run(Path.Combine(Environment.SystemDirectory, "netsh.exe"), "advfirewall firewall show rule name=\"FileNest Web\"", Root, 15000);
+            var r = Run(Path.Combine(Environment.SystemDirectory, "netsh.exe"), "advfirewall firewall show rule name=\"ExamNest Web\"", Root, 15000);
             return r.Code == 0 && r.Output.Contains(HttpPort + "," + HttpsPort);
         }
 
@@ -978,10 +978,10 @@ namespace FileNestPanel
         public void SetupFirewall()
         {
             string rules =
-                "netsh advfirewall firewall delete rule name=\"FileNest Web\" & " +
-                "netsh advfirewall firewall delete rule name=\"FileNest DNS\" & " +
-                "netsh advfirewall firewall add rule name=\"FileNest Web\" dir=in action=allow protocol=TCP localport=" + HttpPort + "," + HttpsPort + " remoteip=localsubnet profile=any & " +
-                "netsh advfirewall firewall add rule name=\"FileNest DNS\" dir=in action=allow protocol=UDP localport=53 remoteip=localsubnet profile=any";
+                "netsh advfirewall firewall delete rule name=\"ExamNest Web\" & " +
+                "netsh advfirewall firewall delete rule name=\"ExamNest DNS\" & " +
+                "netsh advfirewall firewall add rule name=\"ExamNest Web\" dir=in action=allow protocol=TCP localport=" + HttpPort + "," + HttpsPort + " remoteip=localsubnet profile=any & " +
+                "netsh advfirewall firewall add rule name=\"ExamNest DNS\" dir=in action=allow protocol=UDP localport=53 remoteip=localsubnet profile=any";
             var si = new ProcessStartInfo("cmd.exe", "/c " + rules);
             si.UseShellExecute = true;
             si.Verb = "runas";
@@ -1031,12 +1031,12 @@ namespace FileNestPanel
 
     class Updater
     {
-        // Only a computer activated with its university's FileNest code updates:
+        // Only a computer activated with its university's ExamNest code updates:
         // it checks in with the licensing portal (shared with the clinic system),
         // which also records the build it runs, then takes the newest package
-        // from FileNest's own hosting.
+        // from ExamNest's own hosting.
         const string LatestApi = "https://dental.azoclinic.duckdns.org/api/v1/offline/latest";
-        const string PackageApi = "https://files.azoclinic.duckdns.org/downloads/offline-latest.json";
+        const string PackageApi = "https://exams.azoclinic.duckdns.org/downloads/offline-latest.json";
         const string TagPrefix = "offline-build-";
         // Never replaced by an update: the data and this computer's settings.
         static readonly string[] KeepRoot = { "data", "config.txt", "caddy-data", "Caddyfile", "Corefile", "lan-ip.txt", "updates", "panel.ini" };
@@ -1121,7 +1121,7 @@ namespace FileNestPanel
             if (license == null) return null; // not activated yet: nothing to update
             ServicePointManager.SecurityProtocol |= (SecurityProtocolType)3072; // TLS 1.2
             var req = (HttpWebRequest)WebRequest.Create(LatestApi + "?code=" + Uri.EscapeDataString(license[0]) + "&machine=" + Uri.EscapeDataString(license[1]) + "&build=" + CurrentBuild);
-            req.UserAgent = "FileNestPanel";
+            req.UserAgent = "ExamNestPanel";
             req.Accept = "application/json";
             req.Timeout = 30000;
             string json;
@@ -1138,7 +1138,7 @@ namespace FileNestPanel
                 throw;
             }
             var pkg = (HttpWebRequest)WebRequest.Create(PackageApi + "?build=" + CurrentBuild);
-            pkg.UserAgent = "FileNestPanel";
+            pkg.UserAgent = "ExamNestPanel";
             pkg.Accept = "application/json";
             pkg.Timeout = 30000;
             using (var resp = pkg.GetResponse())
@@ -1146,7 +1146,7 @@ namespace FileNestPanel
             var latest = new JavaScriptSerializer().DeserializeObject(json) as Dictionary<string, object>;
             if (latest == null || !latest.ContainsKey("build") || !latest.ContainsKey("url")) return null;
             string url = (string)latest["url"];
-            if (url.StartsWith("/")) latest["url"] = "https://files.azoclinic.duckdns.org" + url;
+            if (url.StartsWith("/")) latest["url"] = "https://exams.azoclinic.duckdns.org" + url;
             int n = Convert.ToInt32(latest["build"]);
             if (n <= CurrentBuild) return null;
             string sha = latest.ContainsKey("sha256") ? latest["sha256"] as string : null;
@@ -1196,7 +1196,7 @@ namespace FileNestPanel
             {
                 State = UpdateState.Downloading;
                 var req = (HttpWebRequest)WebRequest.Create(info.Url);
-                req.UserAgent = "FileNestPanel";
+                req.UserAgent = "ExamNestPanel";
                 req.Timeout = 30000;
                 req.ReadWriteTimeout = 60000;
                 if (have > 0) req.AddRange(have);
@@ -1261,9 +1261,9 @@ namespace FileNestPanel
                 string staging = Path.Combine(Dir, "staging");
                 DeleteDir(staging);
                 ZipFile.ExtractToDirectory(zip, staging);
-                string src = Path.Combine(staging, "FileNestOffline");
+                string src = Path.Combine(staging, "ExamNestOffline");
                 if (!Directory.Exists(src)) src = staging;
-                if (!File.Exists(Path.Combine(src, "FileNest.exe")) || !File.Exists(Path.Combine(src, @"app\artisan")))
+                if (!File.Exists(Path.Combine(src, "ExamNest.exe")) || !File.Exists(Path.Combine(src, @"app\artisan")))
                     throw new Exception("ملف التحديث لا يحتوي على النظام.");
 
                 string backup = null;
@@ -1392,7 +1392,7 @@ namespace FileNestPanel
 
         void Launch(string args)
         {
-            var si = new ProcessStartInfo(engine.P("FileNest.exe"), args);
+            var si = new ProcessStartInfo(engine.P("ExamNest.exe"), args);
             si.UseShellExecute = false;
             si.WorkingDirectory = engine.Root;
             Process.Start(si);
@@ -1829,7 +1829,7 @@ namespace FileNestPanel
     static class WindowsStartup
     {
         const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-        const string Name = "FileNest";
+        const string Name = "ExamNest";
 
         static string Command { get { return "\"" + Application.ExecutablePath + "\" --autostart"; } }
 
@@ -1962,7 +1962,7 @@ namespace FileNestPanel
                 try { BeginInvoke(new Action(() => AppendLog(line))); } catch { }
             };
 
-            var show = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\FileNestPanelShow");
+            var show = new EventWaitHandle(false, EventResetMode.AutoReset, "Local\\ExamNestPanelShow");
             var t = new Thread(() =>
             {
                 while (true)
@@ -1986,7 +1986,7 @@ namespace FileNestPanel
             {
                 try
                 {
-                    BeginInvoke(new Action(() => tray.ShowBalloonTip(8000, "FileNest",
+                    BeginInvoke(new Action(() => tray.ShowBalloonTip(8000, "ExamNest",
                         "نُزّل تحديث جديد (النسخة " + info.Build + ") بالكامل. افتح اللوحة واضغط \"تحديث الآن\".", ToolTipIcon.Info)));
                 }
                 catch { }
@@ -2057,7 +2057,7 @@ namespace FileNestPanel
 
         void BuildUi()
         {
-            Text = "FileNest - لوحة التشغيل";
+            Text = "ExamNest - لوحة التشغيل";
             RightToLeft = RightToLeft.Yes;
             RightToLeftLayout = true;
             Font = Ui.Font(10f);
@@ -2088,7 +2088,7 @@ namespace FileNestPanel
             var brandIcon = new Label { Text = "\uE95E", Dock = DockStyle.Left, Width = Ui.S(44), ForeColor = Color.FromArgb(94, 234, 212), RightToLeft = RightToLeft.No, TextAlign = ContentAlignment.TopLeft };
             if (Ui.IconFont.Length > 0) brandIcon.Font = new Font(Ui.IconFont, 22f); else brandIcon.Visible = false;
             var brandText = new Panel { Dock = DockStyle.Fill, BackColor = Ui.Side };
-            var brandTitle = new Label { Text = "FileNest", Dock = DockStyle.Top, Height = Ui.S(30), ForeColor = Color.White, Font = Ui.Bold(14f), TextAlign = ContentAlignment.MiddleLeft };
+            var brandTitle = new Label { Text = "ExamNest", Dock = DockStyle.Top, Height = Ui.S(30), ForeColor = Color.White, Font = Ui.Bold(14f), TextAlign = ContentAlignment.MiddleLeft };
             var brandSub = new Label { Text = "خادم الملفات والمكتبة (بدون إنترنت)", Dock = DockStyle.Top, Height = Ui.S(22), ForeColor = Ui.SideText, Font = Ui.Font(9f), TextAlign = ContentAlignment.MiddleLeft };
             brandText.Controls.Add(brandSub);
             brandText.Controls.Add(brandTitle);
@@ -2142,7 +2142,7 @@ namespace FileNestPanel
             trayMenu.Items.Add(trayToggle);
             trayMenu.Items.Add(new ToolStripSeparator());
             trayMenu.Items.Add("إيقاف وخروج", null, (s, e) => ExitApp());
-            tray = new NotifyIcon { Icon = Icon ?? SystemIcons.Application, Text = "FileNest", Visible = ScreenshotDir == null, ContextMenuStrip = trayMenu };
+            tray = new NotifyIcon { Icon = Icon ?? SystemIcons.Application, Text = "ExamNest", Visible = ScreenshotDir == null, ContextMenuStrip = trayMenu };
             tray.DoubleClick += (s, e) => ShowPanel();
         }
 
@@ -2446,7 +2446,7 @@ namespace FileNestPanel
                 CheckFirewallAsync();
                 if (engine.CurrentState == State.Error && IsHandleCreated)
                 {
-                    try { BeginInvoke(new Action(() => { if (!Visible) tray.ShowBalloonTip(5000, "FileNest", "تعذّر تشغيل النظام. افتح اللوحة لمعرفة السبب.", ToolTipIcon.Error); })); } catch { }
+                    try { BeginInvoke(new Action(() => { if (!Visible) tray.ShowBalloonTip(5000, "ExamNest", "تعذّر تشغيل النظام. افتح اللوحة لمعرفة السبب.", ToolTipIcon.Error); })); } catch { }
                 }
             });
         }
@@ -2517,7 +2517,7 @@ namespace FileNestPanel
                     "ستُستبدل كل البيانات الحالية (المرضى والمهام والمدفوعات والصور) ببيانات هذه النسخة:" + Environment.NewLine +
                     Path.GetFileName(file) + Environment.NewLine + Environment.NewLine +
                     "تُحفظ البيانات الحالية كنسخة احتياطية أولًا. هل تريد المتابعة؟",
-                    "FileNest", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2,
+                    "ExamNest", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2,
                     MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 if (r != DialogResult.Yes) return;
             }
@@ -2595,7 +2595,7 @@ namespace FileNestPanel
                     if (!merge) return true;
                     foreach (int i in list.CheckedIndices) tables.Add(sections[i].Table);
                     if (tables.Count > 0) return true;
-                    MessageBox.Show(dlg, "اختر قسمًا واحدًا على الأقل.", "FileNest", MessageBoxButtons.OK, MessageBoxIcon.Information,
+                    MessageBox.Show(dlg, "اختر قسمًا واحدًا على الأقل.", "ExamNest", MessageBoxButtons.OK, MessageBoxIcon.Information,
                         MessageBoxDefaultButton.Button1, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 }
             }
@@ -2693,7 +2693,7 @@ namespace FileNestPanel
                     "تُحفظ نسخة احتياطية من البيانات أولًا، ثم يتوقف النظام على كل الأجهزة دقيقة أو اثنتين ويعود وحده." + Environment.NewLine +
                     "إذا لم تعمل النسخة الجديدة يرجع النظام تلقائيًا للنسخة السابقة وبياناتها." + Environment.NewLine + Environment.NewLine +
                     "هل تريد التحديث الآن؟",
-                    "FileNest", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2,
+                    "ExamNest", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2,
                     MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 if (r != DialogResult.Yes) return;
             }
@@ -2728,7 +2728,7 @@ namespace FileNestPanel
 
         void Notify(string msg, bool ok)
         {
-            MessageBox.Show(this, msg, "FileNest", MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Error,
+            MessageBox.Show(this, msg, "ExamNest", MessageBoxButtons.OK, ok ? MessageBoxIcon.Information : MessageBoxIcon.Error,
                 MessageBoxDefaultButton.Button1, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
         }
 
@@ -2833,7 +2833,7 @@ namespace FileNestPanel
             backupBtn.Text = backupBusy ? "انتظر..." : "نسخة احتياطية الآن";
             trayToggle.Text = running ? "إيقاف النظام" : "تشغيل النظام";
             trayToggle.Enabled = !busy;
-            string trayText = running ? "FileNest - يعمل" : "FileNest - " + text;
+            string trayText = running ? "ExamNest - يعمل" : "ExamNest - " + text;
             if (tray.Text != trayText) tray.Text = trayText;
             footDot.ForeColor = c;
             string foot = text + (running ? "   •   " + engine.LanUrl : "") + (engine.TunnelOn && tunnel.Connected ? "   •   متصل بالإنترنت" : "");
@@ -2965,7 +2965,7 @@ namespace FileNestPanel
             if (!settings.HasPassword) return;
             unlocked = false;
             Hide();
-            tray.ShowBalloonTip(3000, "FileNest", "قُفلت اللوحة، والنظام مستمر. افتحها من الأيقونة بجانب الساعة.", ToolTipIcon.Info);
+            tray.ShowBalloonTip(3000, "ExamNest", "قُفلت اللوحة، والنظام مستمر. افتحها من الأيقونة بجانب الساعة.", ToolTipIcon.Info);
         }
 
         void OpenSettings()
@@ -2998,7 +2998,7 @@ namespace FileNestPanel
                 if (restartNeeded && engine.CurrentState == State.Running)
                 {
                     var r = MessageBox.Show(this, "حُفظت الإعدادات. تُطبَّق بعد إعادة تشغيل النظام (يتوقف لحظات على كل الأجهزة). إعادة التشغيل الآن؟",
-                        "FileNest", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1,
+                        "ExamNest", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button1,
                         MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                     if (r == DialogResult.Yes) RestartSystem();
                 }
@@ -3025,7 +3025,7 @@ namespace FileNestPanel
             if (!EnsureUnlocked()) return;
             if (engine.CurrentState == State.Running || engine.CurrentState == State.Starting)
             {
-                var r = MessageBox.Show(this, "سيتوقف النظام على كل الأجهزة. هل تريد الإيقاف والخروج؟", "FileNest",
+                var r = MessageBox.Show(this, "سيتوقف النظام على كل الأجهزة. هل تريد الإيقاف والخروج؟", "ExamNest",
                     MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2,
                     MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
                 if (r != DialogResult.Yes) return;
@@ -3052,7 +3052,7 @@ namespace FileNestPanel
                 if (!balloonShown)
                 {
                     balloonShown = true;
-                    tray.ShowBalloonTip(4000, "FileNest", "اللوحة ما زالت تعمل بجانب الساعة، والنظام مستمر.", ToolTipIcon.Info);
+                    tray.ShowBalloonTip(4000, "ExamNest", "اللوحة ما زالت تعمل بجانب الساعة، والنظام مستمر.", ToolTipIcon.Info);
                 }
                 return;
             }
@@ -3256,7 +3256,7 @@ namespace FileNestPanel
         public PasswordForm(Settings settings)
         {
             this.settings = settings;
-            Text = "FileNest";
+            Text = "ExamNest";
             RightToLeft = RightToLeft.Yes;
             RightToLeftLayout = true;
             Font = Ui.Font(10f);
@@ -3379,8 +3379,8 @@ namespace FileNestPanel
 
             // Network
             var net = Section(body, "الشبكة", "تُطبَّق بعد إعادة تشغيل النظام.");
-            nameBox = new TextBox { Width = Ui.S(300), RightToLeft = RightToLeft.No, Text = Value("SERVER_NAME", "files.lan") };
-            AddField(net, "اسم النظام على الشبكة", nameBox, "الاسم الذي تفتح به الأجهزة النظام. الافتراضي files.lan");
+            nameBox = new TextBox { Width = Ui.S(300), RightToLeft = RightToLeft.No, Text = Value("SERVER_NAME", "exams.lan") };
+            AddField(net, "اسم النظام على الشبكة", nameBox, "الاسم الذي تفتح به الأجهزة النظام. الافتراضي exams.lan");
             ipBox = new ComboBox { Width = Ui.S(300), RightToLeft = RightToLeft.No, DropDownStyle = ComboBoxStyle.DropDown };
             ipBox.Items.Add(AutoIp);
             foreach (var ip in Engine.LocalAddresses()) ipBox.Items.Add(ip);
@@ -3394,7 +3394,7 @@ namespace FileNestPanel
             workersBox = Number(2, 64, IntValue("PHP_WORKERS", 16));
             AddField(net, "عدد الطلبات المتزامنة", workersBox, "16 مناسب لأغلب المؤسسات، و24 أو 32 مع ذاكرة 16 غيغابايت.");
             dnsBox = new CheckBox { Text = "تشغيل خادم الأسماء (DNS)", AutoSize = true, Checked = Value("DNS", "1") != "0" };
-            AddField(net, "", dnsBox, "اختياري. بدونه تدخل الأجهزة بعنوان IP هذا الجهاز، وهو الأسرع والأثبت. يلزم فقط لاسم " + Value("SERVER_NAME", "files.lan") + " وللفتح التلقائي.");
+            AddField(net, "", dnsBox, "اختياري. بدونه تدخل الأجهزة بعنوان IP هذا الجهاز، وهو الأسرع والأثبت. يلزم فقط لاسم " + Value("SERVER_NAME", "exams.lan") + " وللفتح التلقائي.");
             autoOpenBox = new CheckBox { Text = "فتح النظام تلقائيًا عند الاتصال بالواي فاي", AutoSize = true, Checked = Value("AUTO_OPEN", "0") == "1" };
             AddField(net, "", autoOpenBox, "يحتاج أن يكون هذا الجهاز خادم DNS في راوتر Deco، ومنفذ HTTP هو 80.");
 
@@ -3429,12 +3429,12 @@ namespace FileNestPanel
 
             // Online access, advanced (2026-10-31).
             var online = Section(body, "الوصول عبر الإنترنت (متقدم)",
-                "اختياري. يعمل الوصول عبر الإنترنت دون أي إعداد بنفق Cloudflare مجاني. لنفق دائم بنطاقك الخاص أنشئ نفقًا في حساب Cloudflare، ووجّه فيه اسمًا إلى http://127.0.0.1:" + IntValue("TUNNEL_PORT", 18093) +
-                " (النظام) واسمًا آخر إلى http://127.0.0.1:" + IntValue("PANEL_PORT", 18094) + " (لوحة التشغيل)، ثم الصق رمزه هنا.");
+                "اختياري. يعمل الوصول عبر الإنترنت دون أي إعداد بنفق Cloudflare مجاني. لنفق دائم بنطاقك الخاص أنشئ نفقًا في حساب Cloudflare، ووجّه فيه اسمًا إلى http://127.0.0.1:" + IntValue("TUNNEL_PORT", 18095) +
+                " (النظام) واسمًا آخر إلى http://127.0.0.1:" + IntValue("PANEL_PORT", 18096) + " (لوحة التشغيل)، ثم الصق رمزه هنا.");
             tokenBox = new TextBox { Width = Ui.S(300), RightToLeft = RightToLeft.No, Text = Value("TUNNEL_TOKEN", ""), UseSystemPasswordChar = Value("TUNNEL_TOKEN", "").Length > 0 };
             AddField(online, "رمز النفق (Token)", tokenBox, "اتركه فارغًا لاستعمال النفق المجاني التلقائي.");
             siteUrlBox = new TextBox { Width = Ui.S(300), RightToLeft = RightToLeft.No, Text = Value("TUNNEL_SITE_URL", "") };
-            AddField(online, "رابط النظام", siteUrlBox, "مثل https://files.example.com");
+            AddField(online, "رابط النظام", siteUrlBox, "مثل https://exams.example.com");
             panelUrlBox = new TextBox { Width = Ui.S(300), RightToLeft = RightToLeft.No, Text = Value("TUNNEL_PANEL_URL", "") };
             AddField(online, "رابط لوحة التشغيل", panelUrlBox, "مثل https://panel.example.com");
 
@@ -3442,7 +3442,7 @@ namespace FileNestPanel
             cancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; };
             defaults.Click += (s, e) =>
             {
-                nameBox.Text = "files.lan"; ipBox.Text = AutoIp; httpBox.Value = 80; httpsBox.Value = 443;
+                nameBox.Text = "exams.lan"; ipBox.Text = AutoIp; httpBox.Value = 80; httpsBox.Value = 443;
                 workersBox.Value = 16; dnsBox.Checked = true; autoOpenBox.Checked = true; backupBox.Text = Engine.DefaultBackupDir(root);
             };
             AcceptButton = save;
@@ -3506,7 +3506,7 @@ namespace FileNestPanel
             string name = nameBox.Text.Trim().ToLowerInvariant();
             if (!Regex.IsMatch(name, @"^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$"))
             {
-                error.Text = "اسم النظام غير صالح: أحرف إنجليزية وأرقام ونقاط فقط، مثل files.lan";
+                error.Text = "اسم النظام غير صالح: أحرف إنجليزية وأرقام ونقاط فقط، مثل exams.lan";
                 return;
             }
             string ip = ipBox.Text.Trim();
@@ -3523,7 +3523,7 @@ namespace FileNestPanel
                 error.Text = "منفذ HTTP ومنفذ HTTPS يجب أن يكونا مختلفين.";
                 return;
             }
-            var reserved = new[] { Engine.DbPort, 53, IntValue("TUNNEL_PORT", 18093), IntValue("PANEL_PORT", 18094) };
+            var reserved = new[] { Engine.DbPort, 53, IntValue("TUNNEL_PORT", 18095), IntValue("PANEL_PORT", 18096) };
             if (reserved.Contains(http) || reserved.Contains(https) || (http >= 9300 && http < 9400) || (https >= 9300 && https < 9400))
             {
                 error.Text = "هذا المنفذ محجوز لخدمة أخرى في النظام. اختر منفذًا آخر مثل 8080.";
@@ -3532,7 +3532,7 @@ namespace FileNestPanel
             string backup = backupBox.Text.Trim().TrimEnd('\\');
             if (backup.Length == 0 || !Path.IsPathRooted(backup))
             {
-                error.Text = "اكتب مسارًا كاملًا لمجلد النسخ الاحتياطية، مثل C:\\FileNestBackups";
+                error.Text = "اكتب مسارًا كاملًا لمجلد النسخ الاحتياطية، مثل C:\\ExamNestBackups";
                 return;
             }
             if ((backup + "\\").StartsWith(root.TrimEnd('\\') + "\\", StringComparison.OrdinalIgnoreCase))
@@ -3561,7 +3561,7 @@ namespace FileNestPanel
             {
                 if (u.Length > 0 && !Regex.IsMatch(u, @"^https://[A-Za-z0-9.-]+(:\d+)?$"))
                 {
-                    error.Text = "الرابط يجب أن يكون مثل https://files.example.com";
+                    error.Text = "الرابط يجب أن يكون مثل https://exams.example.com";
                     return;
                 }
             }
@@ -3797,7 +3797,7 @@ namespace FileNestPanel
                     req.Method = "POST";
                     req.ContentType = "application/json";
                     req.Accept = "application/json";
-                    req.UserAgent = "FileNestPanel";
+                    req.UserAgent = "ExamNestPanel";
                     req.Timeout = off ? 5000 : 20000;
                     var bytes = Encoding.UTF8.GetBytes(body);
                     using (var s = req.GetRequestStream()) s.Write(bytes, 0, bytes.Length);
@@ -4139,7 +4139,7 @@ a{color:var(--primary-dark)}.ltr{direction:ltr;unicode-bidi:embed}
         {
             return "<!doctype html><html lang='ar' dir='rtl'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>" +
                 "<meta name='robots' content='noindex'><title>" + title + "</title><style>" + Style + "</style></head><body>" +
-                "<header><div><b>FileNest</b><small>لوحة تشغيل الخادم عن بعد</small></div>" + (script.Length > 0 ? "<form method='post' action='/logout'><button>خروج</button></form>" : "") + "</header>" +
+                "<header><div><b>ExamNest</b><small>لوحة تشغيل الخادم عن بعد</small></div>" + (script.Length > 0 ? "<form method='post' action='/logout'><button>خروج</button></form>" : "") + "</header>" +
                 "<main>" + body + "</main><div id='msg'></div>" + (script.Length > 0 ? "<script>" + script + "</script>" : "") + "</body></html>";
         }
 

@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\View\View;
 
 /**
- * The offline server's activation page: the university's FileNest code from the
+ * The offline server's activation page: the university's exam-system code from the
  * licensing portal is sent once; the signed licence is kept in storage/app.
  */
 class ActivationController extends Controller

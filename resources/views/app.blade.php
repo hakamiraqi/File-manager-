@@ -14,9 +14,9 @@
             })();
         </script>
 
-        <title inertia>{{ \App\Models\Setting::get('site_name', config('app.name', 'FileNest')) }}</title>
+        <title inertia>{{ \App\Models\Setting::get('site_name', config('app.name', 'ExamNest')) }}</title>
 
-        <meta name="app-name" content="{{ \App\Models\Setting::get('site_name', config('app.name', 'FileNest')) }}">
+        <meta name="app-name" content="{{ \App\Models\Setting::get('site_name', config('app.name', 'ExamNest')) }}">
         @if($logo = \App\Models\Setting::get('logo_path'))
             <link rel="icon" href="{{ asset('storage/'.$logo) }}">
         @else

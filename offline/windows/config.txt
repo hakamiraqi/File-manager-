@@ -1,6 +1,6 @@
-# FileNest offline settings. Edit from the panel's Settings button, then press Stop and Start.
-# Name devices on the network use to open the system: https://files.lan
-SERVER_NAME=files.lan
+# ExamNest offline settings. Edit from the panel's Settings button, then press Stop and Start.
+# Name devices on the network use to open the system: https://exams.lan
+SERVER_NAME=exams.lan
 # How many requests are handled at the same time (raise for more users).
 PHP_WORKERS=16
 # Web ports. Change only if another program (XAMPP, IIS, Skype, or the clinic system) uses 80 or 443.
@@ -15,7 +15,7 @@ DNS=1
 # (the "sign in to network" page). Needs the router DNS set to this computer.
 AUTO_OPEN=0
 # Folder for backups (database every day and before every update, plus the
-# uploaded files). Empty = C:\FileNestBackups. Keep it outside this folder.
+# uploaded files). Empty = C:\ExamNestBackups. Keep it outside this folder.
 BACKUP_DIR=
 # 1 = reach the system and the panel over the internet through a free
 # Cloudflare tunnel (the panel's online access page turns it on).

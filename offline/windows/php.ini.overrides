@@ -1,5 +1,5 @@
 
-; --- FileNest offline overrides ---
+; --- ExamNest offline overrides ---
 extension_dir = "__EXT_DIR__"
 extension=curl
 extension=fileinfo

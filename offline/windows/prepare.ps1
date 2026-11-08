@@ -85,7 +85,7 @@ $ca = "$fwd/caddy-data/caddy/pki/authorities/local"
 	auto_https disable_redirects
 	# No HTTP/3 (2026-10-18): it runs over UDP, which the firewall rule
 	# doesn't open, so browsers on other devices kept retrying it and pages
-	# on https://files.lan loaded very slowly (by IP they were fine).
+	# on https://exams.lan loaded very slowly (by IP they were fine).
 	servers {
 		protocols h1 h2
 	}
@@ -145,7 +145,7 @@ $ca = "$fwd/caddy-data/caddy/pki/authorities/local"
 		root * "$ca"
 		rewrite * /root.crt
 		header Content-Type application/x-x509-ca-cert
-		header Content-Disposition "attachment; filename=filenest-ca.crt"
+		header Content-Disposition "attachment; filename=examnest-ca.crt"
 		file_server
 	}
 	handle /setup {
@@ -197,7 +197,7 @@ $ca = "$fwd/caddy-data/caddy/pki/authorities/local"
 https://${ServerName}:$HttpsPort, https://${ServerIp}:$HttpsPort {
 	tls internal
 	# The apps, client and certificate here too (2026-10-18), so
-	# https://files.lan/apps works as well as http.
+	# https://exams.lan/apps works as well as http.
 	import lanfiles
 	handle {
 		import app

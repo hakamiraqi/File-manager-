@@ -4,13 +4,13 @@ namespace App\Support;
 
 /**
  * Activation of the offline server (2026-11-05, by request), through the same
- * licensing portal as the clinic system: the university's FileNest code is sent
+ * licensing portal as the clinic system: the university's exam-system code is sent
  * once to the licensing server, which ties it to this computer and returns a
  * licence signed with its Ed25519 key. The licence is kept in
- * storage/app/offline-license.json and is valid only for FileNest on this computer.
+ * storage/app/offline-license.json and is valid only for the exam system on this computer.
  *
  * The machine id is a hash of Windows' MachineGuid, which the control panel
- * passes as FILENEST_MACHINE_GUID and writes to storage/app/machine-guid.txt.
+ * passes as EXAMNEST_MACHINE_GUID and writes to storage/app/machine-guid.txt.
  */
 class OfflineLicensing
 {
@@ -40,7 +40,7 @@ class OfflineLicensing
         return storage_path('app/offline-license.json');
     }
 
-    /** The saved licence, when it is genuine, for FileNest and for this computer. */
+    /** The saved licence, when it is genuine, for this system and for this computer. */
     public static function current(): ?array
     {
         $file = self::path();
@@ -70,7 +70,7 @@ class OfflineLicensing
         if (self::$machineId !== null) {
             return self::$machineId;
         }
-        $guid = trim((string) getenv('FILENEST_MACHINE_GUID'));
+        $guid = trim((string) getenv('EXAMNEST_MACHINE_GUID'));
         $file = storage_path('app/machine-guid.txt');
         if ($guid === '' && is_file($file)) {
             $guid = trim((string) file_get_contents($file));
@@ -82,7 +82,7 @@ class OfflineLicensing
         if ($guid === '') {
             $guid = is_file('/etc/machine-id') ? trim((string) file_get_contents('/etc/machine-id')) : (string) gethostname();
         }
-        $hash = strtoupper(substr(hash('sha256', 'filenest|'.strtolower($guid)), 0, 16));
+        $hash = strtoupper(substr(hash('sha256', 'examnest|'.strtolower($guid)), 0, 16));
 
         return self::$machineId = implode('-', str_split($hash, 4));
     }

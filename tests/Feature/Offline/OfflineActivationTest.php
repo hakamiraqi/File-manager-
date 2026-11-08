@@ -7,7 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
-/** The offline server is activated with a FileNest code from the shared licensing portal. */
+/** The offline server is activated with an exam-system code from the shared licensing portal. */
 class OfflineActivationTest extends TestCase
 {
     use RefreshDatabase;
@@ -22,14 +22,14 @@ class OfflineActivationTest extends TestCase
     protected function tearDown(): void
     {
         @unlink(OfflineLicensing::path());
-        putenv('FILENEST_MACHINE_GUID');
+        putenv('EXAMNEST_MACHINE_GUID');
         OfflineLicensing::forgetMachineId();
         parent::tearDown();
     }
 
     private function onComputer(string $guid): void
     {
-        putenv("FILENEST_MACHINE_GUID=$guid");
+        putenv("EXAMNEST_MACHINE_GUID=$guid");
         OfflineLicensing::forgetMachineId();
     }
 
@@ -46,7 +46,7 @@ class OfflineActivationTest extends TestCase
         ];
     }
 
-    public function test_the_offline_server_works_only_once_activated_with_a_filenest_code(): void
+    public function test_the_offline_server_works_only_once_activated_with_an_exams_code(): void
     {
         config(['offline.edition' => true, 'offline.activation' => true]);
 
@@ -54,10 +54,10 @@ class OfflineActivationTest extends TestCase
         $this->get('/activate')->assertOk()->assertSee(OfflineLicensing::machineId());
 
         Http::fake(['*/api/v1/offline/activate' => function ($request) {
-            $this->assertSame('filenest', $request['product']);
+            $this->assertSame('exams', $request['product']);
 
             return Http::response(['license' => $this->signed([
-                'code' => 'ABCD-EFGH-JKMN-PQRS', 'product' => 'filenest', 'university' => 'جامعة تكريت',
+                'code' => 'ABCD-EFGH-JKMN-PQRS', 'product' => 'exams', 'university' => 'جامعة تكريت',
                 'machine_id' => OfflineLicensing::machineId(),
             ])]);
         }]);
@@ -70,7 +70,7 @@ class OfflineActivationTest extends TestCase
         $this->get('/login')->assertRedirect('/activate');
     }
 
-    public function test_a_clinic_system_licence_does_not_unlock_filenest(): void
+    public function test_a_clinic_system_licence_does_not_unlock_the_exam_system(): void
     {
         config(['offline.edition' => true, 'offline.activation' => true]);
         Http::fake(['*/api/v1/offline/activate' => Http::response(['license' => $this->signed([
