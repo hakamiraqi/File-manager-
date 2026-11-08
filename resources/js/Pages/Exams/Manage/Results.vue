@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, summary: Object, questions: Array, attempts: Array, overrides: Array });
+const props = defineProps({ exam: Object, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const open = ref({});
@@ -27,6 +27,9 @@ const saveOverride = () => overrideForm.post(route('exams.manage.overrides.store
 const removeOverride = (o) => router.delete(route('exams.manage.overrides.destroy', o.id), { preserveScroll: true });
 
 const EVENT_LABELS = { hidden: 'غادر الصفحة', blur: 'ترك النافذة', paste: 'لصق', fullscreen_exit: 'خرج من ملء الشاشة', ip_changed: 'تغيّر العنوان' };
+const discClass = (d) => (d === null ? 'text-gray-400' : d < 0 ? 'font-semibold text-red-600' : d < 0.2 ? 'text-red-600' : d < 0.3 ? 'text-amber-600' : 'text-emerald-600');
+const alphaLabel = (a) => (a === null ? '' : a >= 0.8 ? t('exam.alpha_good', 'جيد') : a >= 0.7 ? t('exam.alpha_ok', 'مقبول') : t('exam.alpha_low', 'منخفض'));
+const maxBin = () => Math.max(1, ...(props.stats?.distribution ?? [0]));
 const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-600' : f > 85 ? 'text-amber-600' : 'text-emerald-600');
 </script>
 
@@ -52,9 +55,9 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
             </div>
 
             <div class="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-                <button v-for="k in ['attempts', 'questions', 'overrides']" :key="k" @click="tab = k"
+                <button v-for="k in ['attempts', 'stats', 'questions', 'overrides']" :key="k" @click="tab = k"
                     class="-mb-px border-b-2 px-4 py-2 text-sm" :class="tab === k ? 'border-[var(--accent-600)] font-medium text-[var(--accent-700)] dark:text-white' : 'border-transparent text-gray-500'">
-                    {{ { attempts: t('exam.tab_attempts', 'المحاولات'), questions: t('exam.tab_questions', 'تحليل الأسئلة'), overrides: t('exam.tab_overrides', 'الاستثناءات') }[k] }}
+                    {{ { attempts: t('exam.tab_attempts', 'المحاولات'), stats: t('exam.tab_stats', 'الإحصاءات'), questions: t('exam.tab_questions', 'تحليل الأسئلة'), overrides: t('exam.tab_overrides', 'الاستثناءات') }[k] }}
                 </button>
             </div>
 
@@ -92,11 +95,42 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 </div>
             </div>
 
+            <!-- Statistics -->
+            <div v-else-if="tab === 'stats'" class="space-y-4">
+                <p v-if="!stats.students" class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600">{{ t('exam.no_stats', 'تظهر الإحصاءات بعد أن يسلّم الطلاب.') }}</p>
+                <template v-else>
+                    <div class="grid grid-cols-2 gap-3 sm:grid-cols-6">
+                        <div v-for="(v, k) in { mean: stats.mean, median: stats.median, sd: stats.sd, min: stats.min, max: stats.max }" :key="k" class="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
+                            <p class="text-xs text-gray-500">{{ { mean: t('exam.mean', 'المتوسط'), median: t('exam.median', 'الوسيط'), sd: t('exam.sd', 'الانحراف المعياري'), min: t('exam.lowest', 'الأدنى'), max: t('exam.highest', 'الأعلى') }[k] }}</p>
+                            <p class="text-xl font-semibold">{{ v ?? '—' }}<span v-if="v !== null && k !== 'sd'" class="text-sm">%</span></p>
+                        </div>
+                        <div class="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800" :title="t('exam.alpha_hint', 'ألفا كرونباخ: مدى اتساق أسئلة الامتحان في قياس الشيء نفسه. 0.7 فأكثر مقبول.')">
+                            <p class="text-xs text-gray-500">{{ t('exam.alpha', 'الثبات (ألفا)') }}</p>
+                            <p class="text-xl font-semibold">{{ stats.alpha ?? '—' }} <span class="text-xs font-normal text-gray-500">{{ alphaLabel(stats.alpha) }}</span></p>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                        <p class="mb-3 text-sm font-medium">{{ t('exam.distribution', 'توزيع الدرجات') }} <span class="text-xs font-normal text-gray-500">· {{ stats.students }} {{ t('exam.students', 'الطلاب') }}</span></p>
+                        <div class="flex h-40 items-end gap-1.5" dir="ltr" role="img" :aria-label="t('exam.distribution', 'توزيع الدرجات')">
+                            <div v-for="(n, b) in stats.distribution" :key="b" class="flex flex-1 flex-col items-center justify-end gap-1">
+                                <span class="text-xs text-gray-500">{{ n || '' }}</span>
+                                <div class="w-full rounded-t" :class="exam.pass_mark !== null && b * 10 < exam.pass_mark ? 'bg-red-300 dark:bg-red-800' : 'bg-[var(--accent-500)]'"
+                                    :style="{ height: (n / maxBin()) * 100 + '%', minHeight: n ? '4px' : '0' }" />
+                            </div>
+                        </div>
+                        <div class="mt-1 flex gap-1.5 text-center text-[10px] text-gray-400" dir="ltr">
+                            <span v-for="b in 10" :key="b" class="flex-1">{{ (b - 1) * 10 }}</span>
+                        </div>
+                    </div>
+                    <p class="text-xs text-gray-500">{{ t('exam.stats_hint', 'تُحسب من أول محاولة مُسلّمة لكل طالب. الأسئلة العشوائية من البنك لا تدخل في تحليل الأسئلة لأن الطلاب لم يأخذوها جميعاً.') }}</p>
+                </template>
+            </div>
+
             <!-- Question analysis -->
             <div v-else-if="tab === 'questions'" class="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                 <table class="w-full text-sm">
                     <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-gray-700/50">
-                        <tr><th class="px-4 py-2 text-start">#</th><th class="px-2 py-2 text-start">{{ t('exam.question', 'السؤال') }}</th><th class="px-2 py-2">{{ t('exam.points', 'درجة') }}</th><th class="px-4 py-2">{{ t('exam.facility', 'السهولة %') }}</th></tr>
+                        <tr><th class="px-4 py-2 text-start">#</th><th class="px-2 py-2 text-start">{{ t('exam.question', 'السؤال') }}</th><th class="px-2 py-2">{{ t('exam.points', 'درجة') }}</th><th class="px-4 py-2">{{ t('exam.facility', 'السهولة %') }}</th><th class="px-4 py-2">{{ t('exam.discrimination', 'التمييز') }}</th></tr>
                     </thead>
                     <tbody>
                         <tr v-for="q in questions" :key="q.id" class="border-t border-gray-100 dark:border-gray-700">
@@ -104,10 +138,12 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                             <td class="max-w-xl truncate px-2 py-2" dir="auto">{{ q.body }}</td>
                             <td class="px-2 py-2 text-center">{{ q.points }}</td>
                             <td class="px-4 py-2 text-center font-medium" :class="facilityClass(q.facility)">{{ q.facility ?? '—' }}</td>
+                            <td class="px-4 py-2 text-center font-medium" :class="discClass(q.discrimination)">{{ q.discrimination ?? '—' }}</td>
                         </tr>
                     </tbody>
                 </table>
-                <p class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-gray-700">{{ t('exam.facility_hint', 'السهولة = متوسط ما حصّله الطلاب من درجة السؤال. أقل من 30% قد يعني سؤالاً صعباً جداً أو مفتاحاً خاطئاً.') }}</p>
+                <p class="border-t border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-gray-700">{{ t('exam.facility_hint', 'السهولة = متوسط ما حصّله الطلاب من درجة السؤال. أقل من 30% قد يعني سؤالاً صعباً جداً أو مفتاحاً خاطئاً.') }}
+                    {{ t('exam.discrimination_hint', 'التمييز = هل يجيب عنه المتفوقون أكثر من غيرهم: فوق 0.3 جيد، تحت 0.2 ضعيف، والسالب يستحق مراجعة المفتاح.') }}</p>
             </div>
 
             <!-- Overrides -->

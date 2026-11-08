@@ -60,7 +60,7 @@ class NewTypesTest extends TestCase
     {
         $exam = $this->exam($this->questions());
         [$classify, $hotspot, $upload] = $exam->questions()->get()->all();
-        $this->assertSame(['image' => $this->image, 'zones' => [['x' => 40.0, 'y' => 30.0, 'w' => 10.0, 'h' => 10.0]]], $hotspot->settings);
+        $this->assertEquals(['image' => $this->image, 'zones' => [['x' => 40.0, 'y' => 30.0, 'w' => 10.0, 'h' => 10.0]]], $hotspot->settings);
         $this->assertSame(['max_mb' => 1, 'types' => 'pdf,docx'], $upload->settings);
         $this->assertSame(11.0, $exam->maxScore());
 

@@ -590,5 +590,21 @@
     "exam.type_classify": "Classify (items into categories)",
     "exam.type_upload": "File upload",
     "exam.type_hotspot": "Point on a picture",
-    "exam.type_random": "Random questions from the bank"
+    "exam.type_random": "Random questions from the bank",
+    "exam.tab_stats": "Statistics",
+    "exam.no_stats": "Statistics appear once students submit.",
+    "exam.mean": "Mean",
+    "exam.median": "Median",
+    "exam.sd": "Standard deviation",
+    "exam.lowest": "Lowest",
+    "exam.highest": "Highest",
+    "exam.alpha": "Reliability (alpha)",
+    "exam.alpha_good": "good",
+    "exam.alpha_ok": "acceptable",
+    "exam.alpha_low": "low",
+    "exam.alpha_hint": "Cronbach's alpha: how consistently the exam's questions measure the same thing. 0.7 or more is acceptable.",
+    "exam.distribution": "Score distribution",
+    "exam.discrimination": "Discrimination",
+    "exam.stats_hint": "Worked out from each student's first submitted attempt. Random questions from the bank are left out of the question analysis, since not every student had them.",
+    "exam.discrimination_hint": "Discrimination = whether stronger students get it right more often: above 0.3 good, below 0.2 weak, and a negative value calls for checking the key."
 }

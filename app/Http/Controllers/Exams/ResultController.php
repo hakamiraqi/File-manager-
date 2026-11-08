@@ -12,6 +12,7 @@ use App\Models\Exams\Question;
 use App\Models\User;
 use App\Services\Exams\Grader;
 use App\Services\Exams\Presenter;
+use App\Services\Exams\Statistics;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -30,6 +31,7 @@ class ResultController extends Controller
         $attempts = $exam->attempts()->with(['user:id,name,email', 'answers.question', 'events'])->orderBy('user_id')->orderBy('number')->get();
         $graded = $exam->questions->filter(fn (Question $q) => $q->isGraded());
         $submitted = $attempts->whereNotNull('submitted_at')->whereNotNull('score');
+        $stats = (new Statistics)->analyse($graded->values(), $attempts);
 
         return Inertia::render('Exams/Manage/Results', [
             'exam' => [
@@ -46,17 +48,16 @@ class ResultController extends Controller
                 'pending' => $attempts->where('needs_grading', true)->count(),
                 'average' => $submitted->isEmpty() ? null : round($submitted->avg(fn ($a) => $a->percent()), 1),
             ],
-            'questions' => $graded->values()->map(function (Question $q, $i) use ($attempts) {
-                $answers = $attempts->whereNotNull('submitted_at')->flatMap->answers->where('exam_question_id', $q->id)->whereNotNull('points');
-
+            'stats' => collect($stats)->except('items'),
+            'questions' => $graded->values()->map(function (Question $q, $i) use ($stats) {
                 return [
                     'id' => $q->id,
                     'number' => $i + 1,
                     'type' => $q->type,
                     'body' => Question::pick($q->body, app()->getLocale(), $q->exam->languages ?? []),
                     'points' => $q->points,
-                    // Facility: the average share of the points the students earned.
-                    'facility' => $answers->isEmpty() || $q->points <= 0 ? null : round($answers->avg('points') / $q->points * 100),
+                    'facility' => $stats['items'][$q->id]['facility'],
+                    'discrimination' => $stats['items'][$q->id]['discrimination'],
                 ];
             }),
             'attempts' => $attempts->map(fn (Attempt $a) => [
