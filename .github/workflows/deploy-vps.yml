@@ -85,12 +85,8 @@ jobs:
             --exclude='./public/storage' --exclude='./mobile' --exclude='./offline' --exclude='./tests' .
           ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "mkdir -p '$APP_DIR' && tar xzf - -C '$APP_DIR'" < /tmp/app.tgz
           ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "cd '$APP_DIR' && sh deploy/vps/deploy.sh" | tee /tmp/deploy.log
-          # First install only: the generated admin password goes to this run's summary (private repo),
-          # so it can be read without SSH. Change it after the first login.
-          if grep -q 'Admin password saved' /tmp/deploy.log; then
-            pw=$(ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "cat ~/filenest-admin-password.txt")
-            { echo '### First admin login'; echo '```'; echo "$pw"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # The first admin password stays in ~/filenest-admin-password.txt on the server only:
+          # this repository is public, so its run summaries are too.
 
       - name: Check the site answers
         run: |
