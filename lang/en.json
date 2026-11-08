@@ -538,5 +538,10 @@
     "exam.type_matching": "Matching",
     "exam.type_ordering": "Ordering",
     "exam.type_essay": "Essay",
-    "exam.type_description": "Text (no mark)"
+    "exam.type_description": "Text (no mark)",
+    "exam.blank": "Blank",
+    "exam.type_cloze": "Fill in the blanks",
+    "exam.cloze_hint_typed": "A blank the student types: [[Baghdad|baghdad]] — any of the written answers is accepted.",
+    "exam.cloze_hint_select": "A list to pick from: [[*Basra|Mosul|Erbil]] — the star marks the right one; options are shown shuffled.",
+    "exam.cloze_hint_langs": "Every language has the same blanks in the same order. Partial credit by the number of right blanks."
 }

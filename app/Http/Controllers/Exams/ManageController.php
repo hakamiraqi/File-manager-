@@ -234,6 +234,14 @@ class ManageController extends Controller
                     $errors["questions.$i.settings"] = "السؤال $n: اكتب إجابة مقبولة واحدة على الأقل.";
                 }
             }
+            if ($type === Question::CLOZE) {
+                $counts = collect($body)->map(fn ($t) => count(\App\Services\Exams\Cloze::blanks($t)))->unique();
+                if ($body !== [] && $counts->first() === 0) {
+                    $errors["questions.$i.body"] = "السؤال $n: ضع فراغاً واحداً على الأقل بين [[ و ]].";
+                } elseif ($counts->count() > 1) {
+                    $errors["questions.$i.body"] = "السؤال $n: عدد الفراغات يجب أن يكون نفسه في كل لغة.";
+                }
+            }
             if ($type === Question::NUMERIC) {
                 if (\App\Services\Exams\Grader::toNumber($settings['answer'] ?? null) === null) {
                     $errors["questions.$i.settings"] = "السؤال $n: اكتب الإجابة الرقمية.";

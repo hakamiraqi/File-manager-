@@ -204,6 +204,37 @@ class ExamFlowTest extends TestCase
         $this->assertSame(1, Attempt::where('user_id', $student->id)->count());
     }
 
+    public function test_fill_in_the_blanks_typed_and_picked(): void
+    {
+        $teacher = $this->examiner();
+        $exam = $this->buildExam($teacher, ['questions' => [[
+            'type' => 'cloze', 'points' => 4,
+            'body' => ['ar' => 'عاصمة العراق [[بغداد]] وأكبر مدن الجنوب [[*البصرة|الموصل|أربيل]].', 'en' => 'Capital [[Baghdad]], south [[*Basra|Mosul|Erbil]].'],
+        ]]]);
+        $q = $exam->questions()->first();
+
+        // A blank missing in one language is refused.
+        $this->actingAs($teacher)->put(route('exams.manage.update', $exam), [
+            'title' => ['ar' => 'x'], 'languages' => ['ar', 'en'], 'direction' => 'auto', 'max_attempts' => 1,
+            'grading_method' => 'highest', 'show_results' => 'after_submit',
+            'questions' => [['type' => 'cloze', 'points' => 1, 'body' => ['ar' => 'أ [[ب]]', 'en' => 'a [[b]] [[c]]']]],
+        ])->assertSessionHasErrors('questions.0.body');
+
+        $student = User::factory()->create();
+        $this->actingAs($student)->post(route('exams.start', $exam));
+        $attempt = Attempt::where('user_id', $student->id)->first();
+
+        $this->actingAs($student)->get(route('exams.attempts.take', $attempt))
+            ->assertInertia(fn (AssertableInertia $p) => $p->where('questions.0.parts.1.kind', 'text')
+                ->where('questions.0.parts.3.kind', 'select')->has('questions.0.parts.3.options', 3)
+                ->where('questions.0.parts.1', fn ($part) => ! isset($part['answers'])));
+
+        // The first blank right (the English answer counts too), the list wrong: half of 4.
+        $this->actingAs($student)->postJson(route('exams.attempts.save', $attempt), ['question_id' => $q->id, 'response' => ['blanks' => ['baghdad', 'الموصل']]])->assertOk();
+        $this->actingAs($student)->post(route('exams.attempts.submit', $attempt));
+        $this->assertSame(2.0, $attempt->fresh()->score);
+    }
+
     public function test_grader_reads_numbers_and_arabic_spelling(): void
     {
         $this->assertSame(12.5, Grader::toNumber('١٢٫٥'));

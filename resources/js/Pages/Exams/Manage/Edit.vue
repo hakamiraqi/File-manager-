@@ -13,7 +13,7 @@ const page = usePage();
 
 const TYPE_LABELS = {
     single: 'اختيار من متعدد (إجابة واحدة)', multiple: 'اختيار من متعدد (عدة إجابات)', true_false: 'صح / خطأ',
-    short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', essay: 'مقالي', description: 'نص توضيحي (بلا درجة)',
+    short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي', description: 'نص توضيحي (بلا درجة)',
 };
 const LANG_LABELS = { ar: 'العربية', en: 'English', ku: 'کوردی' };
 const typeLabel = (type) => t('exam.type_' + type, TYPE_LABELS[type]);
@@ -229,6 +229,12 @@ function save() {
                         <button @click="q.choices.splice(j, 1)" class="mt-1 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
                     </div>
                     <button @click="q.choices.push(choice())" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.add_item', 'عنصر') }}</button>
+                </div>
+
+                <div v-else-if="q.type === 'cloze'" class="rounded-lg bg-gray-50 p-3 text-xs leading-relaxed text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    <p>{{ t('exam.cloze_hint_typed', 'فراغ يكتبه الطالب: [[بغداد|بغدادُ]] — تُقبل أي إجابة من المكتوبة.') }}</p>
+                    <p>{{ t('exam.cloze_hint_select', 'قائمة يختار منها: [[*البصرة|الموصل|أربيل]] — النجمة على الصحيحة، وتظهر الخيارات مخلوطة.') }}</p>
+                    <p>{{ t('exam.cloze_hint_langs', 'في كل لغة نفس عدد الفراغات وبنفس الترتيب. الدرجة جزئية حسب عدد الفراغات الصحيحة.') }}</p>
                 </div>
 
                 <div v-else-if="q.type === 'essay'" class="grid gap-3 sm:grid-cols-2">

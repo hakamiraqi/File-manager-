@@ -17,12 +17,13 @@ class Question extends Model
     public const NUMERIC = 'numeric';         // a number within a tolerance
     public const MATCHING = 'matching';       // each item goes with one of the targets
     public const ORDERING = 'ordering';       // put the items in the right order
+    public const CLOZE = 'cloze';             // blanks in the text: typed, or picked from a list
     public const ESSAY = 'essay';             // marked by hand
     public const DESCRIPTION = 'description'; // text or media for the questions after it, no mark
 
     public const TYPES = [
         self::SINGLE, self::MULTIPLE, self::TRUE_FALSE, self::SHORT, self::NUMERIC,
-        self::MATCHING, self::ORDERING, self::ESSAY, self::DESCRIPTION,
+        self::MATCHING, self::ORDERING, self::CLOZE, self::ESSAY, self::DESCRIPTION,
     ];
 
     /** Types whose answer is picked from the choices. */

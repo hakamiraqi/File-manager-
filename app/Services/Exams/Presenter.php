@@ -79,6 +79,18 @@ class Presenter
                 ->unique(fn (Choice $c) => Grader::normalize($text($c->match)))
                 ->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->match)])->values()->all();
         }
+        if ($q->type === Question::CLOZE) {
+            // The text in pieces; the answers never leave the server, a list's options are shuffled.
+            $data['parts'] = collect(Cloze::parse($data['body']))->map(function ($p) use ($attempt) {
+                if (! isset($p['blank'])) {
+                    return $p;
+                }
+                $options = collect($p['options'])->sortBy(fn ($o) => crc32($attempt->id.'-z-'.$p['blank'].'-'.$o))->values()->all();
+
+                return ['blank' => $p['blank'], 'kind' => $p['kind'], 'options' => $options];
+            })->all();
+            $data['body'] = '';
+        }
         if ($q->type === Question::ESSAY) {
             $data['min_words'] = $q->settings['min_words'] ?? null;
             $data['max_words'] = $q->settings['max_words'] ?? null;
@@ -102,6 +114,7 @@ class Presenter
                 Question::NUMERIC => [($q->settings['answer'] ?? '').(filled($q->settings['tolerance'] ?? null) ? ' ± '.$q->settings['tolerance'] : '')],
                 Question::MATCHING => $q->choices->map(fn ($c) => $text($c->body).' ← '.$text($c->match))->all(),
                 Question::ORDERING => $q->choices->sortBy('position')->map(fn ($c) => $text($c->body))->values()->all(),
+                Question::CLOZE => collect(Cloze::blanks($text($q->body)))->map(fn ($b) => ($b['blank'] + 1).': '.($b['answers'][0] ?? ''))->all(),
                 default => null,
             };
         }
@@ -109,7 +122,7 @@ class Presenter
         return [
             'id' => $q->id,
             'type' => $q->type,
-            'body' => $text($q->body),
+            'body' => $q->type === Question::CLOZE ? preg_replace('/\[\[.+?\]\]/u', '____', $text($q->body)) : $text($q->body),
             'points' => $q->points,
             'earned' => $answer?->points,
             'given' => $this->describeResponse($q, $answer?->response, $text),
@@ -135,6 +148,7 @@ class Presenter
             Question::NUMERIC => isset($response['value']) ? (string) $response['value'] : null,
             Question::MATCHING => collect($response['pairs'] ?? [])->map(fn ($target, $item) => isset($byId[(int) $item], $byId[(int) $target])
                 ? $text($byId[(int) $item]->body).' ← '.$text($byId[(int) $target]->match) : null)->filter()->implode(' · ') ?: null,
+            Question::CLOZE => collect($response['blanks'] ?? [])->filter(fn ($v) => trim((string) $v) !== '')->map(fn ($v, $i) => ((int) $i + 1).': '.$v)->implode(' · ') ?: null,
             Question::ORDERING => collect($response['order'] ?? [])->map(fn ($id) => isset($byId[(int) $id]) ? $text($byId[(int) $id]->body) : null)->filter()->implode(' ← ') ?: null,
             default => null,
         };

@@ -24,6 +24,7 @@ for (const q of props.questions) {
         touched[q.id] = !!r.order?.length;
     }
     else if (q.type === 'numeric') state[q.id] = { value: r.value ?? '' };
+    else if (q.type === 'cloze') state[q.id] = { blanks: { ...(r.blanks ?? {}) } };
     else if (q.type === 'short' || q.type === 'essay') state[q.id] = { text: r.text ?? '' };
     else state[q.id] = { choice: r.choice ?? null };
 }
@@ -37,6 +38,7 @@ const answered = (q) => {
     if (q.type === 'matching') return Object.keys(s.pairs).length > 0;
     if (q.type === 'ordering') return touched[q.id];
     if (q.type === 'numeric') return String(s.value).trim() !== '';
+    if (q.type === 'cloze') return Object.values(s.blanks).some((v) => String(v ?? '').trim() !== '');
     if (q.type === 'short' || q.type === 'essay') return s.text.trim() !== '';
     return s.choice !== null;
 };
@@ -188,7 +190,22 @@ onBeforeUnmount(() => {
                             <FlagIcon class="h-4 w-4" /> {{ t('exam.flag', 'راجع لاحقاً') }}
                         </button>
                     </div>
-                    <p class="whitespace-pre-line text-base leading-relaxed" dir="auto">{{ current.body }}</p>
+                    <p v-if="current.type !== 'cloze'" class="whitespace-pre-line text-base leading-relaxed" dir="auto">{{ current.body }}</p>
+                    <!-- Fill in the blanks: the text with its boxes and lists in place -->
+                    <p v-else class="whitespace-pre-line text-base leading-loose" dir="auto">
+                        <template v-for="(part, k) in current.parts" :key="k">
+                            <span v-if="part.blank === undefined">{{ part.text }}</span>
+                            <select v-else-if="part.kind === 'select'" v-model="state[current.id].blanks[part.blank]" @change="save(current)"
+                                :aria-label="t('exam.blank', 'فراغ') + ' ' + (part.blank + 1)"
+                                class="mx-1 inline-block rounded-md border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option :value="undefined">—</option>
+                                <option v-for="o in part.options" :key="o" :value="o">{{ o }}</option>
+                            </select>
+                            <input v-else v-model="state[current.id].blanks[part.blank]" @input="save(current, 800)" type="text" dir="auto"
+                                :aria-label="t('exam.blank', 'فراغ') + ' ' + (part.blank + 1)"
+                                class="mx-1 inline-block w-36 rounded-md border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        </template>
+                    </p>
 
                     <div class="mt-4">
                         <!-- One answer / true-false -->

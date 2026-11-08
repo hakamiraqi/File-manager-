@@ -11,6 +11,7 @@ use App\Models\Exams\Question;
  * person has to mark it (essays). Responses, by type:
  *   single / true_false {choice: id}     multiple {choices: [id]}     short / essay {text}
  *   numeric {value}                      matching {pairs: {itemId: targetId}}     ordering {order: [id]}
+ *   cloze {blanks: {0: 'typed text', 1: 'picked option'}}
  */
 class Grader
 {
@@ -124,6 +125,22 @@ class Grader
                     && $matchOf[(int) $pairs[$c->id]] === $matchOf[$c->id])->count();
 
                 return $right / $choices->count();
+
+            case Question::CLOZE:
+                $accepted = Cloze::acceptedByBlank($question);
+                if ($accepted === []) {
+                    return 0.0;
+                }
+                $given = (array) ($response['blanks'] ?? []);
+                $right = 0;
+                foreach ($accepted as $i => $answers) {
+                    $value = trim((string) ($given[$i] ?? ''));
+                    if ($value !== '' && collect($answers)->contains(fn ($a) => self::normalize($a) === self::normalize($value))) {
+                        $right++;
+                    }
+                }
+
+                return $right / count($accepted);
 
             case Question::ORDERING:
                 $order = collect($response['order'] ?? [])->map(fn ($id) => (int) $id)->values();
