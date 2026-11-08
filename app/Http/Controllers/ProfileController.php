@@ -26,10 +26,8 @@ class ProfileController extends Controller
             'mustVerifyEmail' => $user instanceof MustVerifyEmail,
             'status' => session('status'),
             'stats' => [
-                'files' => $user->files()->count(),
-                'folders' => $user->folders()->count(),
-                'storage_used' => (int) $user->storage_used_bytes,
-                'storage_total' => $user->quotaBytes(),
+                'attempts' => \App\Models\Exams\Attempt::where('user_id', $user->id)->whereNotNull('submitted_at')->count(),
+                'exams' => \App\Models\Exams\Exam::where('user_id', $user->id)->count(),
                 'member_since' => $user->created_at?->toIso8601String(),
                 'last_login_at' => $user->last_login_at?->toIso8601String(),
                 'activity_30d' => \App\Models\ActivityLog::where('user_id', $user->id)

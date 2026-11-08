@@ -2,8 +2,6 @@
 
 namespace App\Providers;
 
-use App\Models\File;
-use App\Models\Folder;
 use App\Models\Setting;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -35,8 +33,7 @@ class AppServiceProvider extends ServiceProvider
         Vite::prefetch(concurrency: 3);
 
         Relation::morphMap([
-            'file' => File::class,
-            'folder' => Folder::class,
+            'exam' => \App\Models\Exams\Exam::class,
         ]);
 
         Event::listen(SocialiteWasCalled::class, function (SocialiteWasCalled $event) {
@@ -56,10 +53,7 @@ class AppServiceProvider extends ServiceProvider
             Gate::define($ability, fn ($user) => $user->hasAdminCapability($capability));
         }
 
-        Gate::define('manage-library', fn ($user) => $user->canManageLibrary());
         Gate::define('manage-exams', fn ($user) => $user->canManageExams());
-        // «تواصل معنا» inbox: admins who manage settings, and librarians.
-        Gate::define('manage-contact', fn ($user) => $user->hasAdminCapability('can_manage_settings') || $user->canManageLibrary());
 
         Gate::define('access-settings-page', fn ($user) => $user->hasAdminCapability('can_manage_settings')
             || $user->hasAdminCapability('can_manage_appearance'));

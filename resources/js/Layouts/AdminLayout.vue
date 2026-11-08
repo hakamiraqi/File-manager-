@@ -17,13 +17,9 @@ import {
     ArrowUturnLeftIcon,
     Bars3Icon,
     XMarkIcon,
-    ShieldCheckIcon,
     LockClosedIcon,
     EnvelopeIcon,
-    ChartBarIcon,
     LanguageIcon,
-    ChatBubbleLeftRightIcon,
-    DocumentMagnifyingGlassIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -35,13 +31,9 @@ const mobileOpen = ref(false);
 const nav = computed(() => [
     { label: t('admin.nav.dashboard', 'لوحة التحكم'), href: () => route('admin.dashboard'), icon: Squares2X2Icon, active: () => route().current('admin.dashboard'), show: true },
     { label: t('admin.nav.users', 'المستخدمون'), href: () => route('admin.users.index'), icon: UsersIcon, active: () => route().current('admin.users.*'), show: admin.value.users },
-    { label: t('admin.nav.permissions', 'الصلاحيات'), href: () => route('admin.permissions.index'), icon: ShieldCheckIcon, active: () => route().current('admin.permissions.*'), show: admin.value.settings },
     { label: t('admin.nav.settings', 'الإعدادات العامة'), href: () => route('admin.settings.index'), icon: Cog6ToothIcon, active: () => route().current('admin.settings.*'), show: admin.value.settings || admin.value.appearance },
     { label: t('admin.nav.security', 'الأمان وتسجيل الدخول'), href: () => route('admin.security.index'), icon: LockClosedIcon, active: () => route().current('admin.security.*'), show: admin.value.settings },
-    { label: t('nav.contact_inbox', 'التواصل معنا'), href: () => route('contact.inbox'), icon: ChatBubbleLeftRightIcon, active: () => route().current('contact.inbox'), show: admin.value.settings },
-    { label: t('admin.nav.ocr', 'التعرف على النصوص'), href: () => route('admin.ocr.index'), icon: DocumentMagnifyingGlassIcon, active: () => route().current('admin.ocr.*'), show: admin.value.settings },
     { label: t('admin.nav.mail', 'البريد الإلكتروني'), href: () => route('admin.mail.index'), icon: EnvelopeIcon, active: () => route().current('admin.mail.*'), show: admin.value.settings },
-    { label: t('admin.nav.analytics', 'التحليلات'), href: () => route('admin.analytics.index'), icon: ChartBarIcon, active: () => route().current('admin.analytics.*'), show: admin.value.statistics },
     { label: t('admin.nav.translations', 'الترجمات'), href: () => route('admin.translations.index'), icon: LanguageIcon, active: () => route().current('admin.translations.*'), show: admin.value.translations },
     { label: t('admin.nav.activity', 'سجل النشاطات'), href: () => route('admin.activity.index'), icon: ClipboardDocumentListIcon, active: () => route().current('admin.activity.*'), show: admin.value.statistics },
 ]);
@@ -74,7 +66,7 @@ const nav = computed(() => [
                 </Link>
 
                 <div class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
-                    <Link :href="route('dashboard')" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
+                    <Link :href="route('exams.index')" class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
                         <ArrowUturnLeftIcon class="h-5 w-5" />
                         {{ t('admin.nav.back_to_files', 'العودة إلى ملفاتي') }}
                     </Link>

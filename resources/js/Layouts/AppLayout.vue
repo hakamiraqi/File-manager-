@@ -1,29 +1,18 @@
 <script setup>
 import UserAvatar from '@/Components/UserAvatar.vue';
-import { useSaved } from '@/Composables/useSaved';
-import { ref, computed, watch } from 'vue';
+import { ref, computed } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
-import StorageMeter from '@/Components/StorageMeter.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import NotificationBell from '@/Components/NotificationBell.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
-    FolderIcon,
-    ShareIcon,
-    TrashIcon,
-    Cog6ToothIcon,
     Bars3Icon,
     XMarkIcon,
     ShieldCheckIcon,
-    QueueListIcon,
-    BookOpenIcon,
-    AcademicCapIcon,
-    BookmarkIcon,
-    ChatBubbleLeftRightIcon,
     ClipboardDocumentListIcon,
     PencilSquareIcon,
 } from '@heroicons/vue/24/outline';
@@ -31,10 +20,7 @@ import {
 const { t } = useTrans();
 const page = usePage();
 const user = computed(() => page.props.auth.user);
-const quota = computed(() => page.props.quota);
 const mobileOpen = ref(false);
-const saved = useSaved();
-watch(() => page.props.savedIds, (ids) => saved.load(ids), { immediate: true });
 
 const nav = computed(() => [
     { label: t('nav.exams', 'امتحاناتي'), href: route('exams.index'), icon: ClipboardDocumentListIcon, active: route().current('exams.index') || route().current('exams.show') || route().current('exams.attempts.*') },
@@ -90,9 +76,6 @@ function logout() {
                 </div>
             </nav>
 
-            <div class="absolute inset-x-0 bottom-0 border-t border-gray-200 p-4 dark:border-gray-700" v-if="false && quota">
-                <StorageMeter :used="quota.used" :total="quota.total" :percent="quota.percent" />
-            </div>
         </aside>
 
         <div

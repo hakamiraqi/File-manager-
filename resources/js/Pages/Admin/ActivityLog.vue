@@ -41,14 +41,11 @@ const PRESETS = [
 
 const KINDS = {
     all: { label: t('activity.k.all', 'الكل'), icon: FunnelIcon, tone: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
-    uploads: { label: t('analytics.cat.uploads', 'الرفع'), icon: ArrowUpTrayIcon, tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
-    data_entry: { label: t('analytics.cat.data_entry', 'إدخال البيانات'), icon: PencilSquareIcon, tone: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' },
-    circulation: { label: t('analytics.cat.circulation', 'الإعارة'), icon: BookOpenIcon, tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
-    sharing: { label: t('analytics.cat.sharing', 'المشاركة'), icon: ShareIcon, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
-    downloads: { label: t('analytics.cat.downloads', 'التنزيل'), icon: ArrowDownTrayIcon, tone: 'bg-teal-100 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300' },
-    deletions: { label: t('analytics.cat.deletions', 'الحذف'), icon: TrashIcon, tone: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300' },
+    exams_authoring: { label: t('activity.k.exams_authoring', 'إعداد الامتحانات'), icon: PencilSquareIcon, tone: 'bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300' },
+    exams_taking: { label: t('activity.k.exams_taking', 'أداء الامتحانات'), icon: ArrowUpTrayIcon, tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300' },
+    exams_marking: { label: t('activity.k.exams_marking', 'التصحيح'), icon: BookOpenIcon, tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
+    accounts: { label: t('activity.k.accounts', 'الحسابات'), icon: ShareIcon, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
     admin: { label: t('activity.k.admin', 'الإدارة'), icon: Cog6ToothIcon, tone: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' },
-    media: { label: t('activity.k.media', 'الوسائط والنسخ'), icon: FilmIcon, tone: 'bg-pink-100 text-pink-700 dark:bg-pink-500/15 dark:text-pink-300' },
     other: { label: t('activity.k.other', 'أخرى'), icon: EllipsisHorizontalCircleIcon, tone: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
 };
 const ROLE_LABELS = { admin: t('role.admin', 'مدير'), editor: t('role.editor', 'محرّر'), contributor: t('role.contributor', 'مساهم'), user: t('role.user', 'مستخدم') };
@@ -130,8 +127,7 @@ function device(agent) {
 }
 function subjectLink(s) {
     if (!s) return null;
-    if (s.type === 'folder') return route('dashboard', { folder: s.id });
-    if (s.type === 'file') return route('dashboard', s.folder_id ? { folder: s.folder_id } : {});
+    if (s.type === 'exam') return route('exams.manage.edit', s.id);
     return null;
 }
 const nf = new Intl.NumberFormat('ar-IQ');

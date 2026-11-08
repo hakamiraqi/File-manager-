@@ -21,14 +21,6 @@ class DatabaseSeeder extends Seeder
             'default_locale' => 'ar',
             'active_skin' => 'indigo',
             'custom_css' => '',
-            'default_quota_mb' => (string) config('filenest.default_quota_mb'),
-            'max_upload_mb' => (string) config('filenest.max_upload_mb'),
-            'extension_filter_mode' => 'reject',
-            'extension_list' => '',
-            'max_zip_files' => '2000',
-            'enable_pretty_links' => '0',
-            'global_search' => '1',
-            'guest_access_enabled' => '0',
             'ip_filter_mode' => 'none',
         ]);
 
@@ -48,6 +40,5 @@ class DatabaseSeeder extends Seeder
             ]);
         }
 
-        $this->call(RolePermissionSeeder::class);
     }
 }

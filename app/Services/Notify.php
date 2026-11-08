@@ -41,14 +41,6 @@ class Notify
         }
     }
 
-    /** Librarians, or the admins when there are no librarians. */
-    public static function libraryStaff(): Collection
-    {
-        $staff = User::where('is_active', true)->where('is_librarian', true)->get();
-
-        return $staff->isNotEmpty() ? $staff : User::where('is_active', true)->where('role', 'admin')->get();
-    }
-
     /** Active admins who hold an admin capability (the master admin holds all). */
     public static function admins(string $capability): Collection
     {

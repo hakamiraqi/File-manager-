@@ -106,13 +106,9 @@ function date(iso, withTime = false) {
         ...(withTime ? { hour: 'numeric', minute: '2-digit' } : {}),
     });
 }
-const storagePercent = computed(() => {
-    const total = props.stats.storage_total;
-    return total ? Math.min(100, Math.round((props.stats.storage_used / total) * 100)) : 0;
-});
 const cards = computed(() => [
-    { label: t('profile.stat_files', 'الملفات'), value: nf.format(props.stats.files ?? 0), icon: DocumentIcon, tone: 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300' },
-    { label: t('profile.stat_folders', 'المجلدات'), value: nf.format(props.stats.folders ?? 0), icon: FolderIcon, tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300' },
+    { label: t('profile.stat_attempts', 'امتحانات أدّيتها'), value: nf.format(props.stats.attempts ?? 0), icon: DocumentIcon, tone: 'bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300' },
+    { label: t('profile.stat_exams', 'امتحانات أعددتها'), value: nf.format(props.stats.exams ?? 0), icon: FolderIcon, tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300' },
     { label: t('profile.stat_activity', 'نشاط آخر 30 يوماً'), value: nf.format(props.stats.activity_30d ?? 0), icon: BoltIcon, tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' },
 ]);
 </script>
@@ -156,8 +152,8 @@ const cards = computed(() => [
                                     <span class="rounded-full bg-[var(--accent-50)] px-2.5 py-0.5 text-xs font-semibold text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-200">
                                         {{ ROLE_LABELS[user.role] ?? user.role }}
                                     </span>
-                                    <span v-if="user.is_librarian" class="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
-                                        {{ t('profile.librarian', 'أمين المكتبة') }}
+                                    <span v-if="user.is_examiner" class="rounded-full bg-violet-50 px-2.5 py-0.5 text-xs font-semibold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
+                                        {{ t('profile.examiner', 'أستاذ') }}
                                     </span>
                                     <span
                                         class="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold"
@@ -191,16 +187,7 @@ const cards = computed(() => [
                             </div>
                         </div>
 
-                        <div class="mt-4 grid gap-3 sm:grid-cols-3">
-                            <div class="rounded-xl border border-gray-100 p-3 dark:border-gray-700 sm:col-span-1">
-                                <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                                    <span class="flex items-center gap-1.5"><CircleStackIcon class="h-4 w-4" />{{ t('profile.storage', 'المساحة المستخدمة') }}</span>
-                                    <span dir="ltr">{{ bytes(stats.storage_used) }}<template v-if="stats.storage_total"> / {{ bytes(stats.storage_total) }}</template></span>
-                                </div>
-                                <div class="mt-2 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
-                                    <div class="h-full rounded-full" :class="storagePercent > 90 ? 'bg-red-500' : storagePercent > 70 ? 'bg-amber-500' : 'bg-[var(--accent-600)]'" :style="{ width: storagePercent + '%' }" />
-                                </div>
-                            </div>
+                        <div class="mt-4 grid gap-3 sm:grid-cols-2">
                             <div class="flex items-center gap-2 rounded-xl border border-gray-100 p-3 text-sm dark:border-gray-700">
                                 <CalendarDaysIcon class="h-5 w-5 shrink-0 text-gray-400" />
                                 <div class="min-w-0">

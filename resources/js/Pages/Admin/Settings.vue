@@ -5,14 +5,13 @@ import { Head } from '@inertiajs/vue3';
 import AdminLayout from '@/Layouts/AdminLayout.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
-import TagInput from '@/Components/TagInput.vue';
 import InputError from '@/Components/InputError.vue';
 import SettingToggle from '@/Components/SettingToggle.vue';
 import StickySaveBar from '@/Components/StickySaveBar.vue';
 import { useTrans } from '@/Composables/useTrans';
 
 const { t } = useTrans();
-const props = defineProps({ settings: Object, skins: Array, locales: Object, roles: Array });
+const props = defineProps({ settings: Object, skins: Array, locales: Object });
 
 const page = usePage();
 const canAppearance = computed(() => page.props.permissions?.admin?.appearance ?? false);
@@ -24,38 +23,14 @@ const SKIN_COLORS = {
     orange: '#ea580c', zinc: '#52525b', cyan: '#0891b2', fuchsia: '#c026d3',
 };
 
-const ROLE_LABELS = {
-    user: t('role.user', 'مستخدم'),
-    editor: t('role.editor', 'محرّر'),
-    contributor: t('role.contributor', 'مساهم'),
-};
-
 const form = useForm({
     site_name: props.settings.site_name,
     registration_enabled: props.settings.registration_enabled === '1',
-    registration_role: props.settings.registration_role,
     default_locale: props.settings.default_locale,
     active_skin: props.settings.active_skin,
     custom_css: props.settings.custom_css,
-    default_quota_mb: props.settings.default_quota_mb,
-    max_upload_mb: props.settings.max_upload_mb,
-    extension_filter_mode: props.settings.extension_filter_mode,
-    extension_list: props.settings.extension_list,
-    max_zip_files: props.settings.max_zip_files,
-    enable_pretty_links: props.settings.enable_pretty_links === '1',
-    global_search: props.settings.global_search === '1',
-    content_indexing_enabled: props.settings.content_indexing_enabled === '1',
-    content_indexing_max_mb: props.settings.content_indexing_max_mb,
-    thumbnails_enabled: props.settings.thumbnails_enabled === '1',
-    thumbnail_max_px: props.settings.thumbnail_max_px,
-    video_transcoding_enabled: props.settings.video_transcoding_enabled === '1',
-    video_quality_targets: props.settings.video_quality_targets,
-    interactive_video_enabled: props.settings.interactive_video_enabled === '1',
     institution_university: props.settings.institution_university ?? '',
     institution_college: props.settings.institution_college ?? '',
-    thesis_departments: props.settings.thesis_departments ?? '',
-    thesis_subjects: props.settings.thesis_subjects ?? '',
-    oai_enabled: props.settings.oai_enabled === '1',
     work_day_start: props.settings.work_day_start ?? '08:00',
     logo: null,
     header_image: null,
@@ -118,127 +93,19 @@ function submit() {
 
             <template v-if="canSettings">
                 <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
-                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.storage_title', 'التخزين والرفع') }}</h3>
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.institution_title', 'المؤسسة') }}</h3>
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
                         <div>
-                            <InputLabel :value="t('settings.default_quota', 'الحصة الافتراضية للمستخدم الجديد (ميغابايت)')" />
-                            <TextInput type="number" min="1" v-model="form.default_quota_mb" class="mt-1 block w-full" />
+                            <InputLabel :value="t('settings.institution_university', 'الجامعة / المدرسة')" />
+                            <TextInput v-model="form.institution_university" class="mt-1 block w-full" />
                         </div>
                         <div>
-                            <InputLabel :value="t('settings.max_upload', 'الحد الأقصى لحجم الملف الواحد (ميغابايت)')" />
-                            <TextInput type="number" min="1" v-model="form.max_upload_mb" class="mt-1 block w-full" />
+                            <InputLabel :value="t('settings.institution_college', 'الكلية / الفرع')" />
+                            <TextInput v-model="form.institution_college" class="mt-1 block w-full" />
                         </div>
                         <div>
-                            <InputLabel :value="t('settings.max_zip_files', 'الحد الأقصى لعدد الملفات في أرشيف ZIP واحد')" />
-                            <TextInput type="number" min="1" v-model="form.max_zip_files" class="mt-1 block w-full" />
-                        </div>
-                    </div>
-                </section>
-
-                <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
-                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.extensions_title', 'امتدادات الملفات المسموح بها') }}</h3>
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div>
-                            <InputLabel :value="t('settings.filter_mode', 'نمط التصفية')" />
-                            <select v-model="form.extension_filter_mode" class="mt-1 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                                <option value="reject">{{ t('settings.filter_reject', 'حظر الامتدادات التالية فقط') }}</option>
-                                <option value="allow">{{ t('settings.filter_allow', 'السماح بالامتدادات التالية فقط') }}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <InputLabel :value="t('settings.extension_list_tags', 'قائمة الامتدادات')" />
-                            <TagInput
-                                v-model="form.extension_list"
-                                class="mt-1"
-                                :placeholder="t('settings.extension_add', 'اكتب امتداداً واضغط Enter')"
-                                :normalize="(v) => v.trim().replace(/^\.+/, '').toLowerCase()"
-                                :suggestions="form.extension_filter_mode === 'allow'
-                                    ? ['pdf', 'docx', 'xlsx', 'pptx', 'jpg', 'png', 'mp4', 'mp3', 'zip']
-                                    : ['exe', 'bat', 'cmd', 'sh', 'msi', 'js', 'vbs', 'apk']"
-                            />
-                        </div>
-                    </div>
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t('settings.extension_note', 'هذه القائمة إضافية إلى القائمة الأمنية الثابتة (php, phtml, exe...) التي لا يمكن تعطيلها من هنا.') }}
-                    </p>
-                </section>
-
-                <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
-                    <h3 class="mb-1 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.institution_title', 'المؤسسة والرسائل الجامعية') }}</h3>
-                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">{{ t('settings.institution_note', 'تُملأ الجامعة والكلية تلقائياً في كل رسالة جديدة، والأقسام والمواضيع تظهر كخيارات جاهزة، وفق حقول المستودع الرقمي العراقي.') }}</p>
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <div>
-                            <InputLabel :value="t('settings.institution_university', 'الجامعة')" />
-                            <TextInput v-model="form.institution_university" class="mt-1 block w-full" :placeholder="t('settings.institution_university_ph', 'مثال: جامعة تكريت')" />
-                        </div>
-                        <div>
-                            <InputLabel :value="t('settings.institution_college', 'الكلية')" />
-                            <TextInput v-model="form.institution_college" class="mt-1 block w-full" :placeholder="t('settings.institution_college_ph', 'مثال: كلية طب الأسنان')" />
-                        </div>
-                        <div>
-                            <InputLabel :value="t('settings.thesis_departments', 'الأقسام العلمية')" />
-                            <TagInput v-model="form.thesis_departments" class="mt-1" multiword :placeholder="t('settings.tag_add', 'اكتب واضغط Enter')" />
-                        </div>
-                        <div>
-                            <InputLabel :value="t('settings.thesis_subjects', 'المواضيع العامة')" />
-                            <TagInput v-model="form.thesis_subjects" class="mt-1" multiword :placeholder="t('settings.tag_add', 'اكتب واضغط Enter')" />
-                        </div>
-                    </div>
-                    <div class="mt-4 max-w-xs">
-                        <InputLabel :value="t('settings.work_day_start', 'بداية الدوام الرسمي')" />
-                        <input v-model="form.work_day_start" type="time" dir="ltr" class="mt-1 block w-full rounded-xl border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('settings.work_day_start_hint', 'يُستخدم في فلتر «من بداية الدوام» بصفحة التحليلات (بتوقيت بغداد).') }}</p>
-                    </div>
-                    <SettingToggle v-model="form.oai_enabled" class="mt-4">{{ t('settings.oai_enabled', 'إتاحة بيانات الرسائل العامة عبر OAI-PMH (Dublin Core) لحصادها من المستودعات') }}
-                        <code class="text-xs text-gray-400" dir="ltr">/oai</code></SettingToggle>
-                </section>
-
-                <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
-                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.thumbnails_title', 'الصور المصغّرة (Thumbnails)') }}</h3>
-                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t('settings.thumbnails_description', 'عرض صورة مصغّرة حقيقية للصور مباشرة، ولمقاطع الفيديو (يتطلب توفّر أداة ffmpeg على الخادم)، ولأول صفحة من ملفات PDF (يتطلب امتداد Imagick). عند عدم توفّر الأداة المطلوبة تُعرض الأيقونة العامة بدلاً من ذلك تلقائياً دون أي خطأ.') }}
-                    </p>
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <SettingToggle v-model="form.thumbnails_enabled" class="sm:col-span-2">{{ t('settings.thumbnails_enable', 'تفعيل توليد الصور المصغّرة تلقائياً عند الرفع') }}</SettingToggle>
-                        <div>
-                            <InputLabel :value="t('settings.thumbnail_max_px', 'أقصى أبعاد للصورة المصغّرة (بكسل)')" />
-                            <TextInput type="number" min="50" v-model="form.thumbnail_max_px" class="mt-1 block w-full" />
-                        </div>
-                    </div>
-                </section>
-
-                <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
-                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.video_quality_title', 'جودات تشغيل الفيديو') }}</h3>
-                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t('settings.video_quality_description', 'عند التفعيل، يُنشئ الخادم نسخاً بدقات أقل من كل فيديو يُرفع تلقائياً (يتطلب توفّر أداة ffmpeg على الخادم)، فيظهر لمستخدم المعاينة قائمة اختيار الجودة تماماً كما في يوتيوب. عند عدم توفّر الأداة يبقى تشغيل الفيديو الأصلي يعمل بلا أي تأثير.') }}
-                    </p>
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <SettingToggle v-model="form.video_transcoding_enabled" class="sm:col-span-2">{{ t('settings.video_transcoding_enable', 'تفعيل إنشاء نسخ بجودات مختلفة تلقائياً عند رفع الفيديو') }}</SettingToggle>
-                        <div class="sm:col-span-2">
-                            <InputLabel :value="t('settings.video_quality_targets', 'الدقات المستهدفة (بالبكسل، مفصولة بفواصل)')" />
-                            <TextInput type="text" v-model="form.video_quality_targets" placeholder="360,480,720" class="mt-1 block w-full" />
-                        </div>
-                    </div>
-                </section>
-
-                <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
-                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.interactive_video_title', 'الفيديو التفاعلي') }}</h3>
-                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t('settings.interactive_video_description', 'عند التفعيل، يمكن لمن يملك صلاحية "إدارة الأسئلة" إضافة أسئلة تظهر وتوقف الفيديو عند لحظة محدَّدة منه، وتُسجَّل درجة كل مشاهد. عند التعطيل يختفي زر الأسئلة تماماً وتُشغَّل الفيديوهات بلا توقّف، دون حذف أي أسئلة أو درجات محفوظة مسبقاً.') }}
-                    </p>
-                    <SettingToggle v-model="form.interactive_video_enabled">{{ t('settings.interactive_video_enable', 'تفعيل الأسئلة التفاعلية داخل الفيديو') }}</SettingToggle>
-                </section>
-
-                <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
-                    <h3 class="mb-4 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.content_indexing_title', 'فهرسة محتوى المستندات للبحث') }}</h3>
-                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t('settings.content_indexing_description', 'عند التفعيل، يُستخرَج النص من داخل ملفات Word وPDF وPowerPoint والنصوص عند رفعها، ليصبح البحث قادراً على إيجاد الملف من محتواه الداخلي وليس فقط من اسمه — تماماً كفهرسة مكتبة أو دار نشر.') }}
-                    </p>
-                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <SettingToggle v-model="form.content_indexing_enabled" class="sm:col-span-2">{{ t('settings.content_indexing_enable', 'تفعيل استخراج النص وفهرسته تلقائياً عند الرفع (Word, PDF, PowerPoint, نصوص)') }}</SettingToggle>
-                        <div>
-                            <InputLabel :value="t('settings.content_indexing_max_mb', 'لا تُفهرس الملفات الأكبر من (ميغابايت)')" />
-                            <TextInput type="number" min="1" v-model="form.content_indexing_max_mb" class="mt-1 block w-full" />
+                            <InputLabel :value="t('settings.work_day_start', 'بداية الدوام (لسجل النشاطات)')" />
+                            <TextInput type="time" v-model="form.work_day_start" class="mt-1 block w-full" />
                         </div>
                     </div>
                 </section>
@@ -252,17 +119,9 @@ function submit() {
                                 <option v-for="(meta, code) in locales" :key="code" :value="code">{{ meta.label }}</option>
                             </select>
                         </div>
-                        <div>
-                            <InputLabel :value="t('settings.default_role', 'الدور الافتراضي للمستخدم الجديد')" />
-                            <select v-model="form.registration_role" class="mt-1 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                                <option v-for="role in roles.filter((r) => r !== 'admin')" :key="role" :value="role">{{ ROLE_LABELS[role] }}</option>
-                            </select>
-                        </div>
                     </div>
                     <div class="mt-4 divide-y divide-gray-100 border-t border-gray-100 pt-3 dark:divide-gray-700 dark:border-gray-700">
                         <SettingToggle v-model="form.registration_enabled">{{ t('settings.allow_registration', 'السماح بإنشاء حسابات جديدة ذاتياً') }}</SettingToggle>
-                        <SettingToggle v-model="form.enable_pretty_links">{{ t('settings.pretty_links', 'استخدام روابط مشاركة مختصرة (Pretty Links)') }}</SettingToggle>
-                        <SettingToggle v-model="form.global_search">{{ t('settings.global_search', 'تفعيل البحث الشامل في كل المجلدات (وليس المجلد الحالي فقط)') }}</SettingToggle>
                     </div>
                 </section>
             </template>

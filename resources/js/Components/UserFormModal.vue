@@ -20,7 +20,6 @@ const { t } = useTrans();
 const props = defineProps({
     show: Boolean,
     user: { type: Object, default: null }, // null => create mode
-    folderOptions: { type: Array, default: () => [] }, // [{id, path, owner}]
 });
 const emit = defineEmits(['close']);
 
@@ -35,12 +34,9 @@ const CAPABILITIES = [
 ];
 
 const ROLES = [
-    { key: 'user', label: () => t('role.user', 'مستخدم'), hint: () => t('role.user_hint', 'يتصفح ويرفع ملفاته'), icon: UserIcon },
-    { key: 'contributor', label: () => t('role.contributor', 'مساهم'), hint: () => t('role.contributor_hint', 'يضيف محتوى دون حذف'), icon: PlusCircleIcon },
-    { key: 'editor', label: () => t('role.editor', 'محرّر'), hint: () => t('role.editor_hint', 'يرفع ويعدّل وينظّم'), icon: PencilSquareIcon },
+    { key: 'user', label: () => t('role.user', 'مستخدم'), hint: () => t('role.user_exam_hint', 'طالب أو أستاذ (فعّل «أستاذ» أدناه)'), icon: UserIcon },
     { key: 'admin', label: () => t('role.admin', 'مدير'), hint: () => t('role.admin_hint', 'صلاحيات إدارية'), icon: ShieldCheckIcon, masterOnly: true },
 ];
-const QUOTAS = [['', () => t('admin.users.quota_default', 'الافتراضي')], [500, () => '500 MB'], [1024, () => '1 GB'], [5120, () => '5 GB'], [10240, () => '10 GB']];
 
 const showPassword = ref(false);
 const copied = ref(false);
@@ -66,9 +62,6 @@ const form = useForm({
     email: '',
     password: '',
     role: 'user',
-    storage_quota_mb: '',
-    folder_ids: [],
-    is_librarian: false,
     is_examiner: false,
     exam_time_multiplier: 1,
     is_active: true,
@@ -91,17 +84,11 @@ watch(
                 form.password = '';
                 form.role = props.user.role;
                 form.is_active = props.user.is_active;
-                form.storage_quota_mb = props.user.storage_quota_bytes
-                    ? Math.round(props.user.storage_quota_bytes / (1024 * 1024))
-                    : '';
                 CAPABILITIES.forEach((c) => (form[c.key] = !!props.user[c.key]));
-                form.folder_ids = [...(props.user.folder_ids ?? [])];
-                form.is_librarian = !!props.user.is_librarian;
                 form.is_examiner = !!props.user.is_examiner;
                 form.exam_time_multiplier = props.user.exam_time_multiplier ?? 1;
             } else {
                 form.reset();
-                form.folder_ids = [];
                 form.role = 'user';
                 form.is_active = true;
             }
@@ -109,18 +96,6 @@ watch(
     },
 );
 
-// Assigned folders: the user works inside them with their role's permissions.
-const folderSearch = ref('');
-const pickedFolders = computed(() => props.folderOptions.filter((f) => form.folder_ids.includes(f.id)));
-const folderMatches = computed(() => {
-    const q = folderSearch.value.trim().toLowerCase();
-    return props.folderOptions
-        .filter((f) => !form.folder_ids.includes(f.id) && (!q || f.path.toLowerCase().includes(q)))
-        .slice(0, 50);
-});
-function toggleFolder(id) {
-    form.folder_ids = form.folder_ids.includes(id) ? form.folder_ids.filter((x) => x !== id) : [...form.folder_ids, id];
-}
 
 function submit() {
     if (props.user) {
@@ -234,34 +209,6 @@ function submit() {
                     </div>
                 </section>
 
-                <!-- Storage -->
-                <section>
-                    <h3 class="mb-2 text-sm font-semibold text-gray-700 dark:text-gray-200">{{ t('admin.users.quota_title', 'مساحة التخزين') }}</h3>
-                    <div class="flex flex-wrap items-center gap-2">
-                        <button
-                            v-for="[mb, label] in QUOTAS" :key="mb" type="button"
-                            class="rounded-full border px-3 py-1.5 text-sm"
-                            :class="String(form.storage_quota_mb) === String(mb) ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-gray-600 dark:text-gray-300'"
-                            @click="form.storage_quota_mb = mb"
-                        >{{ label() }}</button>
-                        <div class="flex items-center gap-1">
-                            <TextInput type="number" min="1" v-model="form.storage_quota_mb" :placeholder="t('admin.users.quota_custom', 'مخصص')" class="block w-28 text-sm" />
-                            <span class="text-xs text-gray-400">MB</span>
-                        </div>
-                    </div>
-                    <InputError :message="form.errors.storage_quota_mb" class="mt-1" />
-                </section>
-
-                <!-- Library -->
-                <label v-if="form.role !== 'admin'" class="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
-                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300"><BookOpenIcon class="h-5 w-5" /></span>
-                    <div class="min-w-0 flex-1">
-                        <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ t('admin.users.librarian_title', 'أمين مكتبة') }}</p>
-                        <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.users.librarian_hint', 'يعير ويستلم الكتب ويدير الفهرس') }}</p>
-                    </div>
-                    <ToggleSwitch v-model="form.is_librarian" />
-                </label>
-
                 <!-- Exams -->
                 <label v-if="form.role !== 'admin'" class="flex cursor-pointer items-center gap-3 rounded-xl border border-gray-200 p-3 dark:border-gray-700">
                     <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-500/10 dark:text-sky-300"><BookOpenIcon class="h-5 w-5" /></span>
@@ -281,28 +228,6 @@ function submit() {
                     </select>
                 </label>
 
-                <!-- Folders -->
-                <section v-if="form.role !== 'admin'">
-                    <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-200">{{ t('admin.users.folders', 'المجلدات المخصّصة له') }}</h3>
-                    <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {{ t('admin.users.folders_hint', 'تظهر له هذه المجلدات في ملفاته، ويعمل داخلها حسب صلاحيته (المحرّر يرفع ويعدّل ويضيف).') }}
-                    </p>
-                    <div v-if="pickedFolders.length" class="mt-2 flex flex-wrap gap-1.5">
-                        <span v-for="f in pickedFolders" :key="f.id" class="inline-flex items-center gap-1 rounded-full bg-[var(--accent-50)] py-0.5 pe-1 ps-2.5 text-sm text-[var(--accent-700)] dark:bg-gray-600 dark:text-gray-100">
-                            <FolderIcon class="h-3.5 w-3.5" />{{ f.path }}
-                            <button type="button" class="rounded-full p-0.5 hover:bg-white/60 dark:hover:bg-gray-500" @click="toggleFolder(f.id)"><XMarkIcon class="h-3.5 w-3.5" /></button>
-                        </span>
-                    </div>
-                    <TextInput v-model="folderSearch" :placeholder="t('admin.users.folders_search', 'ابحث عن مجلد لإضافته...')" class="mt-2 block w-full" />
-                    <div class="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
-                        <button v-for="f in folderMatches" :key="f.id" type="button" class="flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-700" @click="toggleFolder(f.id)">
-                            <span class="flex min-w-0 items-center gap-1"><FolderIcon class="h-4 w-4 shrink-0 text-amber-500" /><span class="truncate">{{ f.path }}</span></span>
-                            <span class="shrink-0 text-xs text-gray-400">{{ f.owner }}</span>
-                        </button>
-                        <p v-if="!folderMatches.length" class="px-3 py-2 text-sm text-gray-400">{{ t('admin.users.folders_none', 'لا توجد مجلدات مطابقة.') }}</p>
-                    </div>
-                    <InputError :message="form.errors.folder_ids" class="mt-1" />
-                </section>
             </div>
 
             <!-- Footer -->

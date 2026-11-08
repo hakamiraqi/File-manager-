@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\File;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -97,19 +96,5 @@ class ProfileTest extends TestCase
             ->assertRedirect('/profile');
 
         $this->assertNotNull($user->fresh());
-    }
-
-    public function test_deleting_the_account_removes_its_storage_directory_from_disk(): void
-    {
-        Storage::fake(config('filenest.disk'));
-        $user = User::factory()->create();
-        File::factory()->create(['user_id' => $user->id, 'path' => "{$user->id}/a.txt"]);
-        Storage::disk(config('filenest.disk'))->put("{$user->id}/a.txt", 'content');
-
-        $this->assertTrue(Storage::disk(config('filenest.disk'))->exists("{$user->id}/a.txt"));
-
-        $this->actingAs($user)->delete('/profile', ['password' => 'password']);
-
-        $this->assertFalse(Storage::disk(config('filenest.disk'))->exists("{$user->id}/a.txt"));
     }
 }

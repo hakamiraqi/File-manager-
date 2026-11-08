@@ -21,15 +21,8 @@ const { t } = useTrans();
 const props = defineProps({ settings: Object, ipRules: Array, appUrl: String });
 
 const form = useForm({
-    guest_access_enabled: props.settings.guest_access_enabled === '1',
-    public_library_enabled: props.settings.public_library_enabled === '1',
-    public_theses_enabled: props.settings.public_theses_enabled === '1',
-    public_files_enabled: props.settings.public_files_enabled === '1',
-    contact_enabled: props.settings.contact_enabled === '1',
-    remote_upload_enabled: props.settings.remote_upload_enabled === '1',
     show_captcha_register: props.settings.show_captcha_register === '1',
     show_captcha_reset: props.settings.show_captcha_reset === '1',
-    show_captcha_download: props.settings.show_captcha_download === '1',
     recaptcha_enabled: props.settings.recaptcha_enabled === '1',
     recaptcha_invisible: props.settings.recaptcha_invisible === '1',
     recaptcha_site_key: props.settings.recaptcha_site_key,
@@ -105,14 +98,10 @@ const inputClass = 'block w-full rounded-xl border-gray-300 text-sm shadow-sm fo
 
         <div class="mx-auto max-w-3xl space-y-5 px-4 pt-4 sm:px-6 sm:pt-6">
             <!-- Overview -->
-            <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <div class="rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
-                    <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('security.ov_guests', 'الزوار') }}</p>
-                    <p class="mt-1 text-sm font-semibold" :class="form.guest_access_enabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-700 dark:text-gray-200'">{{ form.guest_access_enabled ? t('security.allowed', 'مسموح') : t('security.closed', 'مغلق') }}</p>
-                </div>
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <div class="rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('security.ov_captcha', 'رمز التحقق') }}</p>
-                    <p class="mt-1 text-sm font-semibold text-gray-700 dark:text-gray-200">{{ captchaCount }} / 3 {{ t('security.pages', 'صفحات') }}</p>
+                    <p class="mt-1 text-sm font-semibold text-gray-700 dark:text-gray-200">{{ captchaCount }} / 2 {{ t('security.pages', 'صفحات') }}</p>
                 </div>
                 <div class="rounded-2xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
                     <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('security.ov_oauth', 'دخول خارجي') }}</p>
@@ -124,42 +113,12 @@ const inputClass = 'block w-full rounded-xl border-gray-300 text-sm shadow-sm fo
                 </div>
             </div>
 
-            <!-- Public access -->
-            <SettingsSection :icon="GlobeAltIcon" tone="green" :title="t('security.public_access', 'الوصول العام')" :description="t('security.public_access_desc', 'من يقدر يتصفح بدون حساب، ومن أين يمكن رفع الملفات.')">
-                <div class="divide-y divide-gray-100 dark:divide-gray-700">
-                    <SettingToggle v-model="form.guest_access_enabled" :description="t('security.guest_site_desc', 'واجهة للطلاب والزوار بدون تسجيل دخول. اختر الأقسام الظاهرة فيها من تحت.')">
-                        {{ t('security.guest_site', 'تفعيل واجهة الزوار') }}
-                    </SettingToggle>
-                    <div v-if="form.guest_access_enabled" class="space-y-0 bg-gray-50/60 py-1 ps-4 sm:ps-8 dark:bg-gray-900/20">
-                        <SettingToggle v-model="form.public_library_enabled" :description="t('security.public_library_desc', 'تصفح الكتب والبحث فيها ومعرفة هل الكتاب متوفر أو مُعار.')">
-                            {{ t('security.public_library', 'المكتبة') }}
-                        </SettingToggle>
-                        <SettingToggle v-model="form.public_theses_enabled" :description="t('security.public_theses_desc', 'الرسائل والأطاريح الموجودة داخل مجلدات عامة فقط.')">
-                            {{ t('security.public_theses', 'الرسائل والأطاريح') }}
-                        </SettingToggle>
-                        <SettingToggle v-model="form.public_files_enabled" :description="t('security.guest_access_desc', 'حسب صلاحيات دور «زائر» في صفحة الصلاحيات.')">
-                            {{ t('security.public_files', 'الملفات والمجلدات العامة') }}
-                        </SettingToggle>
-                        <a :href="route('guest.index')" target="_blank" class="inline-flex items-center gap-1 py-2 text-sm font-medium text-[var(--accent-600)] hover:underline">
-                            <ArrowTopRightOnSquareIcon class="h-4 w-4" /> {{ t('security.open_guest_site', 'افتح واجهة الزوار') }}
-                        </a>
-                    </div>
-                    <SettingToggle v-model="form.contact_enabled" :description="t('security.contact_desc', 'نموذج «تواصل معنا» للزوار والمستخدمين؛ الرسائل تظهر في صفحة «التواصل معنا».')">
-                        {{ t('security.contact', 'تواصل معنا وإرسال الطلبات') }}
-                    </SettingToggle>
-                    <SettingToggle v-model="form.remote_upload_enabled" :description="t('security.remote_upload_desc', 'يسمح بلصق رابط ملف من الإنترنت وتنزيله مباشرة إلى النظام.')">
-                        {{ t('security.remote_upload_short', 'الرفع من رابط خارجي') }}
-                    </SettingToggle>
-                </div>
-            </SettingsSection>
-
             <!-- Captcha -->
             <SettingsSection :icon="PuzzlePieceIcon" tone="sky" :title="t('security.captcha_title', 'رمز التحقق (Captcha)')" :description="t('security.captcha_desc', 'يمنع البرامج الآلية من إنشاء حسابات أو تنزيل الملفات بكثرة.')">
                 <p class="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('security.captcha_where', 'أين يظهر؟') }}</p>
                 <div class="divide-y divide-gray-100 dark:divide-gray-700">
                     <SettingToggle v-model="form.show_captcha_register">{{ t('security.captcha_register', 'صفحة إنشاء حساب') }}</SettingToggle>
                     <SettingToggle v-model="form.show_captcha_reset">{{ t('security.captcha_reset', 'صفحة استعادة كلمة المرور') }}</SettingToggle>
-                    <SettingToggle v-model="form.show_captcha_download">{{ t('security.captcha_download', 'تنزيل زائر لملف من رابط مشاركة') }}</SettingToggle>
                 </div>
 
                 <div class="mt-4 rounded-xl bg-gray-50 p-4 dark:bg-gray-900/40">

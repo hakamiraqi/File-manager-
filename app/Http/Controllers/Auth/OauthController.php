@@ -55,7 +55,7 @@ class OauthController extends Controller
                         'name' => $oauthUser->getName() ?: $oauthUser->getNickname() ?: 'مستخدم جديد',
                         'email' => $email ?: Str::uuid().'@users.filenest.local',
                         'password' => null,
-                        'role' => Setting::get('registration_role', 'user'),
+                        'role' => 'user',
                         'storage_quota_bytes' => $quotaMb * 1024 * 1024,
                         'email_verified_at' => $email ? now() : null,
                     ]);

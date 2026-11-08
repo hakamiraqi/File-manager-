@@ -20,46 +20,14 @@ class ActivityLogController extends Controller
 {
     /** Arabic name of every action the app records. */
     public const LABELS = [
-        'file.uploaded' => 'رفع ملف',
-        'file.remote_uploaded' => 'رفع ملف من رابط',
-        'file.updated' => 'تعديل ملف',
-        'file.copied' => 'نسخ ملف',
-        'file.trashed' => 'حذف ملف',
-        'file.downloaded' => 'تنزيل ملف',
-        'file.bulk_download' => 'تنزيل عدة ملفات (ZIP)',
-        'folder.created' => 'إنشاء مجلد',
-        'folder.updated' => 'تعديل مجلد',
-        'folder.copied' => 'نسخ مجلد',
-        'folder.trashed' => 'حذف مجلد',
-        'trash.emptied' => 'إفراغ سلة المحذوفات',
-        'thesis.imported' => 'استيراد رسائل',
-        'share.created' => 'إنشاء رابط مشاركة',
-        'share.emailed' => 'إرسال رابط بالبريد',
-        'share.revoked' => 'إلغاء رابط مشاركة',
-        'share.downloaded' => 'تنزيل عبر رابط مشاركة',
-        'playlist.created' => 'إنشاء قائمة تشغيل',
-        'playlist.deleted' => 'حذف قائمة تشغيل',
-        'subtitle.uploaded' => 'رفع ترجمة',
-        'subtitle.deleted' => 'حذف ترجمة',
-        'video_comment.created' => 'تعليق على فيديو',
-        'video_comment.deleted' => 'حذف تعليق',
-        'video_question.created' => 'إضافة سؤال للفيديو',
-        'video_question.updated' => 'تعديل سؤال',
-        'video_question.deleted' => 'حذف سؤال',
-        'video_question.imported' => 'استيراد أسئلة',
-        'library.book_created' => 'إضافة كتاب',
-        'library.book_updated' => 'تعديل كتاب',
-        'library.book_deleted' => 'حذف كتاب',
-        'library.import' => 'استيراد كتب',
-        'library.loan' => 'إعارة',
-        'library.return' => 'إرجاع',
-        'library.renew' => 'تجديد إعارة',
-        'library.hold' => 'حجز',
-        'library.fine_paid' => 'دفع غرامة',
-        'library.fine_waived' => 'إعفاء من غرامة',
-        'library.rfid' => 'ربط بطاقة RFID',
-        'library.inventory' => 'جرد',
-        'library.shelving' => 'توزيع على الرفوف',
+        'exam.created' => 'إنشاء امتحان',
+        'exam.updated' => 'تعديل امتحان',
+        'exam.deleted' => 'حذف امتحان',
+        'exam.imported' => 'استيراد أسئلة',
+        'exam.started' => 'بدء امتحان',
+        'exam.submitted' => 'تسليم امتحان',
+        'exam.graded' => 'تصحيح إجابة',
+        'exam.students_imported' => 'استيراد طلاب',
         'admin.user_created' => 'إضافة مستخدم',
         'admin.user_updated' => 'تعديل مستخدم',
         'admin.user_deleted' => 'حذف مستخدم',
@@ -72,12 +40,11 @@ class ActivityLogController extends Controller
         'admin.ip_rule_removed' => 'حذف قاعدة IP',
     ];
 
-    /** Kinds of activity for the filter chips; the analytics groups plus admin and media. */
+    /** Kinds of activity for the filter chips; the exam groups plus admin. */
     public static function kinds(): array
     {
         return StaffAnalytics::CATEGORIES + [
             'admin' => array_values(array_filter(array_keys(self::LABELS), fn ($a) => str_starts_with($a, 'admin.'))),
-            'media' => ['playlist.created', 'playlist.deleted', 'subtitle.deleted', 'video_comment.created', 'video_comment.deleted', 'video_question.deleted', 'share.revoked', 'share.downloaded', 'file.copied', 'folder.copied'],
         ];
     }
 
@@ -108,8 +75,7 @@ class ActivityLogController extends Controller
             'subject' => $log->subject ? [
                 'type' => $log->subject_type,
                 'id' => $log->subject->getKey(),
-                'name' => $log->subject->name ?? $log->subject->title ?? null,
-                'folder_id' => $log->subject_type === 'file' ? $log->subject->folder_id : ($log->subject_type === 'folder' ? $log->subject->getKey() : null),
+                'name' => $log->subject instanceof \App\Models\Exams\Exam ? $log->subject->text('title') : ($log->subject->name ?? null),
             ] : null,
         ]);
 

@@ -13,7 +13,6 @@ const { t } = useTrans();
 const props = defineProps({
     users: Object,
     filters: Object,
-    folderOptions: { type: Array, default: () => [] },
     roleCounts: { type: Object, default: () => ({}) },
     statusCounts: { type: Object, default: () => ({}) },
 });
@@ -72,22 +71,9 @@ function destroy(user) {
 
 const ROLE_LABELS = {
     admin: () => t('role.admin', 'مدير'),
-    editor: () => t('role.editor', 'محرّر'),
-    contributor: () => t('role.contributor', 'مساهم'),
     user: () => t('role.user', 'مستخدم'),
 };
 
-function humanSize(bytes) {
-    if (!bytes) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let i = 0;
-    let value = bytes;
-    while (value >= 1024 && i < units.length - 1) {
-        value /= 1024;
-        i++;
-    }
-    return `${value.toFixed(1)} ${units[i]}`;
-}
 </script>
 
 <template>
@@ -120,7 +106,7 @@ function humanSize(bytes) {
             <!-- Role filter -->
             <div class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:flex-wrap">
                 <button
-                    v-for="r in ['', 'admin', 'editor', 'contributor', 'user']" :key="r || 'all'" type="button" @click="pickRole(r)"
+                    v-for="r in ['', 'admin', 'user']" :key="r || 'all'" type="button" @click="pickRole(r)"
                     class="flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition"
                     :class="role === r ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white shadow-sm' : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200'"
                 >
@@ -156,7 +142,7 @@ function humanSize(bytes) {
                         <div class="mt-1 flex flex-wrap items-center gap-1">
                             <span class="rounded-full px-2 py-0.5 text-[11px] font-medium" :class="user.role === 'admin' ? 'bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-200' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'">{{ ROLE_LABELS[user.role]?.() ?? user.role }}</span>
                             <span v-if="user.is_master_admin" class="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{{ t('admin.users.master', 'رئيسي') }}</span>
-                            <span class="text-[11px] text-gray-400">{{ humanSize(user.storage_used_bytes) }}</span>
+                            <span v-if="user.is_examiner" class="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">{{ t('profile.examiner', 'أستاذ') }}</span>
                         </div>
                     </div>
                     <div class="flex shrink-0 flex-col items-center gap-1">
@@ -174,7 +160,7 @@ function humanSize(bytes) {
                         <tr>
                             <th class="px-4 py-3 text-start">{{ t('auth.name', 'الاسم') }}</th>
                             <th class="px-4 py-3 text-start">{{ t('admin.users.role', 'الدور') }}</th>
-                            <th class="px-4 py-3 text-start">{{ t('storage.used_label', 'المساحة المستخدمة') }}</th>
+                            <th class="px-4 py-3 text-start">{{ t('admin.users.exam_role', 'في الامتحانات') }}</th>
                             <th class="px-4 py-3 text-start">{{ t('admin.users.last_login', 'آخر دخول') }}</th>
                             <th class="px-4 py-3 text-start">{{ t('admin.users.status', 'الحالة') }}</th>
                             <th class="px-4 py-3"></th>
@@ -200,7 +186,7 @@ function humanSize(bytes) {
                                 </span>
                             </td>
                             <td class="px-4 py-3 text-gray-500 dark:text-gray-400">
-                                {{ humanSize(user.storage_used_bytes) }} / {{ humanSize(user.storage_quota_bytes) }}
+                                {{ user.is_examiner || user.role === 'admin' ? t('profile.examiner', 'أستاذ') : t('admin.users.student', 'طالب') }}<span v-if="Number(user.exam_time_multiplier) > 1" class="ms-1 text-xs text-sky-600">×{{ Number(user.exam_time_multiplier) }}</span>
                             </td>
                             <td class="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{{ lastSeen(user.last_login_at) }}</td>
                             <td class="px-4 py-3">
@@ -230,6 +216,6 @@ function humanSize(bytes) {
             <Pagination :links="users.links" />
         </div>
 
-        <UserFormModal :show="modalShow" :user="editingUser" :folder-options="folderOptions" @close="modalShow = false" />
+        <UserFormModal :show="modalShow" :user="editingUser" @close="modalShow = false" />
     </AdminLayout>
 </template>

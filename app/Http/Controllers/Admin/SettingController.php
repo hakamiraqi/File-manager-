@@ -14,33 +14,15 @@ use Inertia\Response;
 class SettingController extends Controller
 {
     private const DEFAULTS = [
-        'site_name' => 'FileNest',
+        'site_name' => 'نظام الامتحانات',
         'logo_path' => null,
         'header_image_path' => null,
-        'registration_enabled' => '1',
-        'registration_role' => 'user',
+        'registration_enabled' => '0',
         'default_locale' => 'ar',
         'active_skin' => 'indigo',
         'custom_css' => '',
-        'default_quota_mb' => '5120',
-        'max_upload_mb' => '2048',
-        'extension_filter_mode' => 'reject',
-        'extension_list' => '',
-        'max_zip_files' => '2000',
-        'enable_pretty_links' => '0',
-        'global_search' => '1',
-        'content_indexing_enabled' => '1',
-        'content_indexing_max_mb' => '25',
-        'thumbnails_enabled' => '1',
-        'thumbnail_max_px' => '400',
-        'video_transcoding_enabled' => '1',
-        'video_quality_targets' => '360,480,720',
-        'interactive_video_enabled' => '0',
         'institution_university' => '',
         'institution_college' => '',
-        'thesis_departments' => '',
-        'thesis_subjects' => '',
-        'oai_enabled' => '1',
         'work_day_start' => '08:00',
     ];
 
@@ -61,29 +43,11 @@ class SettingController extends Controller
         $data = $request->validate([
             'site_name' => ['required', 'string', 'max:100'],
             'registration_enabled' => ['boolean'],
-            'registration_role' => ['required', 'in:user,editor,contributor'],
             'default_locale' => ['required', \Illuminate\Validation\Rule::in(array_keys(\App\Support\Locales::active()))],
             'active_skin' => ['required', 'string', 'in:'.implode(',', config('filenest.skins')).',custom'],
             'custom_css' => ['nullable', 'string', 'max:20000'],
-            'default_quota_mb' => ['required', 'integer', 'min:1'],
-            'max_upload_mb' => ['required', 'integer', 'min:1'],
-            'extension_filter_mode' => ['required', 'in:reject,allow'],
-            'extension_list' => ['nullable', 'string', 'max:2000'],
-            'max_zip_files' => ['required', 'integer', 'min:1'],
-            'enable_pretty_links' => ['boolean'],
-            'global_search' => ['boolean'],
-            'content_indexing_enabled' => ['boolean'],
-            'content_indexing_max_mb' => ['required', 'integer', 'min:1', 'max:500'],
-            'thumbnails_enabled' => ['boolean'],
-            'thumbnail_max_px' => ['required', 'integer', 'min:50', 'max:2000'],
-            'video_transcoding_enabled' => ['boolean'],
-            'video_quality_targets' => ['required', 'string', 'regex:/^\d+(,\d+)*$/', 'max:100'],
-            'interactive_video_enabled' => ['boolean'],
             'institution_university' => ['nullable', 'string', 'max:255'],
             'institution_college' => ['nullable', 'string', 'max:255'],
-            'thesis_departments' => ['nullable', 'string', 'max:5000'],
-            'thesis_subjects' => ['nullable', 'string', 'max:5000'],
-            'oai_enabled' => ['boolean'],
             'work_day_start' => ['nullable', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
@@ -102,7 +66,7 @@ class SettingController extends Controller
             $data['header_image_path'] = $request->file('header_image')->store('branding', 'public');
         }
 
-        foreach (['registration_enabled', 'enable_pretty_links', 'global_search', 'content_indexing_enabled', 'thumbnails_enabled', 'video_transcoding_enabled', 'interactive_video_enabled', 'oai_enabled'] as $boolField) {
+        foreach (['registration_enabled'] as $boolField) {
             $data[$boolField] = $request->boolean($boolField) ? '1' : '0';
         }
 

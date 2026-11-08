@@ -56,7 +56,7 @@ class RegisteredUserController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
-            'role' => Setting::get('registration_role', 'user'),
+            'role' => 'user',
             'storage_quota_bytes' => $quotaMb * 1024 * 1024,
         ]);
 

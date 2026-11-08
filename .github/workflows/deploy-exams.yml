@@ -44,7 +44,7 @@ jobs:
       - name: Tests
         run: |
           php artisan key:generate
-          php artisan test tests/Feature/Exams tests/Feature/Auth
+          php artisan test
 
   deploy:
     needs: test

@@ -1,11 +1,8 @@
 <?php
 
 use App\Http\Controllers\Admin\ActivityLogController;
-use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\MailController;
-use App\Http\Controllers\Admin\OcrController;
-use App\Http\Controllers\Admin\PermissionController;
 use App\Http\Controllers\Admin\SecurityController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\TranslationController;
@@ -29,9 +26,6 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
     });
 
     Route::middleware('can:manage-settings')->group(function () {
-        Route::get('/permissions', [PermissionController::class, 'index'])->name('permissions.index');
-        Route::post('/permissions', [PermissionController::class, 'update'])->name('permissions.update');
-
         Route::get('/security', [SecurityController::class, 'index'])->name('security.index');
         Route::post('/security', [SecurityController::class, 'update'])->name('security.update');
         Route::post('/security/ip-rules', [SecurityController::class, 'storeIpRule'])->name('security.ip-rules.store');
@@ -41,12 +35,6 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
         Route::post('/mail', [MailController::class, 'update'])->name('mail.update');
         Route::post('/mail/test', [MailController::class, 'sendTest'])->name('mail.test');
 
-        Route::get('/ocr', [OcrController::class, 'index'])->name('ocr.index');
-        Route::post('/ocr', [OcrController::class, 'update'])->name('ocr.update');
-        Route::post('/ocr/queue', [OcrController::class, 'queue'])->name('ocr.queue');
-        Route::post('/ocr/run', [OcrController::class, 'runNow'])->name('ocr.run');
-        Route::post('/ocr/retry-failed', [OcrController::class, 'retryFailed'])->name('ocr.retry-failed');
-        Route::post('/ocr/files/{file}/{action}', [OcrController::class, 'file'])->whereIn('action', ['retry', 'skip', 'prioritize'])->name('ocr.file');
     });
 
     Route::middleware('can:manage-translations')->group(function () {
@@ -62,7 +50,5 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
     Route::middleware('can:view-statistics')->group(function () {
         Route::get('/activity', [ActivityLogController::class, 'index'])->name('activity.index');
         Route::get('/activity/export', [ActivityLogController::class, 'export'])->name('activity.export');
-        Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
-        Route::get('/analytics/export', [AnalyticsController::class, 'export'])->name('analytics.export');
     });
 });
