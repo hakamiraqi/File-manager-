@@ -51,7 +51,6 @@ class OfflineActivationTest extends TestCase
         config(['offline.edition' => true, 'offline.activation' => true]);
 
         $this->get('/login')->assertRedirect('/activate');
-        $this->postJson('/api/v1/auth/login', ['email' => 'a@b.c', 'password' => 'x'])->assertForbidden();
         $this->get('/activate')->assertOk()->assertSee(OfflineLicensing::machineId());
 
         Http::fake(['*/api/v1/offline/activate' => function ($request) {

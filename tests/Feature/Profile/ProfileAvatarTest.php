@@ -50,8 +50,8 @@ class ProfileAvatarTest extends TestCase
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Profile/Edit')
-                ->where('stats.files', 0)
-                ->has('stats.storage_total')
+                ->where('stats.attempts', 0)
+                ->has('stats.exams')
                 ->where('auth.user.avatar_url', null));
     }
 }
