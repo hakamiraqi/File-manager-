@@ -65,6 +65,7 @@ class ResultController extends Controller
                     'reply' => $ap->reply, 'created_at' => $ap->created_at->toIso8601String(),
                 ]),
             'can_manage' => $canManage,
+            'ai_enabled' => \App\Services\Exams\AiMarker::enabled(),
             'markers' => $exam->markers()->get(['users.id', 'name', 'email'])->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]),
             'summary' => [
                 'attempts' => $attempts->count(),
@@ -275,6 +276,17 @@ class ResultController extends Controller
         $name = fn ($id) => ($a = $attempts->firstWhere('id', $id)) ? ($hidden ? 'ورقة '.strtoupper(substr(hash_hmac('sha256', 'paper|'.$a->user_id.'|'.$exam->id, (string) config('app.key')), 0, 6)) : $a->user?->name) : null;
 
         return response()->json(collect($pairs)->sortByDesc('score')->take(100)->map(fn ($p) => $p + ['a_name' => $name($p['a']), 'b_name' => $name($p['b'])])->values());
+    }
+
+    /** A suggested mark (hosted site, with an AI key); the teacher still decides. */
+    public function suggest(Request $request, Answer $answer): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($answer->attempt->exam->isMarkableBy($request->user()) && \App\Services\Exams\AiMarker::enabled(), 404);
+        try {
+            return response()->json(app(\App\Services\Exams\AiMarker::class)->suggest($answer, (float) ($answer->attempt->drawn[$answer->exam_question_id] ?? $answer->question->points)));
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
     }
 
     public function replyAppeal(Request $request, \App\Models\Exams\Appeal $appeal): RedirectResponse

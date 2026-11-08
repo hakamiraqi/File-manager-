@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
+const props = defineProps({ ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const open = ref({});
@@ -22,6 +22,19 @@ function mark(essay, final = false) {
     const body = { comment: m.comment, final };
     if (m.rubric) body.rubric = m.rubric.map((v) => Number(v || 0)); else body.points = m.points;
     router.put(route('exams.manage.answers.grade', essay.id), body, { preserveScroll: true });
+}
+// A suggestion from the AI (hosted site): fills the form; nothing is saved until «Save».
+const suggestions = ref({});
+async function suggest(essay) {
+    suggestions.value[essay.id] = { loading: true };
+    try {
+        const s = (await window.axios.post(route('exams.manage.answers.suggest', essay.id))).data;
+        const m = markFor(essay);
+        if (s.rubric && m.rubric) m.rubric = [...s.rubric]; else m.points = s.points;
+        suggestions.value[essay.id] = s;
+    } catch (e) {
+        suggestions.value[essay.id] = { error: e.response?.data?.message ?? t('exam.suggest_failed', 'تعذّر الاقتراح.') };
+    }
 }
 const rubricTotal = (essay) => (markFor(essay).rubric ?? []).reduce((s, v) => s + Number(v || 0), 0);
 
@@ -44,6 +57,11 @@ const markerForm = useForm({ email: '' });
 const addMarker = () => markerForm.post(route('exams.manage.markers.store', props.exam.id), { preserveScroll: true, onSuccess: () => markerForm.reset() });
 const removeMarker = (m) => router.delete(route('exams.manage.markers.destroy', [props.exam.id, m.id]), { preserveScroll: true });
 
+const importResults = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) router.post(route('exams.manage.results-bundle.import', props.exam.id), { file }, { forceFormData: true, preserveScroll: true });
+};
 const regrade = () => router.post(route('exams.manage.regrade', props.exam.id), {}, { preserveScroll: true });
 
 // Overrides
@@ -67,6 +85,10 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 <h2 class="min-w-0 flex-1 truncate text-lg font-semibold" :dir="exam.dir">{{ t('exam.results', 'النتائج') }} · {{ exam.title }}</h2>
                 <Link v-if="exam.anonymous && can_manage" :href="route('exams.manage.results', { exam: exam.id, names: exam.names_shown ? undefined : 1 })" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ exam.names_shown ? t('exam.hide_names', 'إخفاء الأسماء') : t('exam.show_names', 'إظهار الأسماء') }}</Link>
                 <button v-if="can_manage" @click="regrade" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('exam.regrade', 'إعادة التصحيح') }}</button>
+                <a v-if="can_manage" :href="route('exams.manage.results-bundle', exam.id)" class="hidden rounded-lg border border-gray-300 px-3 py-1.5 text-sm md:block dark:border-gray-600" :title="t('exam.results_bundle_hint', 'نتائج هذا السيرفر في ملف، تُدخل في السيرفر المركزي')">{{ t('exam.results_bundle', 'ملف النتائج') }}</a>
+                <label v-if="can_manage" class="hidden cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm md:block dark:border-gray-600" :title="t('exam.results_import_hint', 'ملف نتائج من سيرفر قاعة لهذا الامتحان نفسه')">
+                    <input type="file" accept=".json" class="sr-only" @change="importResults" />{{ t('exam.results_import', 'إدخال نتائج') }}</label>
+                <span v-if="$page.props.errors.file" class="text-xs text-red-600">{{ $page.props.errors.file }}</span>
                 <a v-if="can_manage" :href="route('exams.manage.export', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><ArrowDownTrayIcon class="h-4 w-4" /> Excel</a>
             </div>
         </template>
@@ -127,7 +149,10 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                                     <input v-model="markFor(essay).points" type="number" min="0" :max="essay.max" step="0.25" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                                 <label class="min-w-[12rem] flex-1 text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.comment', 'ملاحظة للطالب') }}</span>
                                     <input v-model="markFor(essay).comment" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                                <button v-if="ai_enabled && essay.text" type="button" @click="suggest(essay)" :disabled="suggestions[essay.id]?.loading" class="rounded-lg border border-violet-300 px-3 py-2 text-sm text-violet-700 disabled:opacity-50 dark:border-violet-700 dark:text-violet-300">✦ {{ suggestions[essay.id]?.loading ? '…' : t('exam.suggest', 'اقتراح درجة') }}</button>
                                 <button @click="mark(essay)" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white">{{ t('action.save', 'حفظ') }}</button>
+                                <p v-if="suggestions[essay.id]?.reason" class="w-full rounded-lg bg-violet-50 p-2 text-xs text-violet-900 dark:bg-violet-900/30 dark:text-violet-100" dir="auto">✦ {{ suggestions[essay.id].points }} — {{ suggestions[essay.id].reason }}</p>
+                                <p v-if="suggestions[essay.id]?.error" class="w-full text-xs text-red-600">{{ suggestions[essay.id].error }}</p>
                                 <button v-if="exam.double_marking && can_manage && essay.status === 'disputed'" @click="mark(essay, true)" class="rounded-lg border border-red-300 px-3 py-2 text-sm text-red-700 dark:border-red-700 dark:text-red-300">{{ t('exam.settle', 'اعتمادها نهائية') }}</button>
                             </div>
                         </div>

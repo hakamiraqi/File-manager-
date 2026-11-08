@@ -41,6 +41,12 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/questions/{question}/to-bank', [$bank, 'fromExam'])->name('bank.from-exam');
         Route::post('/{exam}/from-bank', [$bank, 'toExam'])->whereNumber('exam')->name('bank.to-exam');
 
+        $tr = \App\Http\Controllers\Exams\TransferController::class;
+        Route::get('/{exam}/package', [$tr, 'exportExam'])->whereNumber('exam')->name('package');
+        Route::get('/{exam}/qti', [$tr, 'exportQti'])->whereNumber('exam')->name('qti');
+        Route::post('/package', [$tr, 'importExam'])->name('package.import');
+        Route::get('/{exam}/results-bundle', [$tr, 'exportResults'])->whereNumber('exam')->name('results-bundle');
+        Route::post('/{exam}/results-bundle', [$tr, 'importResults'])->whereNumber('exam')->name('results-bundle.import');
         Route::get('/{exam}/print', [ManageController::class, 'print'])->whereNumber('exam')->name('print');
         Route::get('/{exam}/results', [ResultController::class, 'index'])->whereNumber('exam')->name('results');
         Route::get('/{exam}/export', [ResultController::class, 'export'])->whereNumber('exam')->name('export');
@@ -48,6 +54,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/overrides', [ResultController::class, 'override'])->whereNumber('exam')->name('overrides.store');
         Route::delete('/overrides/{override}', [ResultController::class, 'removeOverride'])->name('overrides.destroy');
         Route::get('/{exam}/similarity', [ResultController::class, 'similarity'])->whereNumber('exam')->name('similarity');
+        Route::post('/answers/{answer}/suggest', [ResultController::class, 'suggest'])->middleware('throttle:30,1')->name('answers.suggest');
         Route::put('/appeals/{appeal}', [ResultController::class, 'replyAppeal'])->name('appeals.reply');
         Route::post('/{exam}/markers', [ResultController::class, 'addMarker'])->whereNumber('exam')->name('markers.store');
         Route::delete('/{exam}/markers/{user}', [ResultController::class, 'removeMarker'])->whereNumber('exam')->name('markers.destroy');

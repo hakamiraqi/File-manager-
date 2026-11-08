@@ -11,7 +11,7 @@ import StickySaveBar from '@/Components/StickySaveBar.vue';
 import { useTrans } from '@/Composables/useTrans';
 
 const { t } = useTrans();
-const props = defineProps({ settings: Object, skins: Array, locales: Object });
+const props = defineProps({ hosted: Boolean, settings: Object, skins: Array, locales: Object });
 
 const page = usePage();
 const canAppearance = computed(() => page.props.permissions?.admin?.appearance ?? false);
@@ -34,6 +34,9 @@ const form = useForm({
     work_day_start: props.settings.work_day_start ?? '08:00',
     logo: null,
     header_image: null,
+    ai_api_key: '',
+    ai_model: props.settings.ai_model || 'claude-sonnet-5-5',
+    ai_clear: false,
 });
 
 function submit() {
@@ -106,6 +109,21 @@ function submit() {
                         <div>
                             <InputLabel :value="t('settings.work_day_start', 'بداية الدوام (لسجل النشاطات)')" />
                             <TextInput type="time" v-model="form.work_day_start" class="mt-1 block w-full" />
+                        </div>
+                    </div>
+                </section>
+                <section v-if="hosted" class="space-y-3 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="font-semibold">{{ t('settings.ai', 'اقتراح الدرجات بالذكاء الاصطناعي (على الاستضافة فقط)') }}</h3>
+                    <p class="text-xs text-gray-500">{{ t('settings.ai_hint', 'يقترح درجة وسبباً للإجابات المقالية حسب معايير التصحيح، والأستاذ يقرّر. يحتاج مفتاح Anthropic API، ويُرسل نص السؤال والإجابة دون اسم الطالب. لا يعمل في نسخة السيرفر بدون إنترنت.') }}</p>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <div>
+                            <InputLabel :value="t('settings.ai_key', 'مفتاح API') + (settings.ai_api_key_set ? ' ✓' : '')" />
+                            <TextInput type="password" v-model="form.ai_api_key" class="mt-1 block w-full" dir="ltr" autocomplete="off" :placeholder="settings.ai_api_key_set ? t('settings.ai_key_kept', 'محفوظ؛ اتركه فارغاً لإبقائه') : 'sk-ant-…'" />
+                            <label v-if="settings.ai_api_key_set" class="mt-1 flex items-center gap-2 text-xs"><input type="checkbox" v-model="form.ai_clear" class="rounded" /> {{ t('settings.ai_clear', 'حذف المفتاح') }}</label>
+                        </div>
+                        <div>
+                            <InputLabel :value="t('settings.ai_model', 'النموذج')" />
+                            <TextInput v-model="form.ai_model" class="mt-1 block w-full" dir="ltr" />
                         </div>
                     </div>
                 </section>

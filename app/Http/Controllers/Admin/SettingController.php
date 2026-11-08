@@ -30,8 +30,13 @@ class SettingController extends Controller
     {
         $settings = array_merge(self::DEFAULTS, Setting::all_settings());
 
+        // The AI key is never sent back to the page, only whether one is set.
+        $settings['ai_api_key_set'] = filled($settings['ai_api_key'] ?? null);
+        unset($settings['ai_api_key']);
+
         return Inertia::render('Admin/Settings', [
             'settings' => $settings,
+            'hosted' => ! config('offline.edition'),
             'skins' => config('filenest.skins'),
             'locales' => \App\Support\Locales::active(),
             'roles' => \App\Models\User::ROLES,
@@ -51,7 +56,21 @@ class SettingController extends Controller
             'work_day_start' => ['nullable', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
+            'ai_api_key' => ['nullable', 'string', 'max:300'],
+            'ai_model' => ['nullable', 'string', 'max:100'],
+            'ai_clear' => ['sometimes', 'boolean'],
         ]);
+        // AI marking suggestions need the internet: set on the hosted site only, the key kept encrypted.
+        if (config('offline.edition')) {
+            unset($data['ai_api_key'], $data['ai_model']);
+        } elseif ($request->boolean('ai_clear')) {
+            $data['ai_api_key'] = '';
+        } elseif (filled($data['ai_api_key'] ?? null)) {
+            $data['ai_api_key'] = \Illuminate\Support\Facades\Crypt::encryptString($data['ai_api_key']);
+        } else {
+            unset($data['ai_api_key']);
+        }
+        unset($data['ai_clear']);
 
         $user = $request->user();
         $canAppearance = $user->hasAdminCapability('can_manage_appearance');

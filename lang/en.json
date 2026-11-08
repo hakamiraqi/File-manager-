@@ -843,5 +843,22 @@
     "exam.appeal": "Appeal this question's mark",
     "exam.appeal_ph": "Explain why you ask for the mark to be reviewed",
     "exam.gradebook": "Gradebook",
-    "exam.gradebook_empty": "No exam has been given to this group yet."
+    "exam.gradebook_empty": "No exam has been given to this group yet.",
+    "exam.import_exam": "Import an exam",
+    "exam.import_exam_hint": "An exam file from another server (.json) or a QTI 3.0 package (.zip)",
+    "exam.export_package": "Transfer file",
+    "exam.export_package_hint": "To move the exam to a hall's server or another server on a USB stick",
+    "exam.export_qti_hint": "For other systems (Moodle and others): choice, true/false, short, numeric and essay questions",
+    "exam.results_bundle": "Results file",
+    "exam.results_bundle_hint": "This server's results in a file, to put into the central server",
+    "exam.results_import": "Put in results",
+    "exam.results_import_hint": "A results file from a hall's server, for this same exam",
+    "exam.suggest": "Suggest a mark",
+    "exam.suggest_failed": "Could not suggest.",
+    "settings.ai": "AI mark suggestions (hosted site only)",
+    "settings.ai_hint": "Suggests a mark and a reason for written answers, by the rubric; the teacher decides. Needs an Anthropic API key, and sends the question and the answer without the student's name. Not on the offline server.",
+    "settings.ai_key": "API key",
+    "settings.ai_key_kept": "Saved; leave empty to keep it",
+    "settings.ai_clear": "Remove the key",
+    "settings.ai_model": "Model"
 }

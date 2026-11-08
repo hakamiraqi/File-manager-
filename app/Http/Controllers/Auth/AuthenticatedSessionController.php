@@ -23,7 +23,8 @@ class AuthenticatedSessionController extends Controller
         return Inertia::render('Auth/Login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => session('status'),
-            'oauth' => [
+            // Signing in through Google and the like needs the internet: not on the offline server.
+            'oauth' => config('offline.edition') ? [] : [
                 'google' => (string) Setting::get('oauth_google_client_id', '') !== '',
                 'github' => (string) Setting::get('oauth_github_client_id', '') !== '',
                 'linkedin' => (string) Setting::get('oauth_linkedin_client_id', '') !== '',

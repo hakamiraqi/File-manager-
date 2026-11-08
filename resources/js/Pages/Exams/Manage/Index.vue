@@ -10,6 +10,12 @@ defineProps({ exams: Array });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(document.documentElement.lang || 'ar', { dateStyle: 'medium' }) : '—');
 const toDelete = ref(null);
+// An exam from another server (this system's file) or from another system (QTI 3.0 zip).
+const importExam = (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) router.post(route('exams.manage.package.import'), { file }, { forceFormData: true });
+};
 const page = usePage();
 const canImportStudents = computed(() => !!page.props.permissions?.admin?.users);
 
@@ -50,7 +56,10 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
         <template #header>
             <div class="flex items-center justify-between gap-2">
                 <h2 class="text-lg font-semibold">{{ t('nav.exams_manage', 'إدارة الامتحانات') }}</h2>
-                <button v-if="canImportStudents" @click="studentsOpen = true" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.import_students', 'استيراد طلاب') }}</button>
+                <label class="ms-auto cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600" :title="t('exam.import_exam_hint', 'ملف امتحان من سيرفر آخر (.json) أو حزمة QTI 3.0 (.zip)')">
+                    <input type="file" accept=".json,.zip" class="sr-only" @change="importExam" />{{ t('exam.import_exam', 'استيراد امتحان') }}</label>
+                <span v-if="$page.props.errors.file" class="text-xs text-red-600">{{ $page.props.errors.file }}</span>
+                <button v-if="canImportStudents" @click="studentsOpen = true" class=" rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.import_students', 'استيراد طلاب') }}</button>
                 <button @click="create" class="flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-sm text-white hover:bg-[var(--accent-700)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.new', 'امتحان جديد') }}</button>
             </div>
         </template>

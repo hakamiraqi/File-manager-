@@ -85,6 +85,9 @@ class OauthController extends Controller
 
     private function assertConfigured(string $provider): void
     {
+        if (config('offline.edition')) {
+            throw new NotFoundHttpException;
+        }
         if (! array_key_exists($provider, self::DRIVER_MAP)) {
             throw new NotFoundHttpException;
         }
