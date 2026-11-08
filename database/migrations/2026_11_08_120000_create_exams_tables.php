@@ -16,7 +16,7 @@ return new class extends Migration
     {
         Schema::table('users', function (Blueprint $table) {
             // A teacher: writes exams and marks them. Admins always can.
-            $table->boolean('is_examiner')->default(false)->after('is_librarian');
+            $table->boolean('is_examiner')->default(false);
             // Extra time on every exam (1.5 = 50% more), for students with an accommodation.
             $table->decimal('exam_time_multiplier', 4, 2)->default(1)->after('is_examiner');
         });
