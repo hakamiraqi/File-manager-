@@ -35,6 +35,7 @@ jobs:
       - name: Install
         run: |
           cp .env.example .env
+          sed -i -e 's/^DB_CONNECTION=.*/DB_CONNECTION=sqlite/' -e '/^DB_DATABASE=/d' .env
           touch database/database.sqlite
           composer install --no-interaction --no-progress --prefer-dist
           npm ci --no-audit --no-fund
