@@ -24,10 +24,6 @@ if [ "$1" = "php-fpm" ]; then
         php artisan tinker --execute='App\Models\Setting::setMany(["registration_enabled" => "0"]);' >/dev/null || true
         touch storage/app/.seeded
     fi
-    # Once per extractor upgrade: re-read the text of documents uploaded before it (queued, in the background).
-    if [ ! -f storage/app/.reindexed-v2 ]; then
-        php artisan filenest:reindex-documents && touch storage/app/.reindexed-v2 || true
-    fi
     php artisan config:cache
     php artisan route:cache
     php artisan view:cache

@@ -27,7 +27,7 @@ class ResultController extends Controller
     {
         $this->authorizeExam($request, $exam);
         $exam->load('questions.choices');
-        $attempts = $exam->attempts()->with(['user:id,name,email', 'answers', 'events'])->orderBy('user_id')->orderBy('number')->get();
+        $attempts = $exam->attempts()->with(['user:id,name,email', 'answers.question', 'events'])->orderBy('user_id')->orderBy('number')->get();
         $graded = $exam->questions->filter(fn (Question $q) => $q->isGraded());
         $submitted = $attempts->whereNotNull('submitted_at')->whereNotNull('score');
 
@@ -70,11 +70,11 @@ class ResultController extends Controller
                 'percent' => $a->percent(),
                 'needs_grading' => $a->needs_grading,
                 'events' => $a->events->countBy('type'),
-                'essays' => $a->answers->filter(fn (Answer $ans) => $exam->questions->firstWhere('id', $ans->exam_question_id)?->type === Question::ESSAY)
+                'essays' => $a->answers->filter(fn (Answer $ans) => $ans->question?->type === Question::ESSAY)
                     ->map(fn (Answer $ans) => [
                         'id' => $ans->id,
-                        'question' => Question::pick($exam->questions->firstWhere('id', $ans->exam_question_id)->body, app()->getLocale(), $exam->languages ?? []),
-                        'max' => $exam->questions->firstWhere('id', $ans->exam_question_id)->points,
+                        'question' => Question::pick($ans->question->body, app()->getLocale(), $exam->languages ?? []),
+                        'max' => $a->drawn[$ans->exam_question_id] ?? $ans->question->points,
                         'text' => $ans->response['text'] ?? '',
                         'points' => $ans->points,
                         'comment' => $ans->comment,
@@ -96,7 +96,7 @@ class ResultController extends Controller
     {
         $attempt = $answer->attempt;
         $this->authorizeExam($request, $attempt->exam);
-        $max = $answer->question->points;
+        $max = $attempt->drawn[$answer->exam_question_id] ?? $answer->question->points;
         $data = $request->validate([
             'points' => ['required', 'numeric', 'min:0', 'max:'.$max],
             'comment' => ['nullable', 'string', 'max:5000'],

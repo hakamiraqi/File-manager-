@@ -20,6 +20,16 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::get('/import/template', [\App\Http\Controllers\Exams\ImportController::class, 'questionsTemplate'])->name('import.template');
         Route::post('/students/import', [\App\Http\Controllers\Exams\ImportController::class, 'students'])->name('students.import');
 
+        $bank = \App\Http\Controllers\Exams\BankController::class;
+        Route::get('/bank', [$bank, 'index'])->name('bank');
+        Route::post('/bank/categories', [$bank, 'store'])->name('bank.categories.store');
+        Route::put('/bank/categories/{category}', [$bank, 'update'])->name('bank.categories.update');
+        Route::delete('/bank/categories/{category}', [$bank, 'destroy'])->name('bank.categories.destroy');
+        Route::post('/bank/categories/{category}/import', [$bank, 'import'])->name('bank.categories.import');
+        Route::delete('/bank/questions/{question}', [$bank, 'destroyQuestion'])->name('bank.questions.destroy');
+        Route::post('/questions/{question}/to-bank', [$bank, 'fromExam'])->name('bank.from-exam');
+        Route::post('/{exam}/from-bank', [$bank, 'toExam'])->whereNumber('exam')->name('bank.to-exam');
+
         Route::get('/{exam}/results', [ResultController::class, 'index'])->whereNumber('exam')->name('results');
         Route::get('/{exam}/export', [ResultController::class, 'export'])->whereNumber('exam')->name('export');
         Route::post('/{exam}/regrade', [ResultController::class, 'regrade'])->whereNumber('exam')->name('regrade');

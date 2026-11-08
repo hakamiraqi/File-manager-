@@ -97,7 +97,23 @@ class ExamController extends Controller
         if ($closes && (! $deadline || $closes->lt($deadline))) {
             $deadline = $closes->copy();
         }
-        $ids = $exam->questions()->pluck('id');
+        // Random slots draw their questions now, for this student, never the same twice.
+        $ids = collect();
+        $drawn = [];
+        foreach ($exam->questions()->get(['id', 'type', 'points', 'settings']) as $q) {
+            if ($q->type !== Question::RANDOM) {
+                $ids->push($q->id);
+
+                continue;
+            }
+            $pool = Question::where('bank_category_id', $q->settings['category_id'] ?? 0)->whereNull('exam_id')
+                ->where('type', '!=', Question::RANDOM)->whereNotIn('id', array_keys($drawn))->pluck('id')->shuffle()
+                ->take((int) ($q->settings['count'] ?? 0));
+            foreach ($pool as $id) {
+                $drawn[$id] = $q->points;
+                $ids->push($id);
+            }
+        }
         if ($exam->shuffle_questions) {
             $ids = $ids->shuffle();
         }
@@ -109,6 +125,7 @@ class ExamController extends Controller
             'started_at' => now(),
             'deadline_at' => $deadline,
             'question_order' => $ids->values()->all(),
+            'drawn' => $drawn ?: null,
             'ip' => $request->ip(),
         ]);
         ActivityLog::record('exam.started', "بدأ الامتحان \"{$exam->text('title')}\" (المحاولة {$attempt->number})", $exam);

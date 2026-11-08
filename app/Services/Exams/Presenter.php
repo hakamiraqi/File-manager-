@@ -135,7 +135,7 @@ class Presenter
     /** A response in words, for the review and the examiner. */
     public function describeResponse(Question $q, ?array $response, ?callable $text = null): ?string
     {
-        $text ??= fn ($v) => Question::pick($v, app()->getLocale(), $q->exam->languages ?? []);
+        $text ??= fn ($v) => Question::pick($v, app()->getLocale(), $q->exam?->languages ?? []);
         if (! $response) {
             return null;
         }
@@ -178,16 +178,21 @@ class Presenter
             'show_results' => $exam->show_results,
             'show_answers' => $exam->show_answers,
             'is_published' => $exam->is_published,
-            'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => [
-                'id' => $q->id,
-                'type' => $q->type,
-                'body' => $q->body ?: (object) [],
-                'feedback' => $q->feedback ?: (object) [],
-                'points' => $q->points,
-                'settings' => $q->settings ?: (object) [],
-                'choices' => $q->choices->map(fn (Choice $c) => [
-                    'id' => $c->id, 'body' => $c->body ?: (object) [], 'match' => $c->match ?: (object) [], 'is_correct' => $c->is_correct,
-                ])->all(),
+            'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => $this->questionForEditor($q))->all(),
+        ];
+    }
+
+    public function questionForEditor(Question $q): array
+    {
+        return [
+            'id' => $q->id,
+            'type' => $q->type,
+            'body' => $q->body ?: (object) [],
+            'feedback' => $q->feedback ?: (object) [],
+            'points' => $q->points,
+            'settings' => $q->settings ?: (object) [],
+            'choices' => $q->choices->map(fn (Choice $c) => [
+                'id' => $c->id, 'body' => $c->body ?: (object) [], 'match' => $c->match ?: (object) [], 'is_correct' => $c->is_correct,
             ])->all(),
         ];
     }

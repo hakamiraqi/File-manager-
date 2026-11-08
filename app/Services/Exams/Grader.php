@@ -60,6 +60,9 @@ class Grader
     public function retotal(Attempt $attempt): Attempt
     {
         $answers = $attempt->answers()->with('question')->get();
+        // Only questions still in the attempt count.
+        $ids = $attempt->orderedQuestions()->pluck('id')->all();
+        $answers = $answers->filter(fn (Answer $a) => in_array($a->exam_question_id, $ids, true));
         $pending = $answers->contains(fn (Answer $a) => $a->question?->type === Question::ESSAY
             && $a->points === null && filled($a->response['text'] ?? null));
         $attempt->update(['score' => round((float) $answers->sum('points'), 2), 'needs_grading' => $pending]);

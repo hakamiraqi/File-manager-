@@ -15,6 +15,7 @@ import {
     ShieldCheckIcon,
     ClipboardDocumentListIcon,
     PencilSquareIcon,
+    ArchiveBoxIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -25,7 +26,10 @@ const mobileOpen = ref(false);
 const nav = computed(() => [
     { label: t('nav.exams', 'امتحاناتي'), href: route('exams.index'), icon: ClipboardDocumentListIcon, active: route().current('exams.index') || route().current('exams.show') || route().current('exams.attempts.*') },
     ...(page.props.permissions?.manage_exams
-        ? [{ label: t('nav.exams_manage', 'إدارة الامتحانات'), href: route('exams.manage.index'), icon: PencilSquareIcon, active: route().current('exams.manage.*') }]
+        ? [
+            { label: t('nav.exams_manage', 'إدارة الامتحانات'), href: route('exams.manage.index'), icon: PencilSquareIcon, active: route().current('exams.manage.*') && !route().current('exams.manage.bank') },
+            { label: t('exam.bank', 'بنك الأسئلة'), href: route('exams.manage.bank'), icon: ArchiveBoxIcon, active: route().current('exams.manage.bank') },
+        ]
         : []),
 ]);
 

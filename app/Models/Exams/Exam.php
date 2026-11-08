@@ -125,7 +125,7 @@ class Exam extends Model
 
     public function maxScore(): float
     {
-        return (float) $this->questions->where('type', '!=', Question::DESCRIPTION)->sum('points');
+        return (float) $this->questions->where('type', '!=', Question::DESCRIPTION)->sum(fn (Question $q) => $q->slotPoints());
     }
 
     /** May this student see their mark now? */

@@ -17,7 +17,7 @@ class Attempt extends Model
 
     protected $fillable = [
         'exam_id', 'user_id', 'number', 'started_at', 'deadline_at', 'submitted_at',
-        'score', 'max_score', 'needs_grading', 'question_order', 'ip',
+        'score', 'max_score', 'needs_grading', 'question_order', 'drawn', 'ip',
     ];
 
     protected function casts(): array
@@ -30,6 +30,7 @@ class Attempt extends Model
             'max_score' => 'float',
             'needs_grading' => 'boolean',
             'question_order' => 'array',
+            'drawn' => 'array',
         ];
     }
 
@@ -68,14 +69,21 @@ class Attempt extends Model
         return $this->deadline_at ? max(0, (int) now()->diffInSeconds($this->deadline_at, false)) : null;
     }
 
-    /** The exam's questions in this attempt's order (fixed when the attempt started). */
+    /**
+     * The questions of this attempt in its order (fixed when it started): the exam's own, and
+     * those drawn from the bank for its random slots, each worth the slot's points.
+     */
     public function orderedQuestions(): Collection
     {
-        $questions = $this->exam->questions()->with('choices')->get()->keyBy('id');
-        $order = $this->question_order ?: $questions->keys()->all();
+        $own = $this->exam->questions()->with('choices')->get()->where('type', '!=', Question::RANDOM)->keyBy('id');
+        $drawn = collect($this->drawn ?? []);
+        $fromBank = $drawn->isEmpty() ? collect() : Question::with('choices')->whereIn('id', $drawn->keys())->get()
+            ->each(fn (Question $q) => $q->points = (float) $drawn[$q->id])->keyBy('id');
+        $questions = $own->union($fromBank);
+        $order = $this->question_order ?: $own->keys()->all();
 
         return collect($order)->map(fn ($id) => $questions[$id] ?? null)->filter()
-            ->concat($questions->except($order)->values())->values();
+            ->concat($own->except($order)->values())->values();
     }
 
     public function percent(): ?float

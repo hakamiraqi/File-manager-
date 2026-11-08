@@ -68,6 +68,7 @@ class ManageController extends Controller
             'attempts' => $exam->attempts()->count(),
             'languages' => Exam::LANGUAGES,
             'types' => Question::TYPES,
+            'categories' => \App\Models\Exams\BankCategory::usableBy($request->user())->withCount('questions')->orderBy('name')->get(['id', 'name', 'subject', 'user_id', 'is_shared']),
         ]);
     }
 
@@ -199,6 +200,20 @@ class ManageController extends Controller
             $n = $i + 1;
             $type = $q['type'];
             $body = Question::cleanTexts($q['body'] ?? [], $langs);
+            if ($type === Question::RANDOM) {
+                $settings = (array) ($q['settings'] ?? []);
+                $category = \App\Models\Exams\BankCategory::find((int) ($settings['category_id'] ?? 0));
+                $count = (int) ($settings['count'] ?? 0);
+                if (! $category || ! $category->isUsableBy(auth()->user())) {
+                    $errors["questions.$i.settings"] = "السؤال $n: اختر فئة من بنك الأسئلة.";
+                } elseif ($count < 1 || $count > $category->questions()->count()) {
+                    $errors["questions.$i.settings"] = "السؤال $n: العدد بين 1 و{$category->questions()->count()} (أسئلة الفئة).";
+                }
+                $out[] = ['id' => $q['id'] ?? null, 'type' => $type, 'body' => $body, 'feedback' => [], 'points' => (float) ($q['points'] ?? 1),
+                    'settings' => ['category_id' => (int) ($settings['category_id'] ?? 0), 'count' => $count], 'choices' => []];
+
+                continue;
+            }
             if ($body === []) {
                 $errors["questions.$i.body"] = "السؤال $n: اكتب نص السؤال.";
             }

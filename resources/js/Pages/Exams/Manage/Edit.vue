@@ -1,19 +1,20 @@
 <script setup>
 import { computed, ref } from 'vue';
-import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
+import Modal from '@/Components/Modal.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array });
+const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] } });
 const { t } = useTrans();
 const page = usePage();
 
 const TYPE_LABELS = {
     single: 'اختيار من متعدد (إجابة واحدة)', multiple: 'اختيار من متعدد (عدة إجابات)', true_false: 'صح / خطأ',
-    short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي', description: 'نص توضيحي (بلا درجة)',
+    short: 'إجابة قصيرة', numeric: 'رقمي', matching: 'مطابقة', ordering: 'ترتيب', cloze: 'املأ الفراغ', essay: 'مقالي', description: 'نص توضيحي (بلا درجة)', random: 'أسئلة عشوائية من البنك',
 };
 const LANG_LABELS = { ar: 'العربية', en: 'English', ku: 'کوردی' };
 const typeLabel = (type) => t('exam.type_' + type, TYPE_LABELS[type]);
@@ -40,6 +41,7 @@ function addQuestion(type) {
     if (type === 'true_false') q.choices = [choice({ ar: 'صح', en: 'True', ku: 'ڕاست' }, true), choice({ ar: 'خطأ', en: 'False', ku: 'هەڵە' })];
     if (type === 'matching' || type === 'ordering') q.choices = [choice(), choice(), choice()];
     if (type === 'numeric') q.settings = { answer: '', tolerance: '0' };
+    if (type === 'random') q.settings = { category_id: props.categories[0]?.id ?? '', count: 5 };
     form.questions.push(q);
 }
 function moveQuestion(i, step) {
@@ -62,7 +64,33 @@ function toggleLanguage(lang) {
     else if (i < 0) form.languages.push(lang);
 }
 
-const totalPoints = computed(() => form.questions.filter((q) => q.type !== 'description').reduce((s, q) => s + Number(q.points || 0), 0));
+const totalPoints = computed(() => form.questions.filter((q) => q.type !== 'description')
+    .reduce((s, q) => s + Number(q.points || 0) * (q.type === 'random' ? Number(q.settings?.count || 0) : 1), 0));
+
+// ---- Question bank ----
+const toBank = (q, categoryId) => categoryId && router.post(route('exams.manage.bank.from-exam', q.id), { category_id: categoryId }, { preserveScroll: true });
+const bankOpen = ref(false);
+const bankCategory = ref(null);
+const bankQuestions = ref([]);
+const bankPicked = ref([]);
+async function loadBank(id) {
+    bankCategory.value = id;
+    bankPicked.value = [];
+    // The bank page's props carry the category's questions.
+    const res = await window.axios.get(route('exams.manage.bank', { category: id }), { headers: { 'X-Inertia': 'true', 'X-Inertia-Version': page.version ?? '' } });
+    bankQuestions.value = res.data?.props?.questions ?? [];
+}
+function addFromBank() {
+    router.post(route('exams.manage.bank.to-exam', props.exam.id), { ids: bankPicked.value }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            bankOpen.value = false;
+            const fresh = fromProps(page.props.exam);
+            Object.keys(fresh).forEach((k) => (form[k] = fresh[k]));
+            form.defaults(fresh);
+        },
+    });
+}
 const errorsFor = (i) => Object.entries(form.errors).filter(([k]) => k.startsWith(`questions.${i}.`) || k === `questions.${i}`).map(([, v]) => v);
 
 // ---- Import questions (Excel / CSV / Aiken) ----
@@ -202,7 +230,17 @@ function save() {
                     <button @click="form.questions.splice(i, 1)" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"><TrashIcon class="h-4 w-4" /></button>
                 </div>
 
-                <LangInput v-model="q.body" :languages="form.languages" multiline :rows="2" :placeholder="q.type === 'description' ? t('exam.description_ph', 'نص أو قطعة تعود إليها الأسئلة التالية') : t('exam.question_ph', 'نص السؤال')" />
+                <div v-if="q.type === 'random'" class="grid gap-3 sm:grid-cols-2">
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.bank_category', 'فئة البنك') }}</span>
+                        <select v-model="q.settings.category_id" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }} ({{ c.questions_count }})</option>
+                        </select></label>
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.random_count', 'عدد الأسئلة لكل طالب') }}</span>
+                        <input v-model="q.settings.count" type="number" min="1" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <p class="text-xs text-gray-500 sm:col-span-2">{{ t('exam.random_hint', 'كل طالب يأخذ أسئلة مختلفة من الفئة، والدرجة أعلاه لكل سؤال منها.') }}
+                        <Link v-if="!categories.length" :href="route('exams.manage.bank')" class="text-[var(--accent-600)] underline">{{ t('exam.bank_create_first', 'أنشئ فئة في بنك الأسئلة أولاً') }}</Link></p>
+                </div>
+                <LangInput v-else v-model="q.body" :languages="form.languages" multiline :rows="2" :placeholder="q.type === 'description' ? t('exam.description_ph', 'نص أو قطعة تعود إليها الأسئلة التالية') : t('exam.question_ph', 'نص السؤال')" />
 
                 <!-- Choices: one / several / true-false -->
                 <div v-if="['single', 'multiple', 'true_false'].includes(q.type)" class="space-y-2">
@@ -260,7 +298,12 @@ function save() {
                     <p class="text-xs text-gray-500 sm:col-span-2">{{ t('exam.essay_hint', 'يُصحَّح يدوياً من صفحة النتائج.') }}</p>
                 </div>
 
-                <details v-if="q.type !== 'description'" class="text-sm">
+                <select v-if="q.id && q.type !== 'random' && categories.length" @change="toBank(q, $event.target.value); $event.target.value = ''" class="rounded-lg border-gray-300 py-1 text-xs text-gray-500 dark:border-gray-600 dark:bg-gray-700">
+                    <option value="">{{ t('exam.to_bank', 'نسخ إلى البنك…') }}</option>
+                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+
+                <details v-if="q.type !== 'description' && q.type !== 'random'" class="text-sm">
                     <summary class="cursor-pointer text-xs text-gray-500">{{ t('exam.feedback', 'تغذية راجعة تظهر في المراجعة') }}</summary>
                     <div class="mt-2"><LangInput v-model="q.feedback" :languages="form.languages" multiline :rows="2" /></div>
                 </details>
@@ -285,6 +328,13 @@ function save() {
                 <p v-if="importForm.errors.file" class="text-xs text-red-600">{{ importForm.errors.file }}</p>
             </section>
 
+            <!-- From the bank -->
+            <section v-if="categories.length" class="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-300 p-4 text-sm dark:border-gray-600">
+                <span class="font-medium">{{ t('exam.from_bank', 'من بنك الأسئلة') }}</span>
+                <button @click="bankOpen = true; loadBank(categories[0].id)" :disabled="form.isDirty" class="rounded-lg border border-gray-300 px-3 py-1.5 disabled:opacity-40 dark:border-gray-600">{{ t('exam.pick_questions', 'اختيار أسئلة') }}</button>
+                <span v-if="form.isDirty" class="text-xs text-amber-600">{{ t('exam.save_first', 'احفظ التعديلات أولاً.') }}</span>
+            </section>
+
             <!-- Add a question -->
             <section class="rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-600">
                 <p class="mb-2 text-sm font-medium">{{ t('exam.add_question', 'إضافة سؤال') }}</p>
@@ -299,5 +349,26 @@ function save() {
                 <button @click="save" :disabled="form.processing" class="rounded-lg bg-[var(--accent-600)] px-6 py-2 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">{{ t('action.save', 'حفظ') }}</button>
             </div>
         </div>
+
+        <Modal :show="bankOpen" @close="bankOpen = false" max-width="2xl">
+            <div class="space-y-3 p-6">
+                <h3 class="text-lg font-semibold">{{ t('exam.from_bank', 'من بنك الأسئلة') }}</h3>
+                <select :value="bankCategory" @change="loadBank(Number($event.target.value))" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                    <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }} ({{ c.questions_count }})</option>
+                </select>
+                <div class="max-h-96 space-y-1 overflow-y-auto">
+                    <label v-for="bq in bankQuestions" :key="bq.id" class="flex cursor-pointer items-start gap-2 rounded-lg border border-gray-200 p-2 text-sm dark:border-gray-700">
+                        <input type="checkbox" :value="bq.id" v-model="bankPicked" class="mt-1 rounded" />
+                        <span class="min-w-0 flex-1"><span class="line-clamp-2" dir="auto">{{ bq.body }}</span>
+                            <span class="block text-xs text-gray-500">{{ typeLabel(bq.type) }} · {{ bq.points }}</span></span>
+                    </label>
+                    <p v-if="!bankQuestions.length" class="p-4 text-center text-sm text-gray-400">{{ t('exam.bank_no_questions', 'لا أسئلة في هذه الفئة بعد.') }}</p>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button @click="bankOpen = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
+                    <button @click="addFromBank" :disabled="!bankPicked.length" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white disabled:opacity-50">{{ t('exam.add_n', 'إضافة :n', { n: bankPicked.length }) }}</button>
+                </div>
+            </div>
+        </Modal>
     </AppLayout>
 </template>
