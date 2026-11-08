@@ -128,6 +128,45 @@ class MonitorController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * An emergency answers file a student's page saved when the network did not come back:
+     * its answers go into the attempt (marked in its alerts), and it is submitted if asked.
+     */
+    public function offlineFile(Request $request, Exam $exam): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $request->validate(['file' => ['required', 'file', 'max:5120'], 'submit' => ['sometimes', 'boolean']]);
+        $data = json_decode((string) file_get_contents($request->file('file')->getRealPath()), true);
+        $attempt = is_array($data) && ($data['kind'] ?? null) === 'examnest-offline-answers'
+            ? Attempt::where('exam_id', $exam->id)->find((int) ($data['attempt'] ?? 0)) : null;
+        if (! $attempt || ! hash_equals($attempt->offlineToken(), (string) ($data['token'] ?? ''))) {
+            return response()->json(['message' => 'الملف ليس ملف إجابات لهذا الامتحان، أو عُدّل.'], 422);
+        }
+        if ($attempt->isSubmitted() && $attempt->score !== null && ! $request->boolean('force')) {
+            return response()->json(['message' => 'المحاولة مُسلّمة. أعد فتحها أولاً إن كان الملف أحدث.'], 409);
+        }
+
+        $ids = $attempt->orderedQuestions()->reject(fn ($q) => $q->type === \App\Models\Exams\Question::UPLOAD)->pluck('id')->all();
+        $count = 0;
+        foreach ((array) ($data['answers'] ?? []) as $qid => $answer) {
+            if (! in_array((int) $qid, $ids, true) || ! is_array($answer['response'] ?? null)) {
+                continue;
+            }
+            \App\Models\Exams\Answer::updateOrCreate(['exam_attempt_id' => $attempt->id, 'exam_question_id' => (int) $qid],
+                ['response' => $answer['response'], 'flagged' => (bool) ($answer['flagged'] ?? false)]);
+            $count++;
+        }
+        \App\Models\Exams\Event::create(['exam_attempt_id' => $attempt->id, 'type' => 'offline_file',
+            'meta' => ['answers' => $count, 'saved_at' => $data['saved_at'] ?? null, 'by' => $request->user()->id]]);
+        if ($request->boolean('submit') && ! $attempt->isSubmitted()) {
+            $attempt->update(['submitted_at' => now()]);
+            $this->grader->grade($attempt);
+        }
+        $this->log($request, $attempt, "رفع ملف إجابات طارئاً ({$count} إجابة)");
+
+        return response()->json(['ok' => true, 'student' => $attempt->user?->name, 'answers' => $count]);
+    }
+
     public function accessCode(Request $request, Exam $exam): JsonResponse
     {
         $this->authorizeExam($request, $exam);

@@ -179,6 +179,7 @@ class ExamController extends Controller
             ],
             'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice],
             'questions' => $questions->map(fn (Question $q) => $this->presenter->forStudent($q, $exam, $attempt))->values(),
+            'offline_token' => $attempt->offlineToken(),
             'answers' => $answers->map(fn (Answer $a) => ['response' => $a->response, 'flagged' => $a->flagged,
                 'checked' => $a->checked_at && ($q = $questions->firstWhere('id', $a->exam_question_id)) ? $this->checkResult($q, $exam, $a) : null]),
         ]);

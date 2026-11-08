@@ -86,6 +86,24 @@ async function announce() {
     note.value = '';
 }
 const showCode = ref(false);
+
+// An emergency answers file from a student whose network did not come back.
+const fileMsg = ref('');
+async function uploadOffline(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const data = new FormData();
+    data.append('file', file);
+    data.append('submit', '1');
+    try {
+        const res = await window.axios.post(route('exams.monitor.offline-file', props.exam.id), data);
+        fileMsg.value = t('exam.offline_file_ok', 'أُدخلت :n إجابة لـ :s وسُلّمت.', { n: res.data.answers, s: res.data.student });
+        refresh();
+    } catch (e) {
+        fileMsg.value = e.response?.data?.message ?? t('exam.upload_failed', 'تعذّر رفع الملف.');
+    }
+}
 </script>
 
 <template>
@@ -127,6 +145,13 @@ const showCode = ref(false);
                     <input v-model="note" maxlength="500" :placeholder="t('exam.announce_ph', 'رسالة لكل الطلاب في هذا الامتحان (مثلاً: بقيت 10 دقائق)')" class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                     <button :disabled="busy || !note.trim()" class="rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-sm text-white disabled:opacity-40">{{ t('exam.send', 'إرسال') }}</button>
                 </form>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 text-sm">
+                <label class="cursor-pointer rounded-lg border border-dashed border-gray-300 px-3 py-1.5 text-xs text-gray-600 dark:border-gray-600 dark:text-gray-300">
+                    <input type="file" accept=".json,application/json" class="sr-only" @change="uploadOffline" />
+                    {{ t('exam.offline_file_upload', 'رفع ملف إجابات طارئ من طالب') }}
+                </label>
+                <span v-if="fileMsg" class="text-xs">{{ fileMsg }}</span>
             </div>
             <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
 

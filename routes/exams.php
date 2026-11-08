@@ -74,6 +74,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/{exam}/sheet', [$m, 'sheet'])->whereNumber('exam')->name('sheet');
     Route::post('/{exam}/attendance/{user}', [$m, 'attendance'])->whereNumber('exam')->name('attendance');
     Route::post('/{exam}/access-code', [$m, 'accessCode'])->whereNumber('exam')->name('access-code');
+    Route::post('/{exam}/offline-file', [$m, 'offlineFile'])->whereNumber('exam')->name('offline-file');
     Route::post('/{exam}/announce', [$m, 'announce'])->whereNumber('exam')->name('announce');
     Route::post('/{exam}/submit-all', [$m, 'submitAll'])->whereNumber('exam')->name('submit-all');
     Route::post('/attempts/{attempt}/extend', [$m, 'extend'])->name('extend');

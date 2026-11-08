@@ -725,5 +725,11 @@
     "exam.cards_once": "The passwords will not be shown again: print them now.",
     "exam.card_address": "Address",
     "exam.card_email": "E-mail",
-    "exam.card_password": "Password"
+    "exam.card_password": "Password",
+    "exam.kept_on_device": "Offline — :n kept on this device, sent automatically",
+    "exam.emergency_hint": "If the connection does not come back: download this file and give it to the invigilator",
+    "exam.emergency_file": "Emergency file",
+    "exam.offline_file_ok": ":n answers put in for :s, and submitted.",
+    "exam.offline_file_upload": "Upload a student's emergency answers file",
+    "exam.event_offline_file": "Emergency file"
 }

@@ -64,6 +64,12 @@ class Attempt extends Model
         return $this->deadline_at !== null && now()->gt($this->deadline_at->copy()->addSeconds($grace));
     }
 
+    /** Ties an emergency answers file to this attempt (the invigilator uploads it). */
+    public function offlineToken(): string
+    {
+        return hash_hmac('sha256', 'offline-answers|'.$this->id.'|'.$this->user_id, (string) config('app.key'));
+    }
+
     public function secondsLeft(): ?int
     {
         return $this->deadline_at ? max(0, (int) now()->diffInSeconds($this->deadline_at, false)) : null;

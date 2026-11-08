@@ -6,7 +6,7 @@ import FlashMessages from '@/Components/FlashMessages.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object });
+const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object, offline_token: String });
 const { t } = useTrans();
 
 // ---- Answers (kept here, saved as they change) ----
@@ -50,24 +50,74 @@ const answered = (q) => {
 };
 const answeredCount = computed(() => graded.value.filter(answered).length);
 
+// ---- Saving: every change is kept on this device first, then sent; what could not be sent
+// is sent again when the network is back (a dropped Wi-Fi never loses an answer). ----
 const saving = ref(0);
 const failed = ref(false);
 const timers = {};
-async function save(q, delay = 0) {
-    clearTimeout(timers[q.id]);
-    timers[q.id] = setTimeout(async () => {
-        saving.value++;
-        try {
-            const res = await window.axios.post(route('exams.attempts.save', props.attempt.id), { question_id: q.id, response: state[q.id], flagged: flags[q.id] });
-            failed.value = false;
-            if (res.data.seconds_left !== null && res.data.seconds_left !== undefined) secondsLeft.value = res.data.seconds_left;
-        } catch (e) {
-            if (e.response?.status === 409) return finish();
-            failed.value = true;
-        } finally {
-            saving.value--;
+const STORE = 'exam-attempt-' + props.attempt.id;
+const pending = reactive(new Set());
+function keepLocally() {
+    try {
+        localStorage.setItem(STORE, JSON.stringify({ at: Date.now(), state, flags, pending: [...pending] }));
+    } catch { /* private mode or full: the server copy still counts */ }
+}
+// Answers this device kept but the server never got (the page was closed while offline).
+try {
+    const kept = JSON.parse(localStorage.getItem(STORE) || 'null');
+    for (const id of kept?.pending ?? []) {
+        if (kept.state?.[id] !== undefined && props.questions.some((q) => q.id === Number(id))) {
+            state[id] = kept.state[id];
+            flags[id] = !!kept.flags?.[id];
+            pending.add(Number(id));
         }
-    }, delay);
+    }
+} catch { /* nothing kept */ }
+
+async function send(q) {
+    saving.value++;
+    try {
+        const res = await window.axios.post(route('exams.attempts.save', props.attempt.id), { question_id: q.id, response: state[q.id], flagged: flags[q.id] });
+        pending.delete(q.id);
+        failed.value = pending.size > 0;
+        if (res.data.seconds_left !== null && res.data.seconds_left !== undefined) secondsLeft.value = res.data.seconds_left;
+    } catch (e) {
+        if (e.response?.status === 409) return finish();
+        failed.value = true;
+    } finally {
+        saving.value--;
+        keepLocally();
+    }
+}
+function save(q, delay = 0) {
+    pending.add(q.id);
+    keepLocally();
+    clearTimeout(timers[q.id]);
+    timers[q.id] = setTimeout(() => send(q), delay);
+}
+async function resend() {
+    for (const id of [...pending]) {
+        const q = props.questions.find((x) => x.id === id);
+        if (!q) { pending.delete(id); continue; }
+        clearTimeout(timers[id]);
+        await send(q);
+        if (pending.has(id)) break;   // still offline: try again later
+    }
+}
+const online = ref(navigator.onLine);
+const onOnline = () => { online.value = true; resend(); };
+const onOffline = () => (online.value = false);
+
+// Last resort: the invigilator uploads this file if the network does not come back.
+function emergencyFile() {
+    const data = {
+        kind: 'examnest-offline-answers', version: 1, attempt: props.attempt.id, token: props.offline_token,
+        saved_at: new Date().toISOString(), answers: Object.fromEntries(props.questions.map((q) => [q.id, { response: state[q.id], flagged: !!flags[q.id] }])),
+    };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: 'application/json' }));
+    a.download = `answers-attempt-${props.attempt.id}.json`;
+    a.click();
 }
 function pair(q, itemId, value) {
     const target = Number(value);
@@ -173,7 +223,7 @@ async function finish(closedByServer = false) {
     // Let pending saves land first.
     for (const id of Object.keys(timers)) clearTimeout(timers[id]);
     await Promise.allSettled(props.questions.map((q) => window.axios.post(route('exams.attempts.save', props.attempt.id), { question_id: q.id, response: state[q.id], flagged: flags[q.id] }).catch(() => null)));
-    router.post(route('exams.attempts.submit', props.attempt.id));
+    router.post(route('exams.attempts.submit', props.attempt.id), {}, { onSuccess: () => { try { localStorage.removeItem(STORE); } catch {} } });
 }
 
 // ---- Heartbeat: the invigilator sees the student connected; more time and announcements come back ----
@@ -201,8 +251,11 @@ const onPaste = () => report('paste');
 const onLeave = (e) => { if (saving.value) { e.preventDefault(); e.returnValue = ''; } };
 
 onMounted(() => {
-    heartbeat = setInterval(ping, 20000);
+    heartbeat = setInterval(() => { ping(); if (pending.size) resend(); }, 20000);
     ping();
+    if (pending.size) resend();
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
     tick = setInterval(() => {
         if (secondsLeft.value === null) return;
         secondsLeft.value--;
@@ -219,6 +272,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
     clearInterval(tick);
     clearInterval(heartbeat);
+    window.removeEventListener('online', onOnline);
+    window.removeEventListener('offline', onOffline);
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('blur', onBlur);
     document.removeEventListener('paste', onPaste);
@@ -232,7 +287,10 @@ onBeforeUnmount(() => {
         <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
             <h1 class="min-w-0 flex-1 truncate font-semibold">{{ exam.title }}</h1>
             <span class="hidden text-xs text-gray-500 sm:inline">{{ answeredCount }} / {{ graded.length }} {{ t('exam.answered', 'مُجاب') }}</span>
-            <span class="text-xs" :class="failed ? 'text-red-600' : 'text-gray-400'">{{ failed ? t('exam.save_failed', 'لم يُحفظ — تحقّق من الاتصال') : saving ? t('exam.saving', 'يحفظ…') : t('exam.saved', 'محفوظ') }}</span>
+            <span class="text-xs" :class="failed || !online ? 'text-red-600' : 'text-gray-400'">
+                {{ failed || !online ? t('exam.kept_on_device', 'بلا اتصال — :n محفوظة على هذا الجهاز وستُرسل تلقائياً', { n: pending.size }) : saving ? t('exam.saving', 'يحفظ…') : t('exam.saved', 'محفوظ') }}
+            </span>
+            <button v-if="failed || !online" @click="emergencyFile" class="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700" :title="t('exam.emergency_hint', 'إذا لم يعد الاتصال: نزّل هذا الملف وأعطه للمراقب')">{{ t('exam.emergency_file', 'ملف طارئ') }}</button>
             <span v-if="clock" class="flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-sm font-semibold" :class="secondsLeft < 300 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700'" role="timer" aria-live="off">
                 <ClockIcon class="h-4 w-4" /> {{ clock }}
             </span>
