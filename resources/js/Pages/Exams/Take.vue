@@ -6,7 +6,35 @@ import FlashMessages from '@/Components/FlashMessages.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object, offline_token: String });
+const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object, offline_token: String, hall: { type: Object, default: () => ({}) } });
+
+// ---- The hall: a locked attempt (left the page / opened again) waits for the invigilator's code ----
+const locked = ref(!!props.hall.locked);
+const help = ref(!!props.hall.help);
+const unlockCode = ref('');
+const unlockError = ref('');
+async function unlockAttempt() {
+    unlockError.value = '';
+    try {
+        await window.axios.post(route('exams.attempts.unlock', props.attempt.id), { code: unlockCode.value });
+        locked.value = false;
+        unlockCode.value = '';
+        resend();
+    } catch (e) {
+        unlockError.value = e.response?.data?.message ?? t('exam.unlock_failed', 'تعذّر الفتح.');
+    }
+}
+async function toggleHelp() {
+    help.value = (await window.axios.post(route('exams.attempts.help', props.attempt.id), { on: !help.value })).data.help;
+}
+
+// ---- Reading: font, size and direction, kept on this device ----
+const PREFS = 'exam-reading';
+const reading = reactive(Object.assign({ font: '', size: 100, dir: '' }, (() => { try { return JSON.parse(localStorage.getItem(PREFS) || '{}'); } catch { return {}; } })()));
+const FONTS = [['', 'افتراضي'], ['Tahoma, sans-serif', 'Tahoma'], ['Arial, sans-serif', 'Arial'], ["'Times New Roman', serif", 'Times'], ["'Segoe UI', sans-serif", 'Segoe UI'], ["'Courier New', monospace", 'Courier']];
+function saveReading() { try { localStorage.setItem(PREFS, JSON.stringify(reading)); } catch {} }
+const readingStyle = computed(() => ({ fontFamily: reading.font || undefined, fontSize: reading.size + '%' }));
+const readingOpen = ref(false);
 const { t } = useTrans();
 
 // ---- Answers (kept here, saved as they change) ----
@@ -83,6 +111,7 @@ async function send(q) {
         if (res.data.seconds_left !== null && res.data.seconds_left !== undefined) secondsLeft.value = res.data.seconds_left;
     } catch (e) {
         if (e.response?.status === 409) return finish();
+        if (e.response?.status === 423) locked.value = true;
         failed.value = true;
     } finally {
         saving.value--;
@@ -233,6 +262,8 @@ async function ping() {
     try {
         const res = await window.axios.post(route('exams.attempts.ping', props.attempt.id));
         if (res.data.closed) return finish(true);
+        locked.value = !!res.data.locked;
+        help.value = !!res.data.help;
         if (res.data.seconds_left !== null && res.data.seconds_left !== undefined) secondsLeft.value = res.data.seconds_left;
         for (const a of res.data.announcements ?? []) {
             if (!seenNotes.has(a.id)) { seenNotes.add(a.id); announcements.value.push(a); }
@@ -245,7 +276,7 @@ let heartbeat;
 function report(type, meta = null) {
     window.axios.post(route('exams.attempts.event', props.attempt.id), { type, meta }).catch(() => {});
 }
-const onVisibility = () => document.visibilityState === 'hidden' && report('hidden');
+const onVisibility = () => (document.visibilityState === 'hidden' ? report('hidden') : setTimeout(ping, 500));
 const onBlur = () => report('blur');
 const onPaste = () => report('paste');
 const onLeave = (e) => { if (saving.value) { e.preventDefault(); e.returnValue = ''; } };
@@ -294,8 +325,22 @@ onBeforeUnmount(() => {
             <span v-if="clock" class="flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-sm font-semibold" :class="secondsLeft < 300 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700'" role="timer" aria-live="off">
                 <ClockIcon class="h-4 w-4" /> {{ clock }}
             </span>
+            <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
+            <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
+            <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')">✋ {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
             <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
         </header>
+        <div v-if="readingOpen" class="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
+            <label class="flex items-center gap-1">{{ t('exam.font', 'الخط') }}
+                <select v-model="reading.font" @change="saveReading" class="rounded border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700"><option v-for="[v, l] in FONTS" :key="l" :value="v">{{ l === 'افتراضي' ? t('exam.font_default', 'افتراضي') : l }}</option></select></label>
+            <span class="flex items-center gap-1">{{ t('exam.font_size', 'الحجم') }}
+                <button @click="reading.size = Math.max(80, reading.size - 10); saveReading()" class="rounded border border-gray-300 px-2 dark:border-gray-600">A−</button>
+                <span class="w-12 text-center">{{ reading.size }}%</span>
+                <button @click="reading.size = Math.min(200, reading.size + 10); saveReading()" class="rounded border border-gray-300 px-2 dark:border-gray-600">A+</button></span>
+            <label class="flex items-center gap-1">{{ t('exam.text_dir', 'الاتجاه') }}
+                <select v-model="reading.dir" @change="saveReading" class="rounded border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700">
+                    <option value="">{{ t('exam.dir_auto_short', 'تلقائي') }}</option><option value="rtl">{{ t('exam.dir_rtl', 'من اليمين لليسار') }}</option><option value="ltr">{{ t('exam.dir_ltr', 'من اليسار لليمين') }}</option></select></label>
+        </div>
         <FlashMessages />
         <div v-if="announcements.length" class="mx-auto mt-3 max-w-6xl space-y-1 px-4" role="status" aria-live="polite">
             <p v-for="a in announcements" :key="a.id" class="flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/40 dark:text-sky-100">
@@ -319,7 +364,7 @@ onBeforeUnmount(() => {
             </nav>
 
             <!-- The question -->
-            <main class="order-1 space-y-4 lg:order-2 lg:col-span-3">
+            <main class="order-1 space-y-4 lg:order-2 lg:col-span-3" :style="readingStyle" :dir="reading.dir || undefined">
                 <article v-if="current" class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                     <div class="mb-3 flex items-center justify-between gap-2 text-xs text-gray-500">
                         <span v-if="current.type !== 'description'">{{ t('exam.question', 'السؤال') }} {{ number(current) }} · {{ current.points }} {{ t('exam.points', 'درجة') }}</span>
@@ -454,6 +499,22 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
             </main>
+        </div>
+
+        <!-- Locked: the invigilator's code opens it again -->
+        <div v-if="locked" class="fixed inset-0 z-40 flex items-center justify-center bg-gray-900/80 p-4" role="dialog" aria-modal="true">
+            <form @submit.prevent="unlockAttempt" class="w-full max-w-sm space-y-4 rounded-xl bg-white p-6 text-center dark:bg-gray-800">
+                <p class="text-4xl">🔒</p>
+                <p class="font-semibold">{{ t('exam.locked_title', 'المحاولة مقفلة') }}</p>
+                <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.locked_text', 'خرجت من صفحة الامتحان أو فتحتها من جديد. اطلب من المراقب رمز المتابعة. إجاباتك محفوظة، والوقت مستمر.') }}</p>
+                <input v-model="unlockCode" inputmode="numeric" autocomplete="off" dir="ltr" class="w-40 rounded-lg border-gray-300 text-center font-mono text-2xl tracking-[0.4em] dark:border-gray-600 dark:bg-gray-700" />
+                <p v-if="unlockError" class="text-sm text-red-600">{{ unlockError }}</p>
+                <div class="flex justify-center gap-2">
+                    <button type="button" @click="toggleHelp" class="rounded-lg border border-gray-300 px-3 py-2 text-sm dark:border-gray-600">✋ {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
+                    <button :disabled="!unlockCode" class="rounded-lg bg-[var(--accent-600)] px-5 py-2 text-sm text-white disabled:opacity-40">{{ t('exam.continue', 'متابعة') }}</button>
+                </div>
+                <p v-if="clock" class="font-mono text-sm text-gray-500">{{ clock }}</p>
+            </form>
         </div>
 
         <Modal :show="confirmOpen" @close="confirmOpen = false" max-width="md">

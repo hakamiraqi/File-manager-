@@ -18,6 +18,7 @@ class Attempt extends Model
     protected $fillable = [
         'exam_id', 'user_id', 'number', 'started_at', 'deadline_at', 'submitted_at',
         'score', 'max_score', 'needs_grading', 'question_order', 'drawn', 'ip', 'last_seen_at',
+        'locked_at', 'lock_reason', 'resume_code', 'session_key', 'help_requested_at',
     ];
 
     protected function casts(): array
@@ -30,7 +31,7 @@ class Attempt extends Model
             'max_score' => 'float',
             'needs_grading' => 'boolean',
             'question_order' => 'array',
-            'last_seen_at' => 'datetime', 'drawn' => 'array',
+            'last_seen_at' => 'datetime', 'locked_at' => 'datetime', 'help_requested_at' => 'datetime', 'drawn' => 'array',
         ];
     }
 
@@ -62,6 +63,20 @@ class Attempt extends Model
     public function isExpired(int $grace = 0): bool
     {
         return $this->deadline_at !== null && now()->gt($this->deadline_at->copy()->addSeconds($grace));
+    }
+
+    /** Locks the attempt until the invigilator's code (the student left the page, or opened it again). */
+    public function lock(string $reason): void
+    {
+        if ($this->locked_at || $this->isSubmitted()) {
+            return;
+        }
+        $this->update(['locked_at' => now(), 'lock_reason' => $reason, 'resume_code' => (string) random_int(1000, 9999)]);
+    }
+
+    public function unlock(): void
+    {
+        $this->update(['locked_at' => null, 'lock_reason' => null, 'resume_code' => null, 'session_key' => null]);
     }
 
     /** Ties an emergency answers file to this attempt (the invigilator uploads it). */

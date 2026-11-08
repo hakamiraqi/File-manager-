@@ -109,6 +109,8 @@ class ManageController extends Controller
             'seb_keys' => ['nullable', 'string', 'max:5000'],
             'double_marking' => ['boolean'],
             'access_code' => ['nullable', 'string', 'max:20'],
+            'resume_code_required' => ['boolean'],
+            'bind_computers' => ['boolean'],
             'allowed_ips' => ['nullable', 'string', 'max:2000'],
             'group_ids' => ['nullable', 'array'],
             'group_ids.*' => ['integer', 'exists:exam_groups,id'],
@@ -147,7 +149,7 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips',
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers',
             ])->all() + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');

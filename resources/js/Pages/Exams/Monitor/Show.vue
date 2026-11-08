@@ -6,7 +6,7 @@ import Modal from '@/Components/Modal.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, data: Object });
+const props = defineProps({ exam: Object, data: Object, computers: { type: Array, default: () => [] } });
 const { t } = useTrans();
 
 // ---- Live rows: polled every 5 seconds (it is a LAN; no sockets needed) ----
@@ -16,6 +16,8 @@ const stale = ref(false);
 async function refresh() {
     try {
         live.value = (await window.axios.get(route('exams.monitor.data', props.exam.id))).data;
+        if ((live.value.counts.help ?? 0) > lastHelp) beep();
+        lastHelp = live.value.counts.help ?? 0;
         lastUpdate.value = Date.now();
         stale.value = false;
     } catch {
@@ -87,6 +89,36 @@ async function announce() {
 }
 const showCode = ref(false);
 
+// Hall switches during the exam.
+const switches = ref({ resume_code_required: props.exam.resume_code_required, bind_computers: props.exam.bind_computers });
+async function toggle(key) {
+    switches.value = (await window.axios.post(route('exams.monitor.settings', props.exam.id), { [key]: !switches.value[key] })).data;
+    refresh();
+}
+const unlock = (r) => act(route('exams.monitor.unlock', r.attempt.id));
+const helpDone = (r) => act(route('exams.monitor.help-done', r.attempt.id));
+const seat = (r, id) => act(route('exams.monitor.seat', [props.exam.id, r.user.id]), { computer_id: id ? Number(id) : null });
+const rooms = computed(() => [...new Set(props.computers.map((c) => c.room).filter(Boolean))]);
+const distributeRoom = ref('');
+const distributeMsg = ref('');
+async function distribute(order) {
+    const res = await window.axios.post(route('exams.monitor.distribute', props.exam.id), { room: distributeRoom.value || null, order });
+    distributeMsg.value = t('exam.distributed', 'وُزّع :s من :n طالباً على :c حاسبة.', { s: res.data.seated, n: res.data.students, c: res.data.computers });
+    refresh();
+}
+// A raised hand is heard, not only seen.
+let lastHelp = props.data.counts.help ?? 0;
+function beep() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        o.frequency.value = 880;
+        o.connect(ctx.destination);
+        o.start();
+        o.stop(ctx.currentTime + 0.25);
+    } catch { /* no sound */ }
+}
+
 // An emergency answers file from a student whose network did not come back.
 const fileMsg = ref('');
 async function uploadOffline(event) {
@@ -153,6 +185,28 @@ async function uploadOffline(event) {
                 </label>
                 <span v-if="fileMsg" class="text-xs">{{ fileMsg }}</span>
             </div>
+            <div class="grid gap-3 lg:grid-cols-3">
+                <label class="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+                    <span>{{ t('exam.resume_code', 'رمز المتابعة عند الخروج') }}<span class="block text-xs text-gray-500">{{ t('exam.resume_code_hint', 'من يغادر الصفحة أو يفتحها من جديد يُقفل حتى تعطيه رمزه') }}</span></span>
+                    <input type="checkbox" :checked="switches.resume_code_required" @change="toggle('resume_code_required')" class="h-5 w-5 rounded" />
+                </label>
+                <label class="flex items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+                    <span>{{ t('exam.bind_computers', 'تثبيت كل طالب على حاسبته') }}<span class="block text-xs text-gray-500">{{ t('exam.bind_computers_hint', 'لا يفتح امتحانه إلا من عنوان حاسبته') }}</span></span>
+                    <input type="checkbox" :checked="switches.bind_computers" @change="toggle('bind_computers')" class="h-5 w-5 rounded" />
+                </label>
+                <div class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+                    <span class="text-xs text-gray-500">{{ t('exam.distribute', 'توزيع على الحواسيب') }}</span>
+                    <select v-model="distributeRoom" class="rounded-lg border-gray-300 py-1 text-xs dark:border-gray-600 dark:bg-gray-700">
+                        <option value="">{{ t('exam.all_rooms', 'كل القاعات') }}</option>
+                        <option v-for="r in rooms" :key="r" :value="r">{{ r }}</option>
+                    </select>
+                    <button @click="distribute('name')" :disabled="!computers.length" class="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40 dark:border-gray-600">{{ t('exam.by_name', 'بالاسم') }}</button>
+                    <button @click="distribute('random')" :disabled="!computers.length" class="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40 dark:border-gray-600">{{ t('exam.randomly', 'عشوائياً') }}</button>
+                    <Link :href="route('exams.monitor.computers')" class="text-xs text-[var(--accent-600)] underline">{{ t('exam.computers', 'الحواسيب') }}</Link>
+                    <span v-if="distributeMsg" class="w-full text-xs text-gray-500">{{ distributeMsg }}</span>
+                </div>
+            </div>
+            <p v-if="live.counts.help" class="rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">✋ {{ t('exam.help_waiting', ':n طالب يطلب المساعدة', { n: live.counts.help }) }}</p>
             <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
 
             <!-- Students -->
@@ -168,7 +222,7 @@ async function uploadOffline(event) {
                         <tr>
                             <th class="px-3 py-2 text-start">{{ t('exam.student', 'الطالب') }}</th>
                             <th class="px-2 py-2">{{ t('exam.present', 'حاضر') }}</th>
-                            <th class="px-2 py-2">{{ t('exam.seat', 'المقعد') }}</th>
+                            <th class="px-2 py-2">{{ t('exam.pc_name', 'الحاسبة') }}</th>
                             <th class="px-2 py-2">{{ t('exam.status', 'الحالة') }}</th>
                             <th class="px-2 py-2">{{ t('exam.progress', 'الإنجاز') }}</th>
                             <th class="px-2 py-2">{{ t('exam.time_left', 'المتبقي') }}</th>
@@ -186,9 +240,20 @@ async function uploadOffline(event) {
                                 <button @click="setPresent(r, true)" class="rounded px-1.5 py-0.5 text-xs" :class="r.present === true ? 'bg-emerald-600 text-white' : 'border border-gray-300 dark:border-gray-600'">✓</button>
                                 <button @click="setPresent(r, false)" class="ms-1 rounded px-1.5 py-0.5 text-xs" :class="r.present === false ? 'bg-red-600 text-white' : 'border border-gray-300 dark:border-gray-600'">✗</button>
                             </td>
-                            <td class="px-2 py-2 text-center"><input :value="r.seat" @change="saveSeat(r, $event.target.value)" class="w-16 rounded border-gray-300 py-0.5 text-center text-xs dark:border-gray-600 dark:bg-gray-700" /></td>
+                            <td class="px-2 py-2 text-center">
+                                <select v-if="computers.length" :value="r.computer?.id ?? ''" @change="seat(r, $event.target.value)" class="rounded border-gray-300 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-700">
+                                    <option value="">—</option>
+                                    <option v-for="c in computers" :key="c.id" :value="c.id">{{ c.label }}</option>
+                                </select>
+                                <input v-else :value="r.seat" @change="saveSeat(r, $event.target.value)" class="w-16 rounded border-gray-300 py-0.5 text-center text-xs dark:border-gray-600 dark:bg-gray-700" />
+                                <p v-if="r.computer && r.attempt?.ip && r.attempt.ip !== r.computer.ip" class="text-[10px] text-red-600" :title="r.computer.ip">{{ t('exam.other_pc', 'من حاسبة أخرى') }}</p>
+                            </td>
                             <td class="px-2 py-2 text-center">
                                 <span class="rounded-full px-2 py-0.5 text-xs whitespace-nowrap" :class="STATUS[r.status][1]">{{ t('exam.status_' + r.status, STATUS[r.status][0]) }}</span>
+                                <p v-if="r.attempt?.help" class="mt-1"><button @click="helpDone(r)" class="rounded-full bg-amber-400 px-2 py-0.5 text-xs font-semibold text-amber-950" :title="t('exam.help_done', 'تمّت المساعدة')">✋ {{ t('exam.help', 'مساعدة') }}</button></p>
+                                <p v-if="r.attempt?.locked" class="mt-1 text-xs text-red-700 dark:text-red-300">🔒 {{ r.attempt.locked.reason === 'left' ? t('exam.locked_left', 'غادر الصفحة') : t('exam.locked_reopened', 'فتحها من جديد') }} ·
+                                    <b class="font-mono text-sm tracking-widest">{{ r.attempt.locked.code }}</b>
+                                    <button @click="unlock(r)" class="ms-1 underline">{{ t('exam.unlock', 'فتح') }}</button></p>
                                 <p v-if="r.status === 'disconnected'" class="text-[10px] text-gray-400">{{ Math.round(since(r.attempt.last_seen) / 60) }} {{ t('exam.min_ago', 'د') }}</p>
                             </td>
                             <td class="px-2 py-2 text-center text-xs">

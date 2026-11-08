@@ -55,6 +55,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
     Route::post('/{exam}/start', [ExamController::class, 'start'])->whereNumber('exam')->middleware('throttle:20,1')->name('start');
     Route::get('/attempts/{attempt}', [ExamController::class, 'take'])->name('attempts.take');
     Route::post('/attempts/{attempt}/answers', [ExamController::class, 'save'])->middleware('throttle:240,1')->name('attempts.save');
+    Route::post('/attempts/{attempt}/unlock', [ExamController::class, 'unlock'])->middleware('throttle:10,1')->name('attempts.unlock');
+    Route::post('/attempts/{attempt}/help', [ExamController::class, 'help'])->middleware('throttle:20,1')->name('attempts.help');
     Route::post('/attempts/{attempt}/ping', [ExamController::class, 'ping'])->middleware('throttle:60,1')->name('attempts.ping');
     Route::post('/attempts/{attempt}/check', [ExamController::class, 'check'])->middleware('throttle:240,1')->name('attempts.check');
     Route::post('/attempts/{attempt}/upload', [ExamController::class, 'upload'])->middleware('throttle:30,1')->name('attempts.upload');
@@ -77,6 +79,16 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::post('/{exam}/offline-file', [$m, 'offlineFile'])->whereNumber('exam')->name('offline-file');
     Route::post('/{exam}/announce', [$m, 'announce'])->whereNumber('exam')->name('announce');
     Route::post('/{exam}/submit-all', [$m, 'submitAll'])->whereNumber('exam')->name('submit-all');
+    Route::post('/{exam}/settings', [$m, 'settings'])->whereNumber('exam')->name('settings');
+    Route::post('/{exam}/seat/{user}', [$m, 'seat'])->whereNumber('exam')->name('seat');
+    Route::post('/{exam}/distribute', [$m, 'distribute'])->whereNumber('exam')->name('distribute');
+    Route::post('/attempts/{attempt}/unlock', [$m, 'unlock'])->name('unlock');
+    Route::post('/attempts/{attempt}/help-done', [$m, 'helpDone'])->name('help-done');
+    $pcs = \App\Http\Controllers\Exams\ComputerController::class;
+    Route::get('/computers', [$pcs, 'index'])->name('computers');
+    Route::post('/computers', [$pcs, 'store'])->name('computers.store');
+    Route::put('/computers/{computer}', [$pcs, 'update'])->name('computers.update');
+    Route::delete('/computers/{computer}', [$pcs, 'destroy'])->name('computers.destroy');
     Route::post('/attempts/{attempt}/extend', [$m, 'extend'])->name('extend');
     Route::post('/attempts/{attempt}/submit', [$m, 'submit'])->name('submit');
     Route::post('/attempts/{attempt}/reopen', [$m, 'reopen'])->name('reopen');

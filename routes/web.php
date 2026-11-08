@@ -30,6 +30,19 @@ Route::get('/activate', [\App\Http\Controllers\Offline\ActivationController::cla
 Route::post('/activate', [\App\Http\Controllers\Offline\ActivationController::class, 'store'])->middleware('throttle:10,1');
 
 // The site name and logo for the offline server's Wi-Fi pages (/setup).
+// «What is this computer's address?» for the hall: open /ip on any computer (no sign-in).
+Route::get('/ip', function (Illuminate\Http\Request $request) {
+    $ip = (string) $request->ip();
+    $pc = App\Models\Exams\Computer::where('ip', $ip)->first();
+    $name = e(config('app.name'));
+    $label = $pc ? e($pc->label.($pc->room ? ' — '.$pc->room : '')) : 'غير مسجّلة بعد';
+
+    return response("<!doctype html><html lang=\"ar\" dir=\"rtl\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{$name} — IP</title>"
+        .'<body style="font-family:system-ui,Tahoma,sans-serif;text-align:center;padding:10vh 1rem;background:#f8fafc;color:#0f172a">'
+        ."<p style=\"color:#64748b\">{$name}</p><p style=\"font-size:12vw;font-weight:700;margin:.2em 0;direction:ltr;font-family:monospace\">".e($ip).'</p>'
+        ."<p style=\"font-size:1.5rem\">{$label}</p></body></html>")->header('Cache-Control', 'no-store');
+})->middleware('throttle:60,1')->name('ip');
+
 Route::get('/brand.json', function () {
     $logo = \App\Models\Setting::get('logo_path');
 

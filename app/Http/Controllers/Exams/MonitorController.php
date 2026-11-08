@@ -53,7 +53,9 @@ class MonitorController extends Controller
             'exam' => [
                 'id' => $exam->id, 'title' => $exam->text('title'), 'duration' => $exam->duration_minutes,
                 'access_code' => $exam->access_code, 'can_manage' => $exam->isManageableBy($request->user()),
+                'resume_code_required' => $exam->resume_code_required, 'bind_computers' => $exam->bind_computers,
             ],
+            'computers' => \App\Models\Exams\Computer::orderBy('room')->orderBy('label')->get(['id', 'room', 'label', 'ip']),
             'data' => $this->snapshot($exam),
         ]);
     }
@@ -167,6 +169,78 @@ class MonitorController extends Controller
         return response()->json(['ok' => true, 'student' => $attempt->user?->name, 'answers' => $count]);
     }
 
+    public function unlock(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->authorizeExam($request, $attempt->exam);
+        $attempt->unlock();
+        $this->log($request, $attempt, 'فتح المحاولة المقفلة');
+
+        return response()->json(['ok' => true]);
+    }
+
+    public function helpDone(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->authorizeExam($request, $attempt->exam);
+        $attempt->update(['help_requested_at' => null]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** The hall switches, during the exam: the resume code and binding students to computers. */
+    public function settings(Request $request, Exam $exam): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $data = $request->validate(['resume_code_required' => ['sometimes', 'boolean'], 'bind_computers' => ['sometimes', 'boolean']]);
+        $exam->update($data);
+        if (array_key_exists('resume_code_required', $data) && ! $data['resume_code_required']) {
+            $exam->attempts()->whereNotNull('locked_at')->get()->each->unlock();
+        }
+
+        return response()->json($exam->only('resume_code_required', 'bind_computers'));
+    }
+
+    /** Puts one student at a computer (or nowhere). */
+    public function seat(Request $request, Exam $exam, User $user): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $id = $request->validate(['computer_id' => ['nullable', 'integer', 'exists:exam_computers,id']])['computer_id'] ?? null;
+        if ($id) {
+            DB::table('exam_attendance')->where('exam_id', $exam->id)->where('computer_id', $id)->where('user_id', '!=', $user->id)->update(['computer_id' => null]);
+        }
+        $pc = $id ? \App\Models\Exams\Computer::find($id) : null;
+        DB::table('exam_attendance')->updateOrInsert(['exam_id' => $exam->id, 'user_id' => $user->id],
+            ['computer_id' => $id, 'seat' => $pc?->label, 'checked_by' => $request->user()->id, 'updated_at' => now(), 'created_at' => now()]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Spreads the students over a room's computers, by name or at random; absent students are left out. */
+    public function distribute(Request $request, Exam $exam): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $data = $request->validate(['room' => ['nullable', 'string', 'max:100'], 'order' => ['required', 'in:name,random']]);
+        $computers = \App\Models\Exams\Computer::when(filled($data['room'] ?? null), fn ($q) => $q->where('room', $data['room']))->get()
+            ->sortBy('label', SORT_NATURAL)->values();
+        $absent = DB::table('exam_attendance')->where('exam_id', $exam->id)->where('present', false)->pluck('user_id')->all();
+        $students = $exam->roster()->reject(fn (User $u) => in_array($u->id, $absent, true))->values();
+        if ($data['order'] === 'random') {
+            $students = $students->shuffle()->values();
+        }
+        DB::transaction(function () use ($exam, $students, $computers, $request) {
+            DB::table('exam_attendance')->where('exam_id', $exam->id)->update(['computer_id' => null, 'seat' => null]);
+            foreach ($students as $i => $u) {
+                $pc = $computers[$i] ?? null;
+                if (! $pc) {
+                    break;
+                }
+                DB::table('exam_attendance')->updateOrInsert(['exam_id' => $exam->id, 'user_id' => $u->id],
+                    ['computer_id' => $pc->id, 'seat' => $pc->label, 'checked_by' => $request->user()->id, 'updated_at' => now(), 'created_at' => now()]);
+            }
+        });
+
+        return response()->json(['seated' => min($students->count(), $computers->count()), 'students' => $students->count(), 'computers' => $computers->count()]);
+    }
+
     public function accessCode(Request $request, Exam $exam): JsonResponse
     {
         $this->authorizeExam($request, $exam);
@@ -205,10 +279,11 @@ class MonitorController extends Controller
         $attempts = $exam->attempts()->withCount(['answers as answered' => fn ($q) => $q->whereNotNull('response')])
             ->with('events:id,exam_attempt_id,type')->orderBy('number')->get()->groupBy('user_id');
         $attendance = DB::table('exam_attendance')->where('exam_id', $exam->id)->get()->keyBy('user_id');
+        $computers = \App\Models\Exams\Computer::whereIn('id', $attendance->pluck('computer_id')->filter())->get()->keyBy('id');
         $questionCount = $exam->questions()->where('type', '!=', 'description')->get()
             ->sum(fn ($q) => $q->type === 'random' ? (int) ($q->settings['count'] ?? 0) : 1);
 
-        $rows = $roster->map(function (User $u) use ($attempts, $attendance, $questionCount) {
+        $rows = $roster->map(function (User $u) use ($attempts, $attendance, $questionCount, $computers) {
             $a = $attempts->get($u->id)?->last();
             $seen = $a?->last_seen_at ?? $a?->started_at;
             $status = match (true) {
@@ -224,19 +299,23 @@ class MonitorController extends Controller
                 'present' => isset($attendance[$u->id]) ? (bool) $attendance[$u->id]->present : null,
                 'seat' => $attendance[$u->id]->seat ?? null,
                 'note' => $attendance[$u->id]->note ?? null,
+                'computer' => ($pc = $computers[$attendance[$u->id]->computer_id ?? 0] ?? null) ? ['id' => $pc->id, 'label' => $pc->label, 'ip' => $pc->ip] : null,
                 'status' => $status,
                 'attempt' => $a ? [
                     'id' => $a->id, 'number' => $a->number, 'answered' => $a->answered, 'questions' => $questionCount,
                     'seconds_left' => $a->isSubmitted() ? null : $a->secondsLeft(),
                     'started_at' => $a->started_at->toIso8601String(), 'submitted_at' => $a->submitted_at?->toIso8601String(),
                     'last_seen' => $seen?->toIso8601String(), 'ip' => $a->ip, 'events' => $a->events->countBy('type'),
+                    'locked' => $a->locked_at ? ['reason' => $a->lock_reason, 'code' => $a->resume_code] : null,
+                    'help' => $a->help_requested_at?->toIso8601String(),
                 ] : null,
             ];
         })->values();
 
         return [
             'rows' => $rows,
-            'counts' => $rows->countBy('status')->all() + ['total' => $rows->count(), 'present' => $rows->where('present', true)->count()],
+            'counts' => $rows->countBy('status')->all() + ['total' => $rows->count(), 'present' => $rows->where('present', true)->count(),
+                'help' => $rows->filter(fn ($r) => $r['attempt']['help'] ?? null)->count(), 'locked' => $rows->filter(fn ($r) => $r['attempt']['locked'] ?? null)->count()],
             'announcements' => DB::table('exam_announcements')->where('exam_id', $exam->id)->latest('id')->limit(10)->get(['body', 'created_at']),
             'now' => now()->toIso8601String(),
         ];

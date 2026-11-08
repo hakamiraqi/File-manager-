@@ -86,6 +86,9 @@ class ExamController extends Controller
         if (! $exam->networkAllows($request)) {
             return back()->withErrors(['exam' => self::NETWORK_MESSAGE]);
         }
+        if ($wrongPc = $exam->computerAllows($user, $request)) {
+            return back()->withErrors(['exam' => $wrongPc]);
+        }
         $exam->load(['overrides' => fn ($q) => $q->where('user_id', $user->id)]);
 
         $open = $exam->attempts()->where('user_id', $user->id)->whereNull('submitted_at')->latest('id')->first();
@@ -168,6 +171,20 @@ class ExamController extends Controller
         if (! $exam->networkAllows($request)) {
             return redirect()->route('exams.show', $exam)->withErrors(['exam' => self::NETWORK_MESSAGE]);
         }
+        if ($wrongPc = $exam->computerAllows($request->user(), $request)) {
+            return redirect()->route('exams.show', $exam)->withErrors(['exam' => $wrongPc]);
+        }
+        // With the resume code on, the attempt belongs to the page that opened it: opened again
+        // (another tab, a reload, another computer) it locks until the invigilator's code.
+        if ($exam->resume_code_required && ! $attempt->locked_at) {
+            $sessionKey = 'exam_key.'.$attempt->id;
+            if ($attempt->session_key === null) {
+                $attempt->update(['session_key' => Str::random(40)]);
+                $request->session()->put($sessionKey, $attempt->session_key);
+            } elseif (! hash_equals($attempt->session_key, (string) $request->session()->get($sessionKey))) {
+                $attempt->lock('reopened');
+            }
+        }
         $answers = $attempt->answers()->get()->keyBy('exam_question_id');
         $questions = $attempt->orderedQuestions();
 
@@ -178,6 +195,11 @@ class ExamController extends Controller
                 'seconds_left' => $attempt->secondsLeft(),
             ],
             'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice],
+            'hall' => [
+                'locked' => $attempt->locked_at !== null,
+                'help' => $attempt->help_requested_at !== null,
+                'computer' => $exam->computerFor($request->user())?->label,
+            ],
             'questions' => $questions->map(fn (Question $q) => $this->presenter->forStudent($q, $exam, $attempt))->values(),
             'offline_token' => $attempt->offlineToken(),
             'answers' => $answers->map(fn (Answer $a) => ['response' => $a->response, 'flagged' => $a->flagged,
@@ -197,6 +219,9 @@ class ExamController extends Controller
         ]);
         if ($attempt->isSubmitted() || $attempt->isExpired(Attempt::GRACE_SECONDS)) {
             return response()->json(['message' => 'انتهى وقت المحاولة.', 'closed' => true], 409);
+        }
+        if ($attempt->locked_at) {
+            return response()->json(['message' => 'المحاولة مقفلة حتى رمز المراقب.', 'locked' => true], 423);
         }
         abort_unless(in_array((int) $data['question_id'], $attempt->question_order ?? [], true)
             || $attempt->exam->questions()->whereKey($data['question_id'])->exists(), 422);
@@ -231,10 +256,37 @@ class ExamController extends Controller
 
         return response()->json([
             'closed' => false,
+            'locked' => $attempt->locked_at !== null,
+            'help' => $attempt->help_requested_at !== null,
             'seconds_left' => $attempt->secondsLeft(),
             'announcements' => DB::table('exam_announcements')->where('exam_id', $attempt->exam_id)
                 ->where('created_at', '>=', $attempt->started_at)->orderBy('id')->get(['id', 'body', 'created_at']),
         ]);
+    }
+
+    /** The invigilator's code opens a locked attempt again, on this page. */
+    public function unlock(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->own($request, $attempt);
+        $code = (string) $request->validate(['code' => ['required', 'string', 'max:10']])['code'];
+        if ($attempt->locked_at && ! hash_equals((string) $attempt->resume_code, trim(strtr($code, ['٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9'])))) {
+            return response()->json(['message' => 'الرمز غير صحيح.'], 422);
+        }
+        $attempt->unlock();
+        $attempt->update(['session_key' => Str::random(40)]);
+        $request->session()->put('exam_key.'.$attempt->id, $attempt->session_key);
+
+        return response()->json(['locked' => false]);
+    }
+
+    /** «I need help»: the invigilator sees a raised hand by the student's name and computer. */
+    public function help(Request $request, Attempt $attempt): JsonResponse
+    {
+        $this->own($request, $attempt);
+        $on = $request->boolean('on');
+        $attempt->update(['help_requested_at' => $on ? now() : null]);
+
+        return response()->json(['help' => $on]);
     }
 
     public const NETWORK_MESSAGE = 'هذا الامتحان يُؤدّى من أجهزة القاعة فقط.';
@@ -250,6 +302,9 @@ class ExamController extends Controller
         $data = $request->validate(['question_id' => ['required', 'integer'], 'response' => ['nullable', 'array']]);
         if ($attempt->isSubmitted() || $attempt->isExpired(Attempt::GRACE_SECONDS)) {
             return response()->json(['message' => 'انتهى وقت المحاولة.', 'closed' => true], 409);
+        }
+        if ($attempt->locked_at) {
+            return response()->json(['locked' => true], 423);
         }
         $question = $attempt->orderedQuestions()->firstWhere('id', (int) $data['question_id']);
         abort_unless($question && $question->isGraded() && ! $question->isManual(), 422);
@@ -285,6 +340,9 @@ class ExamController extends Controller
         $data = $request->validate(['question_id' => ['required', 'integer'], 'file' => ['required', 'file']]);
         if ($attempt->isSubmitted() || $attempt->isExpired(Attempt::GRACE_SECONDS)) {
             return response()->json(['message' => 'انتهى وقت المحاولة.', 'closed' => true], 409);
+        }
+        if ($attempt->locked_at) {
+            return response()->json(['locked' => true], 423);
         }
         $question = $attempt->orderedQuestions()->firstWhere('id', (int) $data['question_id']);
         abort_unless($question && $question->type === Question::UPLOAD, 422);
@@ -343,6 +401,9 @@ class ExamController extends Controller
         $data = $request->validate(['type' => ['required', 'in:'.implode(',', Event::TYPES)], 'meta' => ['nullable', 'array']]);
         if (! $attempt->isSubmitted() && $attempt->events()->count() < 500) {
             Event::create(['exam_attempt_id' => $attempt->id, 'type' => $data['type'], 'meta' => $data['meta'] ?? null]);
+        }
+        if ($data['type'] === 'hidden' && $attempt->exam->resume_code_required) {
+            $attempt->lock('left');
         }
 
         return response()->json(['ok' => true]);

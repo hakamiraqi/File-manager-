@@ -13,7 +13,10 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElemen
     <Head :title="t('exam.monitor', 'المراقبة')" />
     <AppLayout>
         <template #header>
-            <h2 class="flex items-center gap-2 text-lg font-semibold"><EyeIcon class="h-5 w-5 text-gray-500" /> {{ t('exam.monitor', 'المراقبة') }}</h2>
+            <div class="flex items-center justify-between gap-2">
+                <h2 class="flex items-center gap-2 text-lg font-semibold"><EyeIcon class="h-5 w-5 text-gray-500" /> {{ t('exam.monitor', 'المراقبة') }}</h2>
+                <Link :href="route('exams.monitor.computers')" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.computers', 'حواسيب القاعات') }}</Link>
+            </div>
         </template>
         <div class="space-y-2 p-4 sm:p-6">
             <p v-if="!exams.length" class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600">{{ t('exam.monitor_empty', 'لا امتحانات جارية أو قريبة الآن.') }}</p>

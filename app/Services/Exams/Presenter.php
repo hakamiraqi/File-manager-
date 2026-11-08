@@ -250,6 +250,8 @@ class Presenter
             'seb_keys' => $exam->seb_keys,
             'double_marking' => $exam->double_marking,
             'access_code' => $exam->access_code,
+            'resume_code_required' => $exam->resume_code_required,
+            'bind_computers' => $exam->bind_computers,
             'allowed_ips' => $exam->allowed_ips,
             'group_ids' => $exam->groups()->pluck('exam_groups.id')->all(),
             'marking_tolerance' => $exam->marking_tolerance,

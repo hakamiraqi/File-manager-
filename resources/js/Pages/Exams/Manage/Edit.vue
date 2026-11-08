@@ -283,6 +283,14 @@ function save() {
                         <span v-if="form.errors.allowed_ips" class="text-xs text-red-600">{{ form.errors.allowed_ips }}</span></label>
                 </div>
                 <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.resume_code', 'رمز المتابعة عند الخروج') }}<span class="block text-xs text-gray-500">{{ t('exam.resume_code_hint', 'من يغادر الصفحة أو يفتحها من جديد يُقفل حتى تعطيه رمزه') }}</span></span>
+                        <ToggleSwitch v-model="form.resume_code_required" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.bind_computers', 'تثبيت كل طالب على حاسبته') }}<span class="block text-xs text-gray-500">{{ t('exam.bind_computers_hint', 'لا يفتح امتحانه إلا من عنوان حاسبته') }}</span></span>
+                        <ToggleSwitch v-model="form.bind_computers" /></label>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_questions', 'خلط ترتيب الأسئلة') }} <ToggleSwitch v-model="form.shuffle_questions" /></label>
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_choices', 'خلط ترتيب الخيارات') }} <ToggleSwitch v-model="form.shuffle_choices" /></label>
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.show_answers', 'إظهار الإجابات الصحيحة في المراجعة') }} <ToggleSwitch v-model="form.show_answers" /></label>

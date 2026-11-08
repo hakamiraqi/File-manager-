@@ -23,7 +23,7 @@ class Exam extends Model
         'duration_minutes', 'opens_at', 'closes_at', 'max_attempts', 'grading_method', 'pass_mark', 'password',
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
-        'access_code', 'allowed_ips',
+        'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers',
     ];
 
     protected $hidden = ['password'];
@@ -46,6 +46,8 @@ class Exam extends Model
             'is_practice' => 'boolean',
             'seb_required' => 'boolean',
             'double_marking' => 'boolean',
+            'resume_code_required' => 'boolean',
+            'bind_computers' => 'boolean',
             'marking_tolerance' => 'integer',
         ];
     }
@@ -104,6 +106,24 @@ class Exam extends Model
         $ranges = preg_split('/[\s,،]+/u', trim((string) $this->allowed_ips), -1, PREG_SPLIT_NO_EMPTY);
 
         return $ranges === [] || \Symfony\Component\HttpFoundation\IpUtils::checkIp((string) $request->ip(), $ranges);
+    }
+
+    /** The computer this student was given in the hall for this exam, if any. */
+    public function computerFor(User $user): ?Computer
+    {
+        $id = \Illuminate\Support\Facades\DB::table('exam_attendance')->where('exam_id', $this->id)->where('user_id', $user->id)->value('computer_id');
+
+        return $id ? Computer::find($id) : null;
+    }
+
+    /** With computers bound, a student sits only at the computer they were given. */
+    public function computerAllows(User $user, \Illuminate\Http\Request $request): ?string
+    {
+        if (! $this->bind_computers || ! ($pc = $this->computerFor($user))) {
+            return null;
+        }
+
+        return $request->ip() === $pc->ip ? null : "هذه ليست حاسبتك. حاسبتك في هذا الامتحان: {$pc->label}".($pc->room ? " ({$pc->room})" : '').'.';
     }
 
     /** Who may watch the exam in the hall: its owner, admins, and invigilators. */
