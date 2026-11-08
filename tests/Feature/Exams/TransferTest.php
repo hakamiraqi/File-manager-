@@ -134,7 +134,7 @@ class TransferTest extends TestCase
         Http::assertSent(fn ($r) => $r->hasHeader('x-api-key', 'sk-test') && ! str_contains($r['messages'][0]['content'], 'اسم سري') && str_contains($r['messages'][0]['content'], 'فقدان إلكترونات'));
         $this->assertNull($answer->fresh()->points);   // only a suggestion
 
-        config(['offline.edition' => true]);
+        config(['offline.edition' => true, 'offline.activation' => false]);
         $this->actingAs($teacher)->postJson(route('exams.manage.answers.suggest', $answer))->assertNotFound();
         auth()->logout();
         $this->get(route('login'))->assertInertia(fn (AssertableInertia $p) => $p->where('oauth', []));

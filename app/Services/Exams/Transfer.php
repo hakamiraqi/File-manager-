@@ -100,6 +100,7 @@ class Transfer
             $exam->update(['transfer_key' => (string) Str::uuid()]);
         }
         [$byId] = $this->questionIndex($exam);
+        $choiceRefs = $this->choiceRefs(array_keys($byId), true);
         $attempts = $exam->attempts()->with(['user', 'answers'])->orderBy('user_id')->orderBy('number')->get();
 
         return [
@@ -112,7 +113,8 @@ class Transfer
                     'order' => collect($a->question_order ?? [])->map(fn ($id) => $byId[$id] ?? null)->filter()->values()->all(),
                     'drawn' => collect($a->drawn ?? [])->map(fn ($points, $id) => ['ref' => $byId[$id] ?? null, 'points' => $points])->filter(fn ($d) => $d['ref'])->values()->all(),
                     'answers' => $a->answers->filter(fn (Answer $ans) => isset($byId[$ans->exam_question_id]))->map(fn (Answer $ans) => [
-                        'ref' => $byId[$ans->exam_question_id], 'response' => isset($ans->response['file']) ? ['name' => $ans->response['name'] ?? null] : $ans->response,
+                        'ref' => $byId[$ans->exam_question_id],
+                        'response' => isset($ans->response['file']) ? ['name' => $ans->response['name'] ?? null] : $this->mapChoices($ans->response, $choiceRefs[$ans->exam_question_id] ?? []),
                         'points' => $ans->points, 'comment' => $ans->comment, 'flagged' => $ans->flagged,
                     ])->values()->all(),
                 ])->values()->all(),
@@ -130,9 +132,10 @@ class Transfer
             throw new InvalidArgumentException('النتائج لامتحان آخر (مفتاح النقل لا يطابق).');
         }
         [, $byRef] = $this->questionIndex($exam);
+        $choiceIds = $this->choiceRefs(array_values($byRef), false);
         $added = 0;
         $accounts = 0;
-        DB::transaction(function () use ($bundle, $exam, $byRef, &$added, &$accounts) {
+        DB::transaction(function () use ($bundle, $exam, $byRef, $choiceIds, &$added, &$accounts) {
             foreach ((array) ($bundle['students'] ?? []) as $s) {
                 $email = mb_strtolower(trim((string) ($s['email'] ?? '')));
                 if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -156,7 +159,8 @@ class Transfer
                     ]);
                     foreach ((array) ($a['answers'] ?? []) as $ans) {
                         if (isset($byRef[$ans['ref'] ?? ''])) {
-                            Answer::create(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $byRef[$ans['ref']], 'response' => $ans['response'] ?? null,
+                            $qid = $byRef[$ans['ref']];
+                            Answer::create(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $qid, 'response' => $this->mapChoices($ans['response'] ?? null, $choiceIds[$qid] ?? []),
                                 'points' => $ans['points'] ?? null, 'comment' => $ans['comment'] ?? null, 'flagged' => (bool) ($ans['flagged'] ?? false)]);
                         }
                     }
@@ -186,6 +190,53 @@ class Transfer
         }
 
         return [$byId, array_flip($byId)];
+    }
+
+    /**
+     * Choice ids differ between servers: answers carry them as positions («c0», «c1»…).
+     * $out: question => [choice id => ref]; otherwise question => [ref => choice id].
+     */
+    private function choiceRefs(array $questionIds, bool $out): array
+    {
+        return Choice::whereIn('exam_question_id', $questionIds)->orderBy('position')->orderBy('id')->get()->groupBy('exam_question_id')
+            ->map(fn ($list) => $list->values()->mapWithKeys(fn (Choice $c, $k) => $out ? [$c->id => 'c'.$k] : ['c'.$k => $c->id])->all())->all();
+    }
+
+    /** A response with its choice ids swapped by the map (choice, choices, pairs, order, places). */
+    private function mapChoices(?array $response, array $map): ?array
+    {
+        if (! $response || ! $map) {
+            return $response;
+        }
+        $one = fn ($v) => $map[$v] ?? $map[(int) $v] ?? null;
+        if (isset($response['choice'])) {
+            $response['choice'] = $one($response['choice']);
+        }
+        foreach (['choices', 'order'] as $key) {
+            if (isset($response[$key]) && is_array($response[$key])) {
+                $response[$key] = array_values(array_filter(array_map($one, $response[$key]), fn ($v) => $v !== null));
+            }
+        }
+        if (isset($response['pairs']) && is_array($response['pairs'])) {
+            $pairs = [];
+            foreach ($response['pairs'] as $item => $target) {
+                if (($i = $one($item)) !== null && ($t = $one($target)) !== null) {
+                    $pairs[$i] = $t;
+                }
+            }
+            $response['pairs'] = $pairs;
+        }
+        if (isset($response['places']) && is_array($response['places'])) {
+            $places = [];
+            foreach ($response['places'] as $id => $at) {
+                if (($i = $one($id)) !== null) {
+                    $places[$i] = $at;
+                }
+            }
+            $response['places'] = $places;
+        }
+
+        return $response;
     }
 
     private function questionRow(Question $q, array &$media): array
