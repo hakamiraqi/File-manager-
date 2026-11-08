@@ -40,7 +40,7 @@ class DemoExamTest extends TestCase
         $this->actingAs($student)->post(route('exams.start', $exam))->assertRedirect();
         $attempt = Attempt::firstOrFail();
         $this->actingAs($student)->get(route('exams.attempts.take', $attempt))
-            ->assertInertia(fn (AssertableInertia $p) => $p->has('questions', 16));   // 14 + 2 drawn from the bank
+            ->assertInertia(fn (AssertableInertia $p) => $p->has('questions', count(Question::TYPES) - 1 + 2));   // every type but the random slot, and 2 drawn from the bank
         $this->actingAs($student)->get(route('exams.image', $exam->questions()->where('type', 'hotspot')->first()->settings['image']))->assertOk();
         $this->actingAs($student)->post(route('exams.attempts.submit', $attempt))->assertRedirect();
         $this->assertSame(0.0, $attempt->fresh()->score);
