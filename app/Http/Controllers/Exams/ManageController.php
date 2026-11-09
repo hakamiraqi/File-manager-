@@ -34,6 +34,8 @@ class ManageController extends Controller
             ->with('author:id,name')->latest('id')->get();
 
         return Inertia::render('Exams/Manage/Index', [
+            'to_review' => Exam::where('reviewer_id', $user->id)->where('review_status', 'pending')->with('author:id,name')->withCount('questions')->latest('id')->get()
+                ->map(fn (Exam $e) => ['id' => $e->id, 'title' => $e->text('title'), 'author' => $e->author?->name, 'questions' => $e->questions_count, 'note' => $e->review_note]),
             'exams' => $exams->map(fn (Exam $e) => [
                 'id' => $e->id,
                 'title' => $e->text('title'),
@@ -42,6 +44,7 @@ class ManageController extends Controller
                 'author' => $e->author?->name,
                 'can_edit' => $e->isManageableBy($user),
                 'is_published' => $e->is_published,
+                'review' => $e->reviewer_id ? $e->review_status : null,
                 'questions' => $e->questions_count,
                 'attempts' => $e->attempts_count,
                 'pending' => $e->pending_count,
@@ -139,6 +142,7 @@ class ManageController extends Controller
             'bind_computers' => ['boolean'],
             'variants' => ['nullable', 'integer', 'min:1', 'max:4'],
             'protect_content' => ['boolean'],
+            'reviewer_email' => ['nullable', 'email'],
             'allowed_ips' => ['nullable', 'string', 'max:2000'],
             'group_ids' => ['nullable', 'array'],
             'group_ids.*' => ['integer', 'exists:exam_groups,id'],
@@ -168,6 +172,15 @@ class ManageController extends Controller
             ->reject(fn ($r) => self::validRange($r));
         if ($bad->isNotEmpty()) {
             throw ValidationException::withMessages(['allowed_ips' => 'عناوين غير صالحة: '.$bad->implode('، ').' (مثال: 192.168.1.0/24).']);
+        }
+
+        // The reviewer: another teacher (or an admin) who approves the questions before publishing.
+        $reviewer = null;
+        if (filled($data['reviewer_email'] ?? null)) {
+            $reviewer = \App\Models\User::where('email', mb_strtolower(trim($data['reviewer_email'])))->first();
+            if (! $reviewer || ! $reviewer->canManageExams() || $reviewer->id === $exam->user_id) {
+                throw ValidationException::withMessages(['reviewer_email' => 'المراجع يجب أن يكون أستاذاً آخر له حساب في النظام.']);
+            }
         }
 
         DB::transaction(function () use ($exam, $data, $langs, $title, $questions) {
@@ -205,9 +218,43 @@ class ManageController extends Controller
             $exam->groups()->sync($data['group_ids'] ?? []);
         });
 
+        // Review: a new reviewer, or questions changed since the approval, means a new review;
+        // until then the exam stays unpublished.
+        $exam->refresh();
+        if (array_key_exists('reviewer_email', $data)) {
+            if (! $reviewer) {
+                $exam->update(['reviewer_id' => null, 'review_status' => null, 'review_note' => null, 'reviewed_at' => null, 'review_hash' => null]);
+            } elseif ($reviewer->id !== $exam->reviewer_id) {
+                $exam->update(['reviewer_id' => $reviewer->id, 'review_status' => 'pending', 'review_note' => null, 'reviewed_at' => null, 'review_hash' => null]);
+            }
+        }
+        if ($exam->review_status === 'approved' && $exam->review_hash !== $exam->questionsHash()) {
+            $exam->update(['review_status' => 'pending', 'review_note' => 'تغيّرت الأسئلة بعد الموافقة.']);
+        }
         ActivityLog::record('exam.updated', "حدّث الامتحان \"{$exam->text('title')}\"", $exam);
+        if ($exam->is_published && $exam->awaitsReview()) {
+            $exam->update(['is_published' => false]);
+
+            return back()->with('success', 'تم حفظ الامتحان.')
+                ->withErrors(['is_published' => 'حُفظ الامتحان، ولن يُنشر حتى يوافق المراجع على أسئلته.']);
+        }
 
         return back()->with('success', 'تم حفظ الامتحان.');
+    }
+
+    /** The reviewer approves the questions as they are now, or returns them with a note. */
+    public function review(Request $request, Exam $exam): RedirectResponse
+    {
+        abort_unless($exam->reviewer_id === $request->user()->id, 404);
+        $data = $request->validate(['decision' => ['required', 'in:approve,return'], 'note' => ['nullable', 'string', 'max:5000', 'required_if:decision,return']]);
+        $approve = $data['decision'] === 'approve';
+        $exam->update([
+            'review_status' => $approve ? 'approved' : 'returned', 'review_note' => $data['note'] ?? null, 'reviewed_at' => now(),
+            'review_hash' => $approve ? $exam->questionsHash() : null,
+        ]);
+        ActivityLog::record('exam.reviewed', ($approve ? 'وافق على أسئلة' : 'أعاد للتعديل أسئلة')." \"{$exam->text('title')}\"", $exam);
+
+        return back()->with('success', $approve ? 'تمت الموافقة على الأسئلة؛ يستطيع صاحب الامتحان نشره.' : 'أُعيدت الأسئلة لصاحبها مع ملاحظتك.');
     }
 
     public function destroy(Request $request, Exam $exam): RedirectResponse
@@ -228,6 +275,7 @@ class ManageController extends Controller
             $copy->user_id = $request->user()->id;
             $copy->title = collect($exam->title)->map(fn ($t) => $t.' (نسخة)')->all();
             $copy->is_published = false;
+            $copy->forceFill(['reviewer_id' => null, 'review_status' => null, 'review_note' => null, 'reviewed_at' => null, 'review_hash' => null]);
             $copy->save();
             foreach ($exam->questions()->with('choices')->get() as $q) {
                 $nq = $q->replicate();
@@ -488,8 +536,15 @@ class ManageController extends Controller
     /** The exam on paper: questions with space to answer, or the answer key (?key=1). */
     public function print(Request $request, Exam $exam): Response
     {
-        $this->authorizeExam($request, $exam);
+        // The reviewer reads the questions (with the answers) here.
+        abort_unless($exam->isManageableBy($request->user()) || $exam->reviewer_id === $request->user()->id, 404);
         $key = $request->boolean('key');
+        // Versions A/B/C: each printed in the order its computers show it.
+        $variant = $exam->variants > 1 ? max(1, min($exam->variants, $request->integer('variant', 1))) : null;
+        $questions = $exam->questions()->with('choices')->get();
+        if ($variant && ($variant > 1 || $exam->shuffle_questions)) {
+            $questions = $questions->sortBy(fn (Question $q) => crc32('v'.$exam->id.'-'.$variant.'-q-'.$q->id))->values();
+        }
 
         return Inertia::render('Exams/Manage/Print', [
             'exam' => [
@@ -503,10 +558,12 @@ class ManageController extends Controller
                 'max_score' => $exam->maxScore(),
                 'dir' => $this->presenter->dir($exam),
                 'lang' => $exam->languages[0] ?? 'ar',
+                'variants' => $exam->variants > 1 ? $exam->variants : 1,
+                'variant' => $variant,
             ],
             'answerKey' => $key,
             'site' => config('app.name'),
-            'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => $this->presenter->forPrint($q, $exam, $key))->values(),
+            'questions' => $questions->map(fn (Question $q) => $this->presenter->forPrint($q, $exam, $key, $variant))->values(),
         ]);
     }
 

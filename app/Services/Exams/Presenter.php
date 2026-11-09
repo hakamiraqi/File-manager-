@@ -216,11 +216,16 @@ class Presenter
     }
 
     /** One question on paper, with its answer when printing the key. */
-    public function forPrint(Question $q, Exam $exam, bool $key): array
+    public function forPrint(Question $q, Exam $exam, bool $key, ?int $variant = null): array
     {
         $locale = app()->getLocale();
         $langs = $exam->languages ?? [];
         $text = fn ($v) => Question::pick($v, $locale, $langs);
+        // A printed version (A/B/C) has the same choice order as that version on the computers.
+        if ($variant && ($exam->shuffle_choices || $variant > 1) && in_array($q->type, [Question::SINGLE, Question::MULTIPLE], true)) {
+            $seed = 'v'.$exam->id.'-'.$variant;
+            $q->setRelation('choices', $q->choices->sortBy(fn (Choice $c) => crc32($seed.'-c-'.$c->id))->values());
+        }
         $data = [
             'id' => $q->id,
             'type' => $q->type,
@@ -294,6 +299,9 @@ class Presenter
             'protect_content' => $exam->protect_content ?? true,
             'allowed_ips' => $exam->allowed_ips,
             'group_ids' => $exam->groups()->pluck('exam_groups.id')->all(),
+            'reviewer_email' => $exam->reviewer?->email,
+            'review' => $exam->reviewer_id ? ['status' => $exam->review_status, 'note' => $exam->review_note, 'by' => $exam->reviewer?->name,
+                'at' => $exam->reviewed_at?->toIso8601String()] : null,
             'marking_tolerance' => $exam->marking_tolerance,
             'questions' => $exam->questions()->with('choices')->get()->map(fn (Question $q) => $this->questionForEditor($q))->all(),
         ];

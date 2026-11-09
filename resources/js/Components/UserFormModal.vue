@@ -57,6 +57,19 @@ async function copyPassword() {
 const isSelf = computed(() => props.user && props.user.id === usePage().props.auth.user?.id);
 const lockActive = computed(() => isSelf.value || props.user?.is_master_admin);
 
+// The official photo (for invigilators), saved on its own, straight away.
+const photo = ref(null);
+async function uploadPhoto(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file || !props.user) return;
+    const body = new FormData();
+    body.append('photo', file);
+    photo.value = (await window.axios.post(route('exams.manage.students.photo', props.user.id), body)).data.photo;
+}
+async function removePhoto() {
+    photo.value = (await window.axios.post(route('exams.manage.students.photo', props.user.id), { remove: true })).data.photo;
+}
 const form = useForm({
     name: '',
     email: '',
@@ -84,6 +97,7 @@ watch(
                 form.name = props.user.name;
                 form.email = props.user.email;
                 form.student_number = props.user.student_number ?? '';
+                photo.value = props.user.official_photo ?? null;
                 form.password = '';
                 form.role = props.user.role;
                 form.is_active = props.user.is_active;
@@ -164,6 +178,16 @@ function submit() {
                             <TextInput dir="ltr" v-model="form.student_number" class="mt-1 block w-full" />
                             <p class="mt-1 text-xs text-gray-500">{{ t('auth.student_number_hint', 'يدخل به الطالب بدل البريد. بلا بريد؟ اترك البريد فارغاً واكتب الرقم.') }}</p>
                             <InputError :message="form.errors.student_number" class="mt-1" />
+                        </div>
+                        <div v-if="user" class="flex items-center gap-3 sm:col-span-2">
+                            <img v-if="photo" :src="photo" alt="" class="h-16 w-12 rounded object-cover" />
+                            <div v-else class="flex h-16 w-12 items-center justify-center rounded bg-gray-100 text-gray-400 dark:bg-gray-700"><UserIcon class="h-6 w-6" /></div>
+                            <div class="text-xs">
+                                <p class="text-sm font-medium text-gray-800 dark:text-gray-100">{{ t('admin.users.photo', 'الصورة الرسمية') }}</p>
+                                <p class="text-gray-500">{{ t('admin.users.photo_hint', 'يراها مراقب القاعة ليتأكد من هوية الطالب. لا يغيّرها الطالب.') }}</p>
+                                <label class="mt-1 inline-block cursor-pointer text-[var(--accent-600)] underline"><input type="file" accept="image/jpeg,image/png,image/webp" class="sr-only" @change="uploadPhoto" />{{ t('admin.users.photo_upload', 'رفع صورة') }}</label>
+                                <button v-if="photo" type="button" @click="removePhoto" class="ms-3 text-red-600 underline">{{ t('action.delete', 'حذف') }}</button>
+                            </div>
                         </div>
                     </div>
                     <div>

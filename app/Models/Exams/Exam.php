@@ -24,7 +24,7 @@ class Exam extends Model
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
         'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
-        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content',
+        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash',
     ];
 
     protected $hidden = ['password'];
@@ -55,12 +55,34 @@ class Exam extends Model
             'marking_tolerance' => 'integer',
             'variants' => 'integer',
             'protect_content' => 'boolean',
+            'reviewed_at' => 'datetime',
         ];
     }
 
     public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /** The second teacher who reviews the questions before the exam can be published. */
+    public function reviewer(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'reviewer_id');
+    }
+
+    /** With a reviewer, the exam is published only once the questions as they are now were approved. */
+    public function awaitsReview(): bool
+    {
+        return $this->reviewer_id !== null && $this->review_status !== 'approved';
+    }
+
+    /** A fingerprint of the questions and their answers: a change after approval needs a new review. */
+    public function questionsHash(): string
+    {
+        return sha1(json_encode($this->questions()->with('choices')->orderBy('position')->get()->map(fn ($q) => [
+            $q->type, $q->body, (float) $q->points, $q->settings, $q->format,
+            $q->choices->map(fn ($c) => [$c->body, (bool) $c->is_correct, $c->match ?? null])->all(),
+        ])->all()));
     }
 
     public function questions(): HasMany
@@ -146,11 +168,11 @@ class Exam extends Model
     {
         if ($this->groups()->exists()) {
             return User::whereHas('examGroups', fn ($g) => $g->whereIn('exam_groups.id', $this->groups()->pluck('exam_groups.id')))
-                ->orderBy('name')->get(['id', 'name', 'email', 'exam_time_multiplier']);
+                ->orderBy('name')->get(['id', 'name', 'email', 'exam_time_multiplier', 'student_number', 'photo_path']);
         }
         $ids = $this->attempts()->pluck('user_id')->merge(\Illuminate\Support\Facades\DB::table('exam_attendance')->where('exam_id', $this->id)->pluck('user_id'));
 
-        return User::whereIn('id', $ids->unique())->orderBy('name')->get(['id', 'name', 'email', 'exam_time_multiplier']);
+        return User::whereIn('id', $ids->unique())->orderBy('name')->get(['id', 'name', 'email', 'exam_time_multiplier', 'student_number', 'photo_path']);
     }
 
     /** Teachers invited to mark this exam's hand-marked answers (beside its owner). */

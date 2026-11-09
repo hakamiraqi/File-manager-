@@ -29,6 +29,7 @@ class UserController extends Controller
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
+        $users->getCollection()->each(fn (User $u) => $u->setAttribute('official_photo', $u->photoUrl()));
 
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,

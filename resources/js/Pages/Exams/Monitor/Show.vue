@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
+import ServerHealth from '@/Components/Exams/ServerHealth.vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
@@ -86,13 +87,14 @@ const cellTitle = (c) => !c.r ? c.pc.label + ' — ' + t('exam.seat_empty', 'ف�
         c.r.attempt ? c.r.attempt.answered + '/' + c.r.attempt.questions : null].filter(Boolean).join(' · ');
 
 // ---- Attendance by login card: a USB scanner types the card into this box, or the camera reads it ----
+const photoOf = ref(null);   // the row whose photo is shown large
 const scanCode = ref('');
 const scanMsg = ref(null);   // { ok, text }
 async function scanCard(code = scanCode.value) {
     if (!code.trim()) return;
     try {
         const res = await window.axios.post(route('exams.monitor.scan', props.exam.id), { code });
-        scanMsg.value = { ok: true, text: res.data.name + (res.data.seat ? ' — ' + res.data.seat : '') };
+        scanMsg.value = { ok: true, text: res.data.name + (res.data.seat ? ' — ' + res.data.seat : ''), photo: res.data.photo };
         await refresh();
     } catch (e) {
         scanMsg.value = { ok: false, text: e.response?.data?.message || t('exam.scan_failed', 'تعذّرت قراءة البطاقة.') };
@@ -291,12 +293,15 @@ async function uploadOffline(event) {
             <p v-if="live.counts.help" class="rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ t('exam.help_waiting', ':n طالب يطلب المساعدة', { n: live.counts.help }) }}</p>
             <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
 
+            <ServerHealth compact />
+
             <!-- Attendance by login card -->
             <form @submit.prevent="scanCard()" class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-800">
                 <QrCodeIcon class="h-5 w-5 text-gray-400" />
                 <input v-model="scanCode" dir="ltr" :placeholder="t('exam.scan_ph', 'امسح بطاقة الطالب هنا لتسجيل حضوره')" class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                 <button v-if="canCamera" type="button" @click="cameraOpen ? closeCamera() : openCamera()" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 dark:border-gray-600"><CameraIcon class="h-4 w-4" /> {{ t('exam.camera', 'الكاميرا') }}</button>
                 <span v-if="scanMsg" class="flex items-center gap-1 text-sm" :class="scanMsg.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600'">
+                    <img v-if="scanMsg.photo" :src="scanMsg.photo" alt="" class="h-12 w-9 rounded object-cover" />
                     <CheckIcon v-if="scanMsg.ok" class="h-4 w-4" /><XMarkIcon v-else class="h-4 w-4" /> {{ scanMsg.text }}</span>
                 <video v-show="cameraOpen" ref="video" playsinline muted class="w-full max-w-xs rounded-lg" />
             </form>
@@ -330,6 +335,7 @@ async function uploadOffline(event) {
                                 <ExclamationTriangleIcon v-if="c.r?.attempt?.ip && c.r.attempt.ip !== c.pc.ip" class="h-3.5 w-3.5 text-red-600" />
                             </p>
                             <template v-if="c.r">
+                                <img v-if="c.r.user.photo" :src="c.r.user.photo" alt="" loading="lazy" class="float-end ms-1 h-9 w-7 cursor-zoom-in rounded object-cover" @click="photoOf = c.r" />
                                 <p class="truncate font-medium">{{ c.r.user.name }}</p>
                                 <p v-if="c.r.attempt && !c.r.attempt.submitted_at">{{ c.r.attempt.answered }}/{{ c.r.attempt.questions }}<span v-if="c.r.attempt.variant"> · {{ c.r.attempt.variant }}</span></p>
                                 <p v-else class="opacity-75">{{ t('exam.status_' + c.r.status, STATUS[c.r.status][0]) }}</p>
@@ -358,11 +364,14 @@ async function uploadOffline(event) {
                     </thead>
                     <tbody>
                         <tr v-for="r in rows" :key="r.user.id" class="border-t border-gray-100 dark:border-gray-700">
-                            <td class="px-3 py-2">
+                            <td class="px-3 py-2"><div class="flex items-start gap-2">
+                                <button v-if="r.user.photo" type="button" @click="photoOf = r" class="shrink-0" :title="t('exam.photo_big', 'تكبير الصورة')"><img :src="r.user.photo" alt="" loading="lazy" class="h-12 w-9 rounded object-cover" /></button>
+                                <div class="min-w-0">
                                 <p class="font-medium">{{ r.user.name }} <span v-if="r.user.extra_time" class="text-xs text-sky-600" :title="t('exam.extra_time', 'وقت إضافي')"><ClockIcon class="inline h-3.5 w-3.5 align-text-bottom" /></span></p>
-                                <p class="text-xs text-gray-400" dir="ltr">{{ r.user.email }}<span v-if="r.attempt?.ip"> · {{ r.attempt.ip }}</span></p>
+                                <p class="text-xs text-gray-400" dir="ltr"><span v-if="r.user.number" class="font-mono text-gray-600 dark:text-gray-300">{{ r.user.number }} · </span>{{ r.user.email }}<span v-if="r.attempt?.ip"> · {{ r.attempt.ip }}</span></p>
                                 <p v-if="r.attempt?.variant || r.attempt?.receipt" class="text-xs text-gray-500"><span v-if="r.attempt.variant" class="rounded bg-violet-100 px-1.5 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">{{ t('exam.variant_short', 'نسخة') }} {{ r.attempt.variant }}</span>
                                     <span v-if="r.attempt.receipt" class="ms-1 font-mono" dir="ltr" :title="t('exam.receipt_code', 'رمز الإيصال')">{{ r.attempt.receipt }}</span></p>
+                                </div></div>
                             </td>
                             <td class="px-2 py-2 text-center whitespace-nowrap">
                                 <button @click="setPresent(r, true)" class="rounded px-1.5 py-0.5 text-xs" :class="r.present === true ? 'bg-emerald-600 text-white' : 'border border-gray-300 dark:border-gray-600'"><CheckIcon class="h-4 w-4" /></button>
@@ -436,6 +445,12 @@ async function uploadOffline(event) {
             <p class="text-2xl text-gray-500">{{ exam.title }}</p>
             <p class="mt-6 font-mono text-[18vw] font-bold leading-none tracking-widest">{{ code || '—' }}</p>
             <p class="mt-6 text-lg text-gray-400">{{ t('exam.access_code_short', 'رمز الدخول') }}</p>
+        </div>
+        <!-- A student's photo, large, to compare with the face -->
+        <div v-if="photoOf" class="fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center bg-black/70 p-6" @click="photoOf = null">
+            <img :src="photoOf.user.photo" alt="" class="max-h-[70vh] rounded-xl bg-white object-contain shadow-2xl" />
+            <p class="mt-4 text-xl font-semibold text-white">{{ photoOf.user.name }}</p>
+            <p class="font-mono text-white/80" dir="ltr">{{ photoOf.user.number || photoOf.user.email }}<template v-if="photoOf.computer"> · {{ photoOf.computer.label }}</template></p>
         </div>
     </AppLayout>
 </template>

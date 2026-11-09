@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon, MapPinIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon, MapPinIcon, PrinterIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
@@ -96,6 +96,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 <label v-if="can_manage" class="hidden cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm md:block dark:border-gray-600" :title="t('exam.results_import_hint', 'ملف نتائج من سيرفر قاعة لهذا الامتحان نفسه')">
                     <input type="file" accept=".json" class="sr-only" @change="importResults" />{{ t('exam.results_import', 'إدخال نتائج') }}</label>
                 <span v-if="$page.props.errors.file" class="text-xs text-red-600">{{ $page.props.errors.file }}</span>
+                <Link v-if="can_manage" :href="route('exams.manage.gradesheet', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('exam.gradesheet', 'كشف الدرجات') }}</Link>
                 <a v-if="can_manage" :href="route('exams.manage.export', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><ArrowDownTrayIcon class="h-4 w-4" /> Excel</a>
             </div>
         </template>

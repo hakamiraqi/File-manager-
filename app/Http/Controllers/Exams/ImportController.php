@@ -167,6 +167,64 @@ class ImportController extends Controller
         }, 'students-accounts-'.now()->format('Y-m-d-His').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
+    /** One student's official photo (or none). */
+    public function photo(Request $request, User $user): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($request->user()->hasAdminCapability('can_manage_users'), 403);
+        if ($request->boolean('remove')) {
+            \App\Services\Exams\StudentPhoto::remove($user);
+
+            return response()->json(['photo' => null]);
+        }
+        $request->validate(['photo' => ['required', 'file', 'max:15360', 'mimes:jpg,jpeg,png,webp']]);
+        abort_unless(\App\Services\Exams\StudentPhoto::store($user, (string) file_get_contents($request->file('photo')->getRealPath())), 422, 'الملف ليس صورة.');
+
+        return response()->json(['photo' => $user->fresh()->photoUrl()]);
+    }
+
+    /**
+     * Photos for many students at once: a ZIP whose pictures are named by student number or
+     * e-mail (2024001.jpg, ali@uni.edu.iq.png). Says which matched nobody.
+     */
+    public function photos(Request $request): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($request->user()->hasAdminCapability('can_manage_users'), 403);
+        $request->validate(['file' => ['required', 'file', 'max:512000', 'extensions:zip']]);
+        $zip = new \ZipArchive;
+        if ($zip->open($request->file('file')->getRealPath()) !== true) {
+            throw ValidationException::withMessages(['file' => 'تعذّر فتح ملف ZIP.']);
+        }
+        $saved = 0;
+        $unknown = [];
+        for ($i = 0; $i < min($zip->numFiles, 5000); $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            if (str_ends_with($name, '/') || str_starts_with(basename($name), '.') || str_contains($name, '__MACOSX')) {
+                continue;
+            }
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            if (! in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+                continue;
+            }
+            $key = pathinfo($name, PATHINFO_FILENAME);
+            $user = str_contains($key, '@') ? User::where('email', mb_strtolower($key))->first() : User::where('student_number', $key)->first();
+            $stat = $zip->statIndex($i);
+            if (! $user || ($stat['size'] ?? 0) > 15 * 1024 * 1024) {
+                $unknown[] = basename($name);
+
+                continue;
+            }
+            if (\App\Services\Exams\StudentPhoto::store($user, (string) $zip->getFromIndex($i))) {
+                $saved++;
+            } else {
+                $unknown[] = basename($name);
+            }
+        }
+        $zip->close();
+        ActivityLog::record('exam.photos_imported', "رفع صور {$saved} طالباً");
+
+        return response()->json(['saved' => $saved, 'unknown' => array_slice($unknown, 0, 50), 'unknown_count' => count($unknown)]);
+    }
+
     private function skippedText(array $skipped): string
     {
         return collect($skipped)->take(10)->map(fn ($why, $line) => "سطر $line: $why")->implode('؛ ').(count($skipped) > 10 ? '…' : '');

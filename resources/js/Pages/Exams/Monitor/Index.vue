@@ -3,6 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { EyeIcon, SignalIcon } from '@heroicons/vue/24/outline';
+import ServerHealth from '@/Components/Exams/ServerHealth.vue';
 
 defineProps({ exams: Array });
 const { t } = useTrans();
@@ -19,6 +20,7 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElemen
             </div>
         </template>
         <div class="space-y-2 p-4 sm:p-6">
+            <ServerHealth />
             <p v-if="!exams.length" class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600">{{ t('exam.monitor_empty', 'لا امتحانات جارية أو قريبة الآن.') }}</p>
             <Link v-for="e in exams" :key="e.id" :href="route('exams.monitor.show', e.id)"
                 class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700">

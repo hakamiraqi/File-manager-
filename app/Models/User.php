@@ -17,7 +17,7 @@ use Laravel\Sanctum\HasApiTokens;
     'is_master_admin', 'can_manage_appearance', 'can_manage_users', 'can_manage_translations',
     'can_view_statistics', 'can_manage_settings', 'is_examiner', 'exam_time_multiplier', 'is_invigilator', 'student_number',
 ])]
-#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes', 'card_code'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes', 'card_code', 'photo_path'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -155,5 +155,11 @@ class User extends Authenticatable
         }
 
         return preg_match('/^EX[A-Za-z0-9]{14,38}$/', $scanned) ? strtoupper($scanned) : null;
+    }
+
+    /** The official photo's address, for invigilators and exam staff only (null when there is none). */
+    public function photoUrl(): ?string
+    {
+        return $this->photo_path ? route('exams.monitor.photo', ['user' => $this->id, 'v' => substr(md5($this->photo_path), 0, 8)]) : null;
     }
 }

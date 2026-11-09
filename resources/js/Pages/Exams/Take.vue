@@ -10,7 +10,8 @@ import { Head, router } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, CalculatorIcon, PencilSquareIcon, HandRaisedIcon, StopIcon, SpeakerWaveIcon, LockClosedIcon, BellAlertIcon, XMarkIcon } from '@heroicons/vue/24/outline';
+import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, CalculatorIcon, PencilSquareIcon, HandRaisedIcon, StopIcon, SpeakerWaveIcon, LockClosedIcon, BellAlertIcon, XMarkIcon, LanguageIcon } from '@heroicons/vue/24/outline';
+import OnScreenKeyboard from '@/Components/Exams/OnScreenKeyboard.vue';
 
 const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object, offline_token: String, hall: { type: Object, default: () => ({}) } });
 
@@ -41,6 +42,7 @@ const FONTS = [['', 'افتراضي'], ['Tahoma, sans-serif', 'Tahoma'], ['Arial
 function saveReading() { try { localStorage.setItem(PREFS, JSON.stringify(reading)); } catch {} }
 const readingStyle = computed(() => ({ fontFamily: reading.font || undefined, '--rs': reading.size / 100 }));
 const readingOpen = ref(false);
+const oskOpen = ref(false);
 const { t } = useTrans();
 
 // ---- Answers (kept here, saved as they change) ----
@@ -424,6 +426,7 @@ onBeforeUnmount(() => {
             <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
             <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
             <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
+            <button @click="oskOpen = !oskOpen" class="rounded-lg border px-2 py-1 text-sm" :class="oskOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.osk', 'لوحة مفاتيح على الشاشة (عربي / English)')"><LanguageIcon class="h-4 w-4" /></button>
             <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
             <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
             <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
@@ -654,6 +657,9 @@ onBeforeUnmount(() => {
                 <p v-if="clock" class="font-mono text-sm text-gray-500">{{ clock }}</p>
             </form>
         </div>
+
+        <OnScreenKeyboard v-if="oskOpen" @close="oskOpen = false" />
+        <div v-if="oskOpen" class="h-72" aria-hidden="true" />
 
         <Modal :show="confirmOpen" @close="confirmOpen = false" max-width="md">
             <div class="space-y-4 p-6" :dir="exam.dir">

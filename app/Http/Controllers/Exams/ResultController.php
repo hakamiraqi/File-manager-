@@ -418,6 +418,43 @@ class ResultController extends Controller
     }
 
     /**
+     * The official grade sheet: every student on the exam's list with their counted mark and
+     * result, the department's heading, the committee's signatures and the stamp — to print.
+     */
+    public function gradesheet(Request $request, Exam $exam): Response
+    {
+        $this->authorizeExam($request, $exam);
+        $exam->load('questions');
+        $max = $exam->maxScore();
+        $roster = $exam->roster();
+        $attempts = $exam->attempts()->get()->groupBy('user_id');
+        $absent = DB::table('exam_attendance')->where('exam_id', $exam->id)->where('present', false)->pluck('user_id')->flip();
+        $rows = $roster->map(function (User $u) use ($exam, $max, $attempts, $absent) {
+            $mine = $attempts[$u->id] ?? collect();
+            $score = $exam->finalScoreFor($u);
+            $percent = $score !== null && $max > 0 ? round($score / $max * 100, 1) : null;
+            $status = match (true) {
+                $mine->isEmpty() || isset($absent[$u->id]) && $score === null => 'absent',
+                $mine->contains(fn ($a) => $a->needs_grading) => 'pending',
+                $score === null => 'not_submitted',
+                $exam->pass_mark !== null => $percent >= $exam->pass_mark ? 'passed' : 'failed',
+                default => 'done',
+            };
+
+            return ['name' => $u->name, 'number' => $u->student_number, 'score' => $score, 'percent' => $percent, 'status' => $status];
+        })->values();
+        ActivityLog::record('exam.gradesheet', "طبع كشف درجات \"{$exam->text('title')}\"", $exam);
+
+        return Inertia::render('Exams/Manage/GradeSheet', [
+            'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'subject' => $exam->subject, 'stage' => $exam->stage, 'department' => $exam->department,
+                'date' => $exam->opens_at?->toIso8601String() ?? (($first = $exam->attempts()->min('started_at')) ? \Illuminate\Support\Carbon::parse($first)->toIso8601String() : null), 'max' => $max, 'pass_mark' => $exam->pass_mark],
+            'rows' => $rows,
+            'site' => config('app.name'),
+            'counts' => $rows->countBy('status')->all() + ['total' => $rows->count()],
+        ]);
+    }
+
+    /**
      * The audit log of one attempt: every change of every answer as it reached the server, with
      * its time and address (and the emergency file's answers), for appeals and cheating cases.
      */

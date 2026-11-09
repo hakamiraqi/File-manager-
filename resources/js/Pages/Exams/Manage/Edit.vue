@@ -7,7 +7,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -396,6 +396,16 @@ function save() {
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.show_answers', 'إظهار الإجابات الصحيحة في المراجعة') }} <ToggleSwitch v-model="form.show_answers" /></label>
                     <label class="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm" :class="form.is_published ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-gray-700'">
                         {{ t('exam.publish', 'منشور (يراه الطلاب)') }} <ToggleSwitch v-model="form.is_published" /></label>
+                    <div class="space-y-1 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <label class="block"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.reviewer', 'مراجع الأسئلة قبل النشر (بريد أستاذ آخر، اختياري)') }}</span>
+                            <input v-model="form.reviewer_email" type="email" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <span v-if="form.errors.reviewer_email" class="text-xs text-red-600">{{ form.errors.reviewer_email }}</span>
+                        <p v-if="exam.review" class="flex items-start gap-1 text-xs" :class="{ approved: 'text-emerald-700 dark:text-emerald-400', returned: 'text-red-600', pending: 'text-amber-700 dark:text-amber-300' }[exam.review.status]">
+                            <CheckIcon v-if="exam.review.status === 'approved'" class="h-4 w-4 shrink-0" /><ClockIcon v-else class="h-4 w-4 shrink-0" />
+                            <span>{{ exam.review.status === 'approved' ? t('exam.review_ok', 'وافق :n على الأسئلة.', { n: exam.review.by }) : exam.review.status === 'returned' ? t('exam.review_back', 'أعادها :n للتعديل:', { n: exam.review.by }) : t('exam.review_wait', 'بانتظار مراجعة :n؛ لا يُنشر قبلها.', { n: exam.review.by }) }}
+                                <template v-if="exam.review.note"> {{ exam.review.note }}</template></span></p>
+                        <span v-if="form.errors.is_published" class="block text-xs text-red-600">{{ form.errors.is_published }}</span>
+                    </div>
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
                         <span>{{ t('exam.practice', 'امتحان تدريبي') }}<span class="block text-xs text-gray-500">{{ t('exam.practice_hint', 'زر «تحقّق» لكل سؤال يُظهر الإجابة فوراً، وتُثبَّت بعده.') }}</span></span>
                         <ToggleSwitch v-model="form.is_practice" /></label>

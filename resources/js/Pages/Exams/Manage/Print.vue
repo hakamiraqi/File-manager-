@@ -12,6 +12,8 @@ const printPage = () => window.print();
 const { t } = useTrans();
 
 const AR_LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و', 'ز', 'ح', 'ط', 'ي'];
+// The version letter as the computers and the monitor show it (A, B, C).
+const letterOf = (v) => String.fromCharCode(64 + v);
 const letter = (i) => (props.exam.dir === 'rtl' ? AR_LETTERS[i] ?? i + 1 : String.fromCharCode(65 + i));
 const graded = computed(() => props.questions.filter((q) => q.type !== 'description'));
 const number = (q) => graded.value.indexOf(q) + 1;
@@ -24,15 +26,19 @@ const lines = (q) => ({ essay: 10, short: 1, numeric: 1, upload: 0 }[q.type] ?? 
         <div class="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-4 py-2 text-sm text-gray-700 print:hidden">
             <Link :href="route('exams.manage.edit', exam.id)" class="text-gray-400 hover:text-gray-600"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
             <span class="flex-1 font-medium">{{ t('exam.print', 'طباعة') }}</span>
-            <Link v-if="answerKey" :href="route('exams.manage.print', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5"><DocumentTextIcon class="h-4 w-4" /> {{ t('exam.paper', 'ورقة الأسئلة') }}</Link>
-            <Link v-else :href="route('exams.manage.print', { exam: exam.id, key: 1 })" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5"><KeyIcon class="h-4 w-4" /> {{ t('exam.answer_key', 'مفتاح الإجابة') }}</Link>
+            <span v-if="exam.variants > 1" class="flex overflow-hidden rounded-lg border border-gray-300">
+                <Link v-for="v in exam.variants" :key="v" :href="route('exams.manage.print', { exam: exam.id, variant: v, key: answerKey ? 1 : undefined })"
+                    class="px-3 py-1.5" :class="exam.variant === v ? 'bg-[var(--accent-600)] text-white' : ''">{{ t('exam.variant_short', 'نسخة') }} {{ letterOf(v) }}</Link>
+            </span>
+            <Link v-if="answerKey" :href="route('exams.manage.print', { exam: exam.id, variant: exam.variant ?? undefined })" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5"><DocumentTextIcon class="h-4 w-4" /> {{ t('exam.paper', 'ورقة الأسئلة') }}</Link>
+            <Link v-else :href="route('exams.manage.print', { exam: exam.id, key: 1, variant: exam.variant ?? undefined })" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5"><KeyIcon class="h-4 w-4" /> {{ t('exam.answer_key', 'مفتاح الإجابة') }}</Link>
             <button @click="printPage" class="flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-white"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print_pdf', 'طباعة / PDF') }}</button>
         </div>
 
         <article class="paper mx-auto my-6 max-w-[210mm] bg-white p-[15mm] text-[11pt] leading-relaxed text-black shadow print:my-0 print:max-w-none print:p-0 print:shadow-none">
             <header class="mb-6 border-b-2 border-black pb-3 text-center">
                 <p class="text-xs">{{ site }}</p>
-                <h1 class="mt-1 text-xl font-bold">{{ exam.title }}<span v-if="answerKey"> — {{ t('exam.answer_key', 'مفتاح الإجابة') }}</span></h1>
+                <h1 class="mt-1 text-xl font-bold">{{ exam.title }}<span v-if="exam.variant"> — {{ t('exam.variant_short', 'نسخة') }} {{ letterOf(exam.variant) }}</span><span v-if="answerKey"> — {{ t('exam.answer_key', 'مفتاح الإجابة') }}</span></h1>
                 <p class="mt-1 text-sm">
                     <span v-if="exam.subject">{{ exam.subject }}</span><span v-if="exam.stage"> · {{ exam.stage }}</span><span v-if="exam.department"> · {{ exam.department }}</span>
                     <span v-if="exam.duration"> · {{ t('exam.duration', 'المدة') }} {{ exam.duration }} {{ t('exam.minutes', 'دقيقة') }}</span>

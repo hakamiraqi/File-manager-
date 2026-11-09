@@ -2,11 +2,11 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, PencilSquareIcon, ChartBarIcon, DocumentDuplicateIcon, TrashIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, PencilSquareIcon, ChartBarIcon, DocumentDuplicateIcon, TrashIcon, ClipboardDocumentCheckIcon, EyeIcon, CheckIcon, ArrowUturnLeftIcon } from '@heroicons/vue/24/outline';
 import { ref, computed } from 'vue';
 import Modal from '@/Components/Modal.vue';
 
-defineProps({ exams: Array });
+defineProps({ exams: Array, to_review: { type: Array, default: () => [] } });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleDateString(document.documentElement.lang || 'ar', { dateStyle: 'medium' }) : '—');
 const toDelete = ref(null);
@@ -45,6 +45,31 @@ async function importStudents() {
     }
 }
 
+// Official photos for the invigilator: a ZIP of pictures named by student number or e-mail.
+const photosMsg = ref('');
+const photosBusy = ref(false);
+async function uploadPhotos(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    photosBusy.value = true;
+    photosMsg.value = '';
+    try {
+        const body = new FormData();
+        body.append('file', file);
+        const r = (await window.axios.post(route('exams.manage.students.photos'), body)).data;
+        photosMsg.value = t('exam.photos_saved', 'حُفظت صور :n طالباً.', { n: r.saved }) + (r.unknown_count ? ' ' + t('exam.photos_unknown', 'بلا طالب مطابق: :list', { list: r.unknown.join('، ') + (r.unknown_count > r.unknown.length ? '…' : '') }) : '');
+    } catch (e) {
+        photosMsg.value = e.response?.data?.message || t('exam.import_failed', 'تعذّر الاستيراد.');
+    } finally {
+        photosBusy.value = false;
+    }
+}
+
+// Exams waiting for this teacher's review.
+const reviewNotes = ref({});
+const decide = (e, decision) => router.post(route('exams.manage.review', e.id), { decision, note: reviewNotes.value[e.id] ?? '' }, { preserveScroll: true });
+
 const create = () => router.post(route('exams.manage.store'));
 const duplicate = (e) => router.post(route('exams.manage.duplicate', e.id));
 const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value.id), { onFinish: () => (toDelete.value = null) });
@@ -64,7 +89,17 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
             </div>
         </template>
 
-        <div class="p-4 sm:p-6">
+        <div class="space-y-4 p-4 sm:p-6">
+            <section v-if="to_review.length" class="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/20">
+                <p class="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-100"><ClipboardDocumentCheckIcon class="h-5 w-5" /> {{ t('exam.to_review', 'امتحانات تنتظر مراجعتك') }} ({{ to_review.length }})</p>
+                <div v-for="e in to_review" :key="e.id" class="flex flex-wrap items-center gap-2 rounded-lg bg-white p-3 text-sm dark:bg-gray-800">
+                    <div class="min-w-0 flex-1"><p class="font-medium">{{ e.title }}</p><p class="text-xs text-gray-500">{{ e.author }} · {{ e.questions }} {{ t('exam.questions_n', 'سؤال') }}<template v-if="e.note"> · {{ e.note }}</template></p></div>
+                    <Link :href="route('exams.manage.print', { exam: e.id, key: 1 })" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 dark:border-gray-600"><EyeIcon class="h-4 w-4" /> {{ t('exam.review_read', 'قراءة الأسئلة والإجابات') }}</Link>
+                    <input v-model="reviewNotes[e.id]" :placeholder="t('exam.review_note_ph', 'ملاحظة (لازمة عند الإعادة)')" class="w-64 rounded-lg border-gray-300 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    <button @click="decide(e, 'return')" :disabled="!reviewNotes[e.id]?.trim()" class="flex items-center gap-1 rounded-lg border border-amber-400 px-3 py-1.5 text-amber-800 disabled:opacity-40 dark:text-amber-200"><ArrowUturnLeftIcon class="h-4 w-4" /> {{ t('exam.review_return', 'إعادة للتعديل') }}</button>
+                    <button @click="decide(e, 'approve')" class="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-white"><CheckIcon class="h-4 w-4" /> {{ t('exam.review_approve', 'موافقة') }}</button>
+                </div>
+            </section>
             <div v-if="!exams.length" class="rounded-xl border border-dashed border-gray-300 p-10 text-center text-sm text-gray-500 dark:border-gray-600">
                 {{ t('exam.manage_empty', 'لا توجد امتحانات بعد. اضغط «امتحان جديد» للبدء.') }}
             </div>
@@ -98,6 +133,8 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
                                 <span class="rounded-full px-2 py-0.5 text-xs" :class="e.is_published ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'">
                                     {{ e.is_published ? t('exam.published', 'منشور') : t('exam.draft', 'مسودة') }}
                                 </span>
+                                <span v-if="e.review && e.review !== 'approved'" class="ms-1 rounded-full px-2 py-0.5 text-xs" :class="e.review === 'returned' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">
+                                    {{ e.review === 'returned' ? t('exam.review_returned', 'أُعيد للتعديل') : t('exam.review_pending', 'بانتظار المراجعة') }}</span>
                             </td>
                             <td class="whitespace-nowrap px-4 py-2.5 text-end">
                                 <Link v-if="e.can_edit" :href="route('exams.manage.edit', e.id)" class="inline-block rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.edit', 'تعديل')"><PencilSquareIcon class="h-4 w-4" /></Link>
@@ -117,6 +154,13 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
                 <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.students_hint', 'ملف Excel أو CSV بأعمدة: الاسم، البريد أو الرقم الجامعي (أو كلاهما)، كلمة المرور (اختياري؛ تُولَّد إن تُركت فارغة). يُنزَّل بعدها ملف فيه كل حساب وكلمة مروره — احفظه، فلا يظهر مرة أخرى.') }}</p>
                 <input type="file" accept=".xlsx,.csv" @input="studentsFile = $event.target.files[0]" class="block w-full text-sm" />
                 <p v-if="studentsError" class="text-sm text-red-600">{{ studentsError }}</p>
+                <div class="space-y-1 border-t border-gray-200 pt-3 dark:border-gray-700">
+                    <p class="text-sm font-medium">{{ t('exam.photos', 'صور الطلاب للمراقب') }}</p>
+                    <p class="text-xs text-gray-500">{{ t('exam.photos_hint', 'ملف ZIP فيه صورة لكل طالب باسم رقمه الجامعي أو بريده (2024001.jpg). تظهر للمراقب وحده بجانب اسم الطالب.') }}</p>
+                    <label class="inline-block cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600" :class="photosBusy ? 'opacity-50' : ''">
+                        <input type="file" accept=".zip" class="sr-only" :disabled="photosBusy" @change="uploadPhotos" />{{ photosBusy ? '…' : t('exam.photos_upload', 'رفع ملف الصور') }}</label>
+                    <p v-if="photosMsg" class="text-xs text-gray-700 dark:text-gray-300">{{ photosMsg }}</p>
+                </div>
                 <div class="flex justify-end gap-2">
                     <button type="button" @click="studentsOpen = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
                     <button :disabled="!studentsFile || studentsBusy" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white disabled:opacity-50">{{ t('exam.import', 'استيراد') }}</button>

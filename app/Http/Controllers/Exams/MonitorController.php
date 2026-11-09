@@ -245,7 +245,60 @@ class MonitorController extends Controller
         DB::table('exam_attendance')->updateOrInsert(['exam_id' => $exam->id, 'user_id' => $user->id],
             ['present' => true, 'checked_by' => $request->user()->id, 'updated_at' => now()] + ($row ? [] : ['created_at' => now()]));
 
-        return response()->json(['ok' => true, 'name' => $user->name, 'seat' => $exam->computerFor($user)?->label ?? $row?->seat]);
+        return response()->json(['ok' => true, 'name' => $user->name, 'photo' => $user->photoUrl(), 'seat' => $exam->computerFor($user)?->label ?? $row?->seat]);
+    }
+
+    /** A student's official photo, for the invigilator only. */
+    public function photo(\App\Models\User $user): \Symfony\Component\HttpFoundation\Response
+    {
+        abort_unless($user->photo_path && \Illuminate\Support\Facades\Storage::disk('local')->exists($user->photo_path), 404);
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->response($user->photo_path, null, ['Cache-Control' => 'private, max-age=86400']);
+    }
+
+    /**
+     * The server's health during an exam: free disk, memory and load, and how many students are
+     * connected now, with warnings before something runs out.
+     */
+    public function health(): JsonResponse
+    {
+        $path = storage_path();
+        $free = @disk_free_space($path) ?: null;
+        $total = @disk_total_space($path) ?: null;
+        $mem = null;
+        if (is_readable('/proc/meminfo') && preg_match_all('/^(MemTotal|MemAvailable):\s+(\d+)/m', (string) @file_get_contents('/proc/meminfo'), $m)) {
+            $kb = array_combine($m[1], array_map('intval', $m[2]));
+            $mem = isset($kb['MemTotal'], $kb['MemAvailable']) ? ['total' => $kb['MemTotal'] * 1024, 'free' => $kb['MemAvailable'] * 1024] : null;
+        }
+        $load = function_exists('sys_getloadavg') ? (@sys_getloadavg() ?: null) : null;
+        $cpus = (int) (is_readable('/proc/cpuinfo') ? preg_match_all('/^processor/m', (string) @file_get_contents('/proc/cpuinfo')) : 0) ?: null;
+        $active = Attempt::whereNull('submitted_at')->where('last_seen_at', '>=', now()->subSeconds(60))->count();
+        try {
+            DB::select('select 1');
+            $db = true;
+        } catch (\Throwable) {
+            $db = false;
+        }
+        $warnings = [];
+        if ($free !== null && ($free < 2 * 1024 ** 3 || ($total && $free / $total < 0.1))) {
+            $warnings[] = 'disk';
+        }
+        if ($mem && $mem['free'] / max(1, $mem['total']) < 0.1) {
+            $warnings[] = 'memory';
+        }
+        if ($load && $cpus && $load[0] > $cpus * 1.5) {
+            $warnings[] = 'load';
+        }
+        if (! $db) {
+            $warnings[] = 'database';
+        }
+
+        return response()->json([
+            'disk' => $free !== null ? ['free' => $free, 'total' => $total] : null,
+            'memory' => $mem, 'load' => $load ? round($load[0], 2) : null, 'cpus' => $cpus,
+            'active' => $active, 'running' => Attempt::whereNull('submitted_at')->count(),
+            'database' => $db, 'php' => PHP_VERSION, 'time' => now()->toIso8601String(), 'warnings' => $warnings,
+        ]);
     }
 
     /** Puts one student at a computer (or nowhere). */
@@ -344,7 +397,8 @@ class MonitorController extends Controller
             };
 
             return [
-                'user' => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'extra_time' => (float) $u->exam_time_multiplier > 1],
+                'user' => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'extra_time' => (float) $u->exam_time_multiplier > 1,
+                    'number' => $u->student_number, 'photo' => $u->photoUrl()],
                 'present' => isset($attendance[$u->id]) ? (bool) $attendance[$u->id]->present : null,
                 'seat' => $attendance[$u->id]->seat ?? null,
                 'note' => $attendance[$u->id]->note ?? null,

@@ -19,9 +19,12 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/import', [\App\Http\Controllers\Exams\ImportController::class, 'questions'])->whereNumber('exam')->name('import');
         Route::get('/import/template', [\App\Http\Controllers\Exams\ImportController::class, 'questionsTemplate'])->name('import.template');
         Route::post('/templates', [ManageController::class, 'storeTemplate'])->name('templates.store');
+        Route::post('/{exam}/review', [ManageController::class, 'review'])->whereNumber('exam')->name('review');
         Route::delete('/templates/{template}', [ManageController::class, 'destroyTemplate'])->name('templates.destroy');
         Route::post('/images', [ManageController::class, 'image'])->middleware('throttle:60,1')->name('images.store');
         Route::post('/students/import', [\App\Http\Controllers\Exams\ImportController::class, 'students'])->name('students.import');
+        Route::post('/students/photos', [\App\Http\Controllers\Exams\ImportController::class, 'photos'])->name('students.photos');
+        Route::post('/students/{user}/photo', [\App\Http\Controllers\Exams\ImportController::class, 'photo'])->name('students.photo');
 
         $groups = \App\Http\Controllers\Exams\GroupController::class;
         Route::get('/groups', [$groups, 'index'])->name('groups');
@@ -51,6 +54,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/results-bundle', [$tr, 'importResults'])->whereNumber('exam')->name('results-bundle.import');
         Route::get('/{exam}/print', [ManageController::class, 'print'])->whereNumber('exam')->name('print');
         Route::get('/{exam}/results', [ResultController::class, 'index'])->whereNumber('exam')->name('results');
+        Route::get('/{exam}/gradesheet', [ResultController::class, 'gradesheet'])->whereNumber('exam')->name('gradesheet');
         Route::get('/{exam}/export', [ResultController::class, 'export'])->whereNumber('exam')->name('export');
         Route::post('/{exam}/regrade', [ResultController::class, 'regrade'])->whereNumber('exam')->name('regrade');
         Route::post('/{exam}/overrides', [ResultController::class, 'override'])->whereNumber('exam')->name('overrides.store');
@@ -103,6 +107,8 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::post('/attempts/{attempt}/help-done', [$m, 'helpDone'])->name('help-done');
     $pcs = \App\Http\Controllers\Exams\ComputerController::class;
     Route::get('/computers', [$pcs, 'index'])->name('computers');
+    Route::get('/photos/{user}', [$m, 'photo'])->name('photo');
+    Route::get('/health', [$m, 'health'])->name('health');
     Route::post('/computers', [$pcs, 'store'])->name('computers.store');
     Route::post('/computers/arrange', [$pcs, 'arrange'])->name('computers.arrange');
     Route::put('/computers/{computer}', [$pcs, 'update'])->name('computers.update');
