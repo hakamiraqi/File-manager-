@@ -41,4 +41,11 @@ return [
         ],
     ],
 
+    // Auto Multiple Choice connector (amc-connector/): beside the app on the hosted server, or on a
+    // hall's Linux server (its address and token can then be set in the app instead).
+    'amc' => [
+        'url' => env('AMC_URL'),
+        'token' => env('AMC_TOKEN'),
+    ],
+
 ];

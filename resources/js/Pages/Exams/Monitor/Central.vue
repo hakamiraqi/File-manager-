@@ -5,7 +5,7 @@ import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, GlobeAltIcon, KeyIcon, ArrowPathIcon, CheckIcon, ExclamationTriangleIcon, ChatBubbleLeftRightIcon } from '@heroicons/vue/24/outline';
 
 // Services that need the internet: the central server and the halls' servers, and SMS/WhatsApp.
-const props = defineProps({ offline: Boolean, central: Object, hall: Object, address: String, messages: Object });
+const props = defineProps({ offline: Boolean, central: Object, hall: Object, address: String, messages: Object, amc: Object });
 const { t } = useTrans();
 const hallForm = useForm({ url: props.hall.url ?? '', key: '' });
 const saveHall = () => hallForm.post(route('exams.monitor.central.hall'), { preserveScroll: true, onSuccess: () => hallForm.reset('key') });
@@ -14,6 +14,8 @@ const newKey = () => router.post(route('exams.monitor.central.key'), {}, { prese
 const keyOff = () => router.post(route('exams.monitor.central.key'), { off: true }, { preserveScroll: true });
 const msgForm = useForm({ url: props.messages.url ?? '', method: props.messages.method, body: props.messages.body ?? '', header: '', country: props.messages.country, test: '' });
 const saveMsg = () => msgForm.post(route('exams.monitor.central.messages'), { preserveScroll: true, onSuccess: () => msgForm.reset('header', 'test') });
+const amcForm = useForm({ url: props.amc?.url ?? '', token: '' });
+const saveAmc = () => amcForm.post(route('exams.monitor.central.amc'), { preserveScroll: true, onSuccess: () => amcForm.reset('token') });
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar') : '—');
 const summary = (s) => { const [a, b] = String(s ?? '0|0').split('|'); return { taken: a, sent: b }; };
 const input = 'rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700';
@@ -52,6 +54,15 @@ const input = 'rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-g
                 <p v-if="hall.url" class="flex items-center gap-1 text-xs" :class="hall.last_error ? 'text-red-600' : 'text-emerald-700 dark:text-emerald-400'">
                     <ExclamationTriangleIcon v-if="hall.last_error" class="h-4 w-4" /><CheckIcon v-else class="h-4 w-4" />
                     {{ t('exam.central_last', 'آخر مزامنة ناجحة: :at — أُخذ :a امتحاناً وأُرسلت نتائج :b', { at: fmt(hall.last_ok), a: summary(hall.summary).taken, b: summary(hall.summary).sent }) }}<template v-if="hall.last_error"> — {{ hall.last_error }}</template></p>
+            </form>
+
+            <form @submit.prevent="saveAmc" class="space-y-3 rounded-xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">
+                <p class="font-semibold">{{ t('exam.amc_connector', 'خادم Auto Multiple Choice') }}</p>
+                <p class="text-xs text-gray-500">{{ t('exam.amc_connector_hint', 'برنامج AMC يعمل على خادم لينكس (حاوية amc-connector). على الاستضافة مضبوط تلقائياً؛ لسيرفر قاعة اكتب عنوان خادم AMC في الشبكة المحلية ومفتاحه.') }}
+                    <template v-if="amc?.env && !amc?.url"> {{ t('exam.amc_env', 'الآن: المضبوط في بيئة السيرفر.') }}</template></p>
+                <label class="block"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.amc_url', 'عنوان خادم AMC') }}</span><input v-model="amcForm.url" dir="ltr" placeholder="http://192.168.1.20:8080" :class="input" class="w-full font-mono" /></label>
+                <label class="block"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.mirror_key', 'مفتاحه') }}<template v-if="amc?.has_token"> ({{ t('settings.saved', 'محفوظ') }})</template></span><input v-model="amcForm.token" dir="ltr" autocomplete="off" :class="input" class="w-full font-mono" /></label>
+                <button :disabled="amcForm.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-white">{{ t('exam.amc_save_test', 'حفظ واختبار') }}</button>
             </form>
 
             <form v-if="!offline" @submit.prevent="saveMsg" class="space-y-3 rounded-xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">

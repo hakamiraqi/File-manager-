@@ -1,0 +1,23 @@
+# Connector test: an Arabic exam with three named students
+PaperSize: A4
+Lang: AR
+Title: امتحان تجريبي
+ShuffleQuestions: 0
+PreAssociation: students.csv
+PreAssociationKey: id
+PreAssociationName: \name{}
+SeparateAnswerSheet: 1
+
+*[id=q11,ordered]{b=2} ما صيغة الماء؟
++ H2O
+- CO2
+- NaCl
+
+**[id=q12,ordered]{haut=2} اختر الغازات النبيلة
++ هيليوم
++ نيون
+- حديد
+
+*[id=q13,ordered]{b=1} الماء مركب
++ صح
+- خطأ

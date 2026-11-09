@@ -67,6 +67,20 @@ services:
       - examnest_storage:/var/www/html/storage
     networks: [default]
 
+  # Auto Multiple Choice behind a small API (amc-connector/), for paper bubble-sheet exams.
+  # Only the app reaches it, on this network, with AMC_TOKEN.
+  amc:
+    build:
+      context: ../../amc-connector
+    image: examnest-amc:latest
+    container_name: examnest-amc
+    restart: unless-stopped
+    environment:
+      AMC_TOKEN: ${AMC_TOKEN}
+    volumes:
+      - examnest_amc:/data
+    networks: [default]
+
   web:
     build:
       context: ../..
@@ -84,6 +98,7 @@ services:
 volumes:
   examnest_db:
   examnest_storage:
+  examnest_amc:
 
 networks:
   edge:

@@ -18,6 +18,14 @@ if [ ! -f .env ]; then
         deploy/vps/env.example > .env
     echo "Created .env with fresh secrets."
 fi
+# The AMC connector's token (added to an older .env too); the app finds the connector by its service name.
+if ! grep -q '^AMC_TOKEN=' .env; then
+    printf '\nAMC_URL=http://amc:8080\nAMC_TOKEN=%s\n' "$(rand 40)" >> .env
+    echo "Added the AMC connector's token to .env."
+elif grep -q '^AMC_TOKEN=$' .env; then
+    sed -i "s|^AMC_TOKEN=$|AMC_TOKEN=$(rand 40)|" .env
+    echo "Filled the AMC connector's token in .env."
+fi
 mkdir -p public/downloads
 # The web and app containers read this folder as another user, so it must stay world-readable.
 chmod 755 public public/downloads

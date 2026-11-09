@@ -25,6 +25,14 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::get('/{exam}/omr', [\App\Http\Controllers\Exams\OmrController::class, 'sheets'])->whereNumber('exam')->name('omr');
         Route::get('/{exam}/omr/scan', [\App\Http\Controllers\Exams\OmrController::class, 'scan'])->whereNumber('exam')->name('omr.scan');
         Route::post('/{exam}/omr', [\App\Http\Controllers\Exams\OmrController::class, 'store'])->whereNumber('exam')->name('omr.store');
+        $amcs = \App\Http\Controllers\Exams\AmcServerController::class;
+        Route::get('/{exam}/amc/server', [$amcs, 'status'])->whereNumber('exam')->name('amc.server');
+        Route::post('/{exam}/amc/server/build', [$amcs, 'build'])->whereNumber('exam')->name('amc.server.build');
+        Route::get('/{exam}/amc/server/sheets', [$amcs, 'pdf'])->whereNumber('exam')->name('amc.server.pdf');
+        Route::post('/{exam}/amc/server/scans', [$amcs, 'scan'])->whereNumber('exam')->name('amc.server.scans');
+        Route::delete('/{exam}/amc/server/scans', [$amcs, 'clearScans'])->whereNumber('exam')->name('amc.server.scans.clear');
+        Route::post('/{exam}/amc/server/process', [$amcs, 'process'])->whereNumber('exam')->name('amc.server.process');
+        Route::post('/{exam}/amc/server/import', [$amcs, 'import'])->whereNumber('exam')->name('amc.server.import');
         Route::get('/{exam}/amc', [\App\Http\Controllers\Exams\OmrController::class, 'amcExport'])->whereNumber('exam')->name('amc');
         Route::post('/{exam}/amc', [\App\Http\Controllers\Exams\OmrController::class, 'amcImport'])->whereNumber('exam')->name('amc.import');
         Route::post('/{exam}/resources', [ManageController::class, 'uploadResource'])->whereNumber('exam')->name('resources.store');
@@ -130,6 +138,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/health', [$m, 'health'])->name('health');
     Route::get('/central', [\App\Http\Controllers\Exams\CentralController::class, 'show'])->name('central');
     Route::post('/central/key', [\App\Http\Controllers\Exams\CentralController::class, 'key'])->name('central.key');
+    Route::post('/central/amc', [\App\Http\Controllers\Exams\AmcServerController::class, 'settings'])->name('central.amc');
     Route::post('/central/messages', [\App\Http\Controllers\Exams\CentralController::class, 'messages'])->name('central.messages');
     Route::post('/central/hall', [\App\Http\Controllers\Exams\CentralController::class, 'hallSettings'])->name('central.hall');
     Route::get('/mirror', [\App\Http\Controllers\Exams\MirrorController::class, 'show'])->name('mirror');

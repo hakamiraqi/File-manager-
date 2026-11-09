@@ -71,6 +71,7 @@ class CentralController extends Controller
             'hall' => ['url' => Setting::get('central_url'), 'has_key' => filled(Setting::get('central_key')), 'last_ok' => Setting::get('central_last_ok'),
                 'last_error' => Setting::get('central_last_error') ?: null, 'summary' => Setting::get('central_last_summary')],
             'address' => rtrim(config('app.url'), '/'),
+            'amc' => ['url' => Setting::get('amc_url') ?: null, 'env' => filled(config('services.amc.url')), 'has_token' => filled(Setting::get('amc_token'))],
             'messages' => ['url' => Setting::get('msg_url'), 'method' => Setting::get('msg_method') ?: 'POST', 'body' => Setting::get('msg_body'),
                 'has_header' => filled(Setting::get('msg_header')), 'country' => Setting::get('msg_country') ?: '964'],
         ]);

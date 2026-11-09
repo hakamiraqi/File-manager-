@@ -1,0 +1,42 @@
+# The AMC connector: build its image and run the real Auto Multiple Choice end to end (sheets →
+# filled scans → marks). The VPS deploy (deploy-exams.yml) builds and runs the same image.
+name: AMC connector
+
+on:
+  push:
+    branches: [exams]
+    paths: ['amc-connector/**', '.github/workflows/amc-connector.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: amc-connector
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t examnest-amc:test amc-connector
+      - name: Start it
+        run: |
+          docker run -d --name amc -e AMC_TOKEN=test-token -p 8080:8080 examnest-amc:test
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8080/health && break; sleep 2; done
+      - name: AMC's own help for the commands used
+        run: |
+          for c in prepare meptex getimages analyse note association-auto export; do
+            echo "=== $c"; docker exec amc sh -c "man auto-multiple-choice-$c 2>/dev/null | col -b | sed -n '1,400p'" || true
+          done
+      - name: End to end
+        env:
+          AMC_TOKEN: test-token
+        run: |
+          pip install --quiet pillow
+          python3 amc-connector/test/e2e.py
+      - name: Logs
+        if: always()
+        run: |
+          docker exec amc sh -c 'cat /data/e2etest/amc.log 2>/dev/null | tail -300' || true
+          docker logs amc 2>&1 | tail -50 || true

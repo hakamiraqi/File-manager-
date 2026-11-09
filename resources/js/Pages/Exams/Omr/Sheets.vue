@@ -4,6 +4,7 @@ import { Head, Link, router } from '@inertiajs/vue3';
 import QRCode from 'qrcode';
 import { useTrans } from '@/Composables/useTrans';
 import { PrinterIcon, ArrowRightIcon, CameraIcon, ArrowDownTrayIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/outline';
+import AmcServerPanel from '@/Components/Exams/AmcServerPanel.vue';
 import { PAGE, MARK, MARKS, slot, LETTERS, BUBBLE_R, capacity } from '@/Components/Exams/omrLayout';
 
 // One bubble sheet per student, ready to print: the QR says whose sheet it is.
@@ -32,8 +33,9 @@ const list = () => (only.value ? props.students.filter((s) => String(s.id) === o
             <select v-model="only" class="rounded-lg border-gray-300 py-1 text-sm"><option value="">{{ t('exam.all_students', 'كل الطلاب') }}</option><option v-for="s in students" :key="s.id" :value="String(s.id)">{{ s.name }}</option></select>
             <Link :href="route('exams.manage.omr.scan', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5"><CameraIcon class="h-4 w-4" /> {{ t('exam.omr_scan', 'قراءة الأوراق الممسوحة') }}</Link>
             <button @click="printPage" class="flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-white"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print', 'طباعة') }}</button>
+            <AmcServerPanel :exam="exam" />
             <span class="flex w-full flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
-                <span class="text-xs font-medium text-gray-600">Auto Multiple Choice:</span>
+                <span class="text-xs font-medium text-gray-600">{{ t('exam.amc_desktop', 'AMC على حاسبتك') }}:</span>
                 <a :href="route('exams.manage.amc', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs"><ArrowDownTrayIcon class="h-4 w-4" /> {{ t('exam.amc_export', 'مشروع AMC (الأسئلة وقائمة الطلاب)') }}</a>
                 <label class="flex cursor-pointer items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs"><input type="file" accept=".csv,.txt" class="sr-only" @change="amcImport" /><ArrowUpTrayIcon class="h-4 w-4" /> {{ t('exam.amc_import', 'رفع نتائج AMC (CSV)') }}</label>
                 <span class="text-xs text-gray-500">{{ t('exam.amc_hint', 'برنامج مجاني لطباعة أوراق الفقاعات وقراءتها؛ صدّر النتائج CSV مع «الخانات المؤشّرة» بالحروف.') }}</span>
