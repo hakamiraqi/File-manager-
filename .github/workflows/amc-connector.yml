@@ -24,11 +24,11 @@ jobs:
         run: |
           docker run -d --name amc -e AMC_TOKEN=test-token -p 8080:8080 examnest-amc:test
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:8080/health && break; sleep 2; done
-      - name: AMC's own help for the commands used
+      - name: AMC's own options for the commands used
+        continue-on-error: true
         run: |
-          docker exec amc sh -c 'ls /usr/lib/AMC/perl/ 2>/dev/null || find / -name "AMC-analyse.pl" 2>/dev/null'
           for c in prepare meptex getimages analyse note association-auto export; do
-            echo "=== $c"; docker exec amc sh -c "f=\$(find /usr/lib/AMC /usr/share/perl5 -name 'AMC-$c.pl' 2>/dev/null | head -1); grep -A45 'GetOptions' \$f | head -60" || true
+            echo "=== $c"; docker exec amc sh -c "f=\$(find /usr/libexec/AMC /usr/lib/AMC -name 'AMC-$c.pl' 2>/dev/null | head -1); grep -A45 'GetOptions' \$f | head -60" || true
           done
       - name: End to end
         env:
