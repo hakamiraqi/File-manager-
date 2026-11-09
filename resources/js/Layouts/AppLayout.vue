@@ -20,8 +20,7 @@ import { UserGroupIcon, EyeIcon,
     PencilSquareIcon,
     ArchiveBoxIcon,
     CalendarDaysIcon,
-    PresentationChartBarIcon,
-} from '@heroicons/vue/24/outline';
+    PresentationChartBarIcon, CalendarIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const page = usePage();
@@ -41,7 +40,8 @@ const nav = computed(() => [
         ]
         : []),
     ...(page.props.permissions?.invigilate
-        ? [{ label: t('exam.monitor', 'المراقبة'), href: route('exams.monitor.index'), icon: EyeIcon, active: route().current('exams.monitor.*') }]
+        ? [{ label: t('today.title', 'اليوم'), href: route('exams.monitor.today'), icon: CalendarIcon, active: route().current('exams.monitor.today') },
+            { label: t('exam.monitor', 'المراقبة'), href: route('exams.monitor.index'), icon: EyeIcon, active: route().current('exams.monitor.*') && !route().current('exams.monitor.today') }]
         : []),
 ]);
 

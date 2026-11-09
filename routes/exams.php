@@ -118,6 +118,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
 Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor')->name('exams.monitor.')->group(function () {
     $m = \App\Http\Controllers\Exams\MonitorController::class;
     Route::get('/', [$m, 'index'])->name('index');
+    Route::get('/today', [\App\Http\Controllers\Exams\TodayController::class, 'show'])->name('today');
     Route::get('/{exam}', [$m, 'show'])->whereNumber('exam')->name('show');
     Route::get('/{exam}/data', [$m, 'data'])->whereNumber('exam')->name('data');
     Route::get('/{exam}/sheet', [$m, 'sheet'])->whereNumber('exam')->name('sheet');
