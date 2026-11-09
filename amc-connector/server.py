@@ -104,7 +104,7 @@ def process(p):
         amc('getimages', '--copy-to', images, '--list', listfile, '--vector-density', '250', '--orientation', 'portrait',
             *[os.path.join(d, 'scans', s) for s in scans], cwd=d, log=log)
         status(p, step='analyse')
-        amc('analyse', '--projet', d + '/', '--data', d + '/data', '--list-fichiers', listfile, cwd=d, log=log, timeout=7200)
+        amc('analyse', '--projet', d + '/', '--data', d + '/data', '--liste-fichiers', listfile, cwd=d, log=log, timeout=7200)
         status(p, step='note')
         amc('note', '--data', d + '/data', '--seuil', os.environ.get('AMC_THRESHOLD', '0.15'), cwd=d, log=log)
         status(p, step='association')
