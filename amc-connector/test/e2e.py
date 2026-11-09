@@ -49,7 +49,7 @@ boxes = db.execute('select student, page, question, answer, xmin, xmax, ymin, ym
 print(len(boxes), 'answer boxes')
 
 # What each student "answers" (1-based answers as in the source).
-plan = {1: {'q11': [1], 'q12': [1, 2], 'q13': [1]}, 2: {'q11': [2], 'q12': [1], 'q13': [2]}, 3: {'q11': [3], 'q12': [], 'q13': [1]}}
+plan = {1: {'q11': [1], 'q12': [1, 2], 'q13': [1], 'q14': [1]}, 2: {'q11': [2], 'q12': [1], 'q13': [2], 'q14': [2]}, 3: {'q11': [3], 'q12': [], 'q13': [1], 'q14': []}}
 
 # Render the subject at the layout's resolution, one page picture per PDF page, in order.
 dpi = pages[0][2]
