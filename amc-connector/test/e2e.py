@@ -53,12 +53,13 @@ plan = {1: {'q11': [1], 'q12': [1, 2], 'q13': [1]}, 2: {'q11': [2], 'q12': [1], 
 
 # Render the subject at the layout's resolution, one page picture per PDF page, in order.
 dpi = pages[0][2]
-sh('pdftoppm', '-r', str(int(dpi)), '-png', '/tmp/subject.pdf', '/tmp/page')
-files = sorted(f for f in os.listdir('/tmp') if f.startswith('page') and f.endswith('.png'))
+sh('docker', 'exec', 'amc', 'sh', '-c', f'mkdir -p /tmp/render && pdftoppm -r {int(dpi)} -png /data/{P}/subject.pdf /tmp/render/page')
+sh('docker', 'cp', 'amc:/tmp/render', '/tmp/render')
+files = sorted(f for f in os.listdir('/tmp/render') if f.endswith('.png'))
 print(files)
 assert len(files) == len(pages), (len(files), len(pages))
 for (student, page, _d, w, h), f in zip(pages, files):
-    im = Image.open('/tmp/' + f).convert('L')
+    im = Image.open('/tmp/render/' + f).convert('L')
     sx, sy = im.width / w, im.height / h
     dr = ImageDraw.Draw(im)
     for (st, pg, q, a, x0, x1, y0, y1) in boxes:
