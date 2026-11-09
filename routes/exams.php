@@ -122,6 +122,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/{exam}', [$m, 'show'])->whereNumber('exam')->name('show');
     Route::get('/{exam}/data', [$m, 'data'])->whereNumber('exam')->name('data');
     Route::get('/{exam}/sheet', [$m, 'sheet'])->whereNumber('exam')->name('sheet');
+    Route::get('/{exam}/report', [$m, 'report'])->whereNumber('exam')->name('report');
     Route::post('/{exam}/attendance/{user}', [$m, 'attendance'])->whereNumber('exam')->name('attendance');
     Route::post('/{exam}/access-code', [$m, 'accessCode'])->whereNumber('exam')->name('access-code');
     Route::post('/{exam}/offline-file', [$m, 'offlineFile'])->whereNumber('exam')->name('offline-file');

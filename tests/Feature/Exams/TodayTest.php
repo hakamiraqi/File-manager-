@@ -52,5 +52,11 @@ class TodayTest extends TestCase
 
         $this->actingAs($teacher)->get(route('exams.monitor.today'))->assertInertia(fn (AssertableInertia $p) => $p->component('Exams/Monitor/Today')->has('exams', 1));
         $this->actingAs($ali)->get(route('exams.monitor.today'))->assertForbidden();
+
+        // The committee's minutes: Ali started and left the window; Sara never came.
+        \App\Models\Exams\Event::create(['exam_attempt_id' => Attempt::first()->id, 'type' => 'blur']);
+        $this->actingAs($teacher)->get(route('exams.monitor.report', $exam))->assertInertia(fn (AssertableInertia $p) => $p->component('Exams/Monitor/Report')
+            ->where('counts.expected', 2)->where('counts.started', 1)->where('counts.absent', 1)->where('counts.incidents', 1)
+            ->where('absent.0.name', $sara->name)->where('incidents.0.kinds.blur', 1));
     }
 }

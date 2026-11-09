@@ -253,6 +253,7 @@ async function uploadOffline(event) {
                 <span v-if="stale" class="flex items-center gap-1 text-xs text-red-600"><ExclamationTriangleIcon class="h-4 w-4" /> {{ t('exam.monitor_stale', 'لا اتصال بالسيرفر') }}</span>
                 <button @click="refresh" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.refresh', 'تحديث')"><ArrowPathIcon class="h-4 w-4" /></button>
                 <Link :href="route('exams.monitor.sheet', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('exam.attendance_sheet', 'كشف الحضور') }}</Link>
+                <a :href="route('exams.monitor.report', exam.id)" target="_blank" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('report.title', 'محضر الامتحان') }}</a>
             </div>
         </template>
 

@@ -433,6 +433,56 @@ class MonitorController extends Controller
         ]);
     }
 
+    /**
+     * «محضر الامتحان» (2026-11-09, by request): the committee's minutes, ready to print or save as
+     * PDF — the exam and its hall, the numbers (expected, present, absent, handed in), the absent
+     * students, what the browser reported for each student (suspicion), locked attempts, the
+     * announcements made, and room for the committee's signatures.
+     */
+    public function report(Request $request, Exam $exam): Response
+    {
+        $this->authorizeExam($request, $exam);
+        $snap = $this->snapshot($exam);
+        $rows = collect($snap['rows']);
+        $attempts = $exam->attempts()->get(['id', 'user_id', 'started_at', 'submitted_at', 'locked_at', 'lock_reason', 'ip']);
+        $pcs = \App\Models\Exams\Computer::whereIn('ip', $attempts->pluck('ip')->filter())->get()->keyBy('ip');
+        $events = \App\Models\Exams\Event::whereIn('exam_attempt_id', $attempts->pluck('id'))->where('type', '!=', 'offline_file')
+            ->orderBy('created_at')->get(['exam_attempt_id', 'type', 'created_at'])->groupBy('exam_attempt_id');
+        $names = $rows->mapWithKeys(fn ($r) => [$r['user']['id'] => $r['user']]);
+        $incidents = $attempts->filter(fn ($a) => isset($events[$a->id]) || $a->locked_at)->map(fn ($a) => [
+            'name' => $names[$a->user_id]['name'] ?? User::find($a->user_id)?->name, 'number' => $names[$a->user_id]['number'] ?? null,
+            'computer' => $pcs[$a->ip]->label ?? $a->ip,
+            'kinds' => ($events[$a->id] ?? collect())->countBy('type')->all(),
+            'first' => ($events[$a->id] ?? collect())->first()?->created_at?->toIso8601String(),
+            'locked' => $a->locked_at ? ['at' => $a->locked_at->toIso8601String(), 'reason' => $a->lock_reason] : null,
+        ])->values();
+        $starts = $attempts->min('started_at');
+        $ends = $attempts->max('submitted_at');
+
+        return Inertia::render('Exams/Monitor/Report', [
+            'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'subject' => $exam->subject, 'stage' => $exam->stage, 'department' => $exam->department,
+                'groups' => $exam->groups()->pluck('name'), 'hall' => $exam->hall, 'duration' => $exam->duration_minutes,
+                'opens_at' => $exam->opens_at?->toIso8601String(), 'closes_at' => $exam->closes_at?->toIso8601String(), 'owner' => $exam->author?->name],
+            'site' => \App\Models\Setting::get('site_name', config('app.name')),
+            'printed_at' => now()->toIso8601String(),
+            'first_start' => $starts ? \Illuminate\Support\Carbon::parse($starts)->toIso8601String() : null,
+            'last_submit' => $ends ? \Illuminate\Support\Carbon::parse($ends)->toIso8601String() : null,
+            'counts' => [
+                'expected' => $rows->count(),
+                'present' => $rows->filter(fn ($r) => $r['present'] === true || $r['attempt'])->count(),
+                'absent' => $rows->filter(fn ($r) => ! $r['attempt'] && $r['present'] !== true)->count(),
+                'started' => $rows->filter(fn ($r) => $r['attempt'])->count(),
+                'submitted' => $rows->where('status', 'submitted')->count(),
+                'not_submitted' => $rows->filter(fn ($r) => $r['attempt'] && $r['status'] !== 'submitted')->count(),
+                'incidents' => $incidents->count(),
+                'locked' => $incidents->filter(fn ($i) => $i['locked'])->count(),
+            ],
+            'absent' => $rows->filter(fn ($r) => ! $r['attempt'] && $r['present'] !== true)->map(fn ($r) => ['name' => $r['user']['name'], 'number' => $r['user']['number']])->values(),
+            'incidents' => $incidents,
+            'announcements' => $snap['announcements'],
+        ]);
+    }
+
     private function snapshot(Exam $exam): array
     {
         $roster = $exam->roster();
