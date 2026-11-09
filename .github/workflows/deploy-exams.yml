@@ -64,6 +64,9 @@ jobs:
           DB_PASSWORD: root
         run: |
           php artisan migrate --force --seed
+          # The pages' queries on MySQL too (2026-11-09: a query fine on SQLite broke a page on MySQL).
+          php artisan test tests/Feature/Exams/WizardTest.php tests/Feature/Exams/TodayTest.php tests/Feature/QuickSearchTest.php \
+            tests/Feature/Exams/GroupsTest.php tests/Feature/Exams/HallMapTest.php tests/Feature/Exams/PicturesTest.php tests/Feature/LocaleSwitchTest.php
 
   deploy:
     needs: test

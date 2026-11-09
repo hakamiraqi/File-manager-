@@ -57,7 +57,7 @@ class ManageController extends Controller
                     ->map(fn ($g) => ['id' => $g->id, 'name' => $g->name, 'stage' => $g->stage, 'members' => $g->members_count]),
                 'halls' => \App\Models\Exams\Computer::whereNotNull('room')->distinct()->orderBy('room')->pluck('room')
                     ->merge(Exam::whereNotNull('hall')->distinct()->pluck('hall'))->unique()->values(),
-                'subjects' => Exam::where('user_id', $user->id)->whereNotNull('subject')->distinct()->latest('id')->limit(30)->pluck('subject')->unique()->values(),
+                'subjects' => Exam::where('user_id', $user->id)->whereNotNull('subject')->latest('id')->limit(200)->pluck('subject')->unique()->take(30)->values(),
                 'has_bank' => \App\Models\Exams\BankCategory::usableBy($user)->exists(),
             ],
         ]);
