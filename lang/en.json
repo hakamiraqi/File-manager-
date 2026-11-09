@@ -2174,5 +2174,19 @@
     "wizard.blank": "A blank exam straight away",
     "wizard.back": "Back",
     "wizard.next": "Next",
-    "wizard.create": "Create and open the editor"
+    "wizard.create": "Create and open the editor",
+    "exam.amc_s1": "Make and print the sheets",
+    "exam.amc_s2": "Upload the scanned sheets after the exam",
+    "exam.amc_s3": "Read and mark the sheets",
+    "exam.amc_rebuild": "Make again",
+    "exam.amc_s3_hint": "The marks go into the results page by themselves when it is done.",
+    "exam.omr_questions": "Questions on the sheet",
+    "exam.omr_sheets": "Sheets (one per student)",
+    "exam.omr_here": "This page's sheets",
+    "exam.omr_here_hint": "Print them here (a sheet with each student's name), and after the exam read the scanned sheets with the camera or from pictures.",
+    "exam.print_one": "Print their sheet",
+    "exam.print_all": "Print all",
+    "exam.omr_preview": "Sheets preview",
+    "exam.omr_preview_hint": "Smaller on the screen; printed full A4.",
+    "common.back": "Back"
 }
