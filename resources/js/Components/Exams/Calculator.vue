@@ -1,6 +1,8 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import { BackspaceIcon } from '@heroicons/vue/24/outline';
 import { ref } from 'vue';
+const { t } = useTrans();
 
 // The exam's calculator: basic (+ − × ÷ %) or scientific (powers, roots, trigonometry, logs).
 const props = defineProps({ scientific: Boolean });
@@ -22,9 +24,9 @@ function evaluate() {
         // Only the names above reach this function; nothing else of the page is in scope.
         const fn = new Function(`"use strict";const ${Object.entries(env).map(([k, v]) => `${k}=${v}`).join(',')};return (${e || 0});`);
         const v = fn();
-        result.value = Number.isFinite(v) ? String(Math.round(v * 1e10) / 1e10) : 'خطأ';
+        result.value = Number.isFinite(v) ? String(Math.round(v * 1e10) / 1e10) : t('exam.calc_error', 'خطأ');
     } catch {
-        result.value = 'خطأ';
+        result.value = t('exam.calc_error', 'خطأ');
     }
 }
 const KEYS = ['7', '8', '9', '÷', '4', '5', '6', '×', '1', '2', '3', '-', '0', '.', '%', '+'];

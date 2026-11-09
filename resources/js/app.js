@@ -19,8 +19,9 @@ const appName = () => document.querySelector('meta[name="app-name"]')?.content |
 const RTL_LOCALES = ['ar'];
 
 function applyDirection(page) {
-    // Arabic only (by request): the interface is always Arabic, right to left.
-    const locale = 'ar';
+    // Plain modules (notifications.js) read the page's translations from here.
+    window.__inertiaTranslations = page.props.translations ?? {};
+    const locale = page.props.auth?.user?.locale ?? page.props.appSettings?.locale ?? 'ar';
     document.documentElement.lang = locale;
     const dir = page.props.appSettings?.locales?.[locale]?.dir;
     document.documentElement.dir = dir ?? (RTL_LOCALES.includes(locale) ? 'rtl' : 'ltr');

@@ -37,12 +37,19 @@ export function kindLook(kind) {
     return { icon, tone: TONES[tone] };
 }
 
+// The page's translations (Inertia shares them), falling back to Arabic.
+function tr(key, fallback, n) {
+    let text = fallback;
+    try { text = window?.__inertiaTranslations?.[key] ?? fallback; } catch {}
+    return text.replace(':n', n);
+}
+
 export function timeAgo(iso) {
     if (!iso) return '';
     const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (s < 60) return 'الآن';
-    if (s < 3600) return `قبل ${Math.floor(s / 60)} د`;
-    if (s < 86400) return `قبل ${Math.floor(s / 3600)} س`;
-    if (s < 7 * 86400) return `قبل ${Math.floor(s / 86400)} يوم`;
+    if (s < 60) return tr('time.now', 'الآن');
+    if (s < 3600) return tr('time.min_ago', 'قبل :n د', Math.floor(s / 60));
+    if (s < 86400) return tr('time.hour_ago', 'قبل :n س', Math.floor(s / 3600));
+    if (s < 7 * 86400) return tr('time.day_ago', 'قبل :n يوم', Math.floor(s / 86400));
     return new Date(iso).toLocaleDateString('ar-IQ', { timeZone: 'Asia/Baghdad', day: 'numeric', month: 'short' });
 }

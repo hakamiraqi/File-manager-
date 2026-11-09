@@ -1,6 +1,8 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import { MicrophoneIcon, StopIcon, CheckIcon } from '@heroicons/vue/24/outline';
 import { ref, onBeforeUnmount } from 'vue';
+const { t } = useTrans();
 
 // A spoken answer: record from the microphone (up to the question's limit), listen, send.
 const props = defineProps({ maxSeconds: { type: Number, default: 120 }, saved: String, disabled: Boolean });
@@ -16,7 +18,7 @@ async function start() {
     try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-        error.value = 'لا وصول إلى المايكروفون. اسمح للمتصفح باستعماله أو اطلب المساعدة.';
+        error.value = t('exam.mic_denied', 'لا وصول إلى المايكروفون. اسمح للمتصفح باستعماله أو اطلب المساعدة.');
         return;
     }
     chunks = [];
@@ -47,9 +49,9 @@ const clock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
     <div class="space-y-2 rounded-lg border border-gray-200 p-4 dark:border-gray-600">
         <div class="flex flex-wrap items-center gap-3">
             <button v-if="state !== 'recording'" type="button" @click="start" :disabled="disabled" class="flex items-center gap-2 rounded-full bg-red-600 px-4 py-2 text-sm text-white disabled:opacity-40">
-                <MicrophoneIcon class="h-4 w-4" /> {{ state === 'ready' || saved ? 'تسجيل من جديد' : 'ابدأ التسجيل' }}
+                <MicrophoneIcon class="h-4 w-4" /> {{ state === 'ready' || saved ? t('exam.rec_again', 'تسجيل من جديد') : t('exam.rec_start', 'ابدأ التسجيل') }}
             </button>
-            <button v-else type="button" @click="stop" class="rounded-full bg-gray-800 px-4 py-2 text-sm flex items-center gap-2 text-white"><StopIcon class="h-4 w-4" /> إيقاف</button>
+            <button v-else type="button" @click="stop" class="rounded-full bg-gray-800 px-4 py-2 text-sm flex items-center gap-2 text-white"><StopIcon class="h-4 w-4" /> {{ t('exam.rec_stop', 'إيقاف') }}</button>
             <span class="font-mono text-sm" :class="state === 'recording' ? 'text-red-600' : 'text-gray-500'">{{ clock(seconds) }} / {{ clock(maxSeconds) }}</span>
         </div>
         <audio v-if="url" :src="url" controls class="w-full" />

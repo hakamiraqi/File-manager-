@@ -451,7 +451,7 @@ export class HallScene {
         mat.rotation.x = -Math.PI / 2;
         mat.position.copy(this.world(ent.x, ent.y, 0.012));
         this.root.add(mat);
-        const entLabel = labelSprite('المدخل', null, '#059669', { scale: 0.8 });
+        const entLabel = labelSprite(this.words?.entrance ?? 'المدخل', null, '#059669', { scale: 0.8 });
         entLabel.position.copy(this.world(ent.x, ent.y, 1.1));
         this.root.add(entLabel);
 
@@ -743,7 +743,7 @@ export class HallScene {
                 arrow.position.copy(pos).addScaledVector(normal, 0.15).setY(pos.y + 0.55);
                 arrow.userData.bob = pos.y + 0.55;
                 g.add(arrow);
-                const label = labelSprite('امسحني', null, color, { scale: 0.6 });
+                const label = labelSprite(this.words?.scan ?? 'امسحني', null, color, { scale: 0.6 });
                 label.position.copy(pos).addScaledVector(normal, 0.15).setY(pos.y + 1.05);
                 g.add(label);
             }

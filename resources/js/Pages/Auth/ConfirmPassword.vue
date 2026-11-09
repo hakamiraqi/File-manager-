@@ -1,10 +1,12 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
+const { t } = useTrans();
 
 const form = useForm({
     password: '',
@@ -19,7 +21,7 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="تأكيد كلمة المرور" />
+        <Head :title="t('auth.confirm_password', 'تأكيد كلمة المرور')" />
 
         <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
             هذا قسم محمي من التطبيق. الرجاء تأكيد كلمة المرور للمتابعة.
@@ -27,7 +29,7 @@ const submit = () => {
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="password" value="كلمة المرور" />
+                <InputLabel for="password" :value="t('auth.password', 'كلمة المرور')" />
                 <TextInput
                     id="password"
                     type="password"

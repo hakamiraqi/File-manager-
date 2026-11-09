@@ -33,7 +33,7 @@ class HandleInertiaRequests extends Middleware
     {
         $settings = Setting::all_settings();
         $user = $request->user();
-        $locale = 'ar'; // Arabic only (2026-11-09, by request)
+        $locale = $user->locale ?? $settings['default_locale'] ?? config('app.locale');
 
         return [
             ...parent::share($request),
@@ -68,7 +68,7 @@ class HandleInertiaRequests extends Middleware
                 TranslationOverride::forLocale($locale),
             ),
             'flash' => [
-                'success' => fn () => $request->session()->get('success'),
+                'success' => fn () => is_string($s = $request->session()->get('success')) ? __($s) : $s,
                 'twoFactorSecret' => fn () => $request->session()->get('twoFactorSecret'),
                 'twoFactorQrCodeUri' => fn () => $request->session()->get('twoFactorQrCodeUri'),
                 'twoFactorRecoveryCodes' => fn () => $request->session()->get('twoFactorRecoveryCodes'),

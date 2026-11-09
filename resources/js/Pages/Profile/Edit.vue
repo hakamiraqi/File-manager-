@@ -7,6 +7,7 @@ import AvatarCropper from '@/Components/AvatarCropper.vue';
 import DeleteUserForm from './Partials/DeleteUserForm.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
+import PreferencesForm from './Partials/PreferencesForm.vue';
 import TwoFactorAuthenticationForm from './Partials/TwoFactorAuthenticationForm.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
@@ -34,6 +35,7 @@ const ROLE_LABELS = {
 const tabs = [
     { key: 'info', label: t('profile.tab_info', 'المعلومات الشخصية'), icon: UserCircleIcon },
     { key: 'security', label: t('profile.tab_security', 'الأمان وكلمة المرور'), icon: ShieldCheckIcon },
+    { key: 'preferences', label: t('profile.tab_preferences', 'التفضيلات'), icon: AdjustmentsHorizontalIcon },
     { key: 'danger', label: t('profile.tab_danger', 'حذف الحساب'), icon: ExclamationTriangleIcon },
 ];
 const tab = ref('info');
@@ -230,6 +232,10 @@ const cards = computed(() => [
                             <div class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-8">
                                 <TwoFactorAuthenticationForm class="max-w-xl" />
                             </div>
+                        </div>
+
+                        <div v-show="tab === 'preferences'" class="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800 sm:p-8">
+                            <PreferencesForm class="max-w-xl" />
                         </div>
 
                         <div v-show="tab === 'danger'" class="rounded-2xl border border-red-200 bg-white p-5 shadow-sm dark:border-red-900/50 dark:bg-gray-800 sm:p-8">

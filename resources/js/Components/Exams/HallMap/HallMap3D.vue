@@ -43,6 +43,7 @@ onMounted(async () => {
                 canDrag: (id) => (props.canDrag ? props.canDrag(id) : true),
             } : {}),
         }));
+        scene.words = { entrance: t('library.map.entrance', 'المدخل'), scan: t('hallmap.scan_me', 'امسحني') };
         if (props.editable) scene.onDragTip = (id, x, y, cx, cy) => emit('dragging', id === null ? null : { id, x, y, cx, cy });
         scene.stock = props.stock ? plain(props.stock) : null;
         scene.setLayout(plain(props.floor), plain(props.shelves));

@@ -1,6 +1,8 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import { CheckIcon } from '@heroicons/vue/24/outline';
 import { ref } from 'vue';
+const { t } = useTrans();
 
 // Labels onto a picture: pick a label, then click where it belongs (or drag it there).
 const props = defineProps({ image: String, labels: Array, modelValue: Object, disabled: Boolean, zones: { type: Array, default: () => [] } });
@@ -29,7 +31,7 @@ const labelOf = (id) => props.labels.find((l) => l.id === Number(id))?.body;
         <div ref="pic" class="relative inline-block max-w-full select-none" :class="picked ? 'cursor-crosshair' : ''" @click="place($event, picked)" @dragover.prevent @drop.prevent="place($event, Number($event.dataTransfer.getData('text/plain')))">
             <img :src="image" alt="" class="block max-h-[70vh] max-w-full rounded-lg" draggable="false" />
             <span v-for="(z, k) in zones" :key="'z' + k" class="pointer-events-none absolute border-2 border-emerald-500 bg-emerald-400/20" :style="{ left: z.x + '%', top: z.y + '%', width: z.w + '%', height: z.h + '%' }" />
-            <button v-for="(at, id) in modelValue || {}" :key="id" type="button" @click.stop="remove(id)" :title="disabled ? '' : 'إزالة'"
+            <button v-for="(at, id) in modelValue || {}" :key="id" type="button" @click.stop="remove(id)" :title="disabled ? '' : t('common.remove', 'إزالة')"
                 class="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded bg-[var(--accent-600)] px-1.5 py-0.5 text-xs text-white shadow" :style="{ left: at.x + '%', top: at.y + '%' }">{{ labelOf(id) }}</button>
         </div>
     </div>

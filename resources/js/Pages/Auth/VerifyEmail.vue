@@ -1,8 +1,10 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import { computed } from 'vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+const { t } = useTrans();
 
 const props = defineProps({
     status: {
@@ -23,7 +25,7 @@ const verificationLinkSent = computed(
 
 <template>
     <GuestLayout>
-        <Head title="تفعيل البريد الإلكتروني" />
+        <Head :title="t('auth.verify_email', 'تفعيل البريد الإلكتروني')" />
 
         <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
             شكراً لتسجيلك! قبل البدء، الرجاء تفعيل بريدك الإلكتروني بالضغط على
@@ -51,7 +53,7 @@ const verificationLinkSent = computed(
                     method="post"
                     as="button"
                     class="rounded-md text-sm text-gray-600 underline hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:text-gray-400 dark:hover:text-gray-100 dark:focus:ring-offset-gray-800"
-                    >تسجيل الخروج</Link
+                    >{{ t('nav.logout', 'تسجيل الخروج') }}</Link
                 >
             </div>
         </form>
