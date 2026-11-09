@@ -86,7 +86,7 @@ async function importStudents() {
 
             <section v-if="currentGroup()" class="space-y-4 lg:col-span-3">
                 <div class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                    <div class="min-w-0 flex-1">
+                    <div class="min-w-0 flex-1 basis-full sm:basis-auto">
                         <p class="text-lg font-semibold">{{ currentGroup().name }}</p>
                         <p class="text-xs text-gray-500">{{ [currentGroup().stage, currentGroup().department].filter(Boolean).join(' · ') }}<span v-if="currentGroup().owner"> · {{ currentGroup().owner }}</span></p>
                     </div>

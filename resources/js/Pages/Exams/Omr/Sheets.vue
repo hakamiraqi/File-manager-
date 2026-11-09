@@ -29,7 +29,7 @@ const list = () => (only.value ? props.students.filter((s) => String(s.id) === o
     <div class="min-h-screen bg-gray-100 print:bg-white">
         <div class="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-white px-4 py-2 text-sm print:hidden">
             <Link :href="route('exams.manage.edit', exam.id)" class="text-gray-400 hover:text-gray-600"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
-            <span class="flex-1 font-medium">{{ t('exam.omr', 'ورق الفقاعات') }} — {{ exam.title }} ({{ students.length }})</span>
+            <span class="min-w-0 flex-1 basis-[70%] font-medium sm:basis-auto">{{ t('exam.omr', 'ورق الفقاعات') }} — {{ exam.title }} ({{ students.length }})</span>
             <select v-model="only" class="rounded-lg border-gray-300 py-1 text-sm"><option value="">{{ t('exam.all_students', 'كل الطلاب') }}</option><option v-for="s in students" :key="s.id" :value="String(s.id)">{{ s.name }}</option></select>
             <Link :href="route('exams.manage.omr.scan', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5"><CameraIcon class="h-4 w-4" /> {{ t('exam.omr_scan', 'قراءة الأوراق الممسوحة') }}</Link>
             <button @click="printPage" class="flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-white"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print', 'طباعة') }}</button>
