@@ -80,6 +80,14 @@ for _ in range(240):
         break
 print('status', json.dumps(s, ensure_ascii=False)[:4000])
 assert s['state'] == 'ready', 'processing failed'
+# How dark AMC measured every answer box (to see the margin between filled and empty).
+sh('docker', 'cp', f'amc:/data/{P}/data/capture.sqlite', '/tmp/capture.sqlite')
+cap = sqlite3.connect('/tmp/capture.sqlite')
+print([r[0] for r in cap.execute("select sql from sqlite_master where name='capture_zone'")])
+for row in cap.execute('select student, id_a, id_b, black, total from capture_zone where type=4 order by student, id_a, id_b'):
+    st, q, a, black, total = row
+    filled = a in plan.get(st, {}).get(names.get(q), [])
+    print(f'student {st} {names.get(q)} box {a}: {black}/{total} = {black / max(1, total):.3f}', 'FILLED' if filled else '')
 code, csv = call('GET', f'/projects/{P}/results.csv', raw=True)
 csv = csv.decode('utf-8')
 print(csv)
