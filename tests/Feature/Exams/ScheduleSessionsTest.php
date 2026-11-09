@@ -118,7 +118,7 @@ class ScheduleSessionsTest extends TestCase
         $student = User::factory()->create();
         $this->actingAs($student)->post(route('exams.start', $exam));
         $attempt = Attempt::firstOrFail();
-        $url = $this->actingAs($student)->get(route('exams.attempts.take', $attempt))->viewData('page')['props']['hall']['resources'][0]['url'];
+        $url = $this->actingAs($student)->get(route('exams.attempts.take', $attempt))->viewData('page')['props']['exam']['resources'][0]['url'];
         $this->actingAs($student)->get($url)->assertOk()->assertHeader('Content-Type', 'application/pdf');
         $this->actingAs(User::factory()->create())->get($url)->assertNotFound();
         $this->actingAs($student)->get(route('exams.attempts.resource', [$attempt, str_repeat('a', 40).'.pdf']))->assertNotFound();
