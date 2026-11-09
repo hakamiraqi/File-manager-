@@ -16,3 +16,8 @@ Schedule::command('exams:sync-central')->everyTenMinutes()->withoutOverlapping()
 
 // A standby exam server copies the main one every minute (does nothing on the main server).
 Schedule::command('exams:mirror')->everyMinute()->withoutOverlapping()->when(fn () => filled(\App\Models\Setting::get('mirror_from')));
+
+// A copy of each day's backup away from this server, encrypted (OffsiteBackup), and the server
+// watching itself and alerting the admins' phones (ServerWatch).
+Schedule::command('backup:offsite')->dailyAt('02:40')->withoutOverlapping()->when(fn () => \App\Services\Exams\OffsiteBackup::configured());
+Schedule::command('exams:watch')->everyFiveMinutes()->withoutOverlapping();

@@ -74,6 +74,14 @@ class CentralController extends Controller
             'amc' => ['url' => Setting::get('amc_url') ?: null, 'env' => filled(config('services.amc.url')), 'has_token' => filled(Setting::get('amc_token'))],
             'messages' => ['url' => Setting::get('msg_url'), 'method' => Setting::get('msg_method') ?: 'POST', 'body' => Setting::get('msg_body'),
                 'has_header' => filled(Setting::get('msg_header')), 'country' => Setting::get('msg_country') ?: '964'],
+            'offsite' => ['url' => Setting::get('offsite_url'), 'bucket' => Setting::get('offsite_bucket'), 'region' => Setting::get('offsite_region') ?: 'auto',
+                'key_id' => Setting::get('offsite_key_id'), 'prefix' => Setting::get('offsite_prefix'), 'keep' => (int) (Setting::get('offsite_keep') ?? 30),
+                'has_secret' => filled(Setting::get('offsite_secret')), 'has_pass' => filled(Setting::get('offsite_pass')),
+                'last_ok' => Setting::get('offsite_last_ok'), 'last_file' => Setting::get('offsite_last_file'), 'last_size' => (int) Setting::get('offsite_last_size'),
+                'last_error' => Setting::get('offsite_last_error') ?: null],
+            'watch' => ['ntfy' => Setting::get('watch_ntfy'), 'has_ntfy_token' => filled(Setting::get('watch_ntfy_token')), 'phones' => Setting::get('watch_phones'),
+                'email' => Setting::get('watch_email'), 'last' => Setting::get('watch_last'), 'sms' => \App\Services\Exams\Messenger::enabled(),
+                'problems' => array_map(fn ($k) => \App\Services\Exams\ServerWatch::label($k), array_keys(json_decode((string) Setting::get('watch_state'), true) ?: []))],
         ]);
     }
 
@@ -95,6 +103,54 @@ class CentralController extends Controller
         }
 
         return back()->with('success', 'حُفظت إعدادات الرسائل.');
+    }
+
+    /** Off-site backup: where to send the daily encrypted copy (OffsiteBackup). */
+    public function offsite(Request $request, \App\Services\Exams\OffsiteBackup $offsite): RedirectResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+        if ($request->boolean('now')) {
+            abort_unless(\App\Services\Exams\OffsiteBackup::configured(), 422, 'أكمل الإعدادات أولاً.');
+            $r = $offsite->run();
+            ActivityLog::record('backup.offsite', $r['ok'] ? 'أرسل نسخة احتياطية خارجية '.$r['file'] : 'فشلت النسخة الاحتياطية الخارجية');
+
+            return back()->with($r['ok'] ? 'success' : 'error', $r['ok'] ? 'أُرسلت النسخة ('.round($r['size'] / 1048576, 1).' MB).' : 'تعذّر الإرسال: '.$r['error']);
+        }
+        $data = $request->validate(['url' => ['nullable', 'url', 'max:300'], 'bucket' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9._-]+$/'],
+            'region' => ['nullable', 'string', 'max:40', 'regex:/^[a-z0-9-]+$/'], 'key_id' => ['nullable', 'string', 'max:200'], 'secret' => ['nullable', 'string', 'max:300'],
+            'pass' => ['nullable', 'string', 'min:12', 'max:200'], 'prefix' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9._\/-]*$/'], 'keep' => ['nullable', 'integer', 'min:0', 'max:3650']]);
+        Setting::setMany(['offsite_url' => $data['url'] ?? '', 'offsite_bucket' => $data['bucket'] ?? '', 'offsite_region' => $data['region'] ?? 'auto',
+            'offsite_key_id' => $data['key_id'] ?? '', 'offsite_prefix' => $data['prefix'] ?? '', 'offsite_keep' => (string) ($data['keep'] ?? 30)]);
+        foreach (['secret' => 'offsite_secret', 'pass' => 'offsite_pass'] as $in => $key) {
+            if (filled($data[$in] ?? null)) {
+                Setting::set($key, Crypt::encryptString($data[$in]));
+            }
+        }
+        if (blank($data['url'] ?? null)) {
+            Setting::setMany(['offsite_secret' => '', 'offsite_pass' => '']);
+        }
+        ActivityLog::record('backup.offsite', 'عدّل إعدادات النسخ الاحتياطي الخارجي');
+
+        return back()->with('success', 'حُفظت إعدادات النسخ الاحتياطي الخارجي.');
+    }
+
+    /** Server alerts: who hears when something goes wrong (ServerWatch). */
+    public function watch(Request $request, \App\Services\Exams\ServerWatch $watch): RedirectResponse
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+        if ($request->boolean('test')) {
+            $sent = $watch->notify('رسالة تجريبية: تنبيهات السيرفر تصلك.', false);
+
+            return back()->with($sent ? 'success' : 'error', $sent ? 'أُرسل التنبيه التجريبي عبر: '.implode('، ', $sent) : 'لم يُرسل التنبيه؛ راجع الإعدادات.');
+        }
+        $data = $request->validate(['ntfy' => ['nullable', 'url', 'max:300', 'starts_with:https://,http://'], 'ntfy_token' => ['nullable', 'string', 'max:200'],
+            'phones' => ['nullable', 'string', 'max:300'], 'email' => ['nullable', 'string', 'max:300']]);
+        Setting::setMany(['watch_ntfy' => $data['ntfy'] ?? '', 'watch_phones' => $data['phones'] ?? '', 'watch_email' => $data['email'] ?? '']);
+        if (filled($data['ntfy_token'] ?? null)) {
+            Setting::set('watch_ntfy_token', Crypt::encryptString($data['ntfy_token']));
+        }
+
+        return back()->with('success', 'حُفظت إعدادات التنبيهات.');
     }
 
     public function key(Request $request): RedirectResponse

@@ -140,6 +140,8 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::post('/central/key', [\App\Http\Controllers\Exams\CentralController::class, 'key'])->name('central.key');
     Route::post('/central/amc', [\App\Http\Controllers\Exams\AmcServerController::class, 'settings'])->name('central.amc');
     Route::post('/central/messages', [\App\Http\Controllers\Exams\CentralController::class, 'messages'])->name('central.messages');
+    Route::post('/central/offsite', [\App\Http\Controllers\Exams\CentralController::class, 'offsite'])->name('central.offsite');
+    Route::post('/central/watch', [\App\Http\Controllers\Exams\CentralController::class, 'watch'])->name('central.watch');
     Route::post('/central/hall', [\App\Http\Controllers\Exams\CentralController::class, 'hallSettings'])->name('central.hall');
     Route::get('/mirror', [\App\Http\Controllers\Exams\MirrorController::class, 'show'])->name('mirror');
     Route::post('/mirror/key', [\App\Http\Controllers\Exams\MirrorController::class, 'key'])->name('mirror.key');
