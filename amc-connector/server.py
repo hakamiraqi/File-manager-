@@ -105,8 +105,9 @@ def process(p):
             *[os.path.join(d, 'scans', s) for s in scans], cwd=d, log=log)
         status(p, step='analyse')
         amc('analyse', '--projet', d + '/', '--data', d + '/data', '--liste-fichiers', listfile, cwd=d, log=log, timeout=7200)
+        # 0.3: an empty box with a dark Arabic letter in it (ج) is about 0.15 black; a filled one 0.6–0.9.
         status(p, step='note')
-        amc('note', '--data', d + '/data', '--seuil', os.environ.get('AMC_THRESHOLD', '0.15'), cwd=d, log=log)
+        amc('note', '--data', d + '/data', '--seuil', os.environ.get('AMC_THRESHOLD', '0.3'), cwd=d, log=log)
         status(p, step='association')
         amc('association-auto', '--data', d + '/data', '--pre-association', '--liste', d + '/students.csv', '--liste-key', 'id', cwd=d, log=log)
         status(p, step='export')
