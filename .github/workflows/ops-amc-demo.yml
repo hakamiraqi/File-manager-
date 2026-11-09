@@ -25,6 +25,7 @@ jobs:
           scp -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST:/tmp/subject.pdf" subject.pdf
           sudo apt-get install -y -qq poppler-utils >/dev/null
           pdffonts subject.pdf || true
+          pdftotext -f 1 -l 1 subject.pdf - | head -40
           pdftoppm -r 110 -png -f 1 -l 2 subject.pdf page
       - uses: actions/upload-artifact@v4
         with:
