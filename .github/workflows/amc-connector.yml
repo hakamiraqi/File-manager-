@@ -30,12 +30,29 @@ jobs:
           for c in prepare meptex getimages analyse note association-auto export; do
             echo "=== $c"; docker exec amc sh -c "f=\$(find /usr/libexec/AMC /usr/lib/AMC -name 'AMC-$c.pl' 2>/dev/null | head -1); grep -A45 'GetOptions' \$f | head -60" || true
           done
+      - name: How AMC-TXT sets up Arabic
+        continue-on-error: true
+        run: |
+          docker exec amc sh -c 'f=$(find / -path /proc -prune -o -name plain.pm -print 2>/dev/null | grep Filter | head -1); echo $f; grep -n -i -E "arab|bidi|font|xelatex|polyglossia|numer|LR|latex|escape|sub parse_options|option" $f | head -250'
+          docker exec amc sh -c 'fc-list : family | sort -u | head -60'
       - name: End to end
         env:
           AMC_TOKEN: test-token
         run: |
           pip install --quiet pillow
           python3 amc-connector/test/e2e.py
+      - name: Picture of the first sheet page
+        if: always()
+        run: |
+          docker exec amc sh -c 'pdftoppm -r 110 -png -f 1 -l 2 /data/e2etest/subject.pdf /tmp/look' || true
+          docker cp amc:/tmp/look-1.png look-1.png || docker cp amc:/tmp/look-01.png look-1.png || true
+          docker cp amc:/tmp/look-2.png look-2.png || docker cp amc:/tmp/look-02.png look-2.png || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: amc-look
+          path: look-*.png
+          if-no-files-found: ignore
       - name: Logs
         if: always()
         run: |

@@ -1,7 +1,7 @@
 # Connector test: an Arabic exam with three named students
 PaperSize: A4
 Lang: AR
-Title: امتحان تجريبي
+Title: امتحان AMC تجريبي — 100 سؤال
 ShuffleQuestions: 0
 PreAssociation: students.csv
 PreAssociationKey: id
@@ -10,7 +10,7 @@ SeparateAnswerSheet: 1
 
 *[id=q11,ordered]{b=2} ما صيغة الماء؟
 + H2O
-- CO2
+- CO2 وH2O
 - NaCl
 
 **[id=q12,ordered]{haut=2} اختر الغازات النبيلة
@@ -22,6 +22,6 @@ SeparateAnswerSheet: 1
 + صح
 - خطأ
 
-*[id=q14,ordered]{b=1} ما ناتج 15% من 200؟ (π ≈ 3.14، و2⁵ = 32، و90° و5 سم²)
+*[id=q14,ordered]{b=1} ما ناتج 15% من 200؟ (π ≈ 3.14، و2⁵ = 32، و90° و5 سم²) البروتوكول HTTPS وFTP وDNA
 + 30
 - 20
