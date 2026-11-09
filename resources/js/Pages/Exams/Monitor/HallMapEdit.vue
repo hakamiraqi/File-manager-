@@ -1446,7 +1446,6 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                     <button @click="add('desk')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('hallmap.kind.desk', 'مكتب المراقب') }}</button>
                     <button @click="add('table')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('hallmap.kind.table', 'طاولة') }}</button>
                     <button @click="add('wall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.wall', 'جدار') }}</button>
-                    <button @click="add('gate')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><ShieldCheckIcon class="h-4 w-4" /> {{ t('library.map.kind.gate', 'بوابة مانعة للسرقة') }}</button>
                     <button @click="startDrawing()" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="drawing ? 'bg-amber-500 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><PencilIcon class="h-4 w-4" /> {{ t('library.map.draw_obstacle', 'ارسم عائقاً') }}</button>
                     </template>
                     <template v-else-if="toolGroup === 'stickers'">
