@@ -4,5 +4,5 @@ set -e
 P=$(sudo docker exec examnest-amc sh -c 'ls -d /data/*-9 | head -1')
 echo "project: $P"
 sudo docker exec examnest-amc sh -c "ls -la --time-style=full-iso $P; grep -n -m3 'Font\|Lang\|LaTeX' $P/*.txt; grep -n 'HTTPS\|H2O' $P/*.txt | head -5"
-sudo docker exec examnest-amc sh -c "cat $P/DOC-subject.pdf" > /tmp/subject.pdf
+sudo docker exec examnest-amc sh -c "cat $P/subject.pdf" > /tmp/subject.pdf
 ls -la /tmp/subject.pdf
