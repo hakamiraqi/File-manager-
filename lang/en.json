@@ -1176,5 +1176,6 @@
     "exam.amc_step_analyse": "Reading the boxes",
     "exam.amc_step_note": "Marking",
     "exam.amc_step_association": "Matching sheets to students",
-    "exam.amc_step_export": "Exporting the results"
+    "exam.amc_step_export": "Exporting the results",
+    "exam.more": "More"
 }

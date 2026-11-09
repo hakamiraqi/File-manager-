@@ -7,7 +7,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon, ClipboardDocumentCheckIcon, DocumentCheckIcon, AdjustmentsHorizontalIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon, ClipboardDocumentCheckIcon, DocumentCheckIcon, AdjustmentsHorizontalIcon, EllipsisVerticalIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] }, prerequisites: { type: Array, default: () => [] }, halls: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -114,6 +114,7 @@ async function uploadResource(event) {
 
 // ---- Blueprint: draw the exam from the bank by chapter (tag) × difficulty, as random slots ----
 const blueprintOpen = ref(false);
+const moreOpen = ref(false);
 const bp = ref({ category: null, data: null, cells: {}, points: 1, loading: false });
 async function loadBlueprint() {
     if (!bp.value.category) return;
@@ -311,6 +312,18 @@ function save() {
                 <Link :href="route('exams.manage.omr', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600" :title="t('exam.omr_hint_short', 'أوراق إجابة بالفقاعات تُصحَّح بالمسح')"><DocumentCheckIcon class="h-4 w-4" /> {{ t('exam.omr', 'ورق الفقاعات') }}</Link>
                 <Link :href="route('exams.manage.print', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print', 'طباعة') }}</Link>
                 <Link :href="route('exams.manage.results', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ChartBarIcon class="h-4 w-4" /> {{ t('exam.results', 'النتائج') }}</Link>
+                <!-- On a phone: the same pages in a menu -->
+                <div class="relative sm:hidden">
+                    <button type="button" @click="moreOpen = !moreOpen" class="rounded-lg border border-gray-300 p-1.5 dark:border-gray-600" :aria-label="t('exam.more', 'المزيد')"><EllipsisVerticalIcon class="h-5 w-5" /></button>
+                    <div v-if="moreOpen" class="fixed inset-0 z-40" @click="moreOpen = false" />
+                    <div v-if="moreOpen" class="absolute end-0 z-50 mt-2 w-56 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 text-sm shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                        <Link :href="route('exams.manage.results', exam.id)" class="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700"><ChartBarIcon class="h-4 w-4" /> {{ t('exam.results', 'النتائج') }}</Link>
+                        <Link :href="route('exams.manage.omr', exam.id)" class="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700"><DocumentCheckIcon class="h-4 w-4" /> {{ t('exam.omr', 'ورق الفقاعات') }}</Link>
+                        <Link :href="route('exams.manage.print', exam.id)" class="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print', 'طباعة') }}</Link>
+                        <Link :href="route('exams.manage.osce', exam.id)" class="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700"><ClipboardDocumentCheckIcon class="h-4 w-4" /> OSCE</Link>
+                        <Link :href="route('exams.show', exam.id)" class="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700"><EyeIcon class="h-4 w-4" /> {{ t('exam.preview', 'معاينة') }}</Link>
+                    </div>
+                </div>
                 <button @click="save" :disabled="form.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">{{ t('action.save', 'حفظ') }}</button>
             </div>
         </template>
