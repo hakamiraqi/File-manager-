@@ -5,7 +5,7 @@ import DragImage from '@/Components/Exams/DragImage.vue';
 import AudioRecorder from '@/Components/Exams/AudioRecorder.vue';
 import DrawingPad from '@/Components/Exams/DrawingPad.vue';
 import Calculator from '@/Components/Exams/Calculator.vue';
-import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
@@ -37,7 +37,7 @@ async function toggleHelp() {
 
 // ---- Reading: font, size and direction, kept on this device ----
 const PREFS = 'exam-reading';
-const reading = reactive(Object.assign({ font: '', size: 100, dir: '' }, (() => { try { return JSON.parse(localStorage.getItem(PREFS) || '{}'); } catch { return {}; } })()));
+const reading = reactive(Object.assign({ font: '', size: 100, dir: '', contrast: false }, (() => { try { return JSON.parse(localStorage.getItem(PREFS) || '{}'); } catch { return {}; } })()));
 const FONTS = [['', 'افتراضي'], ['Tahoma, sans-serif', 'Tahoma'], ['Arial, sans-serif', 'Arial'], ["'Times New Roman', serif", 'Times'], ["'Segoe UI', sans-serif", 'Segoe UI'], ["'Courier New', monospace", 'Courier']];
 function saveReading() { try { localStorage.setItem(PREFS, JSON.stringify(reading)); } catch {} }
 const readingStyle = computed(() => ({ fontFamily: reading.font || undefined, '--rs': reading.size / 100 }));
@@ -277,7 +277,44 @@ function go(i) {
     }
     index.value = to;
     window.scrollTo({ top: 0 });
+    announceQuestion();
 }
+
+// ---- Accessibility: what a screen reader hears, and answering from the keyboard ----
+const live = ref('');
+function say(text) { live.value = ''; nextTick(() => (live.value = text)); }
+function announceQuestion() {
+    const q = props.questions[index.value];
+    if (!q) return;
+    say(q.type === 'description' ? t('exam.a11y_info', 'نص تمهيدي') : t('exam.a11y_question', 'السؤال :n من :total', { n: number(q), total: graded.value.length })
+        + (answered(q) ? '، ' + t('exam.answered', 'مُجاب') : '') + (flags[q.id] ? '، ' + t('exam.flag', 'راجع لاحقاً') : ''));
+    nextTick(() => document.getElementById('question')?.focus({ preventScroll: true }));
+}
+const mapLabel = (q) => (q.type === 'description' ? t('exam.a11y_info', 'نص تمهيدي')
+    : t('exam.question', 'السؤال') + ' ' + number(q) + '، ' + (answered(q) ? t('exam.answered', 'مُجاب') : t('exam.a11y_unanswered', 'غير مُجاب'))
+      + (flags[q.id] ? '، ' + t('exam.flag', 'راجع لاحقاً') : ''));
+const inField = (el) => !!el?.closest?.('input, textarea, select, [contenteditable="true"], canvas, [role="dialog"], .exam-tool');
+function onKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey || inField(e.target) || locked.value || confirmOpen.value) return;
+    const q = current.value;
+    const digit = /^[1-9١-٩]$/.test(e.key) ? '123456789١٢٣٤٥٦٧٨٩'.indexOf(e.key) % 9 : -1;
+    if (digit >= 0 && q && !checks[q.id] && q.choices?.[digit]) {
+        e.preventDefault();
+        const c = q.choices[digit];
+        if (q.type === 'multiple') toggleMultiple(q, c.id);
+        else if (['single', 'true_false'].includes(q.type)) { state[q.id].choice = c.id; save(q); }
+        else return;
+        say(t('exam.a11y_picked', 'اخترت :n', { n: digit + 1 }));
+        return;
+    }
+    const rtl = getComputedStyle(document.documentElement).direction === 'rtl' || (props.exam.dir === 'rtl');
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const forward = (e.key === 'ArrowLeft') === rtl;
+        if (forward && index.value < props.questions.length - 1 && !(props.exam.adaptive && index.value === props.questions.length - 1)) { e.preventDefault(); go(index.value + 1); }
+        else if (!forward && !props.exam.sequential && index.value > 0) { e.preventDefault(); go(index.value - 1); }
+    }
+}
+watch(() => online.value, (on) => say(on ? t('exam.a11y_online', 'عاد الاتصال') : t('exam.a11y_offline', 'انقطع الاتصال؛ إجاباتك تُحفظ على هذا الجهاز')));
 
 // ---- Tools: calculator, scratch paper (stays on this device), reading aloud ----
 const calcOpen = ref(false);
@@ -423,6 +460,7 @@ onMounted(() => {
     document.addEventListener('paste', onPaste);
     window.addEventListener('beforeunload', onLeave);
     if (props.hall.protect) GUARDED.forEach((ev) => document.addEventListener(ev, guard));
+    document.addEventListener('keydown', onKey);
 });
 onBeforeUnmount(() => {
     clearInterval(tick);
@@ -430,6 +468,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('online', onOnline);
     window.removeEventListener('offline', onOffline);
     document.removeEventListener('visibilitychange', onVisibility);
+    document.removeEventListener('keydown', onKey);
     window.removeEventListener('blur', onBlur);
     document.removeEventListener('paste', onPaste);
     window.removeEventListener('beforeunload', onLeave);
@@ -439,15 +478,17 @@ onBeforeUnmount(() => {
 
 <template>
     <Head :title="exam.title" />
-    <div class="min-h-screen overflow-x-clip bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" :class="{ 'exam-protect': hall.protect }" :dir="exam.dir" :lang="exam.lang">
+    <div class="min-h-screen overflow-x-clip bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" :class="{ 'exam-protect': hall.protect, 'exam-contrast': reading.contrast }" :dir="exam.dir" :lang="exam.lang">
+        <a href="#question" @click.prevent="announceQuestion" class="sr-only z-50 rounded-lg bg-[var(--accent-600)] px-4 py-2 text-white focus:not-sr-only focus:fixed focus:top-2 focus:start-2">{{ t('exam.skip', 'انتقل إلى السؤال') }}</a>
+        <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">{{ live }}</div>
         <div v-if="watermarkStyle" class="pointer-events-none fixed inset-0 z-[5] print:hidden" :style="watermarkStyle" aria-hidden="true" />
         <header class="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-700 dark:bg-gray-800">
             <h1 class="min-w-0 flex-1 truncate font-semibold">{{ exam.title }}</h1>
             <span class="hidden text-xs text-gray-500 sm:inline">{{ answeredCount }} / {{ graded.length }} {{ t('exam.answered', 'مُجاب') }}</span>
-            <span class="text-xs" :class="failed || !online ? 'text-red-600' : 'text-gray-400'">
+            <span class="text-xs" :class="failed || !online ? 'text-red-600' : 'text-gray-500 dark:text-gray-400'">
                 {{ failed || !online ? t('exam.kept_on_device', 'بلا اتصال — :n محفوظة على هذا الجهاز وستُرسل تلقائياً', { n: pending.size }) : saving ? t('exam.saving', 'يحفظ…') : t('exam.saved', 'محفوظ') }}
             </span>
-            <span v-if="clock" class="flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-sm font-semibold" :class="secondsLeft < 300 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700'" role="timer" aria-live="off">
+            <span v-if="clock" class="flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-sm font-semibold" :class="secondsLeft < 300 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700'" role="timer" aria-live="off" :aria-label="t('exam.a11y_time_left', 'الوقت المتبقي :t', { t: clock })">
                 <ClockIcon class="h-4 w-4" /> {{ clock }}
             </span>
             <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white sm:order-last hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
@@ -456,12 +497,12 @@ onBeforeUnmount(() => {
                 <button v-if="failed || !online" @click="emergencyFile" class="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700" :title="t('exam.emergency_hint', 'إذا لم يعد الاتصال: نزّل هذا الملف وأعطه للمراقب')">{{ t('exam.emergency_file', 'ملف طارئ') }}</button>
                 <span v-if="hall.variant" class="rounded bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-900/40 dark:text-violet-200" :title="t('exam.variant', 'نسخة الامتحان')">{{ t('exam.variant_short', 'نسخة') }} {{ hall.variant }}</span>
                 <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
-                <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
-                <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
-                <button v-if="exam.resources?.length" @click="bookOpen = !bookOpen" class="flex items-center gap-1 rounded-lg border px-2 py-1 text-sm" :class="bookOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.allowed_files', 'المصادر المسموحة')"><BookOpenIcon class="h-4 w-4" /></button>
-                <button @click="oskOpen = !oskOpen" class="rounded-lg border px-2 py-1 text-sm" :class="oskOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.osk', 'لوحة مفاتيح على الشاشة (عربي / English)')"><LanguageIcon class="h-4 w-4" /></button>
-                <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
-                <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
+                <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" :aria-pressed="calcOpen" :aria-label="t('exam.calculator', 'آلة حاسبة')" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
+                <button @click="padOpen = !padOpen" :aria-pressed="padOpen" :aria-label="t('exam.scratch', 'مسودة')" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
+                <button v-if="exam.resources?.length" @click="bookOpen = !bookOpen" :aria-pressed="bookOpen" :aria-label="t('exam.allowed_files', 'المصادر المسموحة')" class="flex items-center gap-1 rounded-lg border px-2 py-1 text-sm" :class="bookOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.allowed_files', 'المصادر المسموحة')"><BookOpenIcon class="h-4 w-4" /></button>
+                <button @click="oskOpen = !oskOpen" :aria-pressed="oskOpen" :aria-label="t('exam.osk', 'لوحة مفاتيح على الشاشة (عربي / English)')" class="rounded-lg border px-2 py-1 text-sm" :class="oskOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.osk', 'لوحة مفاتيح على الشاشة (عربي / English)')"><LanguageIcon class="h-4 w-4" /></button>
+                <button @click="readingOpen = !readingOpen" :aria-expanded="readingOpen" :aria-label="t('exam.reading', 'الخط والاتجاه')" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
+                <button @click="toggleHelp" :aria-pressed="help" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
             </div>
         </header>
         <div v-if="readingOpen" class="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
@@ -474,6 +515,8 @@ onBeforeUnmount(() => {
             <label class="flex items-center gap-1">{{ t('exam.text_dir', 'الاتجاه') }}
                 <select v-model="reading.dir" @change="saveReading" class="rounded border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700">
                     <option value="">{{ t('exam.dir_auto_short', 'تلقائي') }}</option><option value="rtl">{{ t('exam.dir_rtl', 'من اليمين لليسار') }}</option><option value="ltr">{{ t('exam.dir_ltr', 'من اليسار لليمين') }}</option></select></label>
+            <label class="flex cursor-pointer items-center gap-1"><input type="checkbox" v-model="reading.contrast" @change="saveReading" class="rounded" /> {{ t('exam.contrast', 'تباين عالٍ') }}</label>
+            <span class="w-full text-xs text-gray-500 dark:text-gray-400">{{ t('exam.keys_hint', 'لوحة المفاتيح: الأرقام 1–9 تختار الإجابة، والسهمان ← → للتنقّل بين الأسئلة، وTab للتنقّل بين العناصر.') }}</span>
             <label class="flex cursor-pointer items-center gap-1"><input type="checkbox" :checked="warnSound" @change="toggleWarnSound" class="rounded" /> {{ t('exam.warn_sound', 'صوت التنبيه قبل نهاية الوقت') }}</label>
         </div>
         <FlashMessages />
@@ -495,7 +538,7 @@ onBeforeUnmount(() => {
             <!-- Question map -->
             <nav class="order-2 rounded-xl border border-gray-200 bg-white p-3 lg:order-1 dark:border-gray-700 dark:bg-gray-800" :aria-label="t('exam.questions', 'الأسئلة')">
                 <div class="grid grid-cols-6 gap-1.5 lg:grid-cols-5">
-                    <button v-for="(q, i) in questions" :key="q.id" @click="go(i)" :disabled="!canGo(i)"
+                    <button v-for="(q, i) in questions" :key="q.id" @click="go(i)" :disabled="!canGo(i)" :aria-label="mapLabel(q)" :aria-current="i === index ? 'step' : undefined"
                         class="relative flex h-9 items-center justify-center rounded-md border text-sm"
                         :class="[i === index ? 'border-[var(--accent-600)] ring-2 ring-[var(--accent-500)]' : 'border-gray-200 dark:border-gray-600',
                                  q.type === 'description' ? 'text-gray-400' : answered(q) ? 'bg-[var(--accent-50)] font-semibold text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : '']">
@@ -506,14 +549,14 @@ onBeforeUnmount(() => {
             </nav>
 
             <!-- The question -->
-            <main class="exam-reading order-1 space-y-4 lg:order-2 lg:col-span-3" :style="readingStyle" :dir="reading.dir || undefined">
+            <main id="question" tabindex="-1" class="exam-reading order-1 outline-none space-y-4 lg:order-2 lg:col-span-3" :style="readingStyle" :dir="reading.dir || undefined">
                 <article v-if="current" class="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                     <div class="mb-3 flex items-center justify-between gap-2 text-xs text-gray-500">
                         <span v-if="current.type !== 'description'">{{ t('exam.question', 'السؤال') }} {{ number(current) }} · {{ current.points }} {{ t('exam.points', 'درجة') }}</span>
                         <span v-else />
                         <span class="flex-1" />
-                        <button @click="readAloud(current)" class="hover:text-gray-700" :title="t('exam.read_aloud', 'قراءة السؤال بصوت')"><StopIcon v-if="speaking" class="h-4 w-4" /><SpeakerWaveIcon v-else class="h-4 w-4" /></button>
-                        <button v-if="current.type !== 'description'" @click="toggleFlag(current)" class="flex items-center gap-1" :class="flags[current.id] ? 'text-amber-600' : 'hover:text-gray-700'">
+                        <button @click="readAloud(current)" :aria-label="t('exam.read_aloud', 'قراءة السؤال بصوت')" :aria-pressed="speaking" class="hover:text-gray-700" :title="t('exam.read_aloud', 'قراءة السؤال بصوت')"><StopIcon v-if="speaking" class="h-4 w-4" /><SpeakerWaveIcon v-else class="h-4 w-4" /></button>
+                        <button v-if="current.type !== 'description'" @click="toggleFlag(current)" :aria-pressed="!!flags[current.id]" class="flex items-center gap-1" :class="flags[current.id] ? 'text-amber-600' : 'hover:text-gray-700'">
                             <FlagIcon class="h-4 w-4" /> {{ t('exam.flag', 'راجع لاحقاً') }}
                         </button>
                     </div>
@@ -537,7 +580,7 @@ onBeforeUnmount(() => {
                     <fieldset class="mt-4" :disabled="!!checks[current.id]">
                         <!-- One answer / true-false -->
                         <fieldset v-if="['single', 'true_false'].includes(current.type)" class="space-y-2">
-                            <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
+                            <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--accent-500)]"
                                 :class="state[current.id].choice === c.id ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700'">
                                 <input type="radio" :name="'q' + current.id" :value="c.id" v-model="state[current.id].choice" @change="save(current)" class="text-[var(--accent-600)]" />
                                 <RichText :text="c.body" tag="span" />
@@ -547,7 +590,7 @@ onBeforeUnmount(() => {
                         <!-- Several answers -->
                         <fieldset v-else-if="current.type === 'multiple'" class="space-y-2">
                             <p class="text-xs text-gray-500">{{ t('exam.pick_all', 'اختر كل الإجابات الصحيحة.') }}</p>
-                            <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm"
+                            <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--accent-500)]"
                                 :class="state[current.id].choices.includes(c.id) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700'">
                                 <input type="checkbox" :checked="state[current.id].choices.includes(c.id)" @change="toggleMultiple(current, c.id)" class="rounded text-[var(--accent-600)]" />
                                 <RichText :text="c.body" tag="span" />
@@ -670,7 +713,7 @@ onBeforeUnmount(() => {
             </main>
         </div>
 
-        <div v-if="calcOpen || padOpen" class="fixed bottom-4 z-30 flex flex-col items-end gap-2 ltr:right-4 rtl:left-4">
+        <div v-if="calcOpen || padOpen" class="exam-tool fixed bottom-4 z-30 flex flex-col items-end gap-2 ltr:right-4 rtl:left-4">
             <Calculator v-if="calcOpen" :scientific="exam.calculator === 'scientific'" />
             <div v-if="padOpen" class="w-72 rounded-xl border border-gray-200 bg-white p-2 shadow-lg dark:border-gray-700 dark:bg-gray-800">
                 <p class="mb-1 text-xs text-gray-500">{{ t('exam.scratch_hint', 'مسودة على هذا الجهاز فقط؛ لا تُرسل ولا تُصحَّح.') }}</p>
@@ -748,6 +791,16 @@ onBeforeUnmount(() => {
 .exam-reading .text-xl { font-size: calc(1.25rem * var(--rs, 1)); line-height: calc(1.75rem * var(--rs, 1)); }
 .exam-reading .text-2xl { font-size: calc(1.5rem * var(--rs, 1)); line-height: calc(2rem * var(--rs, 1)); }
 .exam-reading input, .exam-reading textarea, .exam-reading select { font-size: inherit; }
+/* Keyboard users always see where they are */
+[dir] .exam-reading :focus-visible { outline: 3px solid var(--accent-500, #6366f1); outline-offset: 2px; }
+header button:focus-visible, nav button:focus-visible { outline: 3px solid var(--accent-500, #6366f1); outline-offset: 2px; }
+/* High contrast (the student's choice): black on white, thick borders, the chosen answer in yellow */
+.exam-contrast, .exam-contrast *:not([aria-hidden="true"]):not(svg):not(svg *):not(img) { color: #000 !important; background-color: #fff !important; border-color: #000 !important; }
+.exam-contrast button, .exam-contrast input, .exam-contrast select, .exam-contrast textarea, .exam-contrast label, .exam-contrast article, .exam-contrast nav { border-width: 2px !important; border-style: solid; }
+.exam-contrast label:has(input:checked), .exam-contrast label:has(input:checked) *, .exam-contrast nav button[aria-current="step"] { background-color: #ffe600 !important; }
+.exam-contrast button[disabled] { opacity: .45; }
+.exam-contrast :focus-visible { outline: 4px solid #000 !important; outline-offset: 2px; }
+.exam-contrast svg { color: #000 !important; }
 /* Protected exams: the questions cannot be selected; the student's own answer fields still can */
 .exam-protect { -webkit-user-select: none; user-select: none; }
 .exam-protect input, .exam-protect textarea, .exam-protect [contenteditable="true"] { -webkit-user-select: text; user-select: text; }

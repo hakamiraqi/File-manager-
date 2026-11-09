@@ -1212,5 +1212,15 @@
     "exam.watch_no_sms": "set up the gateway below first",
     "exam.watch_email": "E-mail (if mail is set up)",
     "exam.watch_test": "Test alert",
-    "exam.watch_outside": "To learn when the whole server stops (power or network), point a free outside monitor such as UptimeRobot at:"
+    "exam.watch_outside": "To learn when the whole server stops (power or network), point a free outside monitor such as UptimeRobot at:",
+    "exam.a11y_info": "Introduction text",
+    "exam.a11y_question": "Question :n of :total",
+    "exam.a11y_unanswered": "not answered",
+    "exam.a11y_picked": "Chose :n",
+    "exam.a11y_online": "Back online",
+    "exam.a11y_offline": "Connection lost; your answers are kept on this device",
+    "exam.a11y_time_left": "Time left :t",
+    "exam.skip": "Skip to the question",
+    "exam.contrast": "High contrast",
+    "exam.keys_hint": "Keyboard: numbers 1–9 choose an answer, the ← → arrows move between questions, and Tab moves between controls."
 }
