@@ -252,10 +252,10 @@ class ExamController extends Controller
         if (array_key_exists('flagged', $data)) {
             $values['flagged'] = $data['flagged'];
         }
-        $before = Answer::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $data['question_id'])->value('response');
+        $before = Answer::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $data['question_id'])->first()?->response;
         Answer::updateOrCreate(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $data['question_id']], $values);
         // The audit log: every change of the answer, with its time and address.
-        if (array_key_exists('response', $values) && json_encode($values['response']) !== json_encode(is_string($before) ? json_decode($before, true) : $before)) {
+        if (array_key_exists('response', $values) && $values['response'] != $before) {
             \App\Models\Exams\AnswerLog::record($attempt, (int) $data['question_id'], $values['response'], 'page', $request->ip());
         }
         $attempt->forceFill(['last_seen_at' => now()])->saveQuietly();
