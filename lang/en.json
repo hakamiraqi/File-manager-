@@ -1139,5 +1139,8 @@
     "exam.dash_questions": "Bank questions",
     "exam.dash_bank": "Question bank quality",
     "exam.dash_bank_hint": ":u of :n questions were used in real exams.",
-    "exam.dash_no_flags": "No warnings."
+    "exam.dash_no_flags": "No warnings.",
+    "exam.amc_export": "AMC project (questions and students list)",
+    "exam.amc_import": "Upload AMC results (CSV)",
+    "exam.amc_hint": "Free software for printing and reading bubble sheets; export the results as CSV with «ticked boxes» as letters."
 }

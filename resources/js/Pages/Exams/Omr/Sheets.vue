@@ -1,9 +1,9 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue';
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import QRCode from 'qrcode';
 import { useTrans } from '@/Composables/useTrans';
-import { PrinterIcon, ArrowRightIcon, CameraIcon } from '@heroicons/vue/24/outline';
+import { PrinterIcon, ArrowRightIcon, CameraIcon, ArrowDownTrayIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/outline';
 import { PAGE, MARK, MARKS, slot, LETTERS, BUBBLE_R, capacity } from '@/Components/Exams/omrLayout';
 
 // One bubble sheet per student, ready to print: the QR says whose sheet it is.
@@ -13,6 +13,12 @@ const qr = reactive({});
 const only = ref('');
 onMounted(() => props.students.forEach((s) => QRCode.toDataURL(s.code, { margin: 0, width: 220, errorCorrectionLevel: 'M' }).then((u) => (qr[s.id] = u))));
 const printPage = () => window.print();
+// Results from Auto Multiple Choice.
+function amcImport(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (file) router.post(route('exams.manage.amc.import', props.exam.id), { file }, { forceFormData: true, preserveScroll: true });
+}
 const letter = (q, i) => (q.type === 'true_false' ? ['T', 'F'][i] : LETTERS[i]);
 const list = () => (only.value ? props.students.filter((s) => String(s.id) === only.value) : props.students);
 </script>
@@ -26,6 +32,14 @@ const list = () => (only.value ? props.students.filter((s) => String(s.id) === o
             <select v-model="only" class="rounded-lg border-gray-300 py-1 text-sm"><option value="">{{ t('exam.all_students', 'كل الطلاب') }}</option><option v-for="s in students" :key="s.id" :value="String(s.id)">{{ s.name }}</option></select>
             <Link :href="route('exams.manage.omr.scan', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5"><CameraIcon class="h-4 w-4" /> {{ t('exam.omr_scan', 'قراءة الأوراق الممسوحة') }}</Link>
             <button @click="printPage" class="flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-white"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print', 'طباعة') }}</button>
+            <span class="flex w-full flex-wrap items-center gap-2 border-t border-gray-100 pt-2">
+                <span class="text-xs font-medium text-gray-600">Auto Multiple Choice:</span>
+                <a :href="route('exams.manage.amc', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs"><ArrowDownTrayIcon class="h-4 w-4" /> {{ t('exam.amc_export', 'مشروع AMC (الأسئلة وقائمة الطلاب)') }}</a>
+                <label class="flex cursor-pointer items-center gap-1 rounded-lg border border-gray-300 px-3 py-1 text-xs"><input type="file" accept=".csv,.txt" class="sr-only" @change="amcImport" /><ArrowUpTrayIcon class="h-4 w-4" /> {{ t('exam.amc_import', 'رفع نتائج AMC (CSV)') }}</label>
+                <span class="text-xs text-gray-500">{{ t('exam.amc_hint', 'برنامج مجاني لطباعة أوراق الفقاعات وقراءتها؛ صدّر النتائج CSV مع «الخانات المؤشّرة» بالحروف.') }}</span>
+                <span v-if="$page.props.flash?.success" class="text-xs text-emerald-700">{{ $page.props.flash.success }}</span>
+                <span v-if="$page.props.errors?.file" class="text-xs text-red-600">{{ $page.props.errors.file }}</span>
+            </span>
             <p v-if="skipped" class="w-full text-xs text-amber-700">{{ t('exam.omr_skipped', ':n سؤالاً ليس اختياراً من متعدد أو صح/خطأ لا يظهر في الورقة؛ يُصحَّح يدوياً.', { n: skipped }) }}</p>
             <p v-if="questions.length > capacity" class="w-full text-xs text-red-600">{{ t('exam.omr_too_many', 'الورقة تتسع لـ :n سؤالاً فقط.', { n: capacity }) }}</p>
         </div>

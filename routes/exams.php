@@ -25,6 +25,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::get('/{exam}/omr', [\App\Http\Controllers\Exams\OmrController::class, 'sheets'])->whereNumber('exam')->name('omr');
         Route::get('/{exam}/omr/scan', [\App\Http\Controllers\Exams\OmrController::class, 'scan'])->whereNumber('exam')->name('omr.scan');
         Route::post('/{exam}/omr', [\App\Http\Controllers\Exams\OmrController::class, 'store'])->whereNumber('exam')->name('omr.store');
+        Route::get('/{exam}/amc', [\App\Http\Controllers\Exams\OmrController::class, 'amcExport'])->whereNumber('exam')->name('amc');
+        Route::post('/{exam}/amc', [\App\Http\Controllers\Exams\OmrController::class, 'amcImport'])->whereNumber('exam')->name('amc.import');
         Route::post('/{exam}/resources', [ManageController::class, 'uploadResource'])->whereNumber('exam')->name('resources.store');
         Route::get('/{exam}/resources/{file}', [ManageController::class, 'resource'])->whereNumber('exam')->where('file', '[a-f0-9]{40}\.pdf')->name('resources.show');
         Route::get('/schedule', [ManageController::class, 'schedule'])->name('schedule');

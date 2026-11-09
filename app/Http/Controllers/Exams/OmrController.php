@@ -81,6 +81,48 @@ class OmrController extends Controller
         return response()->json(['ok' => true, 'name' => $user->name, 'score' => $attempt->score, 'max' => $attempt->max_score]);
     }
 
+    /** The exam as an Auto Multiple Choice project: the AMC-TXT source, the students list and how to use them. */
+    public function amcExport(Request $request, Exam $exam, \App\Services\Exams\AutoMultipleChoice $amc): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        abort_unless($exam->isManageableBy($request->user()), 404);
+        $zipPath = tempnam(sys_get_temp_dir(), 'amc');
+        $zip = new \ZipArchive;
+        $zip->open($zipPath, \ZipArchive::OVERWRITE);
+        $zip->addFromString('exam.txt', $amc->source($exam));
+        $zip->addFromString('students.csv', $amc->students($exam));
+        $zip->addFromString('README-ar.txt', implode("\n", [
+            'مشروع Auto Multiple Choice لامتحان: '.$exam->text('title'),
+            '',
+            '1. ثبّت Auto Multiple Choice (لينكس: sudo apt install auto-multiple-choice) ومعه خط عربي (ttf-arabeyes) إن كان الامتحان بالعربية.',
+            '2. أنشئ مشروعاً جديداً، واختر «ملف موجود» وحدّد exam.txt من هذا الملف المضغوط، وضع students.csv في مجلد المشروع نفسه.',
+            '3. «تحضير» ثم اطبع الأوراق: تخرج ورقة باسم كل طالب (اسم الملف students.csv، المفتاح id).',
+            '4. بعد الامتحان: امسح الأوراق، ثم «قراءة الأوراق» ثم «التصحيح»، و«ربط الطلاب» بالقائمة students.csv بالمفتاح id.',
+            '5. «التقارير» ← تصدير CSV، وفعّل «الخانات المؤشّرة» (ticked) بصيغة الحروف AB.',
+            '6. ارفع ملف CSV في صفحة ورق الفقاعات في النظام: تُصحَّح الإجابات وتظهر في النتائج.',
+            '',
+            'أسئلة الاختيار من متعدد وصح/خطأ فقط تدخل في المشروع؛ الأنواع الأخرى تُصحَّح في النظام يدوياً.',
+        ]));
+        $zip->close();
+
+        return response()->download($zipPath, 'amc-exam-'.$exam->id.'.zip')->deleteFileAfterSend();
+    }
+
+    /** AMC's results CSV: each row a student's marked attempt. */
+    public function amcImport(Request $request, Exam $exam, \App\Services\Exams\AutoMultipleChoice $amc): \Illuminate\Http\RedirectResponse
+    {
+        abort_unless($exam->isManageableBy($request->user()), 404);
+        $request->validate(['file' => ['required', 'file', 'max:20480', 'extensions:csv,txt']]);
+        try {
+            $r = $amc->import($exam, (string) file_get_contents($request->file('file')->getRealPath()));
+        } catch (\InvalidArgumentException $e) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['file' => $e->getMessage()]);
+        }
+        ActivityLog::record('exam.amc', "أدخل نتائج {$r['attempts']} طالباً من Auto Multiple Choice في \"{$exam->text('title')}\"", $exam);
+        $how = ['ticked' => 'من الخانات المؤشّرة، وصُحّحت هنا', 'scores' => 'من درجات AMC لكل سؤال', 'mark' => 'من الدرجة الكلية في AMC'][$r['how']];
+
+        return back()->with('success', "أُدخلت نتائج {$r['attempts']} طالباً ({$how}).".($r['unknown'] ? ' مفاتيح غير معروفة: '.implode('، ', $r['unknown']) : ''));
+    }
+
     /** The code in a sheet's QR: the exam, the student and a check only this server can make. */
     public static function code(Exam $exam, int $userId): string
     {
