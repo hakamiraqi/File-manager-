@@ -1,0 +1,17 @@
+# The survey website on the VPS, behind the shared Caddy (network headscale_default).
+name: survey
+services:
+  web:
+    build: ../app
+    image: survey-web:latest
+    container_name: survey-web
+    restart: unless-stopped
+    volumes:
+      - survey_data:/data
+    networks: [edge]
+volumes:
+  survey_data:
+networks:
+  edge:
+    external: true
+    name: headscale_default

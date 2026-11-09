@@ -1,0 +1,85 @@
+/* The colours of the Excel form: navy headings with white text, light orange item cells, white cells to fill. */
+:root { --navy: #17375E; --navy-2: #1F497D; --orange: #FCD5B5; --orange-2: #F79646; --line: #000; --muted: #5b6573; --bg: #eef1f5; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 15px/1.5 Arial, "Segoe UI", Tahoma, sans-serif; color: #111; background: var(--bg); }
+a { color: var(--navy-2); }
+.bar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 8px 14px; background: var(--navy); color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); }
+.brand { display: flex; align-items: center; gap: 8px; color: #fff; text-decoration: none; font-weight: 700; }
+.bar nav { display: flex; gap: 6px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #b9c2cf; background: #fff; color: #111; border-radius: 6px;
+  padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+.btn:hover { background: #f4f6f9; }
+.btn.light { background: var(--orange); border-color: var(--orange-2); color: #111; font-weight: 700; }
+.btn.ghost { background: transparent; color: #fff; border-color: rgba(255,255,255,.4); }
+.btn.ghost:hover { background: rgba(255,255,255,.12); }
+.btn.navy { background: var(--navy); color: #fff; border-color: var(--navy); }
+.btn.danger { color: #b42318; border-color: #f0b4ae; }
+.btn:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 3px solid var(--orange-2); outline-offset: 1px; }
+.pad { padding: 16px; }
+.muted { color: var(--muted); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 14px; }
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.tools .grow { flex: 1; }
+.search { min-width: 220px; flex: 1; max-width: 420px; padding: 7px 10px; border: 1px solid #b9c2cf; border-radius: 6px; font: inherit; }
+.status { font-size: 13px; color: var(--muted); }
+.status.err { color: #b42318; font-weight: 700; }
+.status.ok { color: #1a7f37; }
+
+/* The sheet */
+.sheet-scroll { overflow-x: auto; background: #fff; border: 1px solid #c8ced8; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+table.sheet { border-collapse: collapse; width: 100%; min-width: 980px; table-layout: fixed; }
+table.sheet th, table.sheet td { border: 1px solid var(--line); padding: 0; vertical-align: middle; }
+table.sheet .h { background: var(--navy); color: #fff; font-weight: 700; text-align: center; padding: 8px 6px; border-color: var(--navy); font-size: 14px; }
+table.sheet .title { font-size: 18px; padding: 12px; }
+table.sheet .sec { font-size: 16px; text-align: start; padding: 9px 12px; }
+table.sheet .no { background: var(--navy); color: #fff; font-weight: 700; text-align: center; border-color: #000; }
+table.sheet .item { background: var(--orange); padding: 6px 10px; font-size: 14px; text-align: center; }
+table.sheet .in { background: #fff; }
+table.sheet .in.orange { background: var(--orange); }
+table.sheet .gap { background: var(--navy); border-color: var(--navy); }
+.cell { display: block; width: 100%; min-height: 40px; border: 0; background: transparent; padding: 6px 8px; font: inherit; font-size: 14px; text-align: center; color: #111; }
+textarea.cell { resize: vertical; text-align: start; line-height: 1.4; }
+select.cell { appearance: auto; cursor: pointer; }
+.cell:focus { outline: 2px solid var(--orange-2); outline-offset: -2px; background: #fffaf3; }
+.cell.v-yes { color: #1a7f37; font-weight: 700; }
+.cell.v-no { color: #b42318; font-weight: 700; }
+td.changed { animation: flash 1.6s ease-out; }
+@keyframes flash { from { box-shadow: inset 0 0 0 3px #3b82f6; } to { box-shadow: inset 0 0 0 0 transparent; } }
+/* On a phone the number and item stay in view while scrolling sideways */
+@media (max-width: 1000px) {
+  table.sheet td.no, table.sheet th.no-h { position: sticky; right: 0; z-index: 2; }
+  table.sheet td.item, table.sheet th.item-h { position: sticky; right: 44px; z-index: 2; box-shadow: -2px 0 3px rgba(0,0,0,.12); }
+  table.sheet col.c-item { width: 210px !important; }
+}
+
+/* The list */
+table.list { width: 100%; border-collapse: collapse; background: #fff; font-size: 14px; }
+table.list th { background: var(--navy); color: #fff; padding: 9px 8px; text-align: start; font-weight: 700; }
+table.list td { border-bottom: 1px solid #dde2ea; padding: 8px; }
+table.list tr:hover td { background: #fff8f1; }
+table.list td.c { text-align: center; }
+.list-scroll { overflow-x: auto; border: 1px solid #c8ced8; }
+.meter { display: inline-block; width: 70px; height: 8px; background: #e5e9ef; border-radius: 4px; vertical-align: middle; overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--orange-2); }
+.empty { padding: 40px 16px; text-align: center; background: #fff; border: 1px dashed #b9c2cf; }
+
+#toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #111; color: #fff; padding: 9px 16px; border-radius: 8px;
+  font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 50; max-width: 90vw; }
+#toast.show { opacity: .95; }
+dialog { border: 0; border-radius: 10px; padding: 16px; width: min(560px, 94vw); box-shadow: 0 10px 40px rgba(0,0,0,.3); }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+dialog form { margin-top: 12px; text-align: end; }
+.hist { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow: auto; }
+.hist li { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px solid #e5e9ef; font-size: 14px; }
+.hist li .grow { flex: 1; }
+.note { background: #fff8e6; border: 1px solid #f3d38b; border-radius: 6px; padding: 8px 12px; font-size: 13px; margin-bottom: 10px; }
+@media print {
+  .bar, .tools, #toast, .note { display: none !important; }
+  body { background: #fff; }
+  .wrap { padding: 0; max-width: none; }
+  .sheet-scroll { overflow: visible; border: 0; box-shadow: none; }
+  table.sheet { min-width: 0; }
+  table.sheet .h, table.sheet .no, table.sheet .item { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
