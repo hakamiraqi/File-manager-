@@ -106,9 +106,9 @@ const PROBLEMS = {
     off_expected: () => t('hallmap.pr.off_expected', 'الحاسبة مطفأة أو بلا شبكة وعليها طالب مخصّص'),
     clock: () => t('hallmap.pr.clock', 'ساعة الحاسبة غير مضبوطة'),
 };
-const live = ref(props.live ?? { computers: {}, counts: {} });
+const liveData = ref(props.live ?? { computers: {}, counts: {} });
 const examFilter = ref(props.examId ?? '');
-const pcOf = (item) => (item?.computer_id ? live.value.computers?.[item.computer_id] ?? null : null);
+const pcOf = (item) => (item?.computer_id ? liveData.value.computers?.[item.computer_id] ?? null : null);
 const statuses = computed(() => {
     const out = {};
     for (const s of props.shelves) {
@@ -121,11 +121,11 @@ const statuses = computed(() => {
     return out;
 });
 const itemOfPc = computed(() => Object.fromEntries(props.shelves.filter((s) => s.kind === 'pc' && s.computer_id).map((s) => [s.computer_id, s])));
-const problemList = computed(() => Object.values(live.value.computers ?? {}).filter((c) => c.problems?.length)
+const problemList = computed(() => Object.values(liveData.value.computers ?? {}).filter((c) => c.problems?.length)
     .map((c) => ({ ...c, item: itemOfPc.value[c.id] ?? null }))
     .sort((a, b) => (a.problems.includes('help') ? -1 : 0) - (b.problems.includes('help') ? -1 : 0) || String(a.label).localeCompare(String(b.label), undefined, { numeric: true })));
-const legend = computed(() => Object.entries(STATES).map(([k, v]) => ({ key: k, ...v, n: live.value.counts?.[k] ?? 0 })).filter((x) => x.n));
-const unplaced = computed(() => Object.values(live.value.computers ?? {}).filter((c) => !itemOfPc.value[c.id]).length);
+const legend = computed(() => Object.entries(STATES).map(([k, v]) => ({ key: k, ...v, n: liveData.value.counts?.[k] ?? 0 })).filter((x) => x.n));
+const unplaced = computed(() => Object.values(liveData.value.computers ?? {}).filter((c) => !itemOfPc.value[c.id]).length);
 const showProblems = ref(false);
 const clockText = (sec) => {
     const a = Math.abs(sec);
@@ -156,12 +156,12 @@ function watchProblems(data) {
         alerts.notify(t('hallmap.alert_title', 'خريطة القاعات: :pc', { pc: first.c.label }), (PROBLEMS[first.p]?.() ?? first.p) + (fresh.length > 1 ? ' ' + t('exam.alert_more', '(و:n تنبيهات أخرى)', { n: fresh.length - 1 }) : ''), route('exams.monitor.halls', { pc: first.c.id }), 'hallmap-' + first.c.id);
     }
 }
-watchProblems(live.value);
+watchProblems(liveData.value);
 let poll = null;
 async function refresh() {
     try {
         const { data } = await axios.get(route('exams.monitor.halls.live'), { params: examFilter.value ? { exam: examFilter.value } : {} });
-        live.value = data;
+        liveData.value = data;
         watchProblems(data);
     } catch {}
 }
@@ -183,7 +183,7 @@ const showResults = ref(false);
 const results = computed(() => {
     const v = q.value.trim().toLowerCase();
     if (v.length < 1) return [];
-    return Object.values(live.value.computers ?? {}).filter((c) => [c.label, c.ip, c.room, c.student?.name, c.student?.number, c.expected?.name, c.expected?.number]
+    return Object.values(liveData.value.computers ?? {}).filter((c) => [c.label, c.ip, c.room, c.student?.name, c.student?.number, c.expected?.name, c.expected?.number]
         .some((x) => x && String(x).toLowerCase().includes(v))).slice(0, 12).map((c) => ({ ...c, item: itemOfPc.value[c.id] ?? null }));
 });
 const searching = false;
