@@ -210,10 +210,11 @@ function bulkRotate(deg) {
     if (!list.length) return;
     const cx = list.reduce((t, i) => t + i.x, 0) / list.length, cy = list.reduce((t, i) => t + i.y, 0) / list.length;
     const a = (deg * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    if (list.some((i) => !canMove(i))) { flashLocked(list.find((i) => !canMove(i))); return; }
     for (const i of list) {
         const dx = i.x - cx, dy = i.y - cy;
-        i.x = +(cx + dx * c - dy * sn).toFixed(2);
-        i.y = +(cy + dx * sn + dy * c).toFixed(2);
+        i.x = +clamp(cx + dx * c - dy * sn, 0, floor.width).toFixed(2);
+        i.y = +clamp(cy + dx * sn + dy * c, 0, floor.depth).toFixed(2);
         i.rotation = ((((i.rotation || 0) + deg) % 360) + 360) % 360;
     }
 }
@@ -238,6 +239,44 @@ function groupSelected() {
 function ungroupSelected() {
     multiItems.value.forEach((i) => (i.group_key = null));
 }
+// «تدوير المجموعة» (2026-11-09, by request): a round handle above the selection turns all of it
+// round its middle, 15° at a time (Shift: 1°), and the buttons turn it 15°, 45°, 90° or 180°.
+const multiBox = computed(() => {
+    const list = multiItems.value;
+    if (list.length < 2 || tool.value || drawing.value || calib.value) return null;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const i of list) {
+        const a = ((i.rotation || 0) * Math.PI) / 180, c = Math.abs(Math.cos(a)), sn = Math.abs(Math.sin(a));
+        const hw = (i.width * c + i.depth * sn) / 2, hd = (i.width * sn + i.depth * c) / 2;
+        x0 = Math.min(x0, i.x - hw); x1 = Math.max(x1, i.x + hw); y0 = Math.min(y0, i.y - hd); y1 = Math.max(y1, i.y + hd);
+    }
+    const pad = 0.6; // room for the chairs
+    return { x0: x0 - pad, x1: x1 + pad, y0: y0 - pad, y1: y1 + pad, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, locked: list.some((i) => !canMove(i)) };
+});
+const multiTurn = ref(null); // the angle shown while turning
+function startMultiRotate(e) {
+    const b = multiBox.value;
+    if (!b || b.locked) return;
+    const p = toPlan(e);
+    drag = { multiRotate: true, cx: b.cx, cy: b.cy, from: Math.atan2(p.y - b.cy, p.x - b.cx), base: multiItems.value.map((i) => ({ i, x: i.x, y: i.y, r: i.rotation || 0 })) };
+    multiTurn.value = 0;
+    e.target.setPointerCapture?.(e.pointerId);
+}
+function multiRotateTo(p, fine) {
+    const step = fine ? 1 : 15;
+    let deg = ((Math.atan2(p.y - drag.cy, p.x - drag.cx) - drag.from) * 180) / Math.PI;
+    deg = Math.round(deg / step) * step;
+    deg = ((deg % 360) + 540) % 360 - 180;
+    const a = (deg * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    for (const { i, x, y, r } of drag.base) {
+        const dx = x - drag.cx, dy = y - drag.cy;
+        i.x = +clamp(drag.cx + dx * c - dy * sn, 0, floor.width).toFixed(2);
+        i.y = +clamp(drag.cy + dx * sn + dy * c, 0, floor.depth).toFixed(2);
+        i.rotation = (((r + deg) % 360) + 360) % 360;
+    }
+    multiTurn.value = deg;
+}
+
 /** Each selected computer turned round where it stands: the screen to the other side. */
 function bulkFlip() {
     for (const i of multiItems.value.filter(canMove)) i.rotation = ((((i.rotation || 0) + 180) % 360) + 360) % 360;
@@ -906,6 +945,7 @@ function onMove(e) {
     const p = toPlan(e);
     pressEnd();
     if (drag.resize) { resizeTo(p, e.shiftKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${m2(drag.item.width)} × ${m2(drag.item.depth)} م` }; return; }
+    if (drag.multiRotate) { multiRotateTo(p, e.shiftKey || e.altKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${multiTurn.value}°` }; return; }
     if (drag.rotate) { rotateTo(p, e.shiftKey || e.altKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${drag.item.rotation}°` }; return; }
     if (drag.vertex !== undefined) {
         // Plan point → the obstacle's own (unrotated) coordinates.
@@ -954,7 +994,9 @@ function endDrag() {
     if (rect.value) finishRect();
     if (drag?.vertex !== undefined) recentre(drag.item);
     if (drag?.resize || drag?.rotate) { skipClick = true; setTimeout(() => (skipClick = false), 50); }
+    if (drag?.multiRotate) { skipClick = true; setTimeout(() => (skipClick = false), 50); }
     rotating.value = false;
+    multiTurn.value = null;
     tip.value = null;
     pressEnd();
     drag = null;
@@ -1091,6 +1133,7 @@ function onKey(e) {
         const step = e.shiftKey ? 1 : 0.25;
         const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
         if (moves[e.key]) { e.preventDefault(); for (const i of multiItems.value.filter(canMove)) { i.x = clamp(+(i.x + moves[e.key][0]).toFixed(2), 0, floor.width); i.y = clamp(+(i.y + moves[e.key][1]).toFixed(2), 0, floor.depth); } }
+        else if (e.key === 'r' || e.key === 'R' || e.key === 'ر') bulkRotate(e.shiftKey ? -15 : 15);
         else if (e.key === 'Delete') bulkRemove();
         else if (e.key === 'Escape') multi.value = new Set();
         return;
@@ -1125,13 +1168,12 @@ const gen = reactive({ open: false, layout: 'rows', rows: 4, perRow: 6, width: 1
 // «أشكال التوزيع» (2026-11-09, by request): besides plain rows, the halls are mostly set out as
 // computers along the walls (the student facing the wall), pairs of rows back to back (the two
 // rows facing each other, one turned against the other), and in the middle of the hall one or
-// more such pairs, or a «+» of them. The middle ones are made a group, moved as one.
+// more such pairs. (The «+» was taken out the same day, by request.) The middle ones are made a group, moved as one.
 const LAYOUTS = [
     { key: 'rows', label: t('hallmap.layout_rows', 'صفوف متوازية') },
     { key: 'facing', label: t('hallmap.layout_facing', 'صفوف متقابلة (ظهر لظهر)') },
     { key: 'walls', label: t('hallmap.layout_walls', 'على الجدران') },
     { key: 'walls_center', label: t('hallmap.layout_walls_center', 'الجدران + صفّان متقابلان بالوسط') },
-    { key: 'walls_plus', label: t('hallmap.layout_walls_plus', 'الجدران + شكل + بالوسط') },
 ];
 const PC_DEPTH = 0.7, CHAIR = 0.8, WALL_GAP = 0.05;
 const genArea = () => {
@@ -1205,18 +1247,6 @@ function layoutSeats(W, D) {
                 along(-len / 2, len / 2, mid - d / 2, 90, true, g);
                 along(-len / 2, len / 2, mid + d / 2, 270, true, g);
             }
-        }
-    } else if (gen.layout === 'walls_plus') {
-        // A «+»: a pair back to back across, and one up and down, with room for the chairs where they meet.
-        const hub = d + CHAIR + 0.1;
-        const ex = endX, ey = endY;
-        for (const side of [-1, 1]) {
-            const [a0, a1] = side < 0 ? [-ex, -hub] : [hub, ex];
-            along(a0, a1, -d / 2, 180, false, g);
-            along(a0, a1, d / 2, 0, false, g);
-            const [b0, b1] = side < 0 ? [-ey, -hub] : [hub, ey];
-            along(b0, b1, -d / 2, 90, true, g);
-            along(b0, b1, d / 2, 270, true, g);
         }
     }
     return out;
@@ -1760,6 +1790,13 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                     :stroke="s._key === selectedKey ? '#f59e0b' : 'rgba(0,0,0,0.25)'" :stroke-width="s._key === selectedKey ? 0.09 : 0.025" />
                                 <!-- Front face: where readers stand. -->
                                 <line v-if="s.kind === 'pc'" :x1="-s.width / 2 + 0.05" :y1="s.depth / 2" :x2="s.width / 2 - 0.05" :y2="s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
+                                <!-- The student's chair: which way the computers face (2026-11-09, by request). -->
+                                <template v-if="s.kind === 'pc'">
+                                    <g v-for="side in s.double_sided ? [1, -1] : [1]" :key="'ch' + side" class="pointer-events-none" :transform="`translate(0 ${side * (s.depth / 2 + 0.32)})`">
+                                        <rect x="-0.22" y="-0.2" width="0.44" height="0.4" rx="0.1" :fill="multi.has(s._key) ? '#93c5fd' : '#cbd5e1'" stroke="#64748b" stroke-width="0.025" />
+                                        <rect x="-0.22" :y="side > 0 ? 0.12 : -0.2" width="0.44" height="0.08" rx="0.04" fill="#64748b" />
+                                    </g>
+                                </template>
                                 <line v-if="s.kind === 'pc' && s.double_sided" :x1="-s.width / 2 + 0.05" :y1="-s.depth / 2" :x2="s.width / 2 - 0.05" :y2="-s.depth / 2" stroke="#fff" stroke-width="0.07" stroke-dasharray="0.15 0.08" />
                                 <g v-if="s.locked" :transform="`translate(${(s.points?.length >= 3 ? Math.max(...s.points.map((q) => q[0])) : s.width / 2) - 0.25} ${(s.points?.length >= 3 ? Math.min(...s.points.map((q) => q[1])) : -s.depth / 2) + 0.25}) rotate(${-s.rotation})`" class="pointer-events-none">
                                     <circle r="0.22" fill="#334155" stroke="#fff" stroke-width="0.04" />
@@ -1793,6 +1830,18 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                     </g>
                                     <text v-if="rotating" x="0" :y="handleBox.y0 - hR * 6.5" :transform="`rotate(${-selected.rotation} 0 ${handleBox.y0 - hR * 6.5})`" text-anchor="middle" dominant-baseline="central" :font-size="hR * 2.4" font-weight="800" fill="#2563eb" style="paint-order: stroke" stroke="#fff" :stroke-width="hR * 0.5" class="pointer-events-none">{{ selected.rotation }}°</text>
                                     <rect v-for="h in shownHandles" :key="`${h.hx}${h.hy}`" :x="h.x - hR" :y="h.y - hR" :width="hR * 2" :height="hR * 2" :rx="hR * 0.35" fill="#fff" stroke="#2563eb" :stroke-width="hR * 0.3" :style="{ cursor: h.cursor }" @pointerdown.stop="startResize($event, h)" />
+                                </template>
+                            </g>
+                            <!-- «تدوير المجموعة»: the frame round the selection and its round handle. -->
+                            <g v-if="multiBox && view === 'plan'">
+                                <rect :x="multiBox.x0" :y="multiBox.y0" :width="multiBox.x1 - multiBox.x0" :height="multiBox.y1 - multiBox.y0" fill="none" :stroke="multiBox.locked ? '#64748b' : '#2563eb'" :stroke-width="hR * 0.3" :stroke-dasharray="`${hR} ${hR * 0.6}`" class="pointer-events-none" />
+                                <template v-if="!multiBox.locked">
+                                    <line :x1="multiBox.cx" :y1="multiBox.y0" :x2="multiBox.cx" :y2="multiBox.y0 - hR * 4" stroke="#2563eb" :stroke-width="hR * 0.3" class="pointer-events-none" />
+                                    <g :transform="`translate(${multiBox.cx} ${multiBox.y0 - hR * 4})`" class="cursor-grab" @pointerdown.stop="startMultiRotate">
+                                        <circle :r="hR * 1.3" fill="#2563eb" stroke="#fff" :stroke-width="hR * 0.3" />
+                                        <path :d="`M ${-hR * 0.6} 0 A ${hR * 0.6} ${hR * 0.6} 0 1 1 0 ${hR * 0.6}`" fill="none" stroke="#fff" :stroke-width="hR * 0.28" class="pointer-events-none" />
+                                    </g>
+                                    <text v-if="multiTurn !== null" :x="multiBox.cx" :y="multiBox.y0 - hR * 7" text-anchor="middle" dominant-baseline="central" :font-size="hR * 2.4" font-weight="800" fill="#2563eb" style="paint-order: stroke" stroke="#fff" :stroke-width="hR * 0.5" class="pointer-events-none">{{ multiTurn }}°</text>
                                 </template>
                             </g>
                             <g v-if="storey === 0" :transform="`translate(${floor.entrance.x} ${floor.entrance.y})`" class="cursor-grab" @pointerdown.stop="startEntranceDrag">
@@ -1834,6 +1883,10 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                         <div class="grid grid-cols-2 gap-1.5">
                             <button v-if="!multiIsOneGroup && multi.size > 1" @click="groupSelected" class="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-600 px-2 py-1.5 text-xs font-medium text-white"><RectangleGroupIcon class="h-4 w-4" /> {{ t('hallmap.group_short', 'جمّعها') }}</button>
                             <button v-if="multiHasGroup" @click="ungroupSelected" class="inline-flex items-center justify-center gap-1 rounded-lg border border-blue-300 px-2 py-1.5 text-xs font-medium text-blue-700 dark:border-blue-700 dark:text-blue-200"><RectangleGroupIcon class="h-4 w-4" /> {{ t('hallmap.ungroup', 'فك التجميع') }}</button>
+                            <div class="col-span-2 flex items-center gap-1 rounded-lg bg-gray-50 p-1 dark:bg-gray-900/40">
+                                <span class="px-1 text-xs text-gray-500">{{ t('hallmap.turn_group', 'تدوير') }}</span>
+                                <button v-for="deg in [-90, -15, 15, 90, 180]" :key="deg" @click="bulkRotate(deg)" class="flex-1 rounded-md border border-gray-300 bg-white px-1 py-1 text-xs tabular-nums hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700" dir="ltr">{{ deg > 0 && deg < 180 ? '↻' : deg < 0 ? '↺' : '⟲' }} {{ Math.abs(deg) }}°</button>
+                            </div>
                             <button @click="bulkFlip" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('hallmap.flip_short', 'اقلب الاتجاه') }}</button>
                             <button @click="bulkDuplicate" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><DocumentDuplicateIcon class="h-4 w-4" /> {{ t('hallmap.duplicate_short', 'تكرار') }}</button>
                             <button v-if="multiShelves.length" @click="bulkTwoFaces" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><Square2StackIcon class="h-4 w-4" /> {{ multiShelves.every((i) => i.double_sided) ? t('library.map.ctx_one_face', 'اجعله بوجه واحد') : t('library.map.ctx_two_faces', 'اجعله بوجهين') }}</button>
@@ -1859,7 +1912,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 <p class="mt-1 text-[11px] text-gray-500" dir="auto">{{ bulk.prefix }}{{ bulk.start || 1 }}، {{ bulk.prefix }}{{ (bulk.start || 1) + 1 }}…</p>
                             </div>
                         </template>
-                        <p class="text-xs leading-5 text-gray-500">{{ t('hallmap.multi_keys2', 'اسحب أي حاسبة محددة لتحريكها كلها · الأسهم للتحريك الدقيق · Ctrl+G تجميع · Ctrl+D تكرار · Delete للحذف.') }}</p>
+                        <p class="text-xs leading-5 text-gray-500">{{ t('hallmap.multi_keys3', 'اسحب أي حاسبة محددة لتحريكها كلها، والدائرة الزرقاء فوقها لتدويرها · الأسهم للتحريك الدقيق · R تدوير 15° · Ctrl+G تجميع · Ctrl+D تكرار · Delete للحذف.') }}</p>
                     </section>
                     <section v-if="selected" ref="panelEl" class="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
                         <div class="flex items-center gap-2">
@@ -1996,7 +2049,6 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <template v-else>
                                 <rect x="3" y="3" width="34" height="2.6" rx=".6" /><rect x="3" y="24.4" width="34" height="2.6" rx=".6" /><rect x="3" y="8" width="2.6" height="14" rx=".6" /><rect x="34.4" y="8" width="2.6" height="14" rx=".6" />
                                 <template v-if="l.key === 'walls_center'"><rect x="11" y="12.4" width="18" height="2.6" rx=".6" /><rect x="11" y="15" width="18" height="2.6" rx=".6" opacity=".55" /></template>
-                                <template v-if="l.key === 'walls_plus'"><rect x="9" y="12.7" width="8" height="2.3" rx=".5" /><rect x="23" y="12.7" width="8" height="2.3" rx=".5" /><rect x="9" y="15" width="8" height="2.3" rx=".5" opacity=".55" /><rect x="23" y="15" width="8" height="2.3" rx=".5" opacity=".55" /><rect x="17.7" y="8" width="2.3" height="4.5" rx=".5" /><rect x="20" y="8" width="2.3" height="4.5" rx=".5" opacity=".55" /><rect x="17.7" y="17.5" width="2.3" height="4.5" rx=".5" /><rect x="20" y="17.5" width="2.3" height="4.5" rx=".5" opacity=".55" /></template>
                             </template>
                         </svg>
                         {{ l.label }}
