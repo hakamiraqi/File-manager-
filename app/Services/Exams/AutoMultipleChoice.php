@@ -40,17 +40,21 @@ class AutoMultipleChoice
     {
         $lang = $exam->languages[0] ?? 'ar';
         $locale = $lang;
-        $text = fn ($v) => self::line(Question::pick($v, $locale, $exam->languages ?? []));
+        $arabic = $lang === 'ar';
+        // Arabic sheets: the text goes in as LaTeX, so Latin words, numbers and symbols can be set
+        // left to right in a Latin font (the Arabic font has no Latin letters, and turns digits).
+        $t = fn (string $s) => $arabic ? self::arabicTex(self::line($s)) : self::line($s);
+        $text = fn ($v) => Question::pick($v, $locale, $exam->languages ?? []);
         $out = [
             '# '.config('app.name').' — '.$exam->text('title').' ('.now()->toDateString().')',
             'PaperSize: A4',
         ];
-        if ($lang === 'ar') {
-            $out[] = 'Lang: AR';
+        if ($arabic) {
+            array_push($out, 'Lang: AR', 'ArabicFont: Amiri', 'Font: Linux Libertine O', 'LaTeX: 1');
         }
-        $out[] = 'Title: '.self::line($exam->text('title'));
+        $out[] = 'Title: '.$t($exam->text('title'));
         if (filled($exam->text('description'))) {
-            $out[] = 'Presentation: '.self::line(HtmlCleaner::text($exam->text('description')));
+            $out[] = 'Presentation: '.$t(HtmlCleaner::text($exam->text('description')));
         }
         $out[] = 'ShuffleQuestions: '.($exam->shuffle_questions ? 1 : 0);
         $out[] = 'PreAssociation: students.csv';
@@ -63,9 +67,9 @@ class AutoMultipleChoice
             $opts = 'id=q'.$q->id.($exam->shuffle_choices && $q->type !== Question::TRUE_FALSE ? '' : ',ordered');
             $points = rtrim(rtrim(number_format((float) $q->points, 2, '.', ''), '0'), '.') ?: '0';
             $scoring = $q->type === Question::MULTIPLE ? '{haut='.$points.'}' : '{b='.$points.'}';
-            $out[] = $marker.'['.$opts.']'.$scoring.' '.self::line(HtmlCleaner::text($text($q->body)));
+            $out[] = $marker.'['.$opts.']'.$scoring.' '.$t(HtmlCleaner::text($text($q->body)));
             foreach ($q->choices as $c) {
-                $out[] = ($c->is_correct ? '+ ' : '- ').self::line(HtmlCleaner::text($text($c->body)));
+                $out[] = ($c->is_correct ? '+ ' : '- ').$t(HtmlCleaner::text($text($c->body)));
             }
             $out[] = '';
         }
@@ -179,6 +183,38 @@ class AutoMultipleChoice
         }
 
         return array_values(array_unique($out));
+    }
+
+    /**
+     * Arabic text as LaTeX for an Arabic AMC sheet: LaTeX's special characters escaped, and every
+     * run of Latin letters, digits and symbols (H2O, HTTPS, 15%, π ≈ 3.14, 2⁵) set left to right in
+     * the Latin font, so it reads as typed.
+     */
+    public static function arabicTex(string $s): string
+    {
+        $esc = fn (string $x) => strtr($x, ['\\' => '\\textbackslash{}', '{' => '\\{', '}' => '\\}', '%' => '\\%', '$' => '\\$', '#' => '\\#',
+            '&' => '\\&', '_' => '\\_', '^' => '\\^{}', '~' => '\\~{}']);
+        $sup = ['⁰' => '0', '¹' => '1', '²' => '2', '³' => '3', '⁴' => '4', '⁵' => '5', '⁶' => '6', '⁷' => '7', '⁸' => '8', '⁹' => '9'];
+        $sub = ['₀' => '0', '₁' => '1', '₂' => '2', '₃' => '3', '₄' => '4', '₅' => '5', '₆' => '6', '₇' => '7', '₈' => '8', '₉' => '9'];
+        $latin = function (string $run) use ($esc, $sup, $sub): string {
+            $run = $esc($run);
+            $run = preg_replace_callback('/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/u', fn ($m) => '\\textsuperscript{'.strtr($m[0], $sup).'}', $run);
+            $run = preg_replace_callback('/[₀₁₂₃₄₅₆₇₈₉]+/u', fn ($m) => '\\textsubscript{'.strtr($m[0], $sub).'}', $run);
+
+            return '\\LR{\\rmfamily '.$run.'}';
+        };
+        // A run starts with a Latin letter, a digit or a maths sign, and goes on over anything that
+        // is not Arabic, ending before trailing spaces and Arabic punctuation.
+        $out = '';
+        $pos = 0;
+        preg_match_all('/[A-Za-z0-9π≈×÷±√∞°⁰¹²³⁴⁵⁶⁷⁸⁹₀₁₂₃₄₅₆₇₈₉][^\x{0600}-\x{06FF}\x{0750}-\x{077F}\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]*/u', $s, $m, PREG_OFFSET_CAPTURE);
+        foreach ($m[0] as [$run, $at]) {
+            $trimmed = rtrim($run, " \t(،؛؟");
+            $out .= $esc(substr($s, $pos, $at - $pos)).$latin($trimmed);
+            $pos = $at + strlen($trimmed);
+        }
+
+        return $out.$esc(substr($s, $pos));
     }
 
     /** One line of text for AMC-TXT (a line break inside would start something else). */

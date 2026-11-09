@@ -46,7 +46,8 @@ class AutoMultipleChoiceTest extends TestCase
         $src = $amc->source($exam);
         $this->assertStringContainsString('Lang: AR', $src);
         $this->assertStringContainsString('PreAssociationKey: id', $src);
-        $this->assertStringContainsString("*[id=q{$single->id}]{b=2} رمز الماء؟\n+ H2O\n- CO2\n- NaCl", $src);
+        $this->assertStringContainsString("ArabicFont: Amiri\nFont: Linux Libertine O\nLaTeX: 1", $src);
+        $this->assertStringContainsString("*[id=q{$single->id}]{b=2} رمز الماء؟\n+ \\LR{\\rmfamily H2O}\n- \\LR{\\rmfamily CO2}\n- \\LR{\\rmfamily NaCl}", $src);
         $this->assertStringContainsString("**[id=q{$multi->id}]{haut=2} الغازات النبيلة\n+ هيليوم\n+ نيون\n- حديد", $src);
         $this->assertStringContainsString("*[id=q{$tf->id},ordered]{b=1} الماء مركب", $src);
         $this->assertStringNotContainsString('اشرح', $src);

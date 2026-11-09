@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\DB;
  */
 class CreateAmcDemoExam extends Command
 {
-    protected $signature = 'exams:amc-demo {--fresh : replace an earlier one}';
+    protected $signature = 'exams:amc-demo {--fresh : replace an earlier one} {--rebuild : build the earlier one\'s AMC sheets again}';
 
     protected $description = 'Make a 100-question exam for Auto Multiple Choice and build its sheets.';
 
@@ -33,6 +33,12 @@ class CreateAmcDemoExam extends Command
             return self::FAILURE;
         }
         if ($old = Exam::where('title->ar', self::TITLE)->first()) {
+            if ($this->option('rebuild')) {
+                $r = $amc->build($old);
+                $this->info("Exam {$old->id}: AMC sheets built again, ".($r['pages'] ?? '?').' pages.');
+
+                return self::SUCCESS;
+            }
             if (! $this->option('fresh')) {
                 $this->warn("Already there (exam {$old->id}); use --fresh to replace it.");
 

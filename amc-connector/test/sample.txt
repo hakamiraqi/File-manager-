@@ -1,7 +1,10 @@
 # Connector test: an Arabic exam with three named students
 PaperSize: A4
 Lang: AR
-Title: امتحان AMC تجريبي — 100 سؤال
+ArabicFont: Amiri
+Font: Linux Libertine O
+LaTeX: 1
+Title: امتحان \LR{\rmfamily AMC} تجريبي — \LR{\rmfamily 100} سؤال
 ShuffleQuestions: 0
 PreAssociation: students.csv
 PreAssociationKey: id
@@ -9,9 +12,9 @@ PreAssociationName: \name{}
 SeparateAnswerSheet: 1
 
 *[id=q11,ordered]{b=2} ما صيغة الماء؟
-+ H2O
-- CO2 وH2O
-- NaCl
++ \LR{\rmfamily H2O}
+- \LR{\rmfamily CO2} و\LR{\rmfamily H2O}
+- \LR{\rmfamily NaCl}
 
 **[id=q12,ordered]{haut=2} اختر الغازات النبيلة
 + هيليوم
@@ -22,6 +25,6 @@ SeparateAnswerSheet: 1
 + صح
 - خطأ
 
-*[id=q14,ordered]{b=1} ما ناتج 15% من 200؟ (π ≈ 3.14، و2⁵ = 32، و90° و5 سم²) البروتوكول HTTPS وFTP وDNA
-+ 30
-- 20
+*[id=q14,ordered]{b=1} ما ناتج \LR{\rmfamily 15\%} من \LR{\rmfamily 200}؟ (\LR{\rmfamily π ≈ 3.14}، و\LR{\rmfamily 2\textsuperscript{5} = 32}) البروتوكول \LR{\rmfamily HTTPS}
++ \LR{\rmfamily 30}
+- \LR{\rmfamily 20}
