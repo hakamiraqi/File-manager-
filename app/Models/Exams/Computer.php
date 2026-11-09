@@ -9,5 +9,5 @@ class Computer extends Model
 {
     protected $table = 'exam_computers';
 
-    protected $fillable = ['room', 'label', 'ip'];
+    protected $fillable = ['room', 'label', 'ip', 'seat_row', 'seat_col'];
 }

@@ -55,7 +55,7 @@ class MonitorController extends Controller
                 'access_code' => $exam->access_code, 'can_manage' => $exam->isManageableBy($request->user()),
                 'resume_code_required' => $exam->resume_code_required, 'bind_computers' => $exam->bind_computers,
             ],
-            'computers' => \App\Models\Exams\Computer::orderBy('room')->orderBy('label')->get(['id', 'room', 'label', 'ip']),
+            'computers' => \App\Models\Exams\Computer::orderBy('room')->orderBy('label')->get(['id', 'room', 'label', 'ip', 'seat_row', 'seat_col']),
             'data' => $this->snapshot($exam),
         ]);
     }
@@ -182,6 +182,7 @@ class MonitorController extends Controller
             }
             \App\Models\Exams\Answer::updateOrCreate(['exam_attempt_id' => $attempt->id, 'exam_question_id' => (int) $qid],
                 ['response' => $answer['response'], 'flagged' => (bool) ($answer['flagged'] ?? false)]);
+            \App\Models\Exams\AnswerLog::record($attempt, (int) $qid, $answer['response'], 'offline_file', $request->ip());
             $count++;
         }
         \App\Models\Exams\Event::create(['exam_attempt_id' => $attempt->id, 'type' => 'offline_file',
@@ -223,6 +224,28 @@ class MonitorController extends Controller
         }
 
         return response()->json($exam->only('resume_code_required', 'bind_computers'));
+    }
+
+    /**
+     * The invigilator scans a student's login card (a USB scanner types it, or the camera reads
+     * it): the student is marked present, and the page says who it is and where they sit.
+     */
+    public function scan(Request $request, Exam $exam): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $code = \App\Models\User::cardCodeFrom((string) $request->validate(['code' => ['required', 'string', 'max:500']])['code']);
+        $user = $code ? \App\Models\User::where('card_code', $code)->first() : null;
+        if (! $user) {
+            return response()->json(['message' => 'بطاقة غير معروفة أو قديمة.'], 422);
+        }
+        if ($exam->groups()->exists() && ! $exam->roster()->contains('id', $user->id)) {
+            return response()->json(['message' => "{$user->name} ليس من طلاب هذا الامتحان."], 422);
+        }
+        $row = DB::table('exam_attendance')->where('exam_id', $exam->id)->where('user_id', $user->id)->first();
+        DB::table('exam_attendance')->updateOrInsert(['exam_id' => $exam->id, 'user_id' => $user->id],
+            ['present' => true, 'checked_by' => $request->user()->id, 'updated_at' => now()] + ($row ? [] : ['created_at' => now()]));
+
+        return response()->json(['ok' => true, 'name' => $user->name, 'seat' => $exam->computerFor($user)?->label ?? $row?->seat]);
     }
 
     /** Puts one student at a computer (or nowhere). */
@@ -325,7 +348,7 @@ class MonitorController extends Controller
                 'present' => isset($attendance[$u->id]) ? (bool) $attendance[$u->id]->present : null,
                 'seat' => $attendance[$u->id]->seat ?? null,
                 'note' => $attendance[$u->id]->note ?? null,
-                'computer' => ($pc = $computers[$attendance[$u->id]->computer_id ?? 0] ?? null) ? ['id' => $pc->id, 'label' => $pc->label, 'ip' => $pc->ip] : null,
+                'computer' => ($pc = $computers[$attendance[$u->id]->computer_id ?? 0] ?? null) ? ['id' => $pc->id, 'label' => $pc->label, 'ip' => $pc->ip, 'room' => $pc->room] : null,
                 'status' => $status,
                 'attempt' => $a ? [
                     'id' => $a->id, 'number' => $a->number, 'answered' => $a->answered, 'questions' => $questionCount,

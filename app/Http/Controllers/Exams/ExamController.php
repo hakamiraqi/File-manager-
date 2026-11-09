@@ -252,7 +252,12 @@ class ExamController extends Controller
         if (array_key_exists('flagged', $data)) {
             $values['flagged'] = $data['flagged'];
         }
+        $before = Answer::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $data['question_id'])->value('response');
         Answer::updateOrCreate(['exam_attempt_id' => $attempt->id, 'exam_question_id' => $data['question_id']], $values);
+        // The audit log: every change of the answer, with its time and address.
+        if (array_key_exists('response', $values) && json_encode($values['response']) !== json_encode(is_string($before) ? json_decode($before, true) : $before)) {
+            \App\Models\Exams\AnswerLog::record($attempt, (int) $data['question_id'], $values['response'], 'page', $request->ip());
+        }
         $attempt->forceFill(['last_seen_at' => now()])->saveQuietly();
 
         return response()->json(['saved' => true, 'seconds_left' => $attempt->secondsLeft()]);
@@ -521,7 +526,11 @@ class ExamController extends Controller
     private function variantFor(Exam $exam, \App\Models\User $user): int
     {
         $n = max(1, min(4, $exam->variants));
-        if ($pc = $exam->computerFor($user)) {
+        if (($pc = $exam->computerFor($user)) && $pc->seat_row && $pc->seat_col) {
+            // On the hall map: no two seats side by side or one behind the other share a version.
+            return ($pc->seat_row + $pc->seat_col) % $n + 1;
+        }
+        if ($pc) {
             $labels = \App\Models\Exams\Computer::where('room', $pc->room)->pluck('label')->sort(SORT_NATURAL)->values();
 
             return ((int) $labels->search($pc->label)) % $n + 1;

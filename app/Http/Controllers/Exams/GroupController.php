@@ -101,7 +101,9 @@ class GroupController extends Controller
                 $password = strtolower(\Illuminate\Support\Str::password(8, symbols: false));
                 $u->forceFill(['password' => \Illuminate\Support\Facades\Hash::make($password)])->save();
 
-                return ['name' => $u->name, 'email' => str_ends_with($u->email, '@students.invalid') ? null : $u->email, 'student_number' => $u->student_number, 'password' => $password];
+                return ['name' => $u->name, 'email' => str_ends_with($u->email, '@students.invalid') ? null : $u->email, 'student_number' => $u->student_number, 'password' => $password,
+                    // The QR code: this address signs the student in (and marks them present when the invigilator scans it).
+                    'card_url' => route('card.login', $u->renewCardCode())];
             });
         ActivityLog::record('exam.cards', "أعاد كلمات مرور {$cards->count()} طالباً وطبع بطاقات دخول للمجموعة \"{$group->name}\"");
 

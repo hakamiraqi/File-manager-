@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
@@ -69,6 +69,13 @@ const overrideForm = useForm({ email: '', extra_minutes: '', closes_at: '', max_
 const saveOverride = () => overrideForm.post(route('exams.manage.overrides.store', props.exam.id), { preserveScroll: true, onSuccess: () => overrideForm.reset() });
 const removeOverride = (o) => router.delete(route('exams.manage.overrides.destroy', o.id), { preserveScroll: true });
 
+// The answers audit log of one attempt, in a dialog.
+const auditFor = ref(null);   // { attempt, entries, loading }
+async function openAudit(a) {
+    auditFor.value = { attempt: a, entries: [], loading: true };
+    try { auditFor.value.entries = (await window.axios.get(route('exams.manage.attempts.log', a.id))).data.entries; } finally { auditFor.value.loading = false; }
+}
+const timeOf = (iso) => (iso ? new Date(iso).toLocaleTimeString(document.documentElement.lang || 'ar', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '');
 const EVENT_LABELS = { hidden: 'غادر الصفحة', blur: 'ترك النافذة', paste: 'لصق', copy: 'محاولة نسخ', fullscreen_exit: 'خرج من ملء الشاشة', ip_changed: 'تغيّر العنوان' };
 const discClass = (d) => (d === null ? 'text-gray-400' : d < 0 ? 'font-semibold text-red-600' : d < 0.2 ? 'text-red-600' : d < 0.3 ? 'text-amber-600' : 'text-emerald-600');
 const alphaLabel = (a) => (a === null ? '' : a >= 0.8 ? t('exam.alpha_good', 'جيد') : a >= 0.7 ? t('exam.alpha_ok', 'مقبول') : t('exam.alpha_low', 'منخفض'));
@@ -121,6 +128,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                         <span v-for="(n, type) in a.events" :key="type" class="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.event_' + type, EVENT_LABELS[type]) }} × {{ n }}</span>
                         <span v-if="a.needs_grading" class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">{{ t('exam.pending_grading', 'بانتظار التصحيح') }}</span>
                         <span class="w-24 text-end font-semibold">{{ a.score ?? '—' }} / {{ a.max_score }}<span v-if="a.percent !== null" class="block text-xs font-normal text-gray-500">{{ a.percent }}%</span></span>
+                        <button v-if="can_manage" type="button" @click="openAudit(a)" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.audit', 'سجل الإجابات')"><ClipboardDocumentListIcon class="h-4 w-4" /></button>
                         <Link v-if="a.submitted_at" :href="route('exams.attempts.result', a.id)" class="rounded p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.view', 'عرض')"><EyeIcon class="h-4 w-4" /></Link>
                         <button v-if="a.essays.length" @click="open[a.id] = !open[a.id]" class="flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs dark:border-gray-600"><PencilSquareIcon class="h-4 w-4" /> {{ t('exam.mark', 'تصحيح') }}</button>
                     </div>
@@ -283,6 +291,33 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                     <span v-if="o.max_attempts">{{ o.max_attempts }} {{ t('exam.attempts', 'المحاولات') }}</span>
                     <span v-if="o.closes_at">{{ t('exam.closes', 'يغلق') }} {{ o.closes_at.replace('T', ' ') }}</span>
                     <button @click="removeOverride(o)" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"><TrashIcon class="h-4 w-4" /></button>
+                </div>
+            </div>
+        </div>
+        <!-- The answers audit log -->
+        <div v-if="auditFor" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" @click.self="auditFor = null">
+            <div class="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white shadow-xl dark:bg-gray-800">
+                <div class="flex items-center gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+                    <ClipboardDocumentListIcon class="h-5 w-5 text-gray-500" />
+                    <p class="flex-1 font-semibold">{{ t('exam.audit', 'سجل الإجابات') }} — {{ auditFor.attempt.user.name }} #{{ auditFor.attempt.number }}</p>
+                    <button @click="auditFor = null" :aria-label="t('action.close', 'إغلاق')"><XMarkIcon class="h-5 w-5" /></button>
+                </div>
+                <div class="overflow-y-auto">
+                    <p v-if="auditFor.loading" class="p-6 text-center text-sm text-gray-500">…</p>
+                    <p v-else-if="!auditFor.entries.length" class="p-6 text-center text-sm text-gray-500">{{ t('exam.audit_empty', 'لا تغييرات مسجّلة.') }}</p>
+                    <table v-else class="w-full text-sm">
+                        <thead class="sticky top-0 bg-gray-50 text-xs text-gray-500 dark:bg-gray-700"><tr>
+                            <th class="px-3 py-2 text-start">{{ t('exam.audit_time', 'الوقت') }}</th><th class="px-2 py-2">{{ t('exam.question_short', 'السؤال') }}</th>
+                            <th class="px-2 py-2 text-start">{{ t('exam.audit_answer', 'الإجابة') }}</th><th class="px-3 py-2 text-start">{{ t('exam.audit_from', 'من') }}</th></tr></thead>
+                        <tbody>
+                            <tr v-for="(e, i) in auditFor.entries" :key="i" class="border-t border-gray-100 align-top dark:border-gray-700">
+                                <td class="px-3 py-1.5 font-mono text-xs whitespace-nowrap" dir="ltr">{{ timeOf(e.at) }}</td>
+                                <td class="px-2 py-1.5 text-center">{{ e.question ?? '—' }}</td>
+                                <td class="px-2 py-1.5" dir="auto">{{ e.answer }}</td>
+                                <td class="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap"><span dir="ltr">{{ e.ip }}</span><span v-if="e.source === 'offline_file'" class="ms-1 rounded bg-amber-100 px-1 text-amber-800">{{ t('exam.audit_offline', 'ملف طارئ') }}</span></td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>

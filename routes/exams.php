@@ -54,6 +54,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/overrides', [ResultController::class, 'override'])->whereNumber('exam')->name('overrides.store');
         Route::delete('/overrides/{override}', [ResultController::class, 'removeOverride'])->name('overrides.destroy');
         Route::get('/{exam}/similarity', [ResultController::class, 'similarity'])->whereNumber('exam')->name('similarity');
+        Route::get('/attempts/{attempt}/log', [ResultController::class, 'log'])->name('attempts.log');
         Route::post('/answers/{answer}/suggest', [ResultController::class, 'suggest'])->middleware('throttle:30,1')->name('answers.suggest');
         Route::put('/appeals/{appeal}', [ResultController::class, 'replyAppeal'])->name('appeals.reply');
         Route::post('/{exam}/markers', [ResultController::class, 'addMarker'])->whereNumber('exam')->name('markers.store');
@@ -92,6 +93,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::post('/{exam}/announce', [$m, 'announce'])->whereNumber('exam')->name('announce');
     Route::post('/{exam}/submit-all', [$m, 'submitAll'])->whereNumber('exam')->name('submit-all');
     Route::post('/{exam}/extend-all', [$m, 'extendAll'])->whereNumber('exam')->name('extend-all');
+    Route::post('/{exam}/scan', [$m, 'scan'])->whereNumber('exam')->middleware('throttle:120,1')->name('scan');
     Route::post('/{exam}/settings', [$m, 'settings'])->whereNumber('exam')->name('settings');
     Route::post('/{exam}/seat/{user}', [$m, 'seat'])->whereNumber('exam')->name('seat');
     Route::post('/{exam}/distribute', [$m, 'distribute'])->whereNumber('exam')->name('distribute');
@@ -100,6 +102,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     $pcs = \App\Http\Controllers\Exams\ComputerController::class;
     Route::get('/computers', [$pcs, 'index'])->name('computers');
     Route::post('/computers', [$pcs, 'store'])->name('computers.store');
+    Route::post('/computers/arrange', [$pcs, 'arrange'])->name('computers.arrange');
     Route::put('/computers/{computer}', [$pcs, 'update'])->name('computers.update');
     Route::delete('/computers/{computer}', [$pcs, 'destroy'])->name('computers.destroy');
     Route::post('/attempts/{attempt}/extend', [$m, 'extend'])->name('extend');

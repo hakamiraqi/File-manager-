@@ -17,7 +17,7 @@ use Laravel\Sanctum\HasApiTokens;
     'is_master_admin', 'can_manage_appearance', 'can_manage_users', 'can_manage_translations',
     'can_view_statistics', 'can_manage_settings', 'is_examiner', 'exam_time_multiplier', 'is_invigilator', 'student_number',
 ])]
-#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes'])]
+#[Hidden(['password', 'remember_token', 'two_factor_secret', 'two_factor_recovery_codes', 'card_code'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
@@ -135,5 +135,25 @@ class User extends Authenticatable
                 ->values()
                 ->all(),
         ])->save();
+    }
+
+    /** A new login card code (the old card stops working). */
+    public function renewCardCode(): string
+    {
+        $code = 'EX'.strtoupper(\Illuminate\Support\Str::random(22));
+        $this->forceFill(['card_code' => $code])->save();
+
+        return $code;
+    }
+
+    /** The card code from what a scanner typed or a camera read: the card's address, or the code alone. */
+    public static function cardCodeFrom(string $scanned): ?string
+    {
+        $scanned = trim($scanned);
+        if (preg_match('~/card/([A-Za-z0-9]{16,40})~', $scanned, $m)) {
+            return strtoupper($m[1]);
+        }
+
+        return preg_match('/^EX[A-Za-z0-9]{14,38}$/', $scanned) ? strtoupper($scanned) : null;
     }
 }

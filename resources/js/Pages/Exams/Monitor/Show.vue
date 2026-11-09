@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon, PauseCircleIcon, HandRaisedIcon, ClockIcon, CheckIcon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon, PauseCircleIcon, QrCodeIcon, CameraIcon, TableCellsIcon, MapIcon, HandRaisedIcon, ClockIcon, CheckIcon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, data: Object, computers: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -56,6 +56,86 @@ const search = ref('');
 const rows = computed(() => live.value.rows.filter((r) =>
     (filter.value === 'all' || r.status === filter.value) &&
     (!search.value || (r.user.name + ' ' + r.user.email + ' ' + (r.seat ?? '')).toLowerCase().includes(search.value.toLowerCase()))));
+
+// ---- The hall map: each room's computers where they stand, coloured by the student at each ----
+const view = ref((() => { try { return localStorage.getItem('monitor-view') || 'table'; } catch { return 'table'; } })());
+function setView(v) { view.value = v; try { localStorage.setItem('monitor-view', v); } catch {} }
+const byNumber = (a, b) => a.label.localeCompare(b.label, undefined, { numeric: true });
+const mapRooms = computed(() => {
+    const atPc = {};
+    live.value.rows.forEach((r) => { if (r.computer) atPc[r.computer.id] = r; });
+    const rooms = {};
+    props.computers.forEach((c) => (rooms[c.room || ''] ??= []).push(c));
+    return Object.entries(rooms).map(([room, pcs]) => {
+        pcs = [...pcs].sort(byNumber);
+        const placed = pcs.filter((p) => p.seat_row && p.seat_col);
+        const loose = pcs.filter((p) => !(p.seat_row && p.seat_col));
+        // Computers not placed yet go in rows after the placed ones.
+        const cols = Math.max(0, ...placed.map((p) => p.seat_col)) || Math.min(8, Math.max(1, Math.ceil(Math.sqrt(pcs.length * 1.5))));
+        const after = Math.max(0, ...placed.map((p) => p.seat_row));
+        const cells = [
+            ...placed.map((p) => ({ pc: p, row: p.seat_row, col: p.seat_col })),
+            ...loose.map((p, i) => ({ pc: p, row: after + 1 + Math.floor(i / cols), col: (i % cols) + 1 })),
+        ].map((c) => ({ ...c, r: atPc[c.pc.id] ?? null }));
+        return { room, cols, cells };
+    });
+});
+const unseated = computed(() => live.value.rows.filter((r) => !r.computer && r.status !== 'absent'));
+const cellTitle = (c) => !c.r ? c.pc.label + ' — ' + t('exam.seat_empty', 'فارغة')
+    : [c.pc.label, c.r.user.name, t('exam.status_' + c.r.status, STATUS[c.r.status][0]),
+        c.r.attempt ? c.r.attempt.answered + '/' + c.r.attempt.questions : null].filter(Boolean).join(' · ');
+
+// ---- Attendance by login card: a USB scanner types the card into this box, or the camera reads it ----
+const scanCode = ref('');
+const scanMsg = ref(null);   // { ok, text }
+async function scanCard(code = scanCode.value) {
+    if (!code.trim()) return;
+    try {
+        const res = await window.axios.post(route('exams.monitor.scan', props.exam.id), { code });
+        scanMsg.value = { ok: true, text: res.data.name + (res.data.seat ? ' — ' + res.data.seat : '') };
+        await refresh();
+    } catch (e) {
+        scanMsg.value = { ok: false, text: e.response?.data?.message || t('exam.scan_failed', 'تعذّرت قراءة البطاقة.') };
+    }
+    scanCode.value = '';
+}
+const canCamera = typeof window !== 'undefined' && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
+const cameraOpen = ref(false);
+const video = ref(null);
+let stream = null;
+let lastRead = '';
+async function openCamera() {
+    cameraOpen.value = true;
+    const { default: jsQR } = await import('jsqr');
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    } catch {
+        scanMsg.value = { ok: false, text: t('exam.camera_failed', 'تعذّر فتح الكاميرا.') };
+        cameraOpen.value = false;
+        return;
+    }
+    video.value.srcObject = stream;
+    await video.value.play();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const frame = () => {
+        if (!cameraOpen.value) return;
+        if (video.value.videoWidth) {
+            canvas.width = video.value.videoWidth; canvas.height = video.value.videoHeight;
+            ctx.drawImage(video.value, 0, 0);
+            const found = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+            if (found?.data && found.data !== lastRead) { lastRead = found.data; scanCard(found.data); setTimeout(() => (lastRead = ''), 4000); }
+        }
+        requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+}
+function closeCamera() {
+    cameraOpen.value = false;
+    stream?.getTracks().forEach((tr) => tr.stop());
+    stream = null;
+}
+onBeforeUnmount(closeCamera);
 
 // ---- Actions ----
 const busy = ref(false);
@@ -211,8 +291,22 @@ async function uploadOffline(event) {
             <p v-if="live.counts.help" class="rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ t('exam.help_waiting', ':n طالب يطلب المساعدة', { n: live.counts.help }) }}</p>
             <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
 
+            <!-- Attendance by login card -->
+            <form @submit.prevent="scanCard()" class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+                <QrCodeIcon class="h-5 w-5 text-gray-400" />
+                <input v-model="scanCode" dir="ltr" :placeholder="t('exam.scan_ph', 'امسح بطاقة الطالب هنا لتسجيل حضوره')" class="min-w-0 flex-1 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                <button v-if="canCamera" type="button" @click="cameraOpen ? closeCamera() : openCamera()" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 dark:border-gray-600"><CameraIcon class="h-4 w-4" /> {{ t('exam.camera', 'الكاميرا') }}</button>
+                <span v-if="scanMsg" class="flex items-center gap-1 text-sm" :class="scanMsg.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600'">
+                    <CheckIcon v-if="scanMsg.ok" class="h-4 w-4" /><XMarkIcon v-else class="h-4 w-4" /> {{ scanMsg.text }}</span>
+                <video v-show="cameraOpen" ref="video" playsinline muted class="w-full max-w-xs rounded-lg" />
+            </form>
+
             <!-- Students -->
             <div class="flex flex-wrap items-center gap-2">
+                <div v-if="computers.length" class="flex overflow-hidden rounded-lg border border-gray-300 text-sm dark:border-gray-600">
+                    <button @click="setView('table')" class="flex items-center gap-1 px-3 py-1.5" :class="view === 'table' ? 'bg-[var(--accent-600)] text-white' : ''"><TableCellsIcon class="h-4 w-4" /> {{ t('exam.view_table', 'جدول') }}</button>
+                    <button @click="setView('map')" class="flex items-center gap-1 px-3 py-1.5" :class="view === 'map' ? 'bg-[var(--accent-600)] text-white' : ''"><MapIcon class="h-4 w-4" /> {{ t('exam.view_map', 'خريطة القاعة') }}</button>
+                </div>
                 <input v-model="search" :placeholder="t('exam.search_student', 'بحث بالاسم أو المقعد')" class="w-64 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                 <span class="flex-1" />
                 <button v-if="(live.counts.working ?? 0) + (live.counts.disconnected ?? 0) + (live.counts.time_up ?? 0)" @click="minutes = 10; hallRoom = ''; dialog = { kind: 'extend_all' }"
@@ -220,7 +314,35 @@ async function uploadOffline(event) {
                 <button v-if="(live.counts.working ?? 0) + (live.counts.disconnected ?? 0) + (live.counts.time_up ?? 0)" @click="dialog = { kind: 'submit_all' }"
                     class="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 dark:border-red-700 dark:text-red-300">{{ t('exam.submit_all', 'تسليم كل المحاولات الجارية') }}</button>
             </div>
-            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+            <!-- The hall map -->
+            <div v-if="view === 'map' && computers.length" class="space-y-4">
+                <section v-for="m in mapRooms" :key="m.room" class="overflow-x-auto rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                    <p class="mb-2 text-sm font-semibold">{{ m.room || t('exam.no_room', 'بلا قاعة') }}</p>
+                    <p class="mb-3 rounded bg-gray-100 py-1 text-center text-xs text-gray-500 dark:bg-gray-700">{{ t('exam.hall_front', 'مقدمة القاعة') }}</p>
+                    <div class="grid gap-2" :style="{ gridTemplateColumns: `repeat(${m.cols}, minmax(6.5rem, 1fr))` }">
+                        <div v-for="c in m.cells" :key="c.pc.id" :style="{ gridRow: c.row, gridColumn: c.col }" :title="cellTitle(c)"
+                            class="relative min-h-[4.5rem] rounded-lg border p-1.5 text-xs"
+                            :class="[c.r ? STATUS[c.r.status][1] + ' border-transparent' : 'border-dashed border-gray-300 text-gray-400 dark:border-gray-600',
+                                c.r?.attempt?.help ? 'ring-2 ring-amber-400' : '', search && c.r && !rows.includes(c.r) ? 'opacity-30' : '']">
+                            <p class="flex items-center gap-1 font-mono font-semibold">{{ c.pc.label }}
+                                <HandRaisedIcon v-if="c.r?.attempt?.help" class="h-3.5 w-3.5 text-amber-600" />
+                                <LockClosedIcon v-if="c.r?.attempt?.locked" class="h-3.5 w-3.5 text-red-600" />
+                                <ExclamationTriangleIcon v-if="c.r?.attempt?.ip && c.r.attempt.ip !== c.pc.ip" class="h-3.5 w-3.5 text-red-600" />
+                            </p>
+                            <template v-if="c.r">
+                                <p class="truncate font-medium">{{ c.r.user.name }}</p>
+                                <p v-if="c.r.attempt && !c.r.attempt.submitted_at">{{ c.r.attempt.answered }}/{{ c.r.attempt.questions }}<span v-if="c.r.attempt.variant"> · {{ c.r.attempt.variant }}</span></p>
+                                <p v-else class="opacity-75">{{ t('exam.status_' + c.r.status, STATUS[c.r.status][0]) }}</p>
+                            </template>
+                            <p v-else>{{ t('exam.seat_empty', 'فارغة') }}</p>
+                        </div>
+                    </div>
+                </section>
+                <p v-if="unseated.length" class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.unseated', 'بلا حاسبة') }} ({{ unseated.length }}): {{ unseated.map((r) => r.user.name).join('، ') }}</p>
+                <div class="flex flex-wrap gap-2 text-xs"><span v-for="(s, k) in STATUS" :key="k" class="rounded-full px-2 py-0.5" :class="s[1]">{{ t('exam.status_' + k, s[0]) }}</span></div>
+            </div>
+
+            <div v-show="view === 'table' || !computers.length" class="overflow-x-auto rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                 <table class="w-full text-sm">
                     <thead class="bg-gray-50 text-xs text-gray-500 dark:bg-gray-700/50">
                         <tr>

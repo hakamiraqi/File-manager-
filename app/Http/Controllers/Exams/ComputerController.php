@@ -47,6 +47,22 @@ class ComputerController extends Controller
         return back()->with('success', 'سُجّلت الحاسبة.');
     }
 
+    /**
+     * Lays a room out on the hall map: its computers, by name, in rows of the given length
+     * (PC-01…PC-06 the first row, PC-07… the second). Single seats can be moved after.
+     */
+    public function arrange(Request $request): RedirectResponse
+    {
+        $data = $request->validate(['room' => ['nullable', 'string', 'max:100'], 'columns' => ['required', 'integer', 'min:1', 'max:40']]);
+        $pcs = Computer::when(filled($data['room'] ?? null), fn ($q) => $q->where('room', $data['room']), fn ($q) => $q->whereNull('room'))
+            ->get()->sortBy('label', SORT_NATURAL)->values();
+        foreach ($pcs as $i => $pc) {
+            $pc->update(['seat_row' => intdiv($i, $data['columns']) + 1, 'seat_col' => $i % $data['columns'] + 1]);
+        }
+
+        return back()->with('success', 'رُتّبت '.$pcs->count().' حاسبة على الخريطة.');
+    }
+
     public function update(Request $request, Computer $computer): RedirectResponse
     {
         $computer->update($this->validated($request, $computer));
@@ -68,6 +84,8 @@ class ComputerController extends Controller
         return $request->validate([
             'label' => [$bulk ? 'nullable' : 'required', 'string', 'max:50'],
             'room' => ['nullable', 'string', 'max:100'],
+            'seat_row' => ['nullable', 'integer', 'min:1', 'max:60'],
+            'seat_col' => ['nullable', 'integer', 'min:1', 'max:60'],
             'ip' => [$bulk ? 'nullable' : 'required', 'ip', $computer ? Rule::unique('exam_computers', 'ip')->ignore($computer->id) : 'nullable'],
         ], ['ip.unique' => 'هذا العنوان لحاسبة أخرى.', 'ip.ip' => 'عنوان IP غير صالح.']);
     }

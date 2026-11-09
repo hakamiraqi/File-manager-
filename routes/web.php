@@ -26,6 +26,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 require __DIR__.'/auth.php';
 
 // The offline server's activation page (2026-11-05); see EnsureOfflineActivated.
+// A printed login card's QR code (see CardLoginController).
+Route::get('/card/{code}', \App\Http\Controllers\Auth\CardLoginController::class)->where('code', '[A-Za-z0-9]{16,40}')->middleware('throttle:20,1')->name('card.login');
+
 Route::get('/activate', [\App\Http\Controllers\Offline\ActivationController::class, 'show']);
 Route::post('/activate', [\App\Http\Controllers\Offline\ActivationController::class, 'store'])->middleware('throttle:10,1');
 

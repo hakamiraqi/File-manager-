@@ -8,6 +8,7 @@ import TextInput from '@/Components/TextInput.vue';
 import OauthButtons from '@/Components/OauthButtons.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import { watch } from 'vue';
 
 const { t } = useTrans();
 
@@ -28,6 +29,13 @@ const form = useForm({
     email: '',
     password: '',
     remember: false,
+});
+
+// A login card scanned into the field (a USB scanner types the card's address): sign in with it.
+const CARD = /(?:\/card\/|^)(EX[A-Za-z0-9]{22})$/;
+watch(() => form.email, (v) => {
+    const m = String(v || '').trim().match(CARD);
+    if (m) window.location.href = route('card.login', m[1]);
 });
 
 const submit = () => {

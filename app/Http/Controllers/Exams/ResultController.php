@@ -383,6 +383,43 @@ class ResultController extends Controller
         }, 'exam-'.$exam->id.'-results-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
+    /**
+     * The audit log of one attempt: every change of every answer as it reached the server, with
+     * its time and address (and the emergency file's answers), for appeals and cheating cases.
+     */
+    public function log(Request $request, Attempt $attempt): \Illuminate\Http\JsonResponse
+    {
+        $this->authorizeExam($request, $attempt->exam);
+        $order = array_values(array_map('intval', $attempt->question_order ?? []));
+        $questions = \App\Models\Exams\Question::with('choices')->whereIn('id', \App\Models\Exams\AnswerLog::where('exam_attempt_id', $attempt->id)->distinct()->pluck('exam_question_id'))->get()->keyBy('id');
+        $langs = $attempt->exam->languages ?? [];
+        $choice = fn ($q, $id) => ($c = $q?->choices->firstWhere('id', (int) $id)) ? \Illuminate\Support\Str::limit(strip_tags((string) \App\Models\Exams\Question::pick($c->body, app()->getLocale(), $langs)), 60) : '#'.$id;
+        $summary = function (?array $r, $q) use ($choice): string {
+            if ($r === null || $r === []) {
+                return '—';
+            }
+            if (isset($r['text']) && is_string($r['text'])) {
+                return \Illuminate\Support\Str::limit(strip_tags($r['text']), 300);
+            }
+            if (isset($r['choice'])) {
+                return $choice($q, $r['choice']);
+            }
+            if (isset($r['choices']) && is_array($r['choices'])) {
+                return collect($r['choices'])->map(fn ($id) => $choice($q, $id))->implode('، ');
+            }
+
+            return \Illuminate\Support\Str::limit(json_encode($r, JSON_UNESCAPED_UNICODE), 300);
+        };
+
+        return response()->json(['entries' => \App\Models\Exams\AnswerLog::where('exam_attempt_id', $attempt->id)->orderBy('id')->get()
+            ->map(fn ($l) => [
+                'at' => $l->created_at?->toIso8601String(),
+                'question' => ($i = array_search((int) $l->exam_question_id, $order, true)) === false ? null : $i + 1,
+                'answer' => $summary($l->response, $questions[$l->exam_question_id] ?? null),
+                'source' => $l->source, 'ip' => $l->ip,
+            ])]);
+    }
+
     private function authorizeExam(Request $request, Exam $exam): void
     {
         abort_unless($exam->isManageableBy($request->user()), 404);
