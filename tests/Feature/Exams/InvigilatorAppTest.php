@@ -2,10 +2,13 @@
 
 namespace Tests\Feature\Exams;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class InvigilatorAppTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_the_app_can_be_installed(): void
     {
         $m = $this->get('/manifest.webmanifest')->assertOk()->assertHeader('Content-Type', 'application/manifest+json')->json();
