@@ -54,6 +54,9 @@ Route::get('/manifest.webmanifest', function () {
     ], 200, ['Content-Type' => 'application/manifest+json']);
 });
 
+// A hall computer saying it is on (any page, every half minute): the halls' live map (HallMapController).
+Route::get('/hall/ping', [\App\Http\Controllers\Exams\HallMapController::class, 'ping'])->middleware('throttle:12,1')->name('hall.ping');
+
 // A printed login card's QR code (see CardLoginController).
 Route::get('/card/{code}', \App\Http\Controllers\Auth\CardLoginController::class)->where('code', '[A-Za-z0-9]{16,40}')->middleware('throttle:20,1')->name('card.login');
 

@@ -134,6 +134,13 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::post('/attempts/{attempt}/help-done', [$m, 'helpDone'])->name('help-done');
     $pcs = \App\Http\Controllers\Exams\ComputerController::class;
     Route::get('/computers', [$pcs, 'index'])->name('computers');
+    $hm = \App\Http\Controllers\Exams\HallMapController::class;
+    Route::get('/halls', [$hm, 'show'])->name('halls');
+    Route::get('/halls/live', [$hm, 'live'])->name('halls.live');
+    Route::get('/halls/edit', [$hm, 'edit'])->name('halls.edit');
+    Route::put('/halls', [$hm, 'update'])->name('halls.update');
+    Route::post('/halls/background', [$hm, 'background'])->middleware('throttle:20,1')->name('halls.background');
+    Route::get('/halls/labels', [$hm, 'labels'])->name('halls.labels');
     Route::get('/photos/{user}', [$m, 'photo'])->name('photo');
     Route::get('/health', [$m, 'health'])->name('health');
     Route::get('/central', [\App\Http\Controllers\Exams\CentralController::class, 'show'])->name('central');

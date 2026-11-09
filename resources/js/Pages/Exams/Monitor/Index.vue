@@ -3,7 +3,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { EyeIcon, SignalIcon, DevicePhoneMobileIcon } from '@heroicons/vue/24/outline';
+import { EyeIcon, SignalIcon, DevicePhoneMobileIcon, MapIcon } from '@heroicons/vue/24/outline';
 import ServerHealth from '@/Components/Exams/ServerHealth.vue';
 
 defineProps({ exams: Array });
@@ -33,6 +33,7 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElemen
                 <Link v-if="$page.props.auth?.user?.role === 'admin'" :href="route('exams.monitor.central')" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.central', 'السيرفر المركزي والقاعات') }}</Link>
                 <Link v-if="$page.props.auth?.user?.role === 'admin'" :href="route('exams.monitor.mirror')" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.mirror', 'السيرفر الاحتياطي') }}</Link>
                 <Link :href="route('exams.monitor.osce')" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.osce_assess', 'التقييم في المحطات') }}</Link>
+                <Link :href="route('exams.monitor.halls')" class="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-sm text-white"><MapIcon class="h-4 w-4" /> {{ t('hallmap.title', 'خريطة القاعات') }}</Link>
                 <Link :href="route('exams.monitor.computers')" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.computers', 'حواسيب القاعات') }}</Link>
             </div>
         </template>

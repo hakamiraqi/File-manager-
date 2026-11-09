@@ -57,3 +57,12 @@ window.addEventListener('beforeinstallprompt', (e) => {
     window.__installPrompt = e;
     window.dispatchEvent(new Event('app-installable'));
 });
+
+// «خريطة القاعات»: every page tells the server it is on, with the computer's clock, so the halls'
+// map shows which computers are on, which are off and which have a wrong time (only hall
+// computers, known by their address, are recorded).
+(() => {
+    const ping = () => { if (navigator.onLine !== false) fetch('/hall/ping?t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' }).catch(() => {}); };
+    setTimeout(ping, 1500);
+    setInterval(ping, 30000);
+})();
