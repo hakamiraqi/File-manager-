@@ -45,7 +45,8 @@ class LanguagesTest extends TestCase
 
         $admin->update(['locale' => 'tr']);
         $this->actingAs($admin)->get(route('admin.translations.index'))
-            ->assertInertia(fn (Assert $page) => $page->where('appSettings.locales.tr.label', 'Türkçe')->where('translations', fn ($tr) => $tr['nav.dashboard'] === 'Dosyalarım'));
+            // The interface is Arabic only (2026-11-09, by request), whatever the account's language.
+            ->assertInertia(fn (Assert $page) => $page->where('appSettings.locales.tr.label', 'Türkçe')->where('translations', fn ($tr) => ($tr['nav.dashboard'] ?? null) !== 'Dosyalarım'));
 
         $this->actingAs($admin)->patch(route('admin.languages.update', $tr), [
             'name' => 'Türkçe', 'dir' => 'ltr', 'flag' => 'icon:globe', 'is_active' => false,

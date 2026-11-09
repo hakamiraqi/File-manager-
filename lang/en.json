@@ -1400,5 +1400,20 @@
     "admin.users.import_group": "Add them to a group (optional)",
     "admin.users.print_title": "Users list",
     "admin.users.print_count": ":n users",
-    "admin.users.kind": "Role"
+    "admin.users.kind": "Role",
+    "exam.s_basics": "Basics",
+    "exam.s_timing": "Dates and time",
+    "exam.s_display": "What students see",
+    "exam.s_hall": "Hall and protection",
+    "exam.s_grading": "Marking and results",
+    "exam.settings": "Settings",
+    "exam.expand_all": "Expand all",
+    "exam.collapse_all": "Collapse all",
+    "exam.collapse": "Fold the question",
+    "exam.no_correct": "no correct answer",
+    "exam.has_errors": "has errors",
+    "exam.duplicate_q": "Duplicate the question",
+    "exam.delete_q_confirm": "Delete question :n?",
+    "exam.random_preview": ":n random questions from «:c»",
+    "exam.no_text": "(no text yet)"
 }

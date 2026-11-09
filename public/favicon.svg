@@ -1,21 +1,33 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="نظام الامتحانات">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+    <linearGradient id="ex-bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#6366f1"/>
-      <stop offset="1" stop-color="#4338ca"/>
+      <stop offset="1" stop-color="#3730a3"/>
     </linearGradient>
-    <linearGradient id="fold" x1="0" y1="0" x2="0" y2="1">
+    <linearGradient id="ex-sheet" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#ffffff"/>
       <stop offset="1" stop-color="#e0e7ff"/>
     </linearGradient>
+    <linearGradient id="ex-check" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <!-- folder back with tab -->
-  <path d="M96 150a30 30 0 0 1 30-30h92c10 0 19 5 25 13l18 25h125a30 30 0 0 1 30 30v20H96z" fill="#c7d2fe"/>
-  <!-- folder front -->
-  <path d="M86 214a26 26 0 0 1 26-26h288a26 26 0 0 1 26 26v156a30 30 0 0 1-30 30H116a30 30 0 0 1-30-30z" fill="url(#fold)"/>
-  <!-- open book -->
-  <path d="M256 262c-26-18-58-24-92-22v104c34-2 66 4 92 22z" fill="#4f46e5"/>
-  <path d="M256 262c26-18 58-24 92-22v104c-34-2-66 4-92 22z" fill="#6366f1"/>
-  <path d="M256 262v104" stroke="#e0e7ff" stroke-width="6" stroke-linecap="round"/>
+  <rect width="512" height="512" rx="116" fill="url(#ex-bg)"/>
+  <!-- the exam sheet, folded corner -->
+  <path d="M150 92h150l78 78v226a28 28 0 0 1-28 28H150a28 28 0 0 1-28-28V120a28 28 0 0 1 28-28z" fill="url(#ex-sheet)"/>
+  <path d="M300 92v54a24 24 0 0 0 24 24h54z" fill="#c7d2fe"/>
+  <!-- answer bubbles: one filled per row -->
+  <g fill="none" stroke="#a5b4fc" stroke-width="10">
+    <circle cx="184" cy="210" r="17"/><circle cx="234" cy="210" r="17"/><circle cx="284" cy="210" r="17"/>
+    <circle cx="184" cy="270" r="17"/><circle cx="234" cy="270" r="17"/><circle cx="284" cy="270" r="17"/>
+    <circle cx="184" cy="330" r="17"/><circle cx="234" cy="330" r="17"/><circle cx="284" cy="330" r="17"/>
+  </g>
+  <circle cx="234" cy="210" r="22" fill="#4f46e5"/>
+  <circle cx="284" cy="270" r="22" fill="#4f46e5"/>
+  <circle cx="184" cy="330" r="22" fill="#4f46e5"/>
+  <!-- the mark: a green check badge -->
+  <circle cx="362" cy="376" r="76" fill="#ffffff"/>
+  <circle cx="362" cy="376" r="64" fill="url(#ex-check)"/>
+  <path d="M330 378l22 22 44-46" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

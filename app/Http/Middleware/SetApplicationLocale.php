@@ -12,12 +12,9 @@ class SetApplicationLocale
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $locale = $request->user()?->locale
-            ?? Setting::get('default_locale', config('app.locale'));
-
-        if (\App\Support\Locales::isActive($locale)) {
-            App::setLocale($locale);
-        }
+        // The system is in Arabic only (2026-11-09, by request): everyone sees Arabic, whatever
+        // language their account was saved with. Exams keep their own languages for students.
+        App::setLocale('ar');
 
         return $next($request);
     }

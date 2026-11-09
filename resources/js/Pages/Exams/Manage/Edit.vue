@@ -1,13 +1,16 @@
 <script setup>
 import RichText from '@/Components/Exams/RichText.vue';
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref, toRaw, watch } from 'vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon, ClipboardDocumentCheckIcon, DocumentCheckIcon, AdjustmentsHorizontalIcon, EllipsisVerticalIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon, ClipboardDocumentCheckIcon, DocumentCheckIcon, AdjustmentsHorizontalIcon, EllipsisVerticalIcon,
+    ChevronDownIcon, ChevronUpIcon, DocumentDuplicateIcon, Cog6ToothIcon, QuestionMarkCircleIcon, ShieldCheckIcon, CheckCircleIcon, QueueListIcon, ScaleIcon, PencilIcon,
+    HashtagIcon, ArrowsRightLeftIcon, BarsArrowDownIcon, EllipsisHorizontalIcon, ArrowUpTrayIcon, CursorArrowRaysIcon, CalculatorIcon, ArrowsPointingInIcon, PhotoIcon,
+    MicrophoneIcon, PaintBrushIcon, InformationCircleIcon, SparklesIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon as CollapseAllIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] }, prerequisites: { type: Array, default: () => [] }, halls: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -21,6 +24,9 @@ const TYPE_LABELS = {
 };
 const LANG_LABELS = { ar: 'العربية', en: 'English', ku: 'کوردی' };
 const typeLabel = (type) => t('exam.type_' + type, TYPE_LABELS[type]);
+const TYPE_ICONS = { single: CheckCircleIcon, multiple: QueueListIcon, true_false: ScaleIcon, short: PencilIcon, numeric: HashtagIcon, matching: ArrowsRightLeftIcon,
+    ordering: BarsArrowDownIcon, cloze: EllipsisHorizontalIcon, essay: DocumentTextIcon, classify: Squares2X2Icon, upload: ArrowUpTrayIcon, hotspot: CursorArrowRaysIcon,
+    calculated: CalculatorIcon, drag_text: ArrowsPointingInIcon, drag_image: PhotoIcon, audio: MicrophoneIcon, drawing: PaintBrushIcon, description: InformationCircleIcon, random: SparklesIcon };
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 function fromProps(exam) {
@@ -35,6 +41,80 @@ function fromProps(exam) {
     return e;
 }
 const form = useForm(fromProps(props.exam));
+
+// ---- The editor in two tabs, like Google Forms (2026-11-09, by request): the questions, and the
+// settings split by subject. Each question folds to one line and opens to edit. ----
+const mainTab = ref('questions');
+const setTab = ref('basics');
+const SET_TABS = [
+    { key: 'basics', label: () => t('exam.s_basics', 'الأساسيات'), icon: DocumentTextIcon },
+    { key: 'timing', label: () => t('exam.s_timing', 'الموعد والوقت'), icon: ClockIcon },
+    { key: 'display', label: () => t('exam.s_display', 'العرض للطالب'), icon: EyeIcon },
+    { key: 'hall', label: () => t('exam.s_hall', 'القاعة والحماية'), icon: ShieldCheckIcon },
+    { key: 'grading', label: () => t('exam.s_grading', 'التصحيح والنتائج'), icon: ChartBarIcon },
+];
+const SECTION_OF = { title: 'basics', description: 'basics', languages: 'basics', subject: 'basics', stage: 'basics', department: 'basics', group_ids: 'basics', is_published: 'basics',
+    opens_at: 'timing', closes_at: 'timing', duration_minutes: 'timing', max_attempts: 'timing', sessions: 'timing', hall: 'timing', requires_exam_id: 'timing', is_assignment: 'timing',
+    navigation: 'display', calculator: 'display', direction: 'display', variants: 'display', resources: 'display',
+    access_code: 'hall', allowed_ips: 'hall', password: 'hall', seb_keys: 'hall', seb_required: 'hall',
+    grading_method: 'grading', pass_mark: 'grading', show_results: 'grading', results_at: 'grading', reviewer_email: 'grading', marking_tolerance: 'grading' };
+const tabErrors = computed(() => {
+    const out = {};
+    for (const k of Object.keys(form.errors)) out[k.startsWith('questions') ? 'questions' : SECTION_OF[k.split('.')[0]] ?? 'basics'] = true;
+    return out;
+});
+const qKeys = new WeakMap();
+let qSeq = 0;
+const qKey = (q) => { const raw = toRaw(q); if (!qKeys.has(raw)) qKeys.set(raw, raw.id ? 'id' + raw.id : 'n' + ++qSeq); return qKeys.get(raw); };
+const openQs = ref(new Set());
+const isOpen = (q) => openQs.value.has(qKey(q));
+function setOpen(q, on) { const s = new Set(openQs.value); on ? s.add(qKey(q)) : s.delete(qKey(q)); openQs.value = s; }
+const toggleQ = (q) => setOpen(q, !isOpen(q));
+const openAll = () => (openQs.value = new Set(form.questions.map(qKey)));
+const closeAll = () => (openQs.value = new Set());
+if (form.questions.length <= 3) openAll();
+// Saving with mistakes: straight to them.
+watch(() => form.errors, (e) => {
+    const ks = Object.keys(e);
+    if (!ks.length) return;
+    const qs = ks.filter((k) => k.startsWith('questions.'));
+    if (qs.length) {
+        mainTab.value = 'questions';
+        const s = new Set(openQs.value);
+        qs.forEach((k) => { const q = form.questions[Number(k.split('.')[1])]; if (q) s.add(qKey(q)); });
+        openQs.value = s;
+    } else {
+        mainTab.value = 'settings';
+        setTab.value = SECTION_OF[ks[0].split('.')[0]] ?? 'basics';
+    }
+});
+const plain = (h) => String(h ?? '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+function preview(q) {
+    if (q.type === 'random') {
+        const c = props.categories.find((x) => x.id === q.settings?.category_id);
+        return t('exam.random_preview', ':n أسئلة عشوائية من «:c»', { n: q.settings?.count ?? '?', c: c?.name ?? '—' });
+    }
+    return plain(q.body?.[form.languages[0]]) || plain(Object.values(q.body ?? {}).find((v) => plain(v))) || t('exam.no_text', '(بلا نص بعد)');
+}
+function needsAnswer(q) {
+    if (['single', 'multiple', 'true_false'].includes(q.type)) return !(q.choices ?? []).some((c) => c.is_correct);
+    if (q.type === 'short') return !(q.answersText ?? '').trim();
+    if (q.type === 'numeric') return String(q.settings?.answer ?? '').trim() === '';
+    return false;
+}
+function duplicateQ(i) {
+    const c = clone(form.questions[i]);
+    c.id = null;
+    (c.choices ?? []).forEach((ch) => (ch.id = null));
+    form.questions.splice(i + 1, 0, c);
+    setOpen(form.questions[i + 1], true);
+}
+function removeQ(i) {
+    const q = form.questions[i];
+    if ((q.id || plain(q.body?.[form.languages[0]])) && !confirm(t('exam.delete_q_confirm', 'حذف السؤال :n؟', { n: i + 1 }))) return;
+    form.questions.splice(i, 1);
+}
+const scrollToAdd = () => document.getElementById('add-q')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
 // ---- Settings templates: ready ones, and the teacher's own (settings only; title and questions stay) ----
 const PRESETS = [
@@ -94,6 +174,10 @@ function addQuestion(type) {
     if (type === 'numeric') q.settings = { answer: '', tolerance: '0' };
     if (type === 'random') q.settings = { category_id: props.categories[0]?.id ?? '', count: 5 };
     form.questions.push(q);
+    const added = form.questions[form.questions.length - 1];
+    setOpen(added, true);
+    mainTab.value = 'questions';
+    nextTick(() => document.getElementById('q-' + (form.questions.length - 1))?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
 }
 // ---- Open-book files ----
 const resourceBusy = ref(false);
@@ -334,50 +418,87 @@ function save() {
             </p>
             <p v-if="Object.keys(form.errors).length" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.fix_errors', 'لم يُحفظ: صحّح الأخطاء المشار إليها.') }}</p>
 
-            <!-- Settings -->
-            <!-- Settings templates -->
-            <section class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">
-                <span class="flex items-center gap-1 text-xs font-medium text-gray-500"><Squares2X2Icon class="h-4 w-4" /> {{ t('exam.templates', 'قوالب الإعدادات') }}</span>
-                <button v-for="p in PRESETS" :key="p.key" type="button" @click="applyTemplate(p.settings, t('exam.preset_' + p.key, p.name))"
-                    class="rounded-full border border-gray-300 px-3 py-1 hover:border-[var(--accent-500)] dark:border-gray-600">{{ t('exam.preset_' + p.key, p.name) }}</button>
-                <span v-for="tpl in myTemplates" :key="tpl.id" class="flex items-center rounded-full border border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700">
-                    <button type="button" @click="applyTemplate(tpl.settings, tpl.name)" class="ps-3 pe-1 py-1">{{ tpl.name }}</button>
-                    <button type="button" @click="removeTemplate(tpl)" class="pe-2 text-gray-400 hover:text-red-500" :title="t('action.delete', 'حذف')"><XMarkIcon class="h-3.5 w-3.5" /></button>
-                </span>
-                <span class="flex-1" />
-                <input v-model="templateName" maxlength="100" :placeholder="t('exam.template_name', 'اسم قالب جديد من الإعدادات الحالية')" class="w-56 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" @keydown.enter.prevent="saveTemplate" />
-                <button type="button" @click="saveTemplate" :disabled="!templateName.trim()" class="rounded-lg border border-gray-300 px-3 py-1 disabled:opacity-40 dark:border-gray-600">{{ t('exam.template_save', 'حفظ كقالب') }}</button>
-                <p v-if="templateMsg" class="w-full text-xs text-emerald-700 dark:text-emerald-400">{{ templateMsg }}</p>
-            </section>
+            <!-- Questions | Settings -->
+            <div class="sticky top-0 z-10 -mx-4 bg-gray-50/90 px-4 py-2 backdrop-blur sm:-mx-6 sm:px-6 dark:bg-gray-900/90">
+                <div class="mx-auto flex max-w-md rounded-2xl bg-gray-200/80 p-1 text-sm font-medium dark:bg-gray-800">
+                    <button type="button" @click="mainTab = 'questions'" class="flex flex-1 items-center justify-center gap-2 rounded-xl py-2 transition" :class="mainTab === 'questions' ? 'bg-white text-[var(--accent-700)] shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-400'">
+                        <QuestionMarkCircleIcon class="h-5 w-5" /> {{ t('exam.questions', 'الأسئلة') }}
+                        <span class="rounded-full bg-[var(--accent-50)] px-2 text-xs text-[var(--accent-700)] dark:bg-gray-600 dark:text-white">{{ form.questions.length }}</span>
+                        <span v-if="tabErrors.questions" class="h-2 w-2 rounded-full bg-red-500" />
+                    </button>
+                    <button type="button" @click="mainTab = 'settings'" class="flex flex-1 items-center justify-center gap-2 rounded-xl py-2 transition" :class="mainTab === 'settings' ? 'bg-white text-[var(--accent-700)] shadow-sm dark:bg-gray-700 dark:text-white' : 'text-gray-600 dark:text-gray-400'">
+                        <Cog6ToothIcon class="h-5 w-5" /> {{ t('exam.settings', 'الإعدادات') }}
+                        <span v-if="Object.keys(tabErrors).some((k) => k !== 'questions')" class="h-2 w-2 rounded-full bg-red-500" />
+                    </button>
+                </div>
+            </div>
 
-            <section class="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-                <div>
-                    <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.languages', 'لغات الامتحان (الأولى هي الافتراضية)') }}</p>
-                    <div class="flex flex-wrap gap-2">
-                        <button v-for="lang in languages" :key="lang" type="button" @click="toggleLanguage(lang)"
-                            class="rounded-full border px-3 py-1 text-sm" :class="form.languages.includes(lang) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'border-gray-300 dark:border-gray-600'">
-                            {{ LANG_LABELS[lang] ?? lang }}<StarIcon v-if="form.languages[0] === lang" class="ms-1 inline h-3.5 w-3.5 align-text-bottom" />
-                        </button>
+
+
+            <!-- Settings, in tabs (2026-11-09, by request): one subject at a time -->
+            <div v-show="mainTab === 'settings'" class="space-y-4">
+            <div class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <nav class="flex gap-1 overflow-x-auto border-b border-gray-100 p-2 dark:border-gray-700">
+                    <button v-for="st in SET_TABS" :key="st.key" type="button" @click="setTab = st.key"
+                        class="relative flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-sm font-medium transition"
+                        :class="setTab === st.key ? 'bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'text-gray-600 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50'">
+                        <component :is="st.icon" class="h-4 w-4" /> {{ st.label() }}
+                        <span v-if="tabErrors[st.key]" class="h-2 w-2 rounded-full bg-red-500" />
+                    </button>
+                </nav>
+                <div class="p-4 sm:p-5">
+                <section v-show="setTab === 'basics'" class="space-y-4">
+                    <h3 class="flex items-center gap-2 text-base font-semibold"><DocumentTextIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('exam.s_basics', 'الأساسيات') }}</h3>
+                    <div>
+                        <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.languages', 'لغات الامتحان (الأولى هي الافتراضية)') }}</p>
+                        <div class="flex flex-wrap gap-2">
+                            <button v-for="lang in languages" :key="lang" type="button" @click="toggleLanguage(lang)"
+                                class="rounded-full border px-3 py-1 text-sm" :class="form.languages.includes(lang) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'border-gray-300 dark:border-gray-600'">
+                                {{ LANG_LABELS[lang] ?? lang }}<StarIcon v-if="form.languages[0] === lang" class="ms-1 inline h-3.5 w-3.5 align-text-bottom" />
+                            </button>
+                        </div>
                     </div>
-                </div>
-                <div>
-                    <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.title', 'العنوان') }}</p>
-                    <LangInput v-model="form.title" :languages="form.languages" />
-                    <p v-if="form.errors.title" class="mt-1 text-xs text-red-600">{{ form.errors.title }}</p>
-                </div>
-                <div>
-                    <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.instructions', 'تعليمات للطالب') }}</p>
-                    <LangInput v-model="form.description" :languages="form.languages" multiline :rows="2" />
-                </div>
-                <div class="grid gap-3 sm:grid-cols-3">
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.subject', 'المادة') }}</span><input v-model="form.subject" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.stage', 'المرحلة / الصف') }}</span><input v-model="form.stage" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.department', 'القسم') }}</span><input v-model="form.department" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                </div>
-                <!-- Hall, sittings and open-book files -->
-                <div class="grid gap-3 sm:grid-cols-3">
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.hall', 'القاعة (للجدول)') }}</span>
-                        <input v-model="form.hall" list="halls" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <div>
+                        <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.title', 'العنوان') }}</p>
+                        <LangInput v-model="form.title" :languages="form.languages" />
+                        <p v-if="form.errors.title" class="mt-1 text-xs text-red-600">{{ form.errors.title }}</p>
+                    </div>
+                    <div>
+                        <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.instructions', 'تعليمات للطالب') }}</p>
+                        <LangInput v-model="form.description" :languages="form.languages" multiline :rows="2" />
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.subject', 'المادة') }}</span><input v-model="form.subject" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.stage', 'المرحلة / الصف') }}</span><input v-model="form.stage" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.department', 'القسم') }}</span><input v-model="form.department" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm" :class="form.is_published ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-gray-700'">
+                            {{ t('exam.publish', 'منشور (يراه الطلاب)') }} <ToggleSwitch v-model="form.is_published" /></label>
+                    </div>
+                    <div>
+                        <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.given_to', 'يُعطى إلى') }}</p>
+                        <div class="flex flex-wrap gap-2">
+                            <button v-for="g in groups" :key="g.id" type="button" @click="toggleGroup(g.id)"
+                                class="rounded-full border px-3 py-1 text-sm" :class="form.group_ids?.includes(g.id) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'border-gray-300 dark:border-gray-600'">
+                                {{ g.name }} <span class="text-xs text-gray-400">({{ g.members }})</span>
+                            </button>
+                            <Link :href="route('exams.manage.groups')" class="rounded-full border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-500 dark:border-gray-600">+ {{ t('exam.groups', 'الصفوف والمجموعات') }}</Link>
+                        </div>
+                        <p class="mt-1 text-xs" :class="form.group_ids?.length ? 'text-gray-500' : 'text-amber-600'">{{ form.group_ids?.length ? t('exam.given_to_groups', 'يراه طلاب المجموعات المختارة فقط.') : t('exam.given_to_all', 'لم تُختر مجموعة: يراه كل الطلاب.') }}</p>
+                    </div>
+                </section>
+                <section v-show="setTab === 'timing'" class="space-y-4">
+                    <h3 class="flex items-center gap-2 text-base font-semibold"><ClockIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('exam.s_timing', 'الموعد والوقت') }}</h3>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.opens', 'يفتح') }}</span><input v-model="form.opens_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.closes', 'يغلق') }}</span><input v-model="form.closes_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <span v-if="form.errors.closes_at" class="text-xs text-red-600">{{ form.errors.closes_at }}</span></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.duration_min', 'المدة (دقيقة، فارغ = بلا حد)') }}</span><input v-model="form.duration_minutes" type="number" min="1" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.max_attempts', 'عدد المحاولات') }}</span><input v-model="form.max_attempts" type="number" min="1" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.hall', 'القاعة (للجدول)') }}</span>
+                            <input v-model="form.hall" list="halls" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    </div>
                     <div class="text-sm sm:col-span-2">
                         <p class="mb-1 flex items-center gap-2 text-xs text-gray-500">{{ t('exam.sessions', 'جلسات متعددة للامتحان نفسه (اختياري)') }}
                             <button type="button" @click="form.sessions.push({ label: '', opens_at: '', closes_at: '' })" class="flex items-center gap-1 text-[var(--accent-600)]"><PlusIcon class="h-3.5 w-3.5" /> {{ t('exam.add_session', 'جلسة') }}</button></p>
@@ -390,6 +511,52 @@ function save() {
                         <p v-if="form.sessions.length" class="text-xs text-gray-500">{{ t('exam.sessions_hint', 'كل طالب يدخل في جلسته فقط؛ يوزّعهم المراقب من لوحة المراقبة. الأسئلة العشوائية تختلف لكل طالب.') }}</p>
                         <span v-if="form.errors.sessions" class="text-xs text-red-600">{{ form.errors.sessions }}</span>
                     </div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.assignment', 'واجب') }}<span class="block text-xs text-gray-500">{{ t('exam.assignment_hint', 'بلا مؤقت: يُسلَّم قبل موعد الإغلاق، ويخرج الطالب ويعود متى شاء. اترك المدة فارغة.') }}</span></span>
+                            <ToggleSwitch v-model="form.is_assignment" /></label>
+                        <label class="block rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.prerequisite', 'يُشترط قبله إكمال امتحان (تجريبي عادةً)') }}</span>
+                            <select v-model="form.requires_exam_id" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option :value="null">{{ t('exam.no_prerequisite', 'لا شيء') }}</option>
+                                <option v-for="p in prerequisites" :key="p.id" :value="p.id">{{ p.title }}{{ p.practice ? ' (' + t('exam.practice', 'امتحان تدريبي') + ')' : '' }}</option>
+                            </select>
+                            <span v-if="form.errors.requires_exam_id" class="text-xs text-red-600">{{ form.errors.requires_exam_id }}</span></label>
+                    </div>
+                </section>
+                <section v-show="setTab === 'display'" class="space-y-4">
+                    <h3 class="flex items-center gap-2 text-base font-semibold"><EyeIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('exam.s_display', 'العرض للطالب') }}</h3>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.navigation', 'التنقل بين الأسئلة') }}</span>
+                            <select v-model="form.navigation" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option value="free">{{ t('exam.nav_free', 'حر (يرجع ويتقدّم)') }}</option>
+                                <option value="sequential">{{ t('exam.nav_sequential', 'بالترتيب بلا رجوع') }}</option>
+                            </select></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calculator', 'آلة حاسبة') }}</span>
+                            <select v-model="form.calculator" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option value="none">{{ t('exam.calc_none', 'لا') }}</option>
+                                <option value="basic">{{ t('exam.calc_basic', 'عادية') }}</option>
+                                <option value="scientific">{{ t('exam.calc_scientific', 'علمية') }}</option>
+                            </select></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.direction', 'اتجاه النص') }}</span>
+                            <select v-model="form.direction" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option value="auto">{{ t('exam.dir_auto', 'حسب اللغة الأولى') }}</option>
+                                <option value="rtl">{{ t('exam.dir_rtl', 'من اليمين لليسار') }}</option>
+                                <option value="ltr">{{ t('exam.dir_ltr', 'من اليسار لليمين') }}</option>
+                            </select></label>
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_questions', 'خلط ترتيب الأسئلة') }} <ToggleSwitch v-model="form.shuffle_questions" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_choices', 'خلط ترتيب الخيارات') }} <ToggleSwitch v-model="form.shuffle_choices" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.variants', 'نسخ الامتحان') }}<span class="block text-xs text-gray-500">{{ t('exam.variants_hint', 'الحواسيب المتجاورة تأخذ نسخاً مختلفة (أ، ب، ج) بترتيب أسئلة وخيارات مختلف') }}</span></span>
+                            <select v-model.number="form.variants" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option :value="1">{{ t('exam.variants_one', 'نسخة واحدة') }}</option>
+                                <option v-for="n in [2, 3, 4]" :key="n" :value="n">{{ t('exam.variants_n', ':n نسخ', { n }) }}</option>
+                            </select></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.practice', 'امتحان تدريبي') }}<span class="block text-xs text-gray-500">{{ t('exam.practice_hint', 'زر «تحقّق» لكل سؤال يُظهر الإجابة فوراً، وتُثبَّت بعده.') }}</span></span>
+                            <ToggleSwitch v-model="form.is_practice" /></label>
+                    </div>
                     <div class="text-sm sm:col-span-3">
                         <p class="mb-1 flex items-center gap-2 text-xs text-gray-500">{{ t('exam.resources', 'امتحان مفتوح الكتاب: ملفات PDF يفتحها الطالب داخل الامتحان') }}
                             <label class="flex cursor-pointer items-center gap-1 text-[var(--accent-600)]"><input type="file" accept="application/pdf" class="sr-only" @change="uploadResource" /><PaperClipIcon class="h-3.5 w-3.5" /> {{ resourceBusy ? '…' : t('exam.add_pdf', 'إضافة PDF') }}</label></p>
@@ -401,148 +568,136 @@ function save() {
                             </span>
                         </div>
                     </div>
-                    <datalist id="halls"><option v-for="h in halls" :key="h" :value="h" /></datalist>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-3">
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.opens', 'يفتح') }}</span><input v-model="form.opens_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.closes', 'يغلق') }}</span><input v-model="form.closes_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
-                        <span v-if="form.errors.closes_at" class="text-xs text-red-600">{{ form.errors.closes_at }}</span></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.duration_min', 'المدة (دقيقة، فارغ = بلا حد)') }}</span><input v-model="form.duration_minutes" type="number" min="1" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.max_attempts', 'عدد المحاولات') }}</span><input v-model="form.max_attempts" type="number" min="1" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.grading', 'الدرجة المعتمدة') }}</span>
-                        <select v-model="form.grading_method" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
-                            <option value="highest">{{ t('exam.grading_highest', 'أعلى درجة') }}</option>
-                            <option value="average">{{ t('exam.grading_average', 'المعدّل') }}</option>
-                            <option value="first">{{ t('exam.grading_first', 'المحاولة الأولى') }}</option>
-                            <option value="last">{{ t('exam.grading_last', 'المحاولة الأخيرة') }}</option>
-                        </select></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.pass_mark', 'درجة النجاح %') }}</span><input v-model="form.pass_mark" type="number" min="0" max="100" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.password', 'كلمة مرور الامتحان (اختياري)') }}</span><input v-model="form.password" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.direction', 'اتجاه النص') }}</span>
-                        <select v-model="form.direction" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
-                            <option value="auto">{{ t('exam.dir_auto', 'حسب اللغة الأولى') }}</option>
-                            <option value="rtl">{{ t('exam.dir_rtl', 'من اليمين لليسار') }}</option>
-                            <option value="ltr">{{ t('exam.dir_ltr', 'من اليسار لليمين') }}</option>
-                        </select></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.navigation', 'التنقل بين الأسئلة') }}</span>
-                        <select v-model="form.navigation" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
-                            <option value="free">{{ t('exam.nav_free', 'حر (يرجع ويتقدّم)') }}</option>
-                            <option value="sequential">{{ t('exam.nav_sequential', 'بالترتيب بلا رجوع') }}</option>
-                        </select></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.calculator', 'آلة حاسبة') }}</span>
-                        <select v-model="form.calculator" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
-                            <option value="none">{{ t('exam.calc_none', 'لا') }}</option>
-                            <option value="basic">{{ t('exam.calc_basic', 'عادية') }}</option>
-                            <option value="scientific">{{ t('exam.calc_scientific', 'علمية') }}</option>
-                        </select></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.show_results', 'إظهار النتيجة للطالب') }}</span>
-                        <select v-model="form.show_results" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
-                            <option value="after_submit">{{ t('exam.after_submit', 'بعد التسليم مباشرة') }}</option>
-                            <option value="after_close">{{ t('exam.after_close', 'بعد إغلاق الامتحان') }}</option>
-                            <option value="at_date">{{ t('exam.at_date', 'في موعد أحدّده') }}</option>
-                            <option value="never">{{ t('exam.never', 'لا تُظهر') }}</option>
-                        </select></label>
-                    <label v-if="form.show_results === 'at_date'" class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.results_at', 'موعد إعلان النتائج') }}</span>
-                        <input v-model="form.results_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
-                        <span v-if="form.errors.results_at" class="text-xs text-red-600">{{ form.errors.results_at }}</span></label>
-                </div>
-                <div>
-                    <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.given_to', 'يُعطى إلى') }}</p>
-                    <div class="flex flex-wrap gap-2">
-                        <button v-for="g in groups" :key="g.id" type="button" @click="toggleGroup(g.id)"
-                            class="rounded-full border px-3 py-1 text-sm" :class="form.group_ids?.includes(g.id) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-white' : 'border-gray-300 dark:border-gray-600'">
-                            {{ g.name }} <span class="text-xs text-gray-400">({{ g.members }})</span>
-                        </button>
-                        <Link :href="route('exams.manage.groups')" class="rounded-full border border-dashed border-gray-300 px-3 py-1 text-sm text-gray-500 dark:border-gray-600">+ {{ t('exam.groups', 'الصفوف والمجموعات') }}</Link>
+                </section>
+                <section v-show="setTab === 'hall'" class="space-y-4">
+                    <h3 class="flex items-center gap-2 text-base font-semibold"><ShieldCheckIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('exam.s_hall', 'القاعة والحماية') }}</h3>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.access_code', 'رمز دخول القاعة (يعلنه المراقب عند البدء)') }}</span>
+                            <span class="flex gap-2"><input v-model="form.access_code" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-sm uppercase tracking-widest dark:border-gray-600 dark:bg-gray-700" />
+                                <button type="button" @click="newAccessCode" class="shrink-0 rounded-lg border border-gray-300 px-3 text-xs dark:border-gray-600">{{ t('exam.generate', 'توليد') }}</button></span></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.allowed_ips', 'أجهزة القاعة فقط (عناوين أو نطاقات، مثل 192.168.1.0/24)') }}</span>
+                            <input v-model="form.allowed_ips" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <span v-if="form.errors.allowed_ips" class="text-xs text-red-600">{{ form.errors.allowed_ips }}</span></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.password', 'كلمة مرور الامتحان (اختياري)') }}</span><input v-model="form.password" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                     </div>
-                    <p class="mt-1 text-xs" :class="form.group_ids?.length ? 'text-gray-500' : 'text-amber-600'">{{ form.group_ids?.length ? t('exam.given_to_groups', 'يراه طلاب المجموعات المختارة فقط.') : t('exam.given_to_all', 'لم تُختر مجموعة: يراه كل الطلاب.') }}</p>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.access_code', 'رمز دخول القاعة (يعلنه المراقب عند البدء)') }}</span>
-                        <span class="flex gap-2"><input v-model="form.access_code" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-sm uppercase tracking-widest dark:border-gray-600 dark:bg-gray-700" />
-                            <button type="button" @click="newAccessCode" class="shrink-0 rounded-lg border border-gray-300 px-3 text-xs dark:border-gray-600">{{ t('exam.generate', 'توليد') }}</button></span></label>
-                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.allowed_ips', 'أجهزة القاعة فقط (عناوين أو نطاقات، مثل 192.168.1.0/24)') }}</span>
-                        <input v-model="form.allowed_ips" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-sm dark:border-gray-600 dark:bg-gray-700" />
-                        <span v-if="form.errors.allowed_ips" class="text-xs text-red-600">{{ form.errors.allowed_ips }}</span></label>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.resume_code', 'رمز المتابعة عند الخروج') }}<span class="block text-xs text-gray-500">{{ t('exam.resume_code_hint', 'من يغادر الصفحة أو يفتحها من جديد يُقفل حتى تعطيه رمزه') }}</span></span>
-                        <ToggleSwitch v-model="form.resume_code_required" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.bind_computers', 'تثبيت كل طالب على حاسبته') }}<span class="block text-xs text-gray-500">{{ t('exam.bind_computers_hint', 'لا يفتح امتحانه إلا من عنوان حاسبته') }}</span></span>
-                        <ToggleSwitch v-model="form.bind_computers" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.variants', 'نسخ الامتحان') }}<span class="block text-xs text-gray-500">{{ t('exam.variants_hint', 'الحواسيب المتجاورة تأخذ نسخاً مختلفة (أ، ب، ج) بترتيب أسئلة وخيارات مختلف') }}</span></span>
-                        <select v-model.number="form.variants" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700">
-                            <option :value="1">{{ t('exam.variants_one', 'نسخة واحدة') }}</option>
-                            <option v-for="n in [2, 3, 4]" :key="n" :value="n">{{ t('exam.variants_n', ':n نسخ', { n }) }}</option>
-                        </select></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.protect', 'حماية الأسئلة') }}<span class="block text-xs text-gray-500">{{ t('exam.protect_hint', 'اسم الطالب علامةً مائية على الصفحة، ومنع النسخ والتحديد والقائمة اليمنى') }}</span></span>
-                        <ToggleSwitch v-model="form.protect_content" /></label>
-                </div>
-                <div class="grid gap-3 sm:grid-cols-2">
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_questions', 'خلط ترتيب الأسئلة') }} <ToggleSwitch v-model="form.shuffle_questions" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_choices', 'خلط ترتيب الخيارات') }} <ToggleSwitch v-model="form.shuffle_choices" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.show_answers', 'إظهار الإجابات الصحيحة في المراجعة') }} <ToggleSwitch v-model="form.show_answers" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm" :class="form.is_published ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-gray-700'">
-                        {{ t('exam.publish', 'منشور (يراه الطلاب)') }} <ToggleSwitch v-model="form.is_published" /></label>
-                    <label v-if="exam.online" class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.hall_sync', 'يُرسل إلى سيرفرات القاعات') }}<span class="block text-xs text-gray-500">{{ t('exam.hall_sync_hint', 'سيرفرات القاعات المرتبطة تأخذه (غير منشور) عند اتصالها بالإنترنت، وترجع نتائجه إلى هنا.') }}</span></span>
-                        <ToggleSwitch v-model="form.hall_sync" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.assignment', 'واجب') }}<span class="block text-xs text-gray-500">{{ t('exam.assignment_hint', 'بلا مؤقت: يُسلَّم قبل موعد الإغلاق، ويخرج الطالب ويعود متى شاء. اترك المدة فارغة.') }}</span></span>
-                        <ToggleSwitch v-model="form.is_assignment" /></label>
-                    <label class="block rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.prerequisite', 'يُشترط قبله إكمال امتحان (تجريبي عادةً)') }}</span>
-                        <select v-model="form.requires_exam_id" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
-                            <option :value="null">{{ t('exam.no_prerequisite', 'لا شيء') }}</option>
-                            <option v-for="p in prerequisites" :key="p.id" :value="p.id">{{ p.title }}{{ p.practice ? ' (' + t('exam.practice', 'امتحان تدريبي') + ')' : '' }}</option>
-                        </select>
-                        <span v-if="form.errors.requires_exam_id" class="text-xs text-red-600">{{ form.errors.requires_exam_id }}</span></label>
-                    <div class="space-y-1 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <label class="block"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.reviewer', 'مراجع الأسئلة قبل النشر (بريد أستاذ آخر، اختياري)') }}</span>
-                            <input v-model="form.reviewer_email" type="email" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                        <span v-if="form.errors.reviewer_email" class="text-xs text-red-600">{{ form.errors.reviewer_email }}</span>
-                        <p v-if="exam.review" class="flex items-start gap-1 text-xs" :class="{ approved: 'text-emerald-700 dark:text-emerald-400', returned: 'text-red-600', pending: 'text-amber-700 dark:text-amber-300' }[exam.review.status]">
-                            <CheckIcon v-if="exam.review.status === 'approved'" class="h-4 w-4 shrink-0" /><ClockIcon v-else class="h-4 w-4 shrink-0" />
-                            <span>{{ exam.review.status === 'approved' ? t('exam.review_ok', 'وافق :n على الأسئلة.', { n: exam.review.by }) : exam.review.status === 'returned' ? t('exam.review_back', 'أعادها :n للتعديل:', { n: exam.review.by }) : t('exam.review_wait', 'بانتظار مراجعة :n؛ لا يُنشر قبلها.', { n: exam.review.by }) }}
-                                <template v-if="exam.review.note"> {{ exam.review.note }}</template></span></p>
-                        <span v-if="form.errors.is_published" class="block text-xs text-red-600">{{ form.errors.is_published }}</span>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.resume_code', 'رمز المتابعة عند الخروج') }}<span class="block text-xs text-gray-500">{{ t('exam.resume_code_hint', 'من يغادر الصفحة أو يفتحها من جديد يُقفل حتى تعطيه رمزه') }}</span></span>
+                            <ToggleSwitch v-model="form.resume_code_required" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.bind_computers', 'تثبيت كل طالب على حاسبته') }}<span class="block text-xs text-gray-500">{{ t('exam.bind_computers_hint', 'لا يفتح امتحانه إلا من عنوان حاسبته') }}</span></span>
+                            <ToggleSwitch v-model="form.bind_computers" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.protect', 'حماية الأسئلة') }}<span class="block text-xs text-gray-500">{{ t('exam.protect_hint', 'اسم الطالب علامةً مائية على الصفحة، ومنع النسخ والتحديد والقائمة اليمنى') }}</span></span>
+                            <ToggleSwitch v-model="form.protect_content" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.seb_required', 'يُؤدّى في Safe Exam Browser فقط') }}<span class="block text-xs text-gray-500">{{ t('exam.seb_hint', 'متصفح مقفل للامتحانات الحضورية: لا تبويبات ولا تطبيقات أخرى.') }}</span></span>
+                            <ToggleSwitch v-model="form.seb_required" /></label>
+                        <label v-if="form.seb_required" class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.seb_keys', 'مفاتيح SEB (Config Key أو Browser Exam Key، سطر لكل مفتاح؛ فارغ = يكفي أن يكون المتصفح SEB)') }}</span>
+                            <textarea v-model="form.seb_keys" rows="2" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-xs dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label v-if="exam.online" class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.hall_sync', 'يُرسل إلى سيرفرات القاعات') }}<span class="block text-xs text-gray-500">{{ t('exam.hall_sync_hint', 'سيرفرات القاعات المرتبطة تأخذه (غير منشور) عند اتصالها بالإنترنت، وترجع نتائجه إلى هنا.') }}</span></span>
+                            <ToggleSwitch v-model="form.hall_sync" /></label>
                     </div>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.practice', 'امتحان تدريبي') }}<span class="block text-xs text-gray-500">{{ t('exam.practice_hint', 'زر «تحقّق» لكل سؤال يُظهر الإجابة فوراً، وتُثبَّت بعده.') }}</span></span>
-                        <ToggleSwitch v-model="form.is_practice" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.seb_required', 'يُؤدّى في Safe Exam Browser فقط') }}<span class="block text-xs text-gray-500">{{ t('exam.seb_hint', 'متصفح مقفل للامتحانات الحضورية: لا تبويبات ولا تطبيقات أخرى.') }}</span></span>
-                        <ToggleSwitch v-model="form.seb_required" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.double_marking', 'تصحيح مزدوج للمقالي والملفات') }}<span class="block text-xs text-gray-500">{{ t('exam.double_marking_hint', 'مصحّحان مستقلان؛ تُعتمد المتوسط إذا تقاربت درجتاهما. أضف المصحّحين من صفحة النتائج.') }}</span></span>
-                        <ToggleSwitch v-model="form.double_marking" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.anonymous_marking', 'تصحيح دون أسماء') }}<span class="block text-xs text-gray-500">{{ t('exam.anonymous_hint', 'يرى المصحّح رقم ورقة بدل اسم الطالب') }}</span></span>
-                        <ToggleSwitch v-model="form.anonymous_marking" /></label>
-                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
-                        <span>{{ t('exam.appeals_open', 'السماح بالاعتراض على الدرجات') }}<span class="block text-xs text-gray-500">{{ t('exam.appeals_hint', 'يرسل الطالب طلب مراجعة لسؤال من صفحة نتيجته') }}</span></span>
-                        <ToggleSwitch v-model="form.appeals_open" /></label>
-                    <label v-if="form.double_marking" class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.marking_tolerance', 'أقصى فرق مقبول بين المصحّحَين (% من درجة السؤال)') }}</span>
-                        <input v-model="form.marking_tolerance" type="number" min="0" max="100" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label v-if="form.seb_required" class="text-sm sm:col-span-2"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.seb_keys', 'مفاتيح SEB (Config Key أو Browser Exam Key، سطر لكل مفتاح؛ فارغ = يكفي أن يكون المتصفح SEB)') }}</span>
-                        <textarea v-model="form.seb_keys" rows="2" dir="ltr" class="w-full rounded-lg border-gray-300 font-mono text-xs dark:border-gray-600 dark:bg-gray-700" /></label>
+                </section>
+                <section v-show="setTab === 'grading'" class="space-y-4">
+                    <h3 class="flex items-center gap-2 text-base font-semibold"><ChartBarIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('exam.s_grading', 'التصحيح والنتائج') }}</h3>
+                    <div class="grid gap-3 sm:grid-cols-3">
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.grading', 'الدرجة المعتمدة') }}</span>
+                            <select v-model="form.grading_method" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option value="highest">{{ t('exam.grading_highest', 'أعلى درجة') }}</option>
+                                <option value="average">{{ t('exam.grading_average', 'المعدّل') }}</option>
+                                <option value="first">{{ t('exam.grading_first', 'المحاولة الأولى') }}</option>
+                                <option value="last">{{ t('exam.grading_last', 'المحاولة الأخيرة') }}</option>
+                            </select></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.pass_mark', 'درجة النجاح %') }}</span><input v-model="form.pass_mark" type="number" min="0" max="100" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.show_results', 'إظهار النتيجة للطالب') }}</span>
+                            <select v-model="form.show_results" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option value="after_submit">{{ t('exam.after_submit', 'بعد التسليم مباشرة') }}</option>
+                                <option value="after_close">{{ t('exam.after_close', 'بعد إغلاق الامتحان') }}</option>
+                                <option value="at_date">{{ t('exam.at_date', 'في موعد أحدّده') }}</option>
+                                <option value="never">{{ t('exam.never', 'لا تُظهر') }}</option>
+                            </select></label>
+                        <label v-if="form.show_results === 'at_date'" class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.results_at', 'موعد إعلان النتائج') }}</span>
+                            <input v-model="form.results_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <span v-if="form.errors.results_at" class="text-xs text-red-600">{{ form.errors.results_at }}</span></label>
+                    </div>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.show_answers', 'إظهار الإجابات الصحيحة في المراجعة') }} <ToggleSwitch v-model="form.show_answers" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.appeals_open', 'السماح بالاعتراض على الدرجات') }}<span class="block text-xs text-gray-500">{{ t('exam.appeals_hint', 'يرسل الطالب طلب مراجعة لسؤال من صفحة نتيجته') }}</span></span>
+                            <ToggleSwitch v-model="form.appeals_open" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.double_marking', 'تصحيح مزدوج للمقالي والملفات') }}<span class="block text-xs text-gray-500">{{ t('exam.double_marking_hint', 'مصحّحان مستقلان؛ تُعتمد المتوسط إذا تقاربت درجتاهما. أضف المصحّحين من صفحة النتائج.') }}</span></span>
+                            <ToggleSwitch v-model="form.double_marking" /></label>
+                        <label v-if="form.double_marking" class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.marking_tolerance', 'أقصى فرق مقبول بين المصحّحَين (% من درجة السؤال)') }}</span>
+                            <input v-model="form.marking_tolerance" type="number" min="0" max="100" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <span>{{ t('exam.anonymous_marking', 'تصحيح دون أسماء') }}<span class="block text-xs text-gray-500">{{ t('exam.anonymous_hint', 'يرى المصحّح رقم ورقة بدل اسم الطالب') }}</span></span>
+                            <ToggleSwitch v-model="form.anonymous_marking" /></label>
+                        <div class="space-y-1 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                            <label class="block"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.reviewer', 'مراجع الأسئلة قبل النشر (بريد أستاذ آخر، اختياري)') }}</span>
+                                <input v-model="form.reviewer_email" type="email" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                            <span v-if="form.errors.reviewer_email" class="text-xs text-red-600">{{ form.errors.reviewer_email }}</span>
+                            <p v-if="exam.review" class="flex items-start gap-1 text-xs" :class="{ approved: 'text-emerald-700 dark:text-emerald-400', returned: 'text-red-600', pending: 'text-amber-700 dark:text-amber-300' }[exam.review.status]">
+                                <CheckIcon v-if="exam.review.status === 'approved'" class="h-4 w-4 shrink-0" /><ClockIcon v-else class="h-4 w-4 shrink-0" />
+                                <span>{{ exam.review.status === 'approved' ? t('exam.review_ok', 'وافق :n على الأسئلة.', { n: exam.review.by }) : exam.review.status === 'returned' ? t('exam.review_back', 'أعادها :n للتعديل:', { n: exam.review.by }) : t('exam.review_wait', 'بانتظار مراجعة :n؛ لا يُنشر قبلها.', { n: exam.review.by }) }}
+                                    <template v-if="exam.review.note"> {{ exam.review.note }}</template></span></p>
+                            <span v-if="form.errors.is_published" class="block text-xs text-red-600">{{ form.errors.is_published }}</span>
+                        </div>
+                    </div>
+                </section>
+                <datalist id="halls"><option v-for="h in halls" :key="h" :value="h" /></datalist>
                 </div>
+            </div>
+            <!-- Settings templates -->
+            <section class="flex flex-wrap items-center gap-2 rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4 text-sm dark:border-gray-600 dark:bg-gray-800/60">
+                <span class="flex items-center gap-1 text-xs font-medium text-gray-500"><Squares2X2Icon class="h-4 w-4" /> {{ t('exam.templates', 'قوالب الإعدادات') }}</span>
+                <button v-for="p in PRESETS" :key="p.key" type="button" @click="applyTemplate(p.settings, t('exam.preset_' + p.key, p.name))"
+                    class="rounded-full border border-gray-300 px-3 py-1 hover:border-[var(--accent-500)] dark:border-gray-600">{{ t('exam.preset_' + p.key, p.name) }}</button>
+                <span v-for="tpl in myTemplates" :key="tpl.id" class="flex items-center rounded-full border border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700">
+                    <button type="button" @click="applyTemplate(tpl.settings, tpl.name)" class="ps-3 pe-1 py-1">{{ tpl.name }}</button>
+                    <button type="button" @click="removeTemplate(tpl)" class="pe-2 text-gray-400 hover:text-red-500" :title="t('action.delete', 'حذف')"><XMarkIcon class="h-3.5 w-3.5" /></button>
+                </span>
+                <span class="flex-1" />
+                <input v-model="templateName" maxlength="100" :placeholder="t('exam.template_name', 'اسم قالب جديد من الإعدادات الحالية')" class="w-56 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" @keydown.enter.prevent="saveTemplate" />
+                <button type="button" @click="saveTemplate" :disabled="!templateName.trim()" class="rounded-lg border border-gray-300 px-3 py-1 disabled:opacity-40 dark:border-gray-600">{{ t('exam.template_save', 'حفظ كقالب') }}</button>
+                <p v-if="templateMsg" class="w-full text-xs text-emerald-700 dark:text-emerald-400">{{ templateMsg }}</p>
             </section>
+            </div>
 
             <!-- Questions -->
-            <div class="flex flex-wrap items-center justify-between gap-y-1">
+            <div v-show="mainTab === 'questions'" class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2">
                 <h3 class="font-semibold">{{ t('exam.questions', 'الأسئلة') }} ({{ form.questions.length }})</h3>
-                <span class="text-sm text-gray-500">{{ t('exam.total_points', 'مجموع الدرجات') }}: {{ totalPoints }}</span>
+                <span class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-600 dark:bg-gray-700 dark:text-gray-300">{{ t('exam.total_points', 'مجموع الدرجات') }}: {{ totalPoints }}</span>
+                <span class="flex-1" />
+                <template v-if="form.questions.length > 1">
+                    <button type="button" @click="openAll" class="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"><ArrowsPointingOutIcon class="h-4 w-4" /> {{ t('exam.expand_all', 'فتح الكل') }}</button>
+                    <button type="button" @click="closeAll" class="inline-flex items-center gap-1 rounded-lg border border-gray-300 px-2.5 py-1 text-xs hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700"><CollapseAllIcon class="h-4 w-4" /> {{ t('exam.collapse_all', 'طي الكل') }}</button>
+                </template>
                 <p class="w-full text-xs text-gray-400">{{ t('exam.math_hint', 'المعادلات في أي نص: اكتبها بين $…$ مثل $x^2 + \\frac{1}{2}$، أو استعمل «نص منسّق» لزر المعادلة والجداول والصور والصوت والفيديو.') }}</p>
             </div>
 
-            <section v-for="(q, i) in form.questions" :key="q.id ?? 'new' + i" class="space-y-3 rounded-xl border bg-white p-5 dark:bg-gray-800"
-                :class="errorsFor(i).length ? 'border-red-300 dark:border-red-700' : 'border-gray-200 dark:border-gray-700'">
+            <section v-for="(q, i) in form.questions" :key="qKey(q)" :id="'q-' + i" class="scroll-mt-20 rounded-2xl border bg-white shadow-sm transition dark:bg-gray-800"
+                :class="[errorsFor(i).length ? 'border-red-300 dark:border-red-700' : 'border-gray-200 dark:border-gray-700', isOpen(q) ? 'space-y-3 border-s-4 !border-s-[var(--accent-600)] p-4 sm:p-5' : 'hover:border-[var(--accent-500)]']">
+                <!-- Folded: one line to see and open it -->
+                <button v-if="!isOpen(q)" type="button" @click="toggleQ(q)" class="flex w-full items-center gap-3 p-3 text-start sm:px-4">
+                    <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-50)] text-sm font-bold text-[var(--accent-700)] dark:bg-gray-700 dark:text-white">{{ i + 1 }}</span>
+                    <span class="min-w-0 flex-1">
+                        <span class="block truncate text-sm font-medium" dir="auto">{{ preview(q) }}</span>
+                        <span class="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                            <span class="inline-flex items-center gap-1"><component :is="TYPE_ICONS[q.type] ?? QuestionMarkCircleIcon" class="h-3.5 w-3.5" /> {{ typeLabel(q.type) }}</span>
+                            <span v-if="q.type !== 'description'">· {{ q.points }} {{ t('exam.points', 'درجة') }}</span>
+                            <span v-if="needsAnswer(q)" class="text-amber-600">· {{ t('exam.no_correct', 'بلا إجابة صحيحة') }}</span>
+                            <span v-if="errorsFor(i).length" class="font-medium text-red-600">· {{ t('exam.has_errors', 'فيه أخطاء') }}</span>
+                        </span>
+                    </span>
+                    <ChevronDownIcon class="h-5 w-5 shrink-0 text-gray-400" />
+                </button>
+                <template v-else>
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="rounded bg-gray-100 px-2 py-0.5 text-xs font-semibold dark:bg-gray-700">{{ i + 1 }}</span>
+                    <button type="button" @click="toggleQ(q)" class="flex items-center gap-1 rounded-xl bg-[var(--accent-50)] px-2.5 py-1 text-sm font-bold text-[var(--accent-700)] dark:bg-gray-700 dark:text-white" :title="t('exam.collapse', 'طيّ السؤال')">{{ i + 1 }} <ChevronUpIcon class="h-4 w-4" /></button>
                     <select v-model="q.type" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
                         <option v-for="type in types" :key="type" :value="type">{{ typeLabel(type) }}</option>
                     </select>
@@ -554,7 +709,8 @@ function save() {
                     <span class="flex-1" />
                     <button @click="moveQuestion(i, -1)" :disabled="i === 0" class="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"><ArrowUpIcon class="h-4 w-4" /></button>
                     <button @click="moveQuestion(i, 1)" :disabled="i === form.questions.length - 1" class="rounded p-1.5 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700"><ArrowDownIcon class="h-4 w-4" /></button>
-                    <button @click="form.questions.splice(i, 1)" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30"><TrashIcon class="h-4 w-4" /></button>
+                    <button type="button" @click="duplicateQ(i)" class="rounded p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('exam.duplicate_q', 'تكرار السؤال')"><DocumentDuplicateIcon class="h-4 w-4" /></button>
+                    <button type="button" @click="removeQ(i)" class="rounded p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('action.delete', 'حذف')"><TrashIcon class="h-4 w-4" /></button>
                 </div>
 
                 <div v-if="q.type === 'random'" class="grid gap-3 sm:grid-cols-2">
@@ -746,6 +902,20 @@ function save() {
                 <ul v-if="errorsFor(i).length" class="space-y-0.5 text-xs text-red-600">
                     <li v-for="err in errorsFor(i)" :key="err">{{ err }}</li>
                 </ul>
+                <div class="flex justify-center border-t border-gray-100 pt-2 dark:border-gray-700">
+                    <button type="button" @click="toggleQ(q)" class="inline-flex items-center gap-1 rounded-lg px-3 py-1 text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700"><ChevronUpIcon class="h-4 w-4" /> {{ t('exam.collapse', 'طيّ السؤال') }}</button>
+                </div>
+                </template>
+            </section>
+
+            <!-- Add a question -->
+            <section id="add-q" class="rounded-2xl border-2 border-dashed border-[var(--accent-500)]/40 bg-white p-4 dark:bg-gray-800">
+                <p class="mb-3 flex items-center gap-2 text-sm font-semibold"><PlusIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('exam.add_question', 'إضافة سؤال') }}</p>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    <button v-for="type in types" :key="type" type="button" @click="addQuestion(type)" class="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-2.5 text-start text-sm transition hover:border-[var(--accent-500)] hover:bg-[var(--accent-50)] dark:border-gray-700 dark:hover:bg-gray-700">
+                        <component :is="TYPE_ICONS[type] ?? PlusIcon" class="h-5 w-5 shrink-0 text-[var(--accent-600)]" /> <span class="min-w-0 leading-tight">{{ typeLabel(type) }}</span>
+                    </button>
+                </div>
             </section>
 
             <!-- Import -->
@@ -814,15 +984,9 @@ function save() {
                 <span v-if="form.isDirty" class="text-xs text-amber-600">{{ t('exam.save_first', 'احفظ التعديلات أولاً.') }}</span>
             </section>
 
-            <!-- Add a question -->
-            <section class="rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-600">
-                <p class="mb-2 text-sm font-medium">{{ t('exam.add_question', 'إضافة سؤال') }}</p>
-                <div class="flex flex-wrap gap-2">
-                    <button v-for="type in types" :key="type" @click="addQuestion(type)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:border-[var(--accent-500)] dark:border-gray-600">
-                        <PlusIcon class="h-4 w-4" /> {{ typeLabel(type) }}
-                    </button>
-                </div>
-            </section>
+            </div>
+            <!-- On a phone: add a question from anywhere in the list -->
+            <button v-show="mainTab === 'questions'" type="button" @click="scrollToAdd" class="fixed bottom-5 end-5 z-20 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--accent-600)] text-white shadow-xl sm:hidden" :aria-label="t('exam.add_question', 'إضافة سؤال')"><PlusIcon class="h-7 w-7" /></button>
 
             <div class="flex justify-end">
                 <button @click="save" :disabled="form.processing" class="rounded-lg bg-[var(--accent-600)] px-6 py-2 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">{{ t('action.save', 'حفظ') }}</button>
