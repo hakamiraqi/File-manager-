@@ -1,14 +1,14 @@
-name: Make the trial exam
-# One-off: runs `php artisan exams:demo` in the exam system on the VPS.
+name: Make the AMC exam
+# One-off: runs `php artisan exams:amc-demo` in the exam system on the VPS.
 on:
   push:
-    branches: [ops/exams-demo]
+    branches: [ops/amc-demo]
 jobs:
   demo:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Make the trial exam
+      - name: Make the AMC exam
         env:
           KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
@@ -21,4 +21,4 @@ jobs:
           fi
           chmod 600 ~/.ssh/vps_key
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sh -s" < ops/exams-demo.sh
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sh -s" < ops/amc-demo.sh
