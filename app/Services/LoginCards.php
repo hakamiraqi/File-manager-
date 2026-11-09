@@ -104,7 +104,11 @@ class LoginCards
     public static function save(array $rows, string $label = ''): string
     {
         $slug = trim(preg_replace('/[^A-Za-z0-9\x{0600}-\x{06FF}]+/u', '-', $label), '-');
-        $name = 'cards-'.now()->format('Ymd-His').($slug !== '' ? '-'.mb_substr($slug, 0, 40) : '').'.csv';
+        $base = 'cards-'.now()->format('Ymd-His').($slug !== '' ? '-'.mb_substr($slug, 0, 40) : '');
+        // Two files in the same second never overwrite each other.
+        for ($n = 1, $name = $base.'.csv'; is_file(self::dir().DIRECTORY_SEPARATOR.$name); $n++) {
+            $name = $base.'-'.($n + 1).'.csv';
+        }
         $fh = fopen(self::dir().DIRECTORY_SEPARATOR.$name, 'w');
         fwrite($fh, "\xEF\xBB\xBF");
         fputcsv($fh, self::COLUMNS);
