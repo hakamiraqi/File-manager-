@@ -247,7 +247,8 @@ class ExamController extends Controller
         // A file question's answer is set by upload() only, never by the page; a checked practice answer is final.
         $response = $request->input('response');
         $checked = Answer::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $data['question_id'])->whereNotNull('checked_at')->exists();
-        $values = $checked || in_array(Question::whereKey($data['question_id'])->value('type'), Question::FILE_TYPES, true)
+        // Only the flag sent (no response key): the answer is left as it is.
+        $values = $checked || ! $request->exists('response') || in_array(Question::whereKey($data['question_id'])->value('type'), Question::FILE_TYPES, true)
             ? [] : ['response' => is_array($response) ? $response : null];
         if (array_key_exists('flagged', $data)) {
             $values['flagged'] = $data['flagged'];
