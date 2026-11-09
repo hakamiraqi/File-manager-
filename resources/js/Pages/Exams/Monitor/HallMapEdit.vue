@@ -218,6 +218,55 @@ function bulkRotate(deg) {
     }
 }
 
+// «مجموعة» (2026-11-09, by request): computers grouped together are chosen with one tap and
+// moved, turned, copied or deleted together; the group is saved with the map. Alt + click picks
+// one of them alone.
+const newGroupKey = () => `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+const groupOf = (it) => (it?.group_key ? onStorey.value.filter((o) => o.group_key === it.group_key) : []);
+const multiGroupKeys = computed(() => new Set(multiItems.value.map((i) => i.group_key ?? null)));
+const multiIsOneGroup = computed(() => multiItems.value.length > 1 && multiGroupKeys.value.size === 1 && !multiGroupKeys.value.has(null));
+const multiHasGroup = computed(() => multiItems.value.some((i) => i.group_key));
+function selectGroup(it) {
+    multi.value = new Set(groupOf(it).map((i) => i._key));
+    selectedKey.value = null;
+}
+function groupSelected() {
+    if (multiItems.value.length < 2) return;
+    const key = newGroupKey();
+    multiItems.value.forEach((i) => (i.group_key = key));
+}
+function ungroupSelected() {
+    multiItems.value.forEach((i) => (i.group_key = null));
+}
+/** Each selected computer turned round where it stands: the screen to the other side. */
+function bulkFlip() {
+    for (const i of multiItems.value.filter(canMove)) i.rotation = ((((i.rotation || 0) + 180) % 360) + 360) % 360;
+}
+function bulkTwoFaces() {
+    const v = !multiShelves.value.every((i) => i.double_sided);
+    for (const i of multiShelves.value) { i.double_sided = v; i.depth = v ? Math.max(i.depth, 0.9) : Math.min(i.depth, 0.7); }
+}
+/** A copy of the selection beside it (or below it), not linked to any computer yet. */
+function bulkDuplicate() {
+    const list = multiItems.value;
+    if (!list.length) return;
+    const xs = list.map((i) => i.x), ys = list.map((i) => i.y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const w = x1 - x0 + 1.6, d = y1 - y0 + 1.6;
+    const [dx, dy] = x1 + w <= floor.width ? [w, 0] : y1 + d <= floor.depth ? [0, d] : y0 - d >= 0 ? [0, -d] : [-w, 0];
+    const keys = new Map();
+    const copies = list.map((i) => {
+        const { _key, section, computer, ...rest } = i;
+        const g = i.group_key ? (keys.get(i.group_key) ?? keys.set(i.group_key, newGroupKey()).get(i.group_key)) : null;
+        const copy = { ...JSON.parse(JSON.stringify(rest)), id: null, _key: `n${++keySeq}`, computer_id: null, locked: false, group_key: g,
+            x: clamp(+(i.x + dx).toFixed(2), 0, floor.width), y: clamp(+(i.y + dy).toFixed(2), 0, floor.depth) };
+        copy.code = uniqueCode(`${String(i.code).replace(/\d+$/, '')}`, 1);
+        items.value.push(copy);
+        return copy;
+    });
+    multi.value = new Set(copies.map((c) => c._key));
+}
+
 // «مثل كانفا» (2026-11-07, by request): handles round the selected hall, bookcase or wall to make it
 // bigger or smaller (corners and sides) and a round handle above it to turn it. «قفل» stops a
 // hall, bookcase or the whole plan from being moved by mistake.
@@ -356,6 +405,8 @@ const byPreviewId = (id) => items.value.find((i) => (i.id ?? i._key) === id) ?? 
 function on3dMove(id, x, y) {
     const it = byPreviewId(id);
     if (!it || !canMove(it)) return;
+    const dx = x - it.x, dy = y - it.y;
+    for (const o of groupOf(it)) if (o !== it && canMove(o)) { o.x = +(o.x + dx).toFixed(2); o.y = +(o.y + dy).toFixed(2); }
     it.x = x;
     it.y = y;
     selectedKey.value = it._key;
@@ -372,7 +423,10 @@ const ctxMulti = computed(() => !!ctxItem.value && multi.value.size > 1 && multi
 function openCtx(e, item) {
     e.preventDefault?.();
     if (!item) return;
-    if (!(multi.value.size && multi.value.has(item._key))) { multi.value = new Set(); selectedKey.value = item._key; }
+    if (!(multi.value.size && multi.value.has(item._key))) {
+        if (item.group_key) selectGroup(item);
+        else { multi.value = new Set(); selectedKey.value = item._key; }
+    }
     const W = window.innerWidth, H = window.innerHeight;
     ctx.value = { x: Math.min(e.clientX, W - 236), y: Math.min(e.clientY, H - 340), key: item._key };
 }
@@ -410,7 +464,12 @@ const ctxActions = computed(() => {
     if (!it) return [];
     if (ctxMulti.value) {
         return [
+            multiIsOneGroup.value
+                ? { label: t('hallmap.ungroup', 'فك التجميع'), icon: RectangleGroupIcon, run: () => ungroupSelected() }
+                : { label: t('hallmap.group', 'جمّعها (تتحرك معاً دائماً)'), icon: RectangleGroupIcon, run: () => groupSelected() },
             { label: t('library.map.ctx_rotate_all', 'تدوير المحدد 90°'), icon: ArrowPathRoundedSquareIcon, run: () => bulkRotate(90) },
+            { label: t('hallmap.flip', 'اقلب اتجاهها (الشاشة للجهة الثانية)'), icon: ArrowsRightLeftIcon, run: () => bulkFlip() },
+            { label: t('hallmap.duplicate_sel', 'تكرار المحدد بجانبه'), icon: DocumentDuplicateIcon, run: () => bulkDuplicate() },
             { label: multiItems.value.every((x) => x.locked) ? t('library.map.unlock_all', 'فتح قفل المحدد') : t('library.map.lock_all_sel', 'قفل المحدد'), icon: LockClosedIcon, run: () => { const v = !multiItems.value.every((x) => x.locked); multiItems.value.forEach((x) => (x.locked = v)); } },
             { label: t('library.map.unselect', 'إلغاء التحديد'), icon: XMarkIcon, run: () => (multi.value = new Set()) },
             { label: t('library.map.ctx_delete_all', 'حذف المحدد (:n)', { n: multi.value.size }), icon: TrashIcon, danger: true, run: () => bulkRemove() },
@@ -814,6 +873,8 @@ function toPlan(e) {
 function startDrag(e, item) {
     if (tool.value === 'hall' || tool.value === 'corridor') return onPlanDown(e);
     if (tool.value === 'door' || tool.value === 'qr') return;
+    if (e.altKey && multi.value.size) multi.value = new Set();
+    else if (item.group_key && !multiMode.value && !e.shiftKey && !multi.value.has(item._key)) selectGroup(item);
     if ((multiMode.value || e.shiftKey) && multiKind(item)) {
         // Tap to add to (or take out of) the selection; a selected one can still be dragged
         // and the others move with it.
@@ -919,7 +980,10 @@ function onPlanClick(e) {
         placingEntrance.value = false;
         return;
     }
-    if (e.target === svg.value || e.target.dataset.bg) selectedKey.value = null;
+    if (e.target === svg.value || e.target.dataset.bg) {
+        selectedKey.value = null;
+        if (!multiMode.value) multi.value = new Set();
+    }
 }
 
 // «عائق» (2026-11-06, by request): drawn corner by corner in the shape of the real obstacle
@@ -1012,6 +1076,8 @@ function onKey(e) {
         const k = e.key.toLowerCase();
         if ((k === 'z' || k === 'ئ') && !e.shiftKey) { e.preventDefault(); undo(); return; }
         if (k === 'y' || k === 'غ' || ((k === 'z' || k === 'ئ') && e.shiftKey)) { e.preventDefault(); redo(); return; }
+        if ((k === 'g' || k === 'ل') && multi.value.size) { e.preventDefault(); e.shiftKey ? ungroupSelected() : groupSelected(); return; }
+        if ((k === 'd' || k === 'ي') && multi.value.size) { e.preventDefault(); bulkDuplicate(); return; }
     }
     if (calib.value && e.key === 'Escape') { calib.value = null; return; }
     if (tool.value && e.key === 'Escape') { tool.value = null; rect.value = null; return; }
@@ -1054,60 +1120,160 @@ const fontSize = computed(() => Math.max(0.28, Math.min(0.5, Math.max(floor.widt
 
 // «صفوف تلقائية»: rows of bookcases in the room, or (since 2026-11-06) in the selected hall,
 // turned the way the hall is turned. -----------------------------------------------------------
-const gen = reactive({ open: false, rows: 4, perRow: 6, width: 1.2, aisle: 1.2, double: false, levels: 1, startLetter: 'A', sectionsByRow: true, replace: true, hall: null, room: '', link: true });
+const gen = reactive({ open: false, layout: 'rows', rows: 4, perRow: 6, width: 1.2, aisle: 1.2, double: false, levels: 1, startLetter: 'A', sectionsByRow: true, replace: true, hall: null, room: '', link: true,
+    walls: { top: true, right: true, bottom: true, left: true }, centerPairs: 1, groupCenter: true });
+// «أشكال التوزيع» (2026-11-09, by request): besides plain rows, the halls are mostly set out as
+// computers along the walls (the student facing the wall), pairs of rows back to back (the two
+// rows facing each other, one turned against the other), and in the middle of the hall one or
+// more such pairs, or a «+» of them. The middle ones are made a group, moved as one.
+const LAYOUTS = [
+    { key: 'rows', label: t('hallmap.layout_rows', 'صفوف متوازية') },
+    { key: 'facing', label: t('hallmap.layout_facing', 'صفوف متقابلة (ظهر لظهر)') },
+    { key: 'walls', label: t('hallmap.layout_walls', 'على الجدران') },
+    { key: 'walls_center', label: t('hallmap.layout_walls_center', 'الجدران + صفّان متقابلان بالوسط') },
+    { key: 'walls_plus', label: t('hallmap.layout_walls_plus', 'الجدران + شكل + بالوسط') },
+];
+const PC_DEPTH = 0.7, CHAIR = 0.8, WALL_GAP = 0.05;
+const genArea = () => {
+    const hall = gen.hall && items.value.includes(gen.hall) ? gen.hall : null;
+    return hall ? { hall, W: hall.width, D: hall.depth } : { hall: null, W: floor.width, D: floor.depth };
+};
+/** Fills the hall with as many rows (or pairs of rows) as fit, a metre clear of its walls. */
+function fitGen() {
+    const { hall, W, D } = genArea();
+    if (!hall) return;
+    gen.perRow = Math.max(1, Math.floor((W - 2) / gen.width));
+    const band = gen.layout === 'facing' ? 2 * PC_DEPTH + 2 * CHAIR : PC_DEPTH; // a pair with the chairs on both sides
+    gen.rows = Math.max(1, Math.min(26, Math.floor((D - (gen.layout === 'facing' ? 1 : 2) + gen.aisle) / (band + gen.aisle))));
+}
+watch(() => [gen.layout, gen.width, gen.aisle], () => { if (gen.open) fitGen(); });
 function openGenerate() {
     const s = selected.value;
     gen.hall = s && s.kind === 'hall' ? s : null;
-    if (gen.hall) {
-        // Fill the hall: as many bookcases as fit, a metre clear of its walls.
-        const depth = 0.7;
-        gen.perRow = Math.max(1, Math.floor((gen.hall.width - 2) / gen.width));
-        gen.rows = Math.max(1, Math.min(26, Math.floor((gen.hall.depth - 2 + gen.aisle) / (depth + gen.aisle))));
-    }
+    if (gen.hall) fitGen();
     gen.open = true;
 }
+/** The places for the chosen layout, round the hall's middle: x, y (metres), r (the turn; 0 = the student on the +y side) and the run (row) each is in. */
+function layoutSeats(W, D) {
+    const w = gen.width, d = PC_DEPTH, out = [];
+    let run = 0;
+    const along = (from, to, at, r, vertical, group = null) => {
+        const n = Math.floor((to - from + 1e-6) / w);
+        if (n < 1) return;
+        const start = (from + to) / 2 - (n * w) / 2 + w / 2;
+        for (let k = 0; k < n; k++) out.push(vertical ? { x: at, y: start + k * w, r, run, k, group } : { x: start + k * w, y: at, r, run, k, group });
+        run++;
+    };
+    if (gen.layout === 'rows' || gen.layout === 'facing') {
+        const pairs = gen.layout === 'facing';
+        const band = pairs ? 2 * d + 2 * CHAIR : d;
+        const total = gen.rows * band + (gen.rows - 1) * gen.aisle;
+        const len = gen.perRow * w;
+        for (let r = 0; r < gen.rows; r++) {
+            const top = -total / 2 + r * (band + gen.aisle);
+            if (!pairs) { along(-len / 2, len / 2, top + d / 2, 0, false); continue; }
+            const g = gen.groupCenter ? newGroupKey() : null;
+            along(-len / 2, len / 2, top + CHAIR + d / 2, 180, false, g); // the students on the upper side
+            along(-len / 2, len / 2, top + CHAIR + 1.5 * d, 0, false, g); // and facing them, on the lower side
+        }
+        return out;
+    }
+    // Along the walls: the screen to the wall, the student facing it.
+    const wl = gen.walls, room = WALL_GAP + d + CHAIR; // a wall row with its chairs
+    if (wl.top) along(-W / 2 + WALL_GAP, W / 2 - WALL_GAP, -D / 2 + WALL_GAP + d / 2, 0, false);
+    const yA = -D / 2 + (wl.top ? room + 0.1 : WALL_GAP), yB = D / 2 - (wl.bottom ? room + 0.1 : WALL_GAP);
+    if (wl.right) along(yA, yB, W / 2 - WALL_GAP - d / 2, 90, true);
+    if (wl.bottom) along(-W / 2 + WALL_GAP, W / 2 - WALL_GAP, D / 2 - WALL_GAP - d / 2, 180, false);
+    if (wl.left) along(yA, yB, -W / 2 + WALL_GAP + d / 2, 270, true);
+    // How far the middle may reach: its ends a walkway (the aisle) from the wall rows' chairs.
+    const endX = W / 2 - (wl.left || wl.right ? room + gen.aisle : 1), endY = D / 2 - (wl.top || wl.bottom ? room + gen.aisle : 1);
+    const g = gen.groupCenter ? newGroupKey() : null;
+    if (gen.layout === 'walls_center') {
+        // Pairs back to back along the hall's longer side.
+        const longX = W >= D;
+        const len = 2 * (longX ? endX : endY);
+        const step = 2 * d + 2 * CHAIR + gen.aisle; // a pair, its chairs on both sides and a walkway
+        const room2 = 2 * (longX ? endY : endX) - 2 * CHAIR; // across: the pairs and the walkways between them
+        const pairs = Math.max(1, Math.min(gen.centerPairs, Math.floor((room2 + step - 2 * d) / step)));
+        const total = pairs * 2 * d + (pairs - 1) * (step - 2 * d);
+        for (let p = 0; p < pairs; p++) {
+            const mid = -total / 2 + d + p * step;
+            if (longX) {
+                along(-len / 2, len / 2, mid - d / 2, 180, false, g);
+                along(-len / 2, len / 2, mid + d / 2, 0, false, g);
+            } else {
+                along(-len / 2, len / 2, mid - d / 2, 90, true, g);
+                along(-len / 2, len / 2, mid + d / 2, 270, true, g);
+            }
+        }
+    } else if (gen.layout === 'walls_plus') {
+        // A «+»: a pair back to back across, and one up and down, with room for the chairs where they meet.
+        const hub = d + CHAIR + 0.1;
+        const ex = endX, ey = endY;
+        for (const side of [-1, 1]) {
+            const [a0, a1] = side < 0 ? [-ex, -hub] : [hub, ex];
+            along(a0, a1, -d / 2, 180, false, g);
+            along(a0, a1, d / 2, 0, false, g);
+            const [b0, b1] = side < 0 ? [-ey, -hub] : [hub, ey];
+            along(b0, b1, -d / 2, 90, true, g);
+            along(b0, b1, d / 2, 270, true, g);
+        }
+    }
+    return out;
+}
 function generate() {
-    const depth = 0.7;
+    const d = PC_DEPTH;
+    const { hall, W, D } = genArea();
+    const rowsLike = gen.layout === 'rows' || gen.layout === 'facing';
+    const band = gen.layout === 'facing' ? 2 * d + 2 * CHAIR : d;
     const runLength = gen.perRow * gen.width;
-    const total = gen.rows * depth + (gen.rows - 1) * gen.aisle;
-    const hall = gen.hall && items.value.includes(gen.hall) ? gen.hall : null;
+    const total = gen.rows * band + (gen.rows - 1) * gen.aisle;
     // Positions are worked out round the middle, then turned and moved into place.
-    const cx = hall ? hall.x : floor.width / 2, cy = hall ? hall.y : Math.max(1 + total / 2, floor.depth / 2 - 0.75);
-    const a = ((hall?.rotation ?? 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    const cx = hall ? hall.x : floor.width / 2;
+    const cy = hall ? hall.y : rowsLike ? Math.max(1 + total / 2, floor.depth / 2 - 0.75) : floor.depth / 2;
+    const turn = hall?.rotation ?? 0;
+    const a = (turn * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
     const place = (lx, ly) => ({ x: +(cx + lx * c - ly * sn).toFixed(2), y: +(cy + lx * sn + ly * c).toFixed(2) });
-    const fresh = [];
     if (gen.replace) {
         const gone = new Set(items.value.filter((i) => i.kind === 'pc' && storeyOf(i) === storey.value && (!hall || inOutline(i, hall))));
         items.value = items.value.filter((i) => !gone.has(i));
     }
+    // No computer in front of a door.
+    const doors = onStorey.value.filter((i) => i.kind === 'door');
+    const seats = layoutSeats(W, D).map((s) => ({ ...s, at: place(s.x, s.y) }))
+        .filter((s) => !doors.some((o) => Math.hypot(o.x - s.at.x, o.y - s.at.y) < gen.width / 2 + Math.max(o.width ?? 0.9, 0.9) / 2 + 0.3));
     // The room's registered computers, PC-01 first, go onto the new places row by row.
     const used = new Set(items.value.filter((i) => i.kind === 'pc' && i.computer_id).map((i) => i.computer_id));
-    const pool = gen.link ? props.computers.filter((c) => (c.room ?? '') === gen.room && !used.has(c.id)).sort(natural) : [];
-    let next = 0;
-    for (let r = 0; r < gen.rows; r++) {
-        const letter = String.fromCharCode(gen.startLetter.toUpperCase().charCodeAt(0) + r);
-        for (let k = 0; k < gen.perRow; k++) {
-            const at = place(-runLength / 2 + gen.width / 2 + k * gen.width, -total / 2 + depth / 2 + r * (depth + gen.aisle));
-            const pc = pool[next++] ?? null;
-            fresh.push({
-                id: null, _key: `n${++keySeq}`, code: pc ? pc.label : `${letter}${k + 1}`, name: '', kind: 'pc', storey: storey.value,
-                section_id: null, computer_id: pc?.id ?? null,
-                x: at.x, y: at.y, rotation: hall?.rotation ?? 0,
-                width: gen.width, depth, levels: 1, double_sided: false, color: null,
-            });
-        }
-    }
+    const pool = gen.link ? props.computers.filter((cm) => (cm.room ?? '') === gen.room && !used.has(cm.id)).sort(natural) : [];
+    const first = gen.startLetter.toUpperCase().charCodeAt(0) || 65;
+    const runs = [...new Set(seats.map((s) => s.run))];
+    const fresh = seats.map((s, n) => {
+        const pc = pool[n] ?? null;
+        const letter = String.fromCharCode(first + runs.indexOf(s.run));
+        return {
+            id: null, _key: `n${++keySeq}`, code: pc ? pc.label : `${letter}${s.k + 1}`, name: '', kind: 'pc', storey: storey.value,
+            section_id: null, computer_id: pc?.id ?? null, group_key: s.group ?? null,
+            x: s.at.x, y: s.at.y, rotation: (((turn + s.r) % 360) + 360) % 360,
+            width: gen.width, depth: d, levels: 1, double_sided: false, color: null,
+        };
+    });
     const taken = new Set(items.value.map((i) => i.code.toLowerCase()));
     for (const f of fresh) if (taken.has(f.code.toLowerCase())) f.code = uniqueCode(f.code + '-');
     items.value.push(...fresh);
     // Make the room big enough for what was built.
-    if (!hall) {
+    if (!hall && rowsLike) {
         floor.width = Math.max(floor.width, Math.ceil(runLength + 2));
         floor.depth = Math.max(floor.depth, Math.ceil(total + 4));
     }
     gen.open = false;
     selectedKey.value = null;
+    multi.value = new Set();
+    genNote.value = t('hallmap.gen_done', 'وُضعت :n حاسبة.', { n: fresh.length }) + (fresh.some((f) => f.group_key) ? ' ' + t('hallmap.gen_group_hint', 'حاسبات الوسط مجمّعة: اضغط على أي واحدة منها لتحريكها كلها.') : '');
+    clearTimeout(genNoteTimer);
+    genNoteTimer = setTimeout(() => (genNote.value = ''), 6000);
 }
+const genNote = ref('');
+let genNoteTimer = null;
 
 // «معالج البناء» (2026-11-06, by request): start from a room, or a building of one floor or
 // more: halls on both sides of a corridor, a door from each hall to the corridor, stairs at the
@@ -1443,6 +1609,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                     <template v-else-if="toolGroup === 'furniture'">
                     <button @click="add('pc')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('hallmap.add_pc', 'حاسبة') }}</button>
                     <button @click="openGenerate" class="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent-50)] px-3 py-1.5 text-sm font-medium text-[var(--accent-700)] hover:brightness-95 dark:bg-gray-700 dark:text-gray-100"><SparklesIcon class="h-4 w-4" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</button>
+                    <button @click="multiMode = !multiMode; if (!multiMode) multi = new Set(); else selectedKey = null" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm" :class="multiMode ? 'bg-blue-600 text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'"><RectangleStackIcon class="h-4 w-4" /> {{ t('hallmap.multi', 'تحديد عدة حاسبات') }}</button>
                     <button @click="add('desk')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('hallmap.kind.desk', 'مكتب المراقب') }}</button>
                     <button @click="add('table')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('hallmap.kind.table', 'طاولة') }}</button>
                     <button @click="add('wall')" class="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-sm hover:bg-gray-100 dark:hover:bg-gray-700"><PlusIcon class="h-4 w-4" /> {{ t('library.map.kind.wall', 'جدار') }}</button>
@@ -1485,6 +1652,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <span class="flex-1">{{ calib.points.length ? t('library.map.calib_2', 'الآن اضغط على الطرف الثاني.') : t('library.map.calib_1', 'اضغط على طرف جدار (أو باب) تعرف طوله في الصورة، ثم على طرفه الآخر.') }}</span>
                 <button @click="calib = null" class="rounded-md px-2.5 py-1 underline">{{ t('common.cancel', 'إلغاء') }}</button>
             </div>
+            <p v-if="genNote" class="flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100"><CheckCircleIcon class="h-5 w-5 shrink-0" /> {{ genNote }}</p>
             <p v-if="multiMode && !multi.size" class="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:bg-blue-900/30 dark:text-blue-100">{{ t('hallmap.multi_hint', 'اضغط على الحاسبات لتحديدها، أو اسحب مربعاً حولها. (على الحاسوب: Shift + نقر يعمل دائماً)') }}</p>
             <p v-if="bgMove" class="rounded-lg bg-sky-100 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/40 dark:text-sky-100">{{ t('library.map.bg_move_hint', 'اسحب الصورة لتضعها في مكانها، ثم اضغط «تم».') }}</p>
 
@@ -1662,6 +1830,14 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <button @click="bulkRemove" class="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-5 w-5" /></button>
                             <button @click="multi = new Set()" class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.unselect', 'إلغاء التحديد')"><XMarkIcon class="h-5 w-5" /></button>
                         </div>
+                        <p v-if="multiIsOneGroup" class="flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs text-blue-900 dark:bg-blue-900/30 dark:text-blue-100"><RectangleGroupIcon class="h-4 w-4 shrink-0" /> {{ t('hallmap.is_group', 'مجموعة: تتحرك معاً. Alt + نقر يختار واحدة منها وحدها.') }}</p>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button v-if="!multiIsOneGroup && multi.size > 1" @click="groupSelected" class="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-600 px-2 py-1.5 text-xs font-medium text-white"><RectangleGroupIcon class="h-4 w-4" /> {{ t('hallmap.group_short', 'جمّعها') }}</button>
+                            <button v-if="multiHasGroup" @click="ungroupSelected" class="inline-flex items-center justify-center gap-1 rounded-lg border border-blue-300 px-2 py-1.5 text-xs font-medium text-blue-700 dark:border-blue-700 dark:text-blue-200"><RectangleGroupIcon class="h-4 w-4" /> {{ t('hallmap.ungroup', 'فك التجميع') }}</button>
+                            <button @click="bulkFlip" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('hallmap.flip_short', 'اقلب الاتجاه') }}</button>
+                            <button @click="bulkDuplicate" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><DocumentDuplicateIcon class="h-4 w-4" /> {{ t('hallmap.duplicate_short', 'تكرار') }}</button>
+                            <button v-if="multiShelves.length" @click="bulkTwoFaces" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><Square2StackIcon class="h-4 w-4" /> {{ multiShelves.every((i) => i.double_sided) ? t('library.map.ctx_one_face', 'اجعله بوجه واحد') : t('library.map.ctx_two_faces', 'اجعله بوجهين') }}</button>
+                        </div>
                         <template v-if="multiShelves.length">
                             <div class="rounded-xl bg-gray-50 p-2.5 dark:bg-gray-900/40">
                                 <span class="text-gray-600 dark:text-gray-300">{{ t('hallmap.bulk_link', 'اربطها بحاسبات قاعة بالترتيب (صفاً صفاً)') }}</span>
@@ -1683,7 +1859,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                 <p class="mt-1 text-[11px] text-gray-500" dir="auto">{{ bulk.prefix }}{{ bulk.start || 1 }}، {{ bulk.prefix }}{{ (bulk.start || 1) + 1 }}…</p>
                             </div>
                         </template>
-                        <p class="text-xs leading-5 text-gray-500">{{ t('hallmap.multi_keys', 'اسحب أي حاسبة محدد لتحريكها كلها · الأسهم للتحريك الدقيق · Delete للحذف.') }}</p>
+                        <p class="text-xs leading-5 text-gray-500">{{ t('hallmap.multi_keys2', 'اسحب أي حاسبة محددة لتحريكها كلها · الأسهم للتحريك الدقيق · Ctrl+G تجميع · Ctrl+D تكرار · Delete للحذف.') }}</p>
                     </section>
                     <section v-if="selected" ref="panelEl" class="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
                         <div class="flex items-center gap-2">
@@ -1809,18 +1985,43 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                 <div>
                     <h3 class="flex items-center gap-2 text-lg font-semibold"><SparklesIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</h3>
                     <p v-if="gen.hall" class="mt-1 rounded-lg bg-[var(--accent-50)] px-2 py-1 text-sm text-[var(--accent-700)]">{{ t('library.map.generate_in_hall', 'تُبنى داخل «:hall» وبنفس اتجاهها.', { hall: gen.hall.code }) }}</p>
-                    <p class="mt-1 text-sm text-gray-500">{{ t('hallmap.generate_text', 'تُبنى صفوف حاسبات متوازية بممرات بينها، وتُربط بحاسبات القاعة المسجّلة بالترتيب (PC-01 أولاً). بعدها تقدر تسحب أي حاسبة لمكانها.') }}</p>
+                    <p class="mt-1 text-sm text-gray-500">{{ t('hallmap.generate_text', 'اختر شكل التوزيع، وتُربط الحاسبات بحاسبات القاعة المسجّلة بالترتيب (PC-01 أولاً). بعدها تقدر تسحب أي حاسبة لمكانها.') }}</p>
                 </div>
+                <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    <button v-for="l in LAYOUTS" :key="l.key" type="button" @click="gen.layout = l.key" class="flex flex-col items-center gap-1 rounded-xl border-2 p-2 text-center text-xs leading-4 transition" :class="gen.layout === l.key ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-100' : 'border-gray-200 hover:border-gray-300 dark:border-gray-600'">
+                        <svg viewBox="0 0 40 30" class="h-9 w-12" fill="currentColor">
+                            <rect x="1" y="1" width="38" height="28" rx="2" fill="none" stroke="currentColor" stroke-opacity=".35" />
+                            <template v-if="l.key === 'rows'"><rect v-for="r in 3" :key="r" x="7" :y="r * 7 - 1" width="26" height="3" rx=".6" /></template>
+                            <template v-else-if="l.key === 'facing'"><template v-for="r in 2" :key="r"><rect x="7" :y="r * 11 - 5" width="26" height="2.6" rx=".6" /><rect x="7" :y="r * 11 - 2.2" width="26" height="2.6" rx=".6" opacity=".55" /></template></template>
+                            <template v-else>
+                                <rect x="3" y="3" width="34" height="2.6" rx=".6" /><rect x="3" y="24.4" width="34" height="2.6" rx=".6" /><rect x="3" y="8" width="2.6" height="14" rx=".6" /><rect x="34.4" y="8" width="2.6" height="14" rx=".6" />
+                                <template v-if="l.key === 'walls_center'"><rect x="11" y="12.4" width="18" height="2.6" rx=".6" /><rect x="11" y="15" width="18" height="2.6" rx=".6" opacity=".55" /></template>
+                                <template v-if="l.key === 'walls_plus'"><rect x="9" y="12.7" width="8" height="2.3" rx=".5" /><rect x="23" y="12.7" width="8" height="2.3" rx=".5" /><rect x="9" y="15" width="8" height="2.3" rx=".5" opacity=".55" /><rect x="23" y="15" width="8" height="2.3" rx=".5" opacity=".55" /><rect x="17.7" y="8" width="2.3" height="4.5" rx=".5" /><rect x="20" y="8" width="2.3" height="4.5" rx=".5" opacity=".55" /><rect x="17.7" y="17.5" width="2.3" height="4.5" rx=".5" /><rect x="20" y="17.5" width="2.3" height="4.5" rx=".5" opacity=".55" /></template>
+                            </template>
+                        </svg>
+                        {{ l.label }}
+                    </button>
+                </div>
+                <p v-if="gen.layout !== 'rows'" class="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600 dark:bg-gray-900/40 dark:text-gray-300">{{ gen.layout === 'facing' ? t('hallmap.layout_facing_hint', 'كل صفّين ظهراً لظهر: الشاشات بالوسط والطلاب متقابلون. يُحسب مكان الكراسي على الجهتين.') : t('hallmap.layout_walls_hint', 'حاسبات الجدران شاشتها على الجدار والطالب مقابلها. لا توضع حاسبة أمام باب، وتُترك ممرات بعرض «الممر» بين الكراسي.') }}<template v-if="!gen.hall && gen.layout !== 'facing'"> {{ t('hallmap.layout_select_hall', 'للدقة: حدّد القاعة أولاً ثم افتح هذه النافذة، وإلا تُعدّ حدود المخطط كله جدراناً.') }}</template></p>
                 <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                    <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_rows', 'عدد الصفوف') }}</span><input v-model.number="gen.rows" type="number" min="1" max="26" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label><span class="text-gray-600 dark:text-gray-300">{{ t('hallmap.gen_per_row', 'حاسبات في كل صف') }}</span><input v-model.number="gen.perRow" type="number" min="1" max="30" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label v-if="gen.layout === 'rows' || gen.layout === 'facing'"><span class="text-gray-600 dark:text-gray-300">{{ gen.layout === 'facing' ? t('hallmap.gen_pairs', 'عدد الأزواج (كل زوج صفّان)') : t('library.map.gen_rows', 'عدد الصفوف') }}</span><input v-model.number="gen.rows" type="number" min="1" max="26" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label v-if="gen.layout === 'rows' || gen.layout === 'facing'"><span class="text-gray-600 dark:text-gray-300">{{ t('hallmap.gen_per_row', 'حاسبات في كل صف') }}</span><input v-model.number="gen.perRow" type="number" min="1" max="30" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label v-if="gen.layout === 'walls_center'"><span class="text-gray-600 dark:text-gray-300">{{ t('hallmap.gen_center_pairs', 'أزواج الوسط') }}</span><input v-model.number="gen.centerPairs" type="number" min="1" max="6" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label><span class="text-gray-600 dark:text-gray-300">{{ t('hallmap.gen_width', 'عرض المكان (م)') }}</span><input v-model.number="gen.width" type="number" step="0.1" min="0.5" max="5" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_aisle', 'عرض الممر (م)') }}</span><input v-model.number="gen.aisle" type="number" step="0.1" min="0.8" max="5" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_letter', 'أول حرف') }}</span><input v-model="gen.startLetter" maxlength="1" dir="ltr" class="mt-1 w-full rounded-lg border-gray-300 uppercase dark:border-gray-600 dark:bg-gray-700" /></label>
                 </div>
+                <div v-if="gen.layout.startsWith('walls')" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span class="text-gray-600 dark:text-gray-300">{{ t('hallmap.gen_which_walls', 'الجدران (كما تظهر في المخطط):') }}</span>
+                    <label class="flex items-center gap-1.5"><input v-model="gen.walls.top" type="checkbox" class="rounded border-gray-300" /> {{ t('hallmap.wall_top', 'الأعلى') }}</label>
+                    <label class="flex items-center gap-1.5"><input v-model="gen.walls.bottom" type="checkbox" class="rounded border-gray-300" /> {{ t('hallmap.wall_bottom', 'الأسفل') }}</label>
+                    <label class="flex items-center gap-1.5"><input v-model="gen.walls.right" type="checkbox" class="rounded border-gray-300" /> {{ t('hallmap.wall_right', 'اليمين') }}</label>
+                    <label class="flex items-center gap-1.5"><input v-model="gen.walls.left" type="checkbox" class="rounded border-gray-300" /> {{ t('hallmap.wall_left', 'اليسار') }}</label>
+                </div>
                 <div class="space-y-2 text-sm">
                     <label class="flex items-center gap-2"><input v-model="gen.link" type="checkbox" class="rounded border-gray-300" /> {{ t('hallmap.gen_link', 'اربطها بحاسبات القاعة:') }}
                         <select v-model="gen.room" :disabled="!gen.link" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700"><option v-for="r in rooms" :key="r" :value="r">{{ r || t('hallmap.no_room', 'بلا قاعة') }}</option></select></label>
+                    <label v-if="gen.layout !== 'rows' && gen.layout !== 'walls'" class="flex items-center gap-2"><input v-model="gen.groupCenter" type="checkbox" class="rounded border-gray-300" /> {{ gen.layout === 'facing' ? t('hallmap.gen_group_pairs', 'اجعل كل زوج مجموعة (يتحرك معاً)') : t('hallmap.gen_group_center', 'اجعل حاسبات الوسط مجموعة (تتحرك معاً)') }}</label>
                     <label class="flex items-center gap-2"><input v-model="gen.replace" type="checkbox" class="rounded border-gray-300" /> {{ t('hallmap.gen_replace', 'استبدل الحاسبات الحالية (الطاولات والجدران تبقى)') }}</label>
                 </div>
                 <div class="flex justify-end gap-2">

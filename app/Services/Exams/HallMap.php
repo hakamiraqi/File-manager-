@@ -81,7 +81,7 @@ class HallMap
             'computer_id' => $s->computer_id, 'computer' => ($pc = $pcs[$s->computer_id] ?? null) ? ['id' => $pc->id, 'label' => $pc->label, 'room' => $pc->room, 'ip' => $pc->ip] : null,
             'x' => $s->x, 'y' => $s->y, 'rotation' => $s->rotation, 'width' => $s->width, 'depth' => $s->depth,
             'levels' => $s->levels, 'double_sided' => $s->double_sided, 'color' => $s->color,
-            'points' => $s->points, 'height' => $s->height, 'locked' => (bool) $s->locked,
+            'points' => $s->points, 'height' => $s->height, 'locked' => (bool) $s->locked, 'group_key' => $s->group_key,
         ]);
     }
 

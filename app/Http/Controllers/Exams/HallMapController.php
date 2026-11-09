@@ -105,6 +105,7 @@ class HallMapController extends Controller
             'shelves.*.levels' => ['nullable', 'integer', 'min:1', 'max:10'],
             'shelves.*.double_sided' => ['boolean'],
             'shelves.*.locked' => ['boolean'],
+            'shelves.*.group_key' => ['nullable', 'string', 'max:20'],
             'shelves.*.color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'shelves.*.points' => ['nullable', 'required_if:shelves.*.kind,obstacle,hall', 'array', 'min:3', 'max:64'],
             'shelves.*.points.*' => ['array', 'size:2'],

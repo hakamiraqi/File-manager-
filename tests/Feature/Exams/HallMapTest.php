@@ -106,4 +106,21 @@ class HallMapTest extends TestCase
         $this->actingAs($invigilator)->get(route('exams.monitor.halls.edit'))->assertForbidden();
         $this->actingAs($invigilator)->put(route('exams.monitor.halls.update'), ['floor' => [], 'shelves' => []])->assertForbidden();
     }
+    public function test_grouped_computers_keep_their_group(): void
+    {
+        $this->exam();
+        $this->actingAs($this->teacher)->put(route('exams.monitor.halls.update'), [
+            'floor' => ['width' => 20, 'depth' => 14, 'entrance' => ['x' => 10, 'y' => 13]],
+            'shelves' => [
+                ['code' => 'A1', 'kind' => 'pc', 'x' => 5, 'y' => 6.65, 'rotation' => 180, 'width' => 1.2, 'depth' => 0.7, 'group_key' => 'g1'],
+                ['code' => 'B1', 'kind' => 'pc', 'x' => 5, 'y' => 7.35, 'rotation' => 0, 'width' => 1.2, 'depth' => 0.7, 'group_key' => 'g1'],
+                ['code' => 'C1', 'kind' => 'pc', 'x' => 9, 'y' => 2, 'rotation' => 0, 'width' => 1.2, 'depth' => 0.7],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(['A1', 'B1'], MapItem::where('group_key', 'g1')->orderBy('code')->pluck('code')->all());
+        $this->assertNull(MapItem::where('code', 'C1')->value('group_key'));
+        $this->actingAs($this->teacher)->get(route('exams.monitor.halls.edit'))
+            ->assertInertia(fn (AssertableInertia $page) => $page->where('shelves.0.group_key', 'g1'));
+    }
 }
