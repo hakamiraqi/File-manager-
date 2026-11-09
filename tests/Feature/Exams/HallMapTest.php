@@ -65,7 +65,7 @@ class HallMapTest extends TestCase
         $this->actingAs($sara)->withServerVariables(['REMOTE_ADDR' => $pc2->ip])->post(route('exams.start', $exam));
         $aliAttempt = Attempt::where('user_id', $ali->id)->firstOrFail();
         $this->assertSame($pc1->ip, $aliAttempt->ip);
-        $this->actingAs($ali)->postJson(route('exams.attempts.help', $aliAttempt))->assertOk();
+        $this->actingAs($ali)->postJson(route('exams.attempts.help', $aliAttempt), ['on' => true])->assertOk();
 
         $live = $this->actingAs($this->teacher)->getJson(route('exams.monitor.halls.live'))->assertOk()->json('computers');
         $this->assertSame('help', $live[$pc1->id]['state']);
