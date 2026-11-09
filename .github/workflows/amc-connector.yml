@@ -33,7 +33,7 @@ jobs:
       - name: How AMC-TXT sets up Arabic
         continue-on-error: true
         run: |
-          docker exec amc sh -c 'f=/usr/share/perl5/AMC/Filter/plain.pm; grep -n -i -E "arab|bidi|font|xelatex|polyglossia|numer|\\\\LR|latex_engine|rtl|lang" $f | head -200'
+          docker exec amc sh -c 'f=/usr/share/perl5/AMC/Filter/plain.pm; sed -n 40,135p $f; grep -n -i "preambule\|latex =>\|{latex}" $f | head'
           docker exec amc sh -c 'fc-list : family | sort -u | head -60'
       - name: End to end
         env:
@@ -41,12 +41,18 @@ jobs:
         run: |
           pip install --quiet pillow
           python3 amc-connector/test/e2e.py
+      - name: Font variants
+        if: always()
+        env:
+          AMC_TOKEN: test-token
+        run: python3 amc-connector/test/fonts.py || true
       - name: Picture of the first sheet page
         if: always()
         run: |
           docker exec amc sh -c 'pdftoppm -r 110 -png -f 1 -l 2 /data/e2etest/subject.pdf /tmp/look' || true
           docker cp amc:/tmp/look-1.png look-1.png || docker cp amc:/tmp/look-01.png look-1.png || true
           docker cp amc:/tmp/look-2.png look-2.png || docker cp amc:/tmp/look-02.png look-2.png || true
+          for v in a b c d; do docker exec amc sh -c "pdftoppm -r 110 -png -f 1 -l 1 /data/font$v/subject.pdf /tmp/font$v" || true; docker cp amc:/tmp/font$v-1.png look-font$v.png || docker cp amc:/tmp/font$v-01.png look-font$v.png || true; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
