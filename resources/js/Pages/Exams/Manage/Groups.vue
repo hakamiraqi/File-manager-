@@ -175,9 +175,9 @@ const input = 'w-full rounded-xl border-gray-300 text-sm focus:border-[var(--acc
                 </div>
             </div>
 
-            <div class="grid gap-4 lg:grid-cols-[18rem_1fr]">
+            <div class="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
                 <!-- The groups: a row of cards on a phone, a list beside on a computer -->
-                <aside class="space-y-2">
+                <aside class="min-w-0 space-y-2">
                     <div v-if="groups.length > 6" class="relative">
                         <MagnifyingGlassIcon class="pointer-events-none absolute start-3 top-2.5 h-4 w-4 text-gray-400" />
                         <input v-model="groupSearch" :placeholder="t('exam.search_groups', 'ابحث عن مجموعة')" :class="input" class="ps-9" />
@@ -277,7 +277,7 @@ const input = 'w-full rounded-xl border-gray-300 text-sm focus:border-[var(--acc
                     <h3 class="min-w-0 flex-1 truncate font-semibold">{{ t('exam.add_to', 'إضافة طلاب إلى «:g»', { g: group?.name }) }}</h3>
                     <button @click="adding = false" class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
                 </div>
-                <div class="flex gap-1 border-b border-gray-100 px-3 pt-2 text-sm dark:border-gray-700">
+                <div class="flex gap-1 overflow-x-auto border-b border-gray-100 px-3 pt-2 text-sm dark:border-gray-700">
                     <button v-for="tab in [{ k: 'system', l: t('exam.from_system', 'من الطلاب المسجّلين') }, { k: 'text', l: t('exam.by_email', 'بالبريد أو الرقم') }, ...(canImport ? [{ k: 'excel', l: t('exam.new_from_excel', 'حسابات جديدة (Excel)') }] : [])]" :key="tab.k"
                         @click="addTab = tab.k" class="-mb-px whitespace-nowrap border-b-2 px-3 py-2" :class="addTab === tab.k ? 'border-[var(--accent-600)] font-semibold text-[var(--accent-700)] dark:text-gray-100' : 'border-transparent text-gray-500'">{{ tab.l }}</button>
                 </div>
