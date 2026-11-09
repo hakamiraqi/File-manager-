@@ -65,6 +65,7 @@ const form = useForm({
     is_examiner: false,
     is_invigilator: false,
     exam_time_multiplier: 1,
+    student_number: '',
     is_active: true,
     can_manage_appearance: false,
     can_manage_users: false,
@@ -82,6 +83,7 @@ watch(
             if (props.user) {
                 form.name = props.user.name;
                 form.email = props.user.email;
+                form.student_number = props.user.student_number ?? '';
                 form.password = '';
                 form.role = props.user.role;
                 form.is_active = props.user.is_active;
@@ -156,6 +158,12 @@ function submit() {
                             <InputLabel :value="t('auth.email', 'البريد الإلكتروني')" />
                             <TextInput type="email" dir="ltr" v-model="form.email" class="mt-1 block w-full" />
                             <InputError :message="form.errors.email" class="mt-1" />
+                        </div>
+                        <div>
+                            <InputLabel :value="t('auth.student_number', 'الرقم الجامعي (اختياري)')" />
+                            <TextInput dir="ltr" v-model="form.student_number" class="mt-1 block w-full" />
+                            <p class="mt-1 text-xs text-gray-500">{{ t('auth.student_number_hint', 'يدخل به الطالب بدل البريد. بلا بريد؟ اترك البريد فارغاً واكتب الرقم.') }}</p>
+                            <InputError :message="form.errors.student_number" class="mt-1" />
                         </div>
                     </div>
                     <div>

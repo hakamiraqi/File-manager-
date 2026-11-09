@@ -47,11 +47,12 @@ const submit = () => {
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="email" :value="t('auth.email', 'البريد الإلكتروني')" />
+                <InputLabel for="email" :value="t('auth.email_or_number', 'البريد الإلكتروني أو الرقم الجامعي')" />
 
                 <TextInput
                     id="email"
-                    type="email"
+                    type="text"
+                    dir="ltr"
                     class="mt-1 block w-full"
                     v-model="form.email"
                     required

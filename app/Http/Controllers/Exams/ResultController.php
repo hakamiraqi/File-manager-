@@ -92,6 +92,7 @@ class ResultController extends Controller
                 'number' => $a->number,
                 'started_at' => $a->started_at->toIso8601String(),
                 'submitted_at' => $a->submitted_at?->toIso8601String(),
+                'receipt' => $a->receipt(), 'variant' => $a->variantLetter(),
                 'score' => $a->score,
                 'max_score' => $a->max_score,
                 'percent' => $a->percent(),

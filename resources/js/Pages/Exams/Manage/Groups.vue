@@ -101,7 +101,7 @@ async function importStudents() {
                 <div v-if="currentGroup().editable" class="grid gap-4 md:grid-cols-2">
                     <form @submit.prevent="addMembers" class="space-y-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
                         <p class="text-sm font-medium">{{ t('exam.add_students', 'إضافة طلاب لهم حسابات') }}</p>
-                        <textarea v-model="memberForm.emails" rows="3" dir="ltr" :placeholder="t('exam.emails_ph', 'بريد في كل سطر')" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <textarea v-model="memberForm.emails" rows="3" dir="ltr" :placeholder="t('exam.emails_ph', 'بريد أو رقم جامعي في كل سطر')" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                         <p v-if="memberForm.errors.emails" class="text-xs text-red-600">{{ memberForm.errors.emails }}</p>
                         <button :disabled="memberForm.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm text-white disabled:opacity-50">{{ t('exam.add', 'إضافة') }}</button>
                     </form>

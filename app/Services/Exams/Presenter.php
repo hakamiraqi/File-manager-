@@ -53,8 +53,11 @@ class Presenter
         $langs = $exam->languages ?? [];
         $text = fn ($v) => Question::pick($v, $locale, $langs);
         $choices = $q->choices->values();
-        if ($exam->shuffle_choices && in_array($q->type, [Question::SINGLE, Question::MULTIPLE], true)) {
-            $choices = $choices->sortBy(fn (Choice $c) => crc32($attempt->id.'-c-'.$c->id))->values();
+        // With versions (A/B/C), everyone on a version sees the same choice order; version A keeps
+        // the written order unless choices are shuffled anyway.
+        $seed = $attempt->variant ? 'v'.$exam->id.'-'.$attempt->variant : $attempt->id;
+        if (($exam->shuffle_choices || $attempt->variant > 1) && in_array($q->type, [Question::SINGLE, Question::MULTIPLE], true)) {
+            $choices = $choices->sortBy(fn (Choice $c) => crc32($seed.'-c-'.$c->id))->values();
         }
         if ($q->type === Question::ORDERING) {
             // Never in the right order: a stable shuffle that is not the identity.
@@ -287,6 +290,8 @@ class Presenter
             'appeals_open' => $exam->appeals_open,
             'calculator' => $exam->calculator ?? 'none',
             'bind_computers' => $exam->bind_computers,
+            'variants' => $exam->variants ?? 1,
+            'protect_content' => $exam->protect_content ?? true,
             'allowed_ips' => $exam->allowed_ips,
             'group_ids' => $exam->groups()->pluck('exam_groups.id')->all(),
             'marking_tolerance' => $exam->marking_tolerance,

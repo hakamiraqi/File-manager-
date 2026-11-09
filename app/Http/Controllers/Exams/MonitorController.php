@@ -91,6 +91,32 @@ class MonitorController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * A stop in the hall (power, network): every running attempt, or those seated in one room,
+     * gets the lost minutes back in one go.
+     */
+    public function extendAll(Request $request, Exam $exam): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $data = $request->validate(['minutes' => ['required', 'integer', 'min:1', 'max:600'], 'room' => ['nullable', 'string', 'max:100']]);
+        $minutes = (int) $data['minutes'];
+        $attempts = $exam->attempts()->whereNull('submitted_at')->whereNotNull('deadline_at');
+        if (filled($data['room'] ?? null)) {
+            $users = DB::table('exam_attendance')->join('exam_computers', 'exam_computers.id', '=', 'exam_attendance.computer_id')
+                ->where('exam_attendance.exam_id', $exam->id)->where('exam_computers.room', $data['room'])->pluck('exam_attendance.user_id');
+            $attempts->whereIn('user_id', $users);
+        }
+        $count = 0;
+        foreach ($attempts->get() as $a) {
+            $a->update(['deadline_at' => ($a->deadline_at->isFuture() ? $a->deadline_at : now())->copy()->addMinutes($minutes)]);
+            $count++;
+        }
+        $where = filled($data['room'] ?? null) ? " في القاعة {$data['room']}" : '';
+        ActivityLog::record('exam.monitor', "أضاف {$minutes} دقيقة لـ {$count} محاولة جارية{$where} في \"{$exam->text('title')}\"", $exam);
+
+        return response()->json(['ok' => true, 'count' => $count]);
+    }
+
     /** Submits an attempt now (a student who left, or the end of the session). */
     public function submit(Request $request, Attempt $attempt): JsonResponse
     {
@@ -308,6 +334,7 @@ class MonitorController extends Controller
                     'last_seen' => $seen?->toIso8601String(), 'ip' => $a->ip, 'events' => $a->events->countBy('type'),
                     'locked' => $a->locked_at ? ['reason' => $a->lock_reason, 'code' => $a->resume_code] : null,
                     'help' => $a->help_requested_at?->toIso8601String(),
+                    'variant' => $a->variantLetter(), 'receipt' => $a->receipt(),
                 ] : null,
             ];
         })->values();

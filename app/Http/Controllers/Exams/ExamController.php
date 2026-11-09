@@ -134,7 +134,12 @@ class ExamController extends Controller
                 $ids->push($id);
             }
         }
-        if ($exam->shuffle_questions) {
+        // Versions A/B/C: neighbouring seats get different versions, each version one fixed order
+        // (A as written unless questions are shuffled anyway).
+        $variant = $exam->variants > 1 ? $this->variantFor($exam, $user) : null;
+        if ($variant && ($variant > 1 || $exam->shuffle_questions)) {
+            $ids = $ids->sortBy(fn ($id) => crc32('v'.$exam->id.'-'.$variant.'-q-'.$id))->values();
+        } elseif ($exam->shuffle_questions) {
             $ids = $ids->shuffle();
         }
 
@@ -147,6 +152,7 @@ class ExamController extends Controller
             'question_order' => $ids->values()->all(),
             'drawn' => $drawn ?: null,
             'ip' => $request->ip(),
+            'variant' => $variant,
         ]);
         ActivityLog::record('exam.started', "بدأ الامتحان \"{$exam->text('title')}\" (المحاولة {$attempt->number})", $exam);
 
@@ -199,6 +205,10 @@ class ExamController extends Controller
                 'locked' => $attempt->locked_at !== null,
                 'help' => $attempt->help_requested_at !== null,
                 'computer' => $exam->computerFor($request->user())?->label,
+                'variant' => $attempt->variantLetter(),
+                // The questions page carries the student's name across it and blocks copying.
+                'protect' => $exam->protect_content && ! $exam->is_practice,
+                'watermark' => trim($request->user()->name.' · '.($request->user()->student_number ?: $request->user()->email)),
             ],
             'questions' => $questions->map(fn (Question $q) => $this->presenter->forStudent($q, $exam, $attempt))->values(),
             'offline_token' => $attempt->offlineToken(),
@@ -478,6 +488,11 @@ class ExamController extends Controller
                 'max_score' => $attempt->max_score,
                 'percent' => $visible ? $attempt->percent() : null,
                 'needs_grading' => $attempt->needs_grading,
+                'receipt' => $attempt->receipt(),
+                'answered' => $answers->filter(fn ($a) => filled($a->response))->count(),
+                'questions' => count($attempt->question_order ?? []),
+                'student' => $user->name,
+                'student_number' => $user->student_number,
             ],
             'visible' => $visible,
             'appeals_open' => $exam->appeals_open && $visible && $attempt->isSubmitted() && $attempt->user_id === $request->user()->id,
@@ -497,6 +512,22 @@ class ExamController extends Controller
             return;
         }
         abort_unless($allowManager && $attempt->exam->isManageableBy($user), 404);
+    }
+
+    /**
+     * The version for a student: by the place of their computer in its room (so the computers
+     * side by side alternate A, B, C…), or by the order students start when nobody is seated.
+     */
+    private function variantFor(Exam $exam, \App\Models\User $user): int
+    {
+        $n = max(1, min(4, $exam->variants));
+        if ($pc = $exam->computerFor($user)) {
+            $labels = \App\Models\Exams\Computer::where('room', $pc->room)->pluck('label')->sort(SORT_NATURAL)->values();
+
+            return ((int) $labels->search($pc->label)) % $n + 1;
+        }
+
+        return $exam->attempts()->count() % $n + 1;
     }
 
     /** Submits an attempt whose time is up. True when it is (now) closed. */

@@ -18,7 +18,7 @@ class Attempt extends Model
     protected $fillable = [
         'exam_id', 'user_id', 'number', 'started_at', 'deadline_at', 'submitted_at',
         'score', 'max_score', 'needs_grading', 'question_order', 'drawn', 'ip', 'last_seen_at',
-        'locked_at', 'lock_reason', 'resume_code', 'session_key', 'help_requested_at', 'position',
+        'locked_at', 'lock_reason', 'resume_code', 'session_key', 'help_requested_at', 'position', 'variant',
     ];
 
     protected function casts(): array
@@ -31,7 +31,7 @@ class Attempt extends Model
             'max_score' => 'float',
             'needs_grading' => 'boolean',
             'question_order' => 'array',
-            'last_seen_at' => 'datetime', 'locked_at' => 'datetime', 'help_requested_at' => 'datetime', 'drawn' => 'array',
+            'last_seen_at' => 'datetime', 'locked_at' => 'datetime', 'help_requested_at' => 'datetime', 'drawn' => 'array', 'variant' => 'integer',
         ];
     }
 
@@ -83,6 +83,26 @@ class Attempt extends Model
     public function offlineToken(): string
     {
         return hash_hmac('sha256', 'offline-answers|'.$this->id.'|'.$this->user_id, (string) config('app.key'));
+    }
+
+    /**
+     * The submission receipt: a short code from the attempt and the moment it was submitted, so a
+     * student's «I submitted and it was not recorded» is settled by checking it against this.
+     */
+    public function receipt(): ?string
+    {
+        if (! $this->submitted_at) {
+            return null;
+        }
+        $h = strtoupper(substr(hash_hmac('sha256', 'receipt|'.$this->id.'|'.$this->user_id.'|'.$this->submitted_at->getTimestamp(), (string) config('app.key')), 0, 10));
+
+        return substr($h, 0, 5).'-'.substr($h, 5);
+    }
+
+    /** The exam version (A, B, C…) this attempt was given, or null with a single version. */
+    public function variantLetter(): ?string
+    {
+        return $this->variant ? chr(64 + $this->variant) : null;
     }
 
     public function secondsLeft(): ?int

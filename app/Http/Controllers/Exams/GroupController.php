@@ -62,17 +62,21 @@ class GroupController extends Controller
         return redirect()->route('exams.manage.groups')->with('success', 'حُذفت المجموعة؛ الطلاب أنفسهم باقون.');
     }
 
-    /** Adds students by e-mail, one per line (or separated by commas). */
+    /** Adds students by e-mail or student number, one per line (or separated by commas). */
     public function addMembers(Request $request, Group $group): RedirectResponse
     {
         abort_unless($group->isEditableBy($request->user()), 404);
-        $emails = collect(preg_split('/[\s,،;]+/u', mb_strtolower((string) $request->input('emails')), -1, PREG_SPLIT_NO_EMPTY))->unique();
+        // E-mails compared in lower case; student numbers as written.
+        $emails = collect(preg_split('/[\s,،;]+/u', (string) $request->input('emails'), -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn ($v) => str_contains($v, '@') ? mb_strtolower($v) : $v)->unique();
         if ($emails->isEmpty()) {
-            throw ValidationException::withMessages(['emails' => 'اكتب بريد طالب واحد على الأقل.']);
+            throw ValidationException::withMessages(['emails' => 'اكتب بريد طالب أو رقمه الجامعي على الأقل.']);
         }
-        $users = User::whereIn('email', $emails)->pluck('id', 'email');
+        $found = User::whereIn('email', $emails)->orWhereIn('student_number', $emails)->get(['id', 'email', 'student_number']);
+        $users = $found->pluck('id', 'id');
         $group->members()->syncWithoutDetaching($users->values());
-        $missing = $emails->diff($users->keys());
+        $known = $found->pluck('email')->concat($found->pluck('student_number')->filter());
+        $missing = $emails->diff($known);
 
         return back()->with('success', 'أُضيف '.$users->count().' طالباً.'.($missing->isNotEmpty() ? ' لا حساب لـ: '.$missing->implode('، ') : ''));
     }
@@ -97,7 +101,7 @@ class GroupController extends Controller
                 $password = strtolower(\Illuminate\Support\Str::password(8, symbols: false));
                 $u->forceFill(['password' => \Illuminate\Support\Facades\Hash::make($password)])->save();
 
-                return ['name' => $u->name, 'email' => $u->email, 'password' => $password];
+                return ['name' => $u->name, 'email' => str_ends_with($u->email, '@students.invalid') ? null : $u->email, 'student_number' => $u->student_number, 'password' => $password];
             });
         ActivityLog::record('exam.cards', "أعاد كلمات مرور {$cards->count()} طالباً وطبع بطاقات دخول للمجموعة \"{$group->name}\"");
 

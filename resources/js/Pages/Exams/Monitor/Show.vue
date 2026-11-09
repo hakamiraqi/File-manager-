@@ -4,7 +4,7 @@ import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon, HandRaisedIcon, ClockIcon, CheckIcon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon, PauseCircleIcon, HandRaisedIcon, ClockIcon, CheckIcon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, data: Object, computers: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -49,7 +49,7 @@ const STATUS = {
     submitted: ['سلّم', 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300'],
     absent: ['غائب', 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'],
 };
-const EVENTS = { hidden: 'غادر الصفحة', blur: 'ترك النافذة', paste: 'لصق', ip_changed: 'تغيّر الجهاز' };
+const EVENTS = { hidden: 'غادر الصفحة', blur: 'ترك النافذة', paste: 'لصق', copy: 'محاولة نسخ', ip_changed: 'تغيّر الجهاز' };
 
 const filter = ref('all');
 const search = ref('');
@@ -68,12 +68,14 @@ const saveSeat = (r, seat) => act(route('exams.monitor.attendance', [props.exam.
 
 const dialog = ref(null);   // { kind: 'extend'|'reopen'|'submit'|'submit_all', row }
 const minutes = ref(10);
+const hallRoom = ref('');
 async function confirmDialog() {
     const d = dialog.value;
     if (d.kind === 'extend') await act(route('exams.monitor.extend', d.row.attempt.id), { minutes: minutes.value });
     if (d.kind === 'reopen') await act(route('exams.monitor.reopen', d.row.attempt.id), { minutes: minutes.value });
     if (d.kind === 'submit') await act(route('exams.monitor.submit', d.row.attempt.id));
     if (d.kind === 'submit_all') await act(route('exams.monitor.submit-all', props.exam.id));
+    if (d.kind === 'extend_all') await act(route('exams.monitor.extend-all', props.exam.id), { minutes: minutes.value, room: hallRoom.value || null });
     dialog.value = null;
 }
 
@@ -213,6 +215,8 @@ async function uploadOffline(event) {
             <div class="flex flex-wrap items-center gap-2">
                 <input v-model="search" :placeholder="t('exam.search_student', 'بحث بالاسم أو المقعد')" class="w-64 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                 <span class="flex-1" />
+                <button v-if="(live.counts.working ?? 0) + (live.counts.disconnected ?? 0) + (live.counts.time_up ?? 0)" @click="minutes = 10; hallRoom = ''; dialog = { kind: 'extend_all' }"
+                    class="flex items-center gap-1 rounded-lg border border-sky-300 px-3 py-1.5 text-sm text-sky-700 dark:border-sky-700 dark:text-sky-300"><PauseCircleIcon class="h-4 w-4" /> {{ t('exam.extend_all', 'توقّف القاعة: وقت لكل الطلاب') }}</button>
                 <button v-if="(live.counts.working ?? 0) + (live.counts.disconnected ?? 0) + (live.counts.time_up ?? 0)" @click="dialog = { kind: 'submit_all' }"
                     class="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 dark:border-red-700 dark:text-red-300">{{ t('exam.submit_all', 'تسليم كل المحاولات الجارية') }}</button>
             </div>
@@ -235,6 +239,8 @@ async function uploadOffline(event) {
                             <td class="px-3 py-2">
                                 <p class="font-medium">{{ r.user.name }} <span v-if="r.user.extra_time" class="text-xs text-sky-600" :title="t('exam.extra_time', 'وقت إضافي')"><ClockIcon class="inline h-3.5 w-3.5 align-text-bottom" /></span></p>
                                 <p class="text-xs text-gray-400" dir="ltr">{{ r.user.email }}<span v-if="r.attempt?.ip"> · {{ r.attempt.ip }}</span></p>
+                                <p v-if="r.attempt?.variant || r.attempt?.receipt" class="text-xs text-gray-500"><span v-if="r.attempt.variant" class="rounded bg-violet-100 px-1.5 text-violet-800 dark:bg-violet-900/40 dark:text-violet-200">{{ t('exam.variant_short', 'نسخة') }} {{ r.attempt.variant }}</span>
+                                    <span v-if="r.attempt.receipt" class="ms-1 font-mono" dir="ltr" :title="t('exam.receipt_code', 'رمز الإيصال')">{{ r.attempt.receipt }}</span></p>
                             </td>
                             <td class="px-2 py-2 text-center whitespace-nowrap">
                                 <button @click="setPresent(r, true)" class="rounded px-1.5 py-0.5 text-xs" :class="r.present === true ? 'bg-emerald-600 text-white' : 'border border-gray-300 dark:border-gray-600'"><CheckIcon class="h-4 w-4" /></button>
@@ -286,9 +292,15 @@ async function uploadOffline(event) {
                     <template v-if="dialog.kind === 'extend'">{{ t('exam.extend_q', 'وقت إضافي لـ :n', { n: dialog.row.user.name }) }}</template>
                     <template v-else-if="dialog.kind === 'reopen'">{{ t('exam.reopen_q', 'إعادة فتح محاولة :n؟ تُلغى درجتها حتى يسلّم من جديد.', { n: dialog.row.user.name }) }}</template>
                     <template v-else-if="dialog.kind === 'submit'">{{ t('exam.submit_q', 'تسليم محاولة :n الآن بإجاباتها المحفوظة؟', { n: dialog.row.user.name }) }}</template>
+                    <template v-else-if="dialog.kind === 'extend_all'">{{ t('exam.extend_all_q', 'كم دقيقة توقّف الامتحان؟ تُضاف لكل محاولة جارية.') }}</template>
                     <template v-else>{{ t('exam.submit_all_q', 'تسليم كل المحاولات الجارية الآن؟ (نهاية الجلسة)') }}</template>
                 </p>
-                <label v-if="dialog.kind === 'extend' || dialog.kind === 'reopen'" class="block text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.minutes_label', 'دقائق') }}</span>
+                <label v-if="dialog.kind === 'extend_all' && rooms.length" class="block text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.room', 'القاعة') }}</span>
+                    <select v-model="hallRoom" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                        <option value="">{{ t('exam.all_rooms', 'كل القاعات') }}</option>
+                        <option v-for="r in rooms" :key="r" :value="r">{{ r }}</option>
+                    </select></label>
+                <label v-if="dialog.kind === 'extend' || dialog.kind === 'reopen' || dialog.kind === 'extend_all'" class="block text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.minutes_label', 'دقائق') }}</span>
                     <input v-model.number="minutes" type="number" min="1" max="600" class="w-28 rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                 <div class="flex justify-end gap-2">
                     <button @click="dialog = null" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>

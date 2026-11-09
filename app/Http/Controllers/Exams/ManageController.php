@@ -118,6 +118,8 @@ class ManageController extends Controller
             'questions.*.tags' => ['nullable', 'array', 'max:10'],
             'questions.*.difficulty' => ['nullable', 'integer'],
             'bind_computers' => ['boolean'],
+            'variants' => ['nullable', 'integer', 'min:1', 'max:4'],
+            'protect_content' => ['boolean'],
             'allowed_ips' => ['nullable', 'string', 'max:2000'],
             'group_ids' => ['nullable', 'array'],
             'group_ids.*' => ['integer', 'exists:exam_groups,id'],
@@ -157,8 +159,8 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open',
-            ])->all() + array_filter(['navigation' => $data['navigation'] ?? null, 'calculator' => $data['calculator'] ?? null]) + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open', 'protect_content',
+            ])->all() + array_filter(['navigation' => $data['navigation'] ?? null, 'calculator' => $data['calculator'] ?? null, 'variants' => $data['variants'] ?? null]) + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');
             $keep = [];

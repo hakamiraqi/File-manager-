@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /** What the browser reported during an attempt: the tab hidden, the window left, a paste... */
 class Event extends Model
 {
-    public const TYPES = ['hidden', 'blur', 'paste', 'fullscreen_exit', 'ip_changed', 'offline_file'];
+    public const TYPES = ['hidden', 'blur', 'paste', 'fullscreen_exit', 'ip_changed', 'offline_file', 'copy'];
 
     public const UPDATED_AT = null;
 

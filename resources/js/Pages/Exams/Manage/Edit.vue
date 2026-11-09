@@ -333,6 +333,15 @@ function save() {
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
                         <span>{{ t('exam.bind_computers', 'تثبيت كل طالب على حاسبته') }}<span class="block text-xs text-gray-500">{{ t('exam.bind_computers_hint', 'لا يفتح امتحانه إلا من عنوان حاسبته') }}</span></span>
                         <ToggleSwitch v-model="form.bind_computers" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.variants', 'نسخ الامتحان') }}<span class="block text-xs text-gray-500">{{ t('exam.variants_hint', 'الحواسيب المتجاورة تأخذ نسخاً مختلفة (أ، ب، ج) بترتيب أسئلة وخيارات مختلف') }}</span></span>
+                        <select v-model.number="form.variants" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option :value="1">{{ t('exam.variants_one', 'نسخة واحدة') }}</option>
+                            <option v-for="n in [2, 3, 4]" :key="n" :value="n">{{ t('exam.variants_n', ':n نسخ', { n }) }}</option>
+                        </select></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.protect', 'حماية الأسئلة') }}<span class="block text-xs text-gray-500">{{ t('exam.protect_hint', 'اسم الطالب علامةً مائية على الصفحة، ومنع النسخ والتحديد والقائمة اليمنى') }}</span></span>
+                        <ToggleSwitch v-model="form.protect_content" /></label>
                 </div>
                 <div class="grid gap-3 sm:grid-cols-2">
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.shuffle_questions', 'خلط ترتيب الأسئلة') }} <ToggleSwitch v-model="form.shuffle_questions" /></label>

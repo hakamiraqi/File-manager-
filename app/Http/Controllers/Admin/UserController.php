@@ -23,7 +23,7 @@ class UserController extends Controller
 
         $users = User::query()
             // Grouped, so the role/status filters apply to both name and email matches.
-            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")))
+            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")->orWhere('student_number', 'like', "%{$search}%")))
             ->when($role, fn ($q) => $q->where('role', $role))
             ->when($status, fn ($q) => $q->where('is_active', $status === 'active'))
             ->orderBy('name')
@@ -50,7 +50,8 @@ class UserController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'unique:users,email'],
+            'email' => ['required_without:student_number', 'nullable', 'email', 'unique:users,email'],
+            'student_number' => ['nullable', 'string', 'max:50', 'regex:/^[^@\s]+$/', 'unique:users,student_number'],
             'password' => ['required', Password::defaults()],
             'role' => ['required', 'in:admin,user'],
             'is_active' => ['sometimes', 'boolean'],
@@ -81,7 +82,9 @@ class UserController extends Controller
 
         $created = User::create([
             'name' => $data['name'],
-            'email' => $data['email'],
+            // A student with only a number gets an address that can never receive mail.
+            'email' => $data['email'] ?: 'student-'.\Illuminate\Support\Str::slug($data['student_number']).'-'.\Illuminate\Support\Str::lower(\Illuminate\Support\Str::random(4)).'@students.invalid',
+            'student_number' => filled($data['student_number'] ?? null) ? trim($data['student_number']) : null,
             'password' => Hash::make($data['password']),
             'role' => $data['role'],
             'is_examiner' => (bool) ($data['is_examiner'] ?? false),
@@ -104,6 +107,7 @@ class UserController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'email', 'unique:users,email,'.$user->id],
+            'student_number' => ['sometimes', 'nullable', 'string', 'max:50', 'regex:/^[^@\s]+$/', 'unique:users,student_number,'.$user->id],
             'role' => ['sometimes', 'in:admin,user'],
             'is_active' => ['sometimes', 'boolean'],
             'password' => ['nullable', Password::defaults()],
@@ -129,6 +133,9 @@ class UserController extends Controller
         }
         $this->guardDeactivation($request, $user, $data['is_active'] ?? null);
 
+        if (array_key_exists('student_number', $data)) {
+            $data['student_number'] = filled($data['student_number']) ? trim($data['student_number']) : null;
+        }
         if (! empty($data['password'])) {
             $data['password'] = Hash::make($data['password']);
         } else {

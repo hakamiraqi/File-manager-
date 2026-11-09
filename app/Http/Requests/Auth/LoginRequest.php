@@ -28,7 +28,8 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'email' => ['required', 'string', 'email'],
+            // An e-mail, or a student number for students without a working e-mail.
+            'email' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
         ];
     }
@@ -46,7 +47,10 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $credentials = $this->only('email', 'password');
+        $login = trim((string) $this->input('email'));
+        $credentials = str_contains($login, '@')
+            ? ['email' => $login, 'password' => (string) $this->input('password')]
+            : ['student_number' => $login, 'password' => (string) $this->input('password')];
 
         if (! Auth::validate($credentials)) {
             RateLimiter::hit($this->throttleKey());

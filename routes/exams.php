@@ -91,6 +91,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::post('/{exam}/offline-file', [$m, 'offlineFile'])->whereNumber('exam')->name('offline-file');
     Route::post('/{exam}/announce', [$m, 'announce'])->whereNumber('exam')->name('announce');
     Route::post('/{exam}/submit-all', [$m, 'submitAll'])->whereNumber('exam')->name('submit-all');
+    Route::post('/{exam}/extend-all', [$m, 'extendAll'])->whereNumber('exam')->name('extend-all');
     Route::post('/{exam}/settings', [$m, 'settings'])->whereNumber('exam')->name('settings');
     Route::post('/{exam}/seat/{user}', [$m, 'seat'])->whereNumber('exam')->name('seat');
     Route::post('/{exam}/distribute', [$m, 'distribute'])->whereNumber('exam')->name('distribute');

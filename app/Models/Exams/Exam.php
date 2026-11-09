@@ -24,7 +24,7 @@ class Exam extends Model
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
         'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
-        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key',
+        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content',
     ];
 
     protected $hidden = ['password'];
@@ -53,6 +53,8 @@ class Exam extends Model
             'appeals_open' => 'boolean',
             'bind_computers' => 'boolean',
             'marking_tolerance' => 'integer',
+            'variants' => 'integer',
+            'protect_content' => 'boolean',
         ];
     }
 

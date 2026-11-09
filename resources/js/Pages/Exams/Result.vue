@@ -4,7 +4,7 @@ import { computed, ref } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { CheckCircleIcon, XCircleIcon, MinusCircleIcon, ArrowRightIcon } from '@heroicons/vue/24/outline';
+import { CheckCircleIcon, XCircleIcon, MinusCircleIcon, ArrowRightIcon, DocumentCheckIcon, PrinterIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, attempt: Object, visible: Boolean, review: Array, appeals_open: Boolean, appeals: { type: Array, default: () => [] } });
 const appealFor = ref(null);
@@ -16,6 +16,12 @@ function sendAppeal() {
 const appealsOf = (qid) => props.appeals.filter((a) => a.question_id === qid);
 const { t } = useTrans();
 const passed = computed(() => props.exam.pass_mark !== null && props.attempt.percent !== null ? props.attempt.percent >= props.exam.pass_mark : null);
+// Prints the receipt alone (the rest of the page is hidden while printing).
+function printReceipt() {
+    document.body.classList.add('printing-receipt');
+    window.print();
+    setTimeout(() => document.body.classList.remove('printing-receipt'), 500);
+}
 const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'right' : r.earned > 0 ? 'partial' : 'wrong');
 </script>
 
@@ -40,6 +46,26 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
                     <p v-if="attempt.needs_grading" class="mt-3 text-sm text-amber-600">{{ t('exam.pending_note', 'بعض الإجابات المقالية لم تُصحَّح بعد، وقد تتغيّر الدرجة.') }}</p>
                 </template>
                 <p v-else class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.submitted_hidden', 'تم تسليم إجاباتك. ستُعلن النتيجة لاحقاً.') }}</p>
+            </section>
+
+            <!-- Submission receipt: the code the student keeps; the invigilator and teacher see the same one -->
+            <section v-if="attempt.receipt" class="exam-receipt rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                <div class="flex flex-wrap items-center gap-3">
+                    <DocumentCheckIcon class="h-8 w-8 shrink-0 text-emerald-600" />
+                    <div class="min-w-0 flex-1 text-sm">
+                        <p class="font-semibold">{{ t('exam.receipt', 'إيصال التسليم') }}</p>
+                        <p class="text-gray-600 dark:text-gray-300">{{ attempt.student }}<template v-if="attempt.student_number"> · {{ attempt.student_number }}</template></p>
+                        <p class="text-gray-600 dark:text-gray-300">{{ exam.title }} · {{ t('exam.attempt', 'المحاولة') }} {{ attempt.number }}</p>
+                        <p class="text-gray-600 dark:text-gray-300">{{ t('exam.receipt_time', 'وقت التسليم') }}: <span dir="ltr">{{ new Date(attempt.submitted_at).toLocaleString() }}</span>
+                            · {{ t('exam.receipt_answered', ':a من :n سؤالاً مُجاباً', { a: attempt.answered, n: attempt.questions }) }}</p>
+                    </div>
+                    <div class="text-center">
+                        <p class="text-xs text-gray-500">{{ t('exam.receipt_code', 'رمز الإيصال') }}</p>
+                        <p class="font-mono text-xl font-bold tracking-widest" dir="ltr">{{ attempt.receipt }}</p>
+                    </div>
+                    <button type="button" @click="printReceipt" class="rounded-lg border border-gray-300 p-2 print:hidden dark:border-gray-600" :title="t('exam.receipt_print', 'طباعة الإيصال')"><PrinterIcon class="h-5 w-5" /></button>
+                </div>
+                <p class="mt-2 text-xs text-gray-500">{{ t('exam.receipt_hint', 'احتفظ بهذا الرمز أو صوّره: يثبت أن إجاباتك سُلِّمت وسُجِّلت.') }}</p>
             </section>
 
             <article v-for="(r, i) in review" :key="r.id" class="rounded-xl border bg-white p-4 dark:bg-gray-800"
@@ -90,3 +116,11 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
         </div>
     </AppLayout>
 </template>
+
+<style>
+@media print {
+    body.printing-receipt * { visibility: hidden; }
+    body.printing-receipt .exam-receipt, body.printing-receipt .exam-receipt * { visibility: visible; }
+    body.printing-receipt .exam-receipt { position: absolute; inset: 0 0 auto 0; border-color: #000; }
+}
+</style>

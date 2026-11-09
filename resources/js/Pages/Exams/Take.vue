@@ -10,7 +10,7 @@ import { Head, router } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, CalculatorIcon, PencilSquareIcon, HandRaisedIcon, StopIcon, SpeakerWaveIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
+import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, CalculatorIcon, PencilSquareIcon, HandRaisedIcon, StopIcon, SpeakerWaveIcon, LockClosedIcon, BellAlertIcon, XMarkIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object, offline_token: String, hall: { type: Object, default: () => ({}) } });
 
@@ -321,6 +321,52 @@ function report(type, meta = null) {
 const onVisibility = () => (document.visibilityState === 'hidden' ? report('hidden') : setTimeout(ping, 500));
 const onBlur = () => report('blur');
 const onPaste = () => report('paste');
+
+// ---- Protection: the student's name across the page, and no copying the questions out ----
+const watermarkStyle = computed(() => {
+    if (!props.hall.protect || !props.hall.watermark) return null;
+    const esc = props.hall.watermark.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="340" height="170"><text x="170" y="85" text-anchor="middle" dominant-baseline="middle" transform="rotate(-25 170 85)" font-family="sans-serif" font-size="15" fill="rgba(110,110,110,0.14)">${esc}</text></svg>`;
+    return { backgroundImage: `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}")` };
+});
+const editable = (el) => !!el?.closest?.('input, textarea, [contenteditable="true"], canvas');
+let copyReported = 0;
+function guard(e) {
+    if (editable(e.target)) return;
+    e.preventDefault();
+    if ((e.type === 'copy' || e.type === 'cut') && Date.now() - copyReported > 30000) { copyReported = Date.now(); report('copy'); }
+}
+const GUARDED = ['copy', 'cut', 'contextmenu', 'dragstart'];
+
+// ---- Warnings before the time runs out (5 and 1 minutes), with a sound the student can turn off ----
+const warning = ref(null);
+const warnSound = ref((() => { try { return localStorage.getItem('exam-warn-sound') !== '0'; } catch { return true; } })());
+function toggleWarnSound() { warnSound.value = !warnSound.value; try { localStorage.setItem('exam-warn-sound', warnSound.value ? '1' : '0'); } catch {} }
+function beep() {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        [0, 0.5].forEach((at) => {
+            const o = ctx.createOscillator(); const g = ctx.createGain();
+            o.frequency.value = 880; g.gain.value = 0.12; o.connect(g); g.connect(ctx.destination);
+            o.start(ctx.currentTime + at); o.stop(ctx.currentTime + at + 0.3);
+        });
+        setTimeout(() => ctx.close(), 1500);
+    } catch {}
+}
+const warned = new Set();
+function checkWarnings() {
+    const s = secondsLeft.value;
+    if (s === null) return;
+    for (const m of [5, 1]) {
+        if (s > m * 60) { warned.delete(m); continue; }   // time was given back: warn again later
+        if (s > m * 60 - 30 && !warned.has(m)) {
+            warned.add(m);
+            warning.value = m;
+            if (warnSound.value) beep();
+            setTimeout(() => { if (warning.value === m) warning.value = null; }, 20000);
+        }
+    }
+}
 const onLeave = (e) => { if (saving.value) { e.preventDefault(); e.returnValue = ''; } };
 
 onMounted(() => {
@@ -332,6 +378,7 @@ onMounted(() => {
     tick = setInterval(() => {
         if (secondsLeft.value === null) return;
         secondsLeft.value--;
+        checkWarnings();
         if (secondsLeft.value <= 0) {
             clearInterval(tick);
             finish();
@@ -341,6 +388,7 @@ onMounted(() => {
     window.addEventListener('blur', onBlur);
     document.addEventListener('paste', onPaste);
     window.addEventListener('beforeunload', onLeave);
+    if (props.hall.protect) GUARDED.forEach((ev) => document.addEventListener(ev, guard));
 });
 onBeforeUnmount(() => {
     clearInterval(tick);
@@ -351,12 +399,14 @@ onBeforeUnmount(() => {
     window.removeEventListener('blur', onBlur);
     document.removeEventListener('paste', onPaste);
     window.removeEventListener('beforeunload', onLeave);
+    GUARDED.forEach((ev) => document.removeEventListener(ev, guard));
 });
 </script>
 
 <template>
     <Head :title="exam.title" />
-    <div class="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" :dir="exam.dir" :lang="exam.lang">
+    <div class="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" :class="{ 'exam-protect': hall.protect }" :dir="exam.dir" :lang="exam.lang">
+        <div v-if="watermarkStyle" class="pointer-events-none fixed inset-0 z-[5] print:hidden" :style="watermarkStyle" aria-hidden="true" />
         <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
             <h1 class="min-w-0 flex-1 truncate font-semibold">{{ exam.title }}</h1>
             <span class="hidden text-xs text-gray-500 sm:inline">{{ answeredCount }} / {{ graded.length }} {{ t('exam.answered', 'مُجاب') }}</span>
@@ -367,6 +417,7 @@ onBeforeUnmount(() => {
             <span v-if="clock" class="flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-sm font-semibold" :class="secondsLeft < 300 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700'" role="timer" aria-live="off">
                 <ClockIcon class="h-4 w-4" /> {{ clock }}
             </span>
+            <span v-if="hall.variant" class="rounded bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-900/40 dark:text-violet-200" :title="t('exam.variant', 'نسخة الامتحان')">{{ t('exam.variant_short', 'نسخة') }} {{ hall.variant }}</span>
             <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
             <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
             <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
@@ -384,12 +435,20 @@ onBeforeUnmount(() => {
             <label class="flex items-center gap-1">{{ t('exam.text_dir', 'الاتجاه') }}
                 <select v-model="reading.dir" @change="saveReading" class="rounded border-gray-300 py-0.5 text-sm dark:border-gray-600 dark:bg-gray-700">
                     <option value="">{{ t('exam.dir_auto_short', 'تلقائي') }}</option><option value="rtl">{{ t('exam.dir_rtl', 'من اليمين لليسار') }}</option><option value="ltr">{{ t('exam.dir_ltr', 'من اليسار لليمين') }}</option></select></label>
+            <label class="flex cursor-pointer items-center gap-1"><input type="checkbox" :checked="warnSound" @change="toggleWarnSound" class="rounded" /> {{ t('exam.warn_sound', 'صوت التنبيه قبل نهاية الوقت') }}</label>
         </div>
         <FlashMessages />
+        <div v-if="warning" class="mx-auto mt-3 max-w-6xl px-4" role="alert">
+            <p class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold" :class="warning === 1 ? 'bg-red-600 text-white' : 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100'">
+                <BellAlertIcon class="h-5 w-5" />
+                <span class="flex-1">{{ warning === 1 ? t('exam.warn_1', 'بقيت دقيقة واحدة. يُسلَّم الامتحان تلقائياً عند انتهاء الوقت.') : t('exam.warn_5', 'بقيت 5 دقائق على نهاية الوقت.') }}</span>
+                <button @click="warning = null" :aria-label="t('action.close', 'إغلاق')"><XMarkIcon class="h-4 w-4" /></button>
+            </p>
+        </div>
         <div v-if="announcements.length" class="mx-auto mt-3 max-w-6xl space-y-1 px-4" role="status" aria-live="polite">
             <p v-for="a in announcements" :key="a.id" class="flex items-start gap-2 rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-900/40 dark:text-sky-100">
                 <span class="font-semibold">{{ t('exam.announcement', 'من المراقب') }}:</span> <span class="flex-1" dir="auto">{{ a.body }}</span>
-                <button @click="announcements.splice(announcements.indexOf(a), 1)" class="text-sky-500">×</button>
+                <button @click="announcements.splice(announcements.indexOf(a), 1)" class="text-sky-500" :aria-label="t('action.close', 'إغلاق')"><XMarkIcon class="h-4 w-4" /></button>
             </p>
         </div>
 
@@ -620,4 +679,7 @@ onBeforeUnmount(() => {
 .exam-reading .text-xl { font-size: calc(1.25rem * var(--rs, 1)); line-height: calc(1.75rem * var(--rs, 1)); }
 .exam-reading .text-2xl { font-size: calc(1.5rem * var(--rs, 1)); line-height: calc(2rem * var(--rs, 1)); }
 .exam-reading input, .exam-reading textarea, .exam-reading select { font-size: inherit; }
+/* Protected exams: the questions cannot be selected; the student's own answer fields still can */
+.exam-protect { -webkit-user-select: none; user-select: none; }
+.exam-protect input, .exam-protect textarea, .exam-protect [contenteditable="true"] { -webkit-user-select: text; user-select: text; }
 </style>

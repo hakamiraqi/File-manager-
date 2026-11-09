@@ -69,7 +69,7 @@ const overrideForm = useForm({ email: '', extra_minutes: '', closes_at: '', max_
 const saveOverride = () => overrideForm.post(route('exams.manage.overrides.store', props.exam.id), { preserveScroll: true, onSuccess: () => overrideForm.reset() });
 const removeOverride = (o) => router.delete(route('exams.manage.overrides.destroy', o.id), { preserveScroll: true });
 
-const EVENT_LABELS = { hidden: 'غادر الصفحة', blur: 'ترك النافذة', paste: 'لصق', fullscreen_exit: 'خرج من ملء الشاشة', ip_changed: 'تغيّر العنوان' };
+const EVENT_LABELS = { hidden: 'غادر الصفحة', blur: 'ترك النافذة', paste: 'لصق', copy: 'محاولة نسخ', fullscreen_exit: 'خرج من ملء الشاشة', ip_changed: 'تغيّر العنوان' };
 const discClass = (d) => (d === null ? 'text-gray-400' : d < 0 ? 'font-semibold text-red-600' : d < 0.2 ? 'text-red-600' : d < 0.3 ? 'text-amber-600' : 'text-emerald-600');
 const alphaLabel = (a) => (a === null ? '' : a >= 0.8 ? t('exam.alpha_good', 'جيد') : a >= 0.7 ? t('exam.alpha_ok', 'مقبول') : t('exam.alpha_low', 'منخفض'));
 const maxBin = () => Math.max(1, ...(props.stats?.distribution ?? [0]));
@@ -116,7 +116,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                     <div class="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
                         <div class="min-w-0 flex-1">
                             <p class="font-medium">{{ a.user.name }} <span class="text-xs text-gray-400">#{{ a.number }}</span></p>
-                            <p class="text-xs text-gray-500">{{ a.user.email }} · {{ fmt(a.started_at) }} – {{ a.submitted_at ? fmt(a.submitted_at) : t('exam.in_progress', 'جارٍ') }}</p>
+                            <p class="text-xs text-gray-500">{{ a.user.email }} · {{ fmt(a.started_at) }} – {{ a.submitted_at ? fmt(a.submitted_at) : t('exam.in_progress', 'جارٍ') }}<template v-if="a.variant"> · {{ t('exam.variant_short', 'نسخة') }} {{ a.variant }}</template><template v-if="a.receipt"> · <span class="font-mono" dir="ltr" :title="t('exam.receipt_code', 'رمز الإيصال')">{{ a.receipt }}</span></template></p>
                         </div>
                         <span v-for="(n, type) in a.events" :key="type" class="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.event_' + type, EVENT_LABELS[type]) }} × {{ n }}</span>
                         <span v-if="a.needs_grading" class="rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">{{ t('exam.pending_grading', 'بانتظار التصحيح') }}</span>
