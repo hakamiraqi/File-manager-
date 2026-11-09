@@ -20,6 +20,7 @@ import {
     LockClosedIcon,
     EnvelopeIcon,
     LanguageIcon,
+    IdentificationIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -31,6 +32,7 @@ const mobileOpen = ref(false);
 const nav = computed(() => [
     { label: t('admin.nav.dashboard', 'لوحة التحكم'), href: () => route('admin.dashboard'), icon: Squares2X2Icon, active: () => route().current('admin.dashboard'), show: true },
     { label: t('admin.nav.users', 'المستخدمون'), href: () => route('admin.users.index'), icon: UsersIcon, active: () => route().current('admin.users.*'), show: admin.value.users },
+    { label: t('admin.nav.cards', 'بطاقات الدخول'), href: () => route('admin.cards.index'), icon: IdentificationIcon, active: () => route().current('admin.cards.*'), show: admin.value.users },
     { label: t('admin.nav.settings', 'الإعدادات العامة'), href: () => route('admin.settings.index'), icon: Cog6ToothIcon, active: () => route().current('admin.settings.*'), show: admin.value.settings || admin.value.appearance },
     { label: t('admin.nav.security', 'الأمان وتسجيل الدخول'), href: () => route('admin.security.index'), icon: LockClosedIcon, active: () => route().current('admin.security.*'), show: admin.value.settings },
     { label: t('admin.nav.mail', 'البريد الإلكتروني'), href: () => route('admin.mail.index'), icon: EnvelopeIcon, active: () => route().current('admin.mail.*'), show: admin.value.settings },

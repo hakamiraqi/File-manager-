@@ -18,6 +18,16 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::patch('/users/{user}/status', [UserController::class, 'status'])->name('users.status');
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+
+        // Login cards (like the clinics system's): pick students, new passwords, print A4 cards.
+        $cards = \App\Http\Controllers\Admin\LoginCardController::class;
+        Route::get('/cards', [$cards, 'index'])->name('cards.index');
+        Route::get('/cards/users', [$cards, 'users'])->name('cards.users');
+        Route::post('/cards', [$cards, 'generate'])->middleware('throttle:20,1')->name('cards.generate');
+        Route::post('/cards/apply', [$cards, 'apply'])->middleware('throttle:10,1')->name('cards.apply');
+        Route::get('/cards/files/{name}', [$cards, 'print'])->name('cards.print');
+        Route::get('/cards/files/{name}/download', [$cards, 'download'])->name('cards.download');
+        Route::delete('/cards/files/{name}', [$cards, 'destroy'])->name('cards.destroy');
     });
 
     Route::middleware('can:access-settings-page')->group(function () {
