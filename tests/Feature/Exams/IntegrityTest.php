@@ -150,7 +150,14 @@ class IntegrityTest extends TestCase
 
         // Groups take the number too, and the login cards show it.
         $group = Group::create(['name' => 'المرحلة الأولى', 'user_id' => $admin->id]);
-        $this->actingAs($admin)->post(route('exams.groups.members.store', $group), ['emails' => "2025010\nnobody@x.test"])->assertSessionHasNoErrors();
+        $this->actingAs($admin)->post(route('exams.manage.groups.members.store', $group), ['emails' => "2025010\nnobody@x.test"])->assertSessionHasNoErrors();
         $this->assertTrue($group->members()->whereKey($ali->id)->exists());
+
+        // The Excel import takes a number column; a known number is only added.
+        $csv = "الاسم,الرقم الجامعي\nزينب,2025011\nعلي,2025010\n";
+        $this->actingAs($admin)->post(route('exams.manage.students.import'), ['file' => \Illuminate\Http\UploadedFile::fake()->createWithContent('s.csv', $csv), 'group_id' => $group->id])->assertOk();
+        $this->assertSame('زينب', User::where('student_number', '2025011')->value('name'));
+        $this->assertSame(1, User::where('student_number', '2025010')->count());
+        $this->assertSame(2, $group->members()->count());
     }
 }

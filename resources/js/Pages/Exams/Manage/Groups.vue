@@ -107,7 +107,7 @@ async function importStudents() {
                     </form>
                     <div v-if="canImport" class="space-y-2 rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
                         <p class="text-sm font-medium">{{ t('exam.import_into_group', 'حسابات جديدة من Excel إلى هذه المجموعة') }}</p>
-                        <p class="text-xs text-gray-500">{{ t('exam.import_into_group_hint', 'أعمدة: الاسم، البريد، كلمة المرور (اختياري). من له حساب يُضاف فقط. يُنزَّل ملف بكلمات المرور الجديدة.') }}</p>
+                        <p class="text-xs text-gray-500">{{ t('exam.import_into_group_hint', 'أعمدة: الاسم، البريد أو الرقم الجامعي، كلمة المرور (اختياري). من له حساب يُضاف فقط. يُنزَّل ملف بكلمات المرور الجديدة.') }}</p>
                         <input type="file" accept=".xlsx,.csv" @input="importFile = $event.target.files[0]" class="block w-full text-sm" />
                         <p v-if="importError" class="text-xs text-red-600">{{ importError }}</p>
                         <button @click="importStudents" :disabled="!importFile || importing" class="flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600"><ArrowUpTrayIcon class="h-4 w-4" /> {{ t('exam.import', 'استيراد') }}</button>

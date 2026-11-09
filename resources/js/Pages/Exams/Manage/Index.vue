@@ -114,7 +114,7 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
         <Modal :show="studentsOpen" @close="studentsOpen = false" max-width="md">
             <form @submit.prevent="importStudents" class="space-y-4 p-6">
                 <h3 class="text-lg font-semibold">{{ t('exam.import_students', 'استيراد طلاب') }}</h3>
-                <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.students_hint', 'ملف Excel أو CSV بأعمدة: الاسم، البريد، كلمة المرور (اختياري؛ تُولَّد إن تُركت فارغة). يُنزَّل بعدها ملف فيه كل حساب وكلمة مروره — احفظه، فلا يظهر مرة أخرى.') }}</p>
+                <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.students_hint', 'ملف Excel أو CSV بأعمدة: الاسم، البريد أو الرقم الجامعي (أو كلاهما)، كلمة المرور (اختياري؛ تُولَّد إن تُركت فارغة). يُنزَّل بعدها ملف فيه كل حساب وكلمة مروره — احفظه، فلا يظهر مرة أخرى.') }}</p>
                 <input type="file" accept=".xlsx,.csv" @input="studentsFile = $event.target.files[0]" class="block w-full text-sm" />
                 <p v-if="studentsError" class="text-sm text-red-600">{{ studentsError }}</p>
                 <div class="flex justify-end gap-2">

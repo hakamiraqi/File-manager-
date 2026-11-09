@@ -103,38 +103,52 @@ class ImportController extends Controller
         $col = fn (array $names) => collect($header)->search(fn ($h) => in_array($h, $names, true));
         $nameCol = $col(['الاسم', 'اسم الطالب', 'name']);
         $emailCol = $col(['البريد', 'البريد الالكتروني', 'الايميل', 'email']);
+        $numberCol = $col(['الرقم الجامعي', 'الرقم', 'رقم الطالب', 'student number', 'student_number', 'id']);
         $passCol = $col(['كلمه المرور', 'password']);
-        if ($nameCol === false || $emailCol === false) {
-            throw ValidationException::withMessages(['file' => 'أحتاج عمودَي «الاسم» و«البريد» في الصف الأول.']);
+        if ($nameCol === false || ($emailCol === false && $numberCol === false)) {
+            throw ValidationException::withMessages(['file' => 'أحتاج عمود «الاسم» وعمود «البريد» أو «الرقم الجامعي» في الصف الأول.']);
         }
 
         $created = [];
         $skipped = [];
-        DB::transaction(function () use ($rows, $nameCol, $emailCol, $passCol, $group, &$created, &$skipped) {
+        DB::transaction(function () use ($rows, $nameCol, $emailCol, $numberCol, $passCol, $group, &$created, &$skipped) {
             foreach ($rows as $i => $row) {
                 $name = trim((string) ($row[$nameCol] ?? ''));
-                $email = mb_strtolower(trim((string) ($row[$emailCol] ?? '')));
-                if ($name === '' && $email === '') {
+                $email = $emailCol === false ? '' : mb_strtolower(trim((string) ($row[$emailCol] ?? '')));
+                $number = $numberCol === false ? '' : trim((string) ($row[$numberCol] ?? ''));
+                $who = $email !== '' ? $email : $number;
+                if ($name === '' && $who === '') {
                     continue;
                 }
-                if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                    $skipped[] = [$name, $email, 'بريد غير صالح'];
+                if ($email !== '' && ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $skipped[] = [$name, $who, 'بريد غير صالح'];
 
                     continue;
                 }
-                if ($existing = User::where('email', $email)->first()) {
+                if ($email === '' && ($number === '' || preg_match('/[@\s]/', $number))) {
+                    $skipped[] = [$name, $who, 'لا بريد ولا رقم صالح'];
+
+                    continue;
+                }
+                $existing = ($email !== '' ? User::where('email', $email)->first() : null)
+                    ?? ($number !== '' ? User::where('student_number', $number)->first() : null);
+                if ($existing) {
                     $group?->members()->syncWithoutDetaching([$existing->id]);
-                    $skipped[] = [$name, $email, $group ? 'موجود مسبقاً؛ أُضيف إلى المجموعة' : 'موجود مسبقاً'];
+                    $skipped[] = [$name, $who, $group ? 'موجود مسبقاً؛ أُضيف إلى المجموعة' : 'موجود مسبقاً'];
 
                     continue;
                 }
                 $password = $passCol !== false && trim((string) ($row[$passCol] ?? '')) !== '' ? trim((string) $row[$passCol]) : Str::password(10, symbols: false);
                 $user = User::create([
-                    'name' => Str::limit($name ?: $email, 255, ''), 'email' => $email, 'password' => Hash::make($password),
+                    'name' => Str::limit($name ?: $who, 255, ''),
+                    // A student with only a number gets an address that can never receive mail.
+                    'email' => $email !== '' ? $email : 'student-'.Str::slug($number).'-'.Str::lower(Str::random(4)).'@students.invalid',
+                    'student_number' => $number !== '' ? $number : null,
+                    'password' => Hash::make($password),
                     'role' => 'user', 'is_active' => true, 'email_verified_at' => now(),
                 ]);
                 $group?->members()->attach($user->id);
-                $created[] = [$name, $email, $password];
+                $created[] = [$name, $who, $password];
             }
         });
         ActivityLog::record('exam.students_imported', 'استورد '.count($created).' طالباً من ملف');
@@ -142,7 +156,7 @@ class ImportController extends Controller
         return response()->streamDownload(function () use ($created, $skipped) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['الاسم', 'البريد', 'كلمة المرور', 'الحالة']);
+            fputcsv($out, ['الاسم', 'البريد أو الرقم', 'كلمة المرور', 'الحالة']);
             foreach ($created as $r) {
                 fputcsv($out, [...$r, 'أُنشئ']);
             }
