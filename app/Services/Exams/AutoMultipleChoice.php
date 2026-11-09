@@ -188,7 +188,7 @@ class AutoMultipleChoice
     /**
      * Arabic text as LaTeX for an Arabic AMC sheet: LaTeX's special characters escaped, and every
      * run of Latin letters, digits and symbols (H2O, HTTPS, 15%, π ≈ 3.14, 2⁵) set left to right in
-     * the Latin font, so it reads as typed.
+     * the Latin font (TeX's own \\beginL…\\endL, which keeps signs such as × and % in place too), so it reads as typed.
      */
     public static function arabicTex(string $s): string
     {
@@ -201,7 +201,7 @@ class AutoMultipleChoice
             $run = preg_replace_callback('/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/u', fn ($m) => '\\textsuperscript{'.strtr($m[0], $sup).'}', $run);
             $run = preg_replace_callback('/[₀₁₂₃₄₅₆₇₈₉]+/u', fn ($m) => '\\textsubscript{'.strtr($m[0], $sub).'}', $run);
 
-            return '\\LR{\\rmfamily '.$run.'}';
+            return '{\\beginL\\rmfamily '.$run.'\\endL}';
         };
         // A run starts with a Latin letter, a digit or a maths sign, and goes on over anything that
         // is not Arabic, ending before trailing spaces and Arabic punctuation.

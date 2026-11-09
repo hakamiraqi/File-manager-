@@ -79,6 +79,18 @@ def build(p, source, students):
         amc('meptex', '--src', d + '/calage.xy', '--data', d + '/data', cwd=d, log=log)
         status(p, step='scoring')
         amc('prepare', '--mode', 'b', *common, cwd=d, log=log)
+        if engine == 'xelatex':
+            # Draw the letters as shapes, so every PDF viewer (phones too) shows the sheet exactly as
+            # it prints; some viewers redraw Arabic sheets' text in their own fonts and mangle it.
+            status(p, step='outline')
+            for name in ('subject.pdf', 'correction.pdf'):
+                src, tmp = os.path.join(d, name), os.path.join(d, name + '.tmp')
+                r = subprocess.run(['gs', '-q', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-dNoOutputFonts', '-sDEVICE=pdfwrite',
+                                    '-o', tmp, src], capture_output=True, text=True, timeout=900)
+                if r.returncode == 0 and os.path.getsize(tmp) > 0:
+                    os.replace(tmp, src)
+                elif os.path.exists(tmp):
+                    os.remove(tmp)
         pages = subprocess.run(['pdfinfo', d + '/subject.pdf'], capture_output=True, text=True).stdout
         m = re.search(r'Pages:\s+(\d+)', pages)
         status(p, state='built', step=None, pages=int(m.group(1)) if m else None, built_at=time.time())

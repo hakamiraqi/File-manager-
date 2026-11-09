@@ -4,7 +4,7 @@ Lang: AR
 ArabicFont: Amiri
 Font: Linux Libertine O
 LaTeX: 1
-Title: امتحان \LR{\rmfamily AMC} تجريبي — \LR{\rmfamily 100} سؤال
+Title: امتحان {\beginL\rmfamily AMC\endL} تجريبي — {\beginL\rmfamily 100\endL} سؤال
 ShuffleQuestions: 0
 PreAssociation: students.csv
 PreAssociationKey: id
@@ -12,9 +12,9 @@ PreAssociationName: \name{}
 SeparateAnswerSheet: 1
 
 *[id=q11,ordered]{b=2} ما صيغة الماء؟
-+ \LR{\rmfamily H2O}
-- \LR{\rmfamily CO2} و\LR{\rmfamily H2O}
-- \LR{\rmfamily NaCl}
++ {\beginL\rmfamily H2O\endL}
+- {\beginL\rmfamily CO2\endL} و{\beginL\rmfamily H2O\endL}
+- {\beginL\rmfamily NaCl\endL}
 
 **[id=q12,ordered]{haut=2} اختر الغازات النبيلة
 + هيليوم
@@ -25,6 +25,6 @@ SeparateAnswerSheet: 1
 + صح
 - خطأ
 
-*[id=q14,ordered]{b=1} ما ناتج \LR{\rmfamily 15\%} من \LR{\rmfamily 200}؟ (\LR{\rmfamily π ≈ 3.14}، و\LR{\rmfamily 2\textsuperscript{5} = 32}) البروتوكول \LR{\rmfamily HTTPS}
-+ \LR{\rmfamily 30}
-- \LR{\rmfamily 20}
+*[id=q14,ordered]{b=1} ما ناتج {\beginL\rmfamily 15\%\endL} من {\beginL\rmfamily 200\endL}؟ ({\beginL\rmfamily π ≈ 3.14\endL}، و{\beginL\rmfamily 2\textsuperscript{5} = 32\endL}) البروتوكول {\beginL\rmfamily HTTPS\endL}
++ {\beginL\rmfamily 30\endL}
+- {\beginL\rmfamily 20\endL}
