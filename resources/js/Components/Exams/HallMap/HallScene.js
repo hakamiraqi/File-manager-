@@ -92,12 +92,12 @@ function labelSprite(title, subtitle, color, { scale = 1 } = {}) {
 }
 
 /** Repeating chevrons for the route ribbon (scrolled every frame, like a satnav). */
-function chevronTexture() {
+function chevronTexture(colour = '#2563eb') {
     const c = document.createElement('canvas');
     c.width = 64;
     c.height = 64;
     const ctx = c.getContext('2d');
-    ctx.fillStyle = '#2563eb';
+    ctx.fillStyle = colour;
     ctx.fillRect(0, 0, 64, 64);
     ctx.strokeStyle = 'rgba(255,255,255,0.95)';
     ctx.lineWidth = 9;
@@ -989,7 +989,7 @@ export class HallScene {
         for (const [n, a] of (list ?? []).entries()) {
             if (!a.points || a.points.length < 2) continue;
             const pts = a.points.map((p) => this.world(p.x, p.y, 0.04));
-            const tex = chevronTexture();
+            const tex = chevronTexture('#dc2626');
             let length = 0;
             for (let i = 1; i < pts.length; i++) {
                 const p0 = pts[i - 1], p1 = pts[i];
@@ -999,7 +999,7 @@ export class HallScene {
                 const t = tex.clone();
                 t.needsUpdate = true;
                 t.repeat.set(1, len / 0.4);
-                const m = new THREE.Mesh(new THREE.PlaneGeometry(0.4, len), new THREE.MeshBasicMaterial({ map: t, color: '#ef4444', transparent: true, depthWrite: false }));
+                const m = new THREE.Mesh(new THREE.PlaneGeometry(0.4, len), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false }));
                 m.rotation.x = -Math.PI / 2;
                 m.rotation.z = Math.atan2(p1.x - p0.x, -(p1.z - p0.z)) * -1;
                 m.position.copy(p0.clone().add(p1).multiplyScalar(0.5));
