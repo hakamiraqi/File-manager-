@@ -50,20 +50,22 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
 
             <!-- Submission receipt: the code the student keeps; the invigilator and teacher see the same one -->
             <section v-if="attempt.receipt" class="exam-receipt rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-                <div class="flex flex-wrap items-center gap-3">
-                    <DocumentCheckIcon class="h-8 w-8 shrink-0 text-emerald-600" />
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <DocumentCheckIcon class="hidden h-8 w-8 shrink-0 text-emerald-600 sm:block" />
                     <div class="min-w-0 flex-1 text-sm">
-                        <p class="font-semibold">{{ t('exam.receipt', 'إيصال التسليم') }}</p>
+                        <p class="flex items-center gap-1 font-semibold"><DocumentCheckIcon class="h-5 w-5 text-emerald-600 sm:hidden" /> {{ t('exam.receipt', 'إيصال التسليم') }}</p>
                         <p class="text-gray-600 dark:text-gray-300">{{ attempt.student }}<template v-if="attempt.student_number"> · {{ attempt.student_number }}</template></p>
                         <p class="text-gray-600 dark:text-gray-300">{{ exam.title }} · {{ t('exam.attempt', 'المحاولة') }} {{ attempt.number }}</p>
                         <p class="text-gray-600 dark:text-gray-300">{{ t('exam.receipt_time', 'وقت التسليم') }}: <span dir="ltr">{{ new Date(attempt.submitted_at).toLocaleString() }}</span>
                             · {{ t('exam.receipt_answered', ':a من :n سؤالاً مُجاباً', { a: attempt.answered, n: attempt.questions }) }}</p>
                     </div>
-                    <div class="text-center">
+                    <div class="flex items-center gap-3 sm:contents">
+                    <div class="flex-1 rounded-lg bg-gray-50 py-2 text-center sm:flex-none sm:bg-transparent sm:py-0 dark:bg-gray-700/50 sm:dark:bg-transparent">
                         <p class="text-xs text-gray-500">{{ t('exam.receipt_code', 'رمز الإيصال') }}</p>
                         <p class="font-mono text-xl font-bold tracking-widest" dir="ltr">{{ attempt.receipt }}</p>
                     </div>
                     <button type="button" @click="printReceipt" class="rounded-lg border border-gray-300 p-2 print:hidden dark:border-gray-600" :title="t('exam.receipt_print', 'طباعة الإيصال')"><PrinterIcon class="h-5 w-5" /></button>
+                    </div>
                 </div>
                 <p class="mt-2 text-xs text-gray-500">{{ t('exam.receipt_hint', 'احتفظ بهذا الرمز أو صوّره: يثبت أن إجاباتك سُلِّمت وسُجِّلت.') }}</p>
             </section>

@@ -439,27 +439,30 @@ onBeforeUnmount(() => {
 
 <template>
     <Head :title="exam.title" />
-    <div class="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" :class="{ 'exam-protect': hall.protect }" :dir="exam.dir" :lang="exam.lang">
+    <div class="min-h-screen overflow-x-clip bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100" :class="{ 'exam-protect': hall.protect }" :dir="exam.dir" :lang="exam.lang">
         <div v-if="watermarkStyle" class="pointer-events-none fixed inset-0 z-[5] print:hidden" :style="watermarkStyle" aria-hidden="true" />
-        <header class="sticky top-0 z-10 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+        <header class="sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-gray-200 bg-white px-3 py-2 sm:px-4 sm:py-3 dark:border-gray-700 dark:bg-gray-800">
             <h1 class="min-w-0 flex-1 truncate font-semibold">{{ exam.title }}</h1>
             <span class="hidden text-xs text-gray-500 sm:inline">{{ answeredCount }} / {{ graded.length }} {{ t('exam.answered', 'مُجاب') }}</span>
             <span class="text-xs" :class="failed || !online ? 'text-red-600' : 'text-gray-400'">
                 {{ failed || !online ? t('exam.kept_on_device', 'بلا اتصال — :n محفوظة على هذا الجهاز وستُرسل تلقائياً', { n: pending.size }) : saving ? t('exam.saving', 'يحفظ…') : t('exam.saved', 'محفوظ') }}
             </span>
-            <button v-if="failed || !online" @click="emergencyFile" class="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700" :title="t('exam.emergency_hint', 'إذا لم يعد الاتصال: نزّل هذا الملف وأعطه للمراقب')">{{ t('exam.emergency_file', 'ملف طارئ') }}</button>
             <span v-if="clock" class="flex items-center gap-1 rounded-lg px-2.5 py-1 font-mono text-sm font-semibold" :class="secondsLeft < 300 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300' : 'bg-gray-100 dark:bg-gray-700'" role="timer" aria-live="off">
                 <ClockIcon class="h-4 w-4" /> {{ clock }}
             </span>
-            <span v-if="hall.variant" class="rounded bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-900/40 dark:text-violet-200" :title="t('exam.variant', 'نسخة الامتحان')">{{ t('exam.variant_short', 'نسخة') }} {{ hall.variant }}</span>
-            <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
-            <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
-            <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
-            <button v-if="exam.resources?.length" @click="bookOpen = !bookOpen" class="flex items-center gap-1 rounded-lg border px-2 py-1 text-sm" :class="bookOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.allowed_files', 'المصادر المسموحة')"><BookOpenIcon class="h-4 w-4" /></button>
-            <button @click="oskOpen = !oskOpen" class="rounded-lg border px-2 py-1 text-sm" :class="oskOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.osk', 'لوحة مفاتيح على الشاشة (عربي / English)')"><LanguageIcon class="h-4 w-4" /></button>
-            <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
-            <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
-            <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
+            <button @click="confirmOpen = true" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white sm:order-last hover:bg-[var(--accent-700)]">{{ t('exam.submit', 'تسليم') }}</button>
+            <!-- Tools: their own row on a phone -->
+            <div class="order-last flex w-full flex-wrap items-center gap-2 sm:order-none sm:w-auto">
+                <button v-if="failed || !online" @click="emergencyFile" class="rounded border border-red-300 px-2 py-0.5 text-xs text-red-700" :title="t('exam.emergency_hint', 'إذا لم يعد الاتصال: نزّل هذا الملف وأعطه للمراقب')">{{ t('exam.emergency_file', 'ملف طارئ') }}</button>
+                <span v-if="hall.variant" class="rounded bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-900/40 dark:text-violet-200" :title="t('exam.variant', 'نسخة الامتحان')">{{ t('exam.variant_short', 'نسخة') }} {{ hall.variant }}</span>
+                <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
+                <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
+                <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
+                <button v-if="exam.resources?.length" @click="bookOpen = !bookOpen" class="flex items-center gap-1 rounded-lg border px-2 py-1 text-sm" :class="bookOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.allowed_files', 'المصادر المسموحة')"><BookOpenIcon class="h-4 w-4" /></button>
+                <button @click="oskOpen = !oskOpen" class="rounded-lg border px-2 py-1 text-sm" :class="oskOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.osk', 'لوحة مفاتيح على الشاشة (عربي / English)')"><LanguageIcon class="h-4 w-4" /></button>
+                <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
+                <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
+            </div>
         </header>
         <div v-if="readingOpen" class="flex flex-wrap items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
             <label class="flex items-center gap-1">{{ t('exam.font', 'الخط') }}
