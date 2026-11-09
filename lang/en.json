@@ -1177,5 +1177,17 @@
     "exam.amc_step_note": "Marking",
     "exam.amc_step_association": "Matching sheets to students",
     "exam.amc_step_export": "Exporting the results",
-    "exam.more": "More"
+    "exam.more": "More",
+    "exam.alert_more": "(and :n more alerts)",
+    "exam.alert_help": "asks for help",
+    "exam.alert_disconnected": "lost the connection",
+    "exam.alert_locked": "attempt locked",
+    "exam.alert_other_pc": "is sitting at someone else's computer",
+    "exam.alerts_on": "Alerts on",
+    "exam.alerts_off": "Alerts off",
+    "exam.alerts_allow": "Allow device notifications",
+    "exam.alerts_denied": "Device notifications are blocked in the browser settings",
+    "exam.alerts_hint": "Sound and vibration on a help request, a lost connection, a lock or the wrong computer.",
+    "exam.install_hint": "Install monitoring as an app on your phone: it opens with a tap and alerts you to help requests and lost connections.",
+    "exam.install": "Install the app"
 }

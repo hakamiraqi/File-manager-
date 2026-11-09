@@ -37,6 +37,23 @@ Route::middleware('throttle:60,1')->prefix('central')->group(function () {
 // A standby exam server takes the main one's changes (see MirrorController).
 Route::get('/mirror/changes', [\App\Http\Controllers\Exams\MirrorController::class, 'changes'])->middleware('throttle:30,1');
 
+// Installing the site as an app (the invigilator's phone): its manifest.
+Route::get('/manifest.webmanifest', function () {
+    $name = \App\Models\Setting::get('site_name', config('app.name', 'ExamNest'));
+
+    return response()->json([
+        'name' => $name, 'short_name' => mb_substr($name, 0, 12), 'lang' => 'ar', 'dir' => 'rtl',
+        'start_url' => '/exams/monitor', 'scope' => '/', 'display' => 'standalone', 'orientation' => 'any',
+        'background_color' => '#ffffff', 'theme_color' => '#4f46e5',
+        'description' => 'مراقبة قاعات الامتحان: طلبات المساعدة، الانقطاع، الحضور بالبطاقات.',
+        'icons' => [
+            ['src' => '/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png', 'purpose' => 'any maskable'],
+            ['src' => '/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'any maskable'],
+        ],
+        'shortcuts' => [['name' => 'المراقبة', 'url' => '/exams/monitor'], ['name' => 'التقييم في المحطات', 'url' => '/exams/monitor/osce']],
+    ], 200, ['Content-Type' => 'application/manifest+json']);
+});
+
 // A printed login card's QR code (see CardLoginController).
 Route::get('/card/{code}', \App\Http\Controllers\Auth\CardLoginController::class)->where('code', '[A-Za-z0-9]{16,40}')->middleware('throttle:20,1')->name('card.login');
 

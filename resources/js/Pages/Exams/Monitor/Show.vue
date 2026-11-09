@@ -1,11 +1,12 @@
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import ServerHealth from '@/Components/Exams/ServerHealth.vue';
+import { useAlerts } from '@/Composables/useAlerts';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon, PauseCircleIcon, QrCodeIcon, CameraIcon, TableCellsIcon, MapIcon, HandRaisedIcon, ClockIcon, CheckIcon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowPathIcon, PrinterIcon, MegaphoneIcon, KeyIcon, ExclamationTriangleIcon, PauseCircleIcon, BellAlertIcon, BellSlashIcon, QrCodeIcon, CameraIcon, TableCellsIcon, MapIcon, HandRaisedIcon, ClockIcon, CheckIcon, XMarkIcon, LockClosedIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, data: Object, computers: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -17,8 +18,7 @@ const stale = ref(false);
 async function refresh() {
     try {
         live.value = (await window.axios.get(route('exams.monitor.data', props.exam.id))).data;
-        if ((live.value.counts.help ?? 0) > lastHelp) beep();
-        lastHelp = live.value.counts.help ?? 0;
+        watchAlerts();
         lastUpdate.value = Date.now();
         stale.value = false;
     } catch {
@@ -198,17 +198,30 @@ async function distribute(order) {
     distributeMsg.value = t('exam.distributed', 'وُزّع :s من :n طالباً على :c حاسبة.', { s: res.data.seated, n: res.data.students, c: res.data.computers });
     refresh();
 }
-// A raised hand is heard, not only seen.
-let lastHelp = props.data.counts.help ?? 0;
-function beep() {
-    try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const o = ctx.createOscillator();
-        o.frequency.value = 880;
-        o.connect(ctx.destination);
-        o.start();
-        o.stop(ctx.currentTime + 0.25);
-    } catch { /* no sound */ }
+// Alerts: a raised hand, a student cut off, a locked attempt or the wrong computer is heard
+// (and, on an installed phone app, shown as a notification) — only when it is new.
+const alerts = useAlerts();
+const seen = { help: new Set(), disconnected: new Set(), locked: new Set(), other_pc: new Set() };
+const keysOf = (rows) => ({
+    help: rows.filter((r) => r.attempt?.help).map((r) => r.user.id),
+    disconnected: rows.filter((r) => r.status === 'disconnected').map((r) => r.user.id),
+    locked: rows.filter((r) => r.attempt?.locked).map((r) => r.user.id),
+    other_pc: rows.filter((r) => r.attempt?.ip && r.computer?.ip && r.attempt.ip !== r.computer.ip).map((r) => r.user.id),
+});
+Object.entries(keysOf(props.data.rows)).forEach(([k, ids]) => ids.forEach((id) => seen[k].add(id)));
+const ALERT_TEXT = { help: 'يطلب المساعدة', disconnected: 'انقطع اتصاله', locked: 'قُفلت محاولته', other_pc: 'يمتحن من حاسبة غير حاسبته' };
+function watchAlerts() {
+    const now = keysOf(live.value.rows);
+    const fresh = [];
+    for (const [k, ids] of Object.entries(now)) {
+        for (const id of ids) if (!seen[k].has(id)) fresh.push([k, live.value.rows.find((r) => r.user.id === id)]);
+        seen[k] = new Set(ids);
+    }
+    if (!fresh.length) return;
+    const [kind, row] = fresh[0];
+    const more = fresh.length > 1 ? ' ' + t('exam.alert_more', '(و:n تنبيهاً آخر)', { n: fresh.length - 1 }) : '';
+    alerts.notify(props.exam.title, `${row?.user.name ?? ''}${row?.computer ? ' — ' + row.computer.label : ''}: ${t('exam.alert_' + kind, ALERT_TEXT[kind])}${more}`,
+        window.location.pathname, 'exam-' + props.exam.id + '-' + kind);
 }
 
 // An emergency answers file from a student whose network did not come back.
@@ -310,6 +323,15 @@ async function uploadOffline(event) {
             <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
 
             <ServerHealth compact />
+
+            <!-- Alerts on this device -->
+            <div class="flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                <button type="button" @click="alerts.toggle()" class="flex items-center gap-1 rounded-lg border px-2.5 py-1" :class="alerts.enabled.value ? 'border-[var(--accent-500)] text-[var(--accent-700)]' : 'border-gray-300 dark:border-gray-600'">
+                    <BellAlertIcon v-if="alerts.enabled.value" class="h-4 w-4" /><BellSlashIcon v-else class="h-4 w-4" /> {{ alerts.enabled.value ? t('exam.alerts_on', 'التنبيهات مفعّلة') : t('exam.alerts_off', 'التنبيهات متوقفة') }}</button>
+                <button v-if="alerts.supported && alerts.permission.value === 'default'" type="button" @click="alerts.ask()" class="rounded-lg border border-gray-300 px-2.5 py-1 dark:border-gray-600">{{ t('exam.alerts_allow', 'السماح بإشعارات الجهاز') }}</button>
+                <span v-else-if="alerts.permission.value === 'denied'">{{ t('exam.alerts_denied', 'إشعارات الجهاز ممنوعة في إعدادات المتصفح') }}</span>
+                <span>{{ t('exam.alerts_hint', 'صوت واهتزاز عند طلب مساعدة أو انقطاع أو قفل أو حاسبة خاطئة.') }}</span>
+            </div>
 
             <!-- Attendance by login card -->
             <form @submit.prevent="scanCard()" class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-800">

@@ -46,3 +46,14 @@ createInertiaApp({
         color: '#4B5563',
     },
 });
+
+// The installable app (invigilators' phones): only where the browser allows it (https or localhost).
+if ('serviceWorker' in navigator && window.isSecureContext) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+// Kept for the «install the app» button.
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    window.__installPrompt = e;
+    window.dispatchEvent(new Event('app-installable'));
+});

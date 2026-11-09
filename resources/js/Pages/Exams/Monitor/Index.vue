@@ -2,11 +2,25 @@
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { EyeIcon, SignalIcon } from '@heroicons/vue/24/outline';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { EyeIcon, SignalIcon, DevicePhoneMobileIcon } from '@heroicons/vue/24/outline';
 import ServerHealth from '@/Components/Exams/ServerHealth.vue';
 
 defineProps({ exams: Array });
 const { t } = useTrans();
+// Install as an app on the invigilator's phone (where the browser offers it).
+const installable = ref(!!window.__installPrompt);
+const onInstallable = () => (installable.value = true);
+onMounted(() => window.addEventListener('app-installable', onInstallable));
+onBeforeUnmount(() => window.removeEventListener('app-installable', onInstallable));
+async function install() {
+    const p = window.__installPrompt;
+    if (!p) return;
+    p.prompt();
+    await p.userChoice;
+    window.__installPrompt = null;
+    installable.value = false;
+}
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 </script>
 
@@ -23,6 +37,11 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElemen
             </div>
         </template>
         <div class="space-y-2 p-4 sm:p-6">
+            <div v-if="installable" class="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--accent-500)] bg-white p-3 text-sm dark:bg-gray-800">
+                <DevicePhoneMobileIcon class="h-6 w-6 text-[var(--accent-600)]" />
+                <span class="min-w-0 flex-1">{{ t('exam.install_hint', 'ثبّت المراقبة تطبيقاً على هاتفك: تفتح بلمسة، وتصلك تنبيهات طلبات المساعدة والانقطاع.') }}</span>
+                <button type="button" @click="install" class="rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-white">{{ t('exam.install', 'تثبيت التطبيق') }}</button>
+            </div>
             <ServerHealth />
             <p v-if="!exams.length" class="rounded-xl border border-dashed border-gray-300 p-8 text-center text-sm text-gray-500 dark:border-gray-600">{{ t('exam.monitor_empty', 'لا امتحانات جارية أو قريبة الآن.') }}</p>
             <Link v-for="e in exams" :key="e.id" :href="route('exams.monitor.show', e.id)"

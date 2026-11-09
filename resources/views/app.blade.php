@@ -24,6 +24,9 @@
             <link rel="alternate icon" href="{{ asset('favicon.ico') }}">
         @endif
         <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
+        <link rel="manifest" href="{{ url('/manifest.webmanifest') }}">
+        <meta name="theme-color" content="#4f46e5">
+        <meta name="mobile-web-app-capable" content="yes">
 
 
         <!-- Scripts -->
