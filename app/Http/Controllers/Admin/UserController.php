@@ -17,15 +17,9 @@ class UserController extends Controller
 {
     public function index(Request $request): Response
     {
-        $search = trim((string) $request->string('q'));
-        $role = in_array($request->query('role'), User::ROLES, true) ? $request->query('role') : null;
-        $status = in_array($request->query('status'), ['active', 'suspended'], true) ? $request->query('status') : null;
+        [$search, $role, $status] = $this->filters($request);
 
-        $users = User::query()
-            // Grouped, so the role/status filters apply to both name and email matches.
-            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")->orWhere('student_number', 'like', "%{$search}%")))
-            ->when($role, fn ($q) => $q->where('role', $role))
-            ->when($status, fn ($q) => $q->where('is_active', $status === 'active'))
+        $users = $this->filtered($request)
             ->orderBy('name')
             ->paginate(20)
             ->withQueryString();
@@ -34,11 +28,126 @@ class UserController extends Controller
         return Inertia::render('Admin/Users/Index', [
             'users' => $users,
             'filters' => ['q' => $search, 'role' => $role, 'status' => $status],
+            'groups' => \App\Models\Exams\Group::orderBy('name')->get(['id', 'name']),
             'roleCounts' => User::query()->selectRaw('role, COUNT(*) as c')->groupBy('role')->pluck('c', 'role'),
             'statusCounts' => [
                 'active' => User::where('is_active', true)->count(),
                 'suspended' => User::where('is_active', false)->count(),
             ],
+        ]);
+    }
+
+    /** @return array{0: string, 1: ?string, 2: ?string} search, role, status */
+    private function filters(Request $request): array
+    {
+        return [
+            trim((string) $request->input('q', '')),
+            in_array($request->input('role'), User::ROLES, true) ? $request->input('role') : null,
+            in_array($request->input('status'), ['active', 'suspended'], true) ? $request->input('status') : null,
+        ];
+    }
+
+    /** The users the list shows with its filters (search, role, status). */
+    private function filtered(Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        [$search, $role, $status] = $this->filters($request);
+
+        return User::query()
+            // Grouped, so the role/status filters apply to both name and email matches.
+            ->when($search !== '', fn ($q) => $q->where(fn ($w) => $w->where('name', 'like', "%{$search}%")->orWhere('email', 'like', "%{$search}%")->orWhere('student_number', 'like', "%{$search}%")))
+            ->when($role, fn ($q) => $q->where('role', $role))
+            ->when($status, fn ($q) => $q->where('is_active', $status === 'active'));
+    }
+
+    /**
+     * Who an action is for (2026-11-09, by request): the ticked users (ids, or a saved selection
+     * «sel» for print and export), or every user of the list's filters (all=1).
+     */
+    private function chosen(Request $request): \Illuminate\Database\Eloquent\Builder
+    {
+        if ($request->filled('sel')) {
+            $ids = (array) $request->session()->get('users_sel.'.$request->input('sel'), []);
+
+            return User::whereIn('id', $ids ?: [0]);
+        }
+        if ($request->boolean('all')) {
+            return $this->filtered($request);
+        }
+        $ids = array_map('intval', (array) $request->input('ids', []));
+
+        return User::whereIn('id', $ids ?: [0]);
+    }
+
+    /** «تحديد كل النتائج»: every id the filters match. */
+    public function ids(Request $request): \Illuminate\Http\JsonResponse
+    {
+        return response()->json(['ids' => $this->filtered($request)->orderBy('name')->limit(10000)->pluck('id')]);
+    }
+
+    /** Keeps a selection for a print or export opened in a new tab (too many ids for an address). */
+    public function selection(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $ids = $request->validate(['ids' => ['required', 'array', 'max:10000'], 'ids.*' => ['integer']])['ids'];
+        $key = \Illuminate\Support\Str::random(12);
+        $request->session()->put('users_sel.'.$key, array_values(array_unique($ids)));
+
+        return response()->json(['sel' => $key]);
+    }
+
+    /** Switch on or off the ticked users, or all of the filtered list; never yourself or the master admin. */
+    public function bulkStatus(Request $request): RedirectResponse
+    {
+        $active = $request->validate(['is_active' => ['required', 'boolean'], 'ids' => ['nullable', 'array', 'max:10000'], 'ids.*' => ['integer'], 'all' => ['nullable', 'boolean']])['is_active'];
+        $users = $this->chosen($request)->where('is_active', ! $active)
+            ->when(! $active, fn ($q) => $q->where('id', '!=', $request->user()->id)->where('is_master_admin', false))
+            ->when(! $request->user()->is_master_admin, fn ($q) => $q->where('is_master_admin', false))
+            ->get();
+        foreach ($users as $u) {
+            $u->update(['is_active' => (bool) $active]);
+            if (! $active) {
+                $u->tokens()->delete();
+            }
+        }
+        ActivityLog::record('admin.user_updated', ($active ? 'فعّل ' : 'أوقف ').$users->count().' حساباً دفعة واحدة');
+
+        return back()->with('success', ($active ? 'فُعّل ' : 'أُوقف ').$users->count().' حساباً.');
+    }
+
+    /** The list (ticked, or all of the filters) as a file Excel opens; the columns import back in. */
+    public function export(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $users = $this->chosen($request)->orderBy('name')->get();
+        ActivityLog::record('admin.users_export', 'صدّر قائمة '.$users->count().' مستخدماً');
+
+        return response()->streamDownload(function () use ($users) {
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            fputcsv($out, ['الاسم', 'البريد', 'الرقم الجامعي', 'الهاتف', 'الدور', 'في الامتحانات', 'الحالة', 'آخر دخول', 'تاريخ الإنشاء']);
+            foreach ($users as $u) {
+                fputcsv($out, [
+                    $u->name, str_ends_with((string) $u->email, '@students.invalid') ? '' : $u->email, $u->student_number, $u->phone,
+                    $u->role === 'admin' ? 'مدير' : 'مستخدم',
+                    $u->role === 'admin' || $u->is_examiner ? 'أستاذ' : ($u->is_invigilator ? 'مراقب' : 'طالب'),
+                    $u->is_active ? 'نشط' : 'موقوف',
+                    $u->last_login_at?->timezone('Asia/Baghdad')->format('Y-m-d H:i'), $u->created_at?->timezone('Asia/Baghdad')->format('Y-m-d'),
+                ]);
+            }
+            fclose($out);
+        }, 'users-'.now('Asia/Baghdad')->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /** A printable list (A4), ticked users or all of the filters. */
+    public function print(Request $request): Response
+    {
+        $users = $this->chosen($request)->orderBy('name')->limit(10000)->get();
+
+        return Inertia::render('Admin/Users/Print', [
+            'users' => $users->map(fn (User $u) => [
+                'name' => $u->name, 'email' => str_ends_with((string) $u->email, '@students.invalid') ? null : $u->email, 'number' => $u->student_number, 'phone' => $u->phone,
+                'kind' => $u->role === 'admin' ? 'مدير' : ($u->is_examiner ? 'أستاذ' : ($u->is_invigilator ? 'مراقب' : 'طالب')),
+                'active' => (bool) $u->is_active, 'last_login' => $u->last_login_at?->toIso8601String(),
+            ]),
+            'title' => (string) (\App\Models\Setting::get('site_name') ?: config('app.name')),
         ]);
     }
 

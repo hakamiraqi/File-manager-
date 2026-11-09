@@ -16,6 +16,11 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         Route::post('/users', [UserController::class, 'store'])->name('users.store');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::get('/users/ids', [UserController::class, 'ids'])->name('users.ids');
+        Route::post('/users/selection', [UserController::class, 'selection'])->name('users.selection');
+        Route::post('/users/bulk-status', [UserController::class, 'bulkStatus'])->name('users.bulk-status');
+        Route::get('/users/export', [UserController::class, 'export'])->name('users.export');
+        Route::get('/users/print', [UserController::class, 'print'])->name('users.print');
         Route::patch('/users/{user}/status', [UserController::class, 'status'])->name('users.status');
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
 
