@@ -87,6 +87,10 @@ const cellTitle = (c) => !c.r ? c.pc.label + ' — ' + t('exam.seat_empty', 'ف�
         c.r.attempt ? c.r.attempt.answered + '/' + c.r.attempt.questions : null].filter(Boolean).join(' · ');
 
 // ---- Attendance by login card: a USB scanner types the card into this box, or the camera reads it ----
+// The address students type (or scan with a phone), shown with the code for the whole hall.
+const address = window.location.origin;
+const addressQr = ref(null);
+import('qrcode').then(({ default: QRCode }) => QRCode.toDataURL(address, { margin: 0, width: 256 })).then((url) => (addressQr.value = url)).catch(() => {});
 const photoOf = ref(null);   // the row whose photo is shown large
 const scanCode = ref('');
 const scanMsg = ref(null);   // { ok, text }
@@ -391,6 +395,8 @@ async function uploadOffline(event) {
                                 <p v-if="r.attempt?.locked" class="mt-1 text-xs text-red-700 dark:text-red-300"><LockClosedIcon class="inline h-3.5 w-3.5 align-text-bottom" /> {{ r.attempt.locked.reason === 'left' ? t('exam.locked_left', 'غادر الصفحة') : t('exam.locked_reopened', 'فتحها من جديد') }} ·
                                     <b class="font-mono text-sm tracking-widest">{{ r.attempt.locked.code }}</b>
                                     <button @click="unlock(r)" class="ms-1 underline">{{ t('exam.unlock', 'فتح') }}</button></p>
+                                <p v-if="r.attempt?.clock" class="mt-1 flex items-center justify-center gap-1 text-[10px] text-amber-700 dark:text-amber-300" :title="t('exam.clock_hint', 'ساعة هذه الحاسبة غير مضبوطة؛ المؤقت يعتمد السيرفر، لكن اضبطها.')">
+                                    <ClockIcon class="h-3 w-3" /> {{ r.attempt.clock > 0 ? t('exam.clock_ahead', 'ساعتها متقدمة :m د', { m: Math.round(r.attempt.clock / 60) }) : t('exam.clock_behind', 'ساعتها متأخرة :m د', { m: Math.round(-r.attempt.clock / 60) }) }}</p>
                                 <p v-if="r.status === 'disconnected'" class="text-[10px] text-gray-400">{{ Math.round(since(r.attempt.last_seen) / 60) }} {{ t('exam.min_ago', 'د') }}</p>
                             </td>
                             <td class="px-2 py-2 text-center text-xs">
@@ -445,6 +451,10 @@ async function uploadOffline(event) {
             <p class="text-2xl text-gray-500">{{ exam.title }}</p>
             <p class="mt-6 font-mono text-[18vw] font-bold leading-none tracking-widest">{{ code || '—' }}</p>
             <p class="mt-6 text-lg text-gray-400">{{ t('exam.access_code_short', 'رمز الدخول') }}</p>
+            <div class="mt-6 flex items-center gap-4">
+                <img v-if="addressQr" :src="addressQr" alt="" class="h-32 w-32" />
+                <p class="font-mono text-3xl font-semibold" dir="ltr">{{ address }}</p>
+            </div>
         </div>
         <!-- A student's photo, large, to compare with the face -->
         <div v-if="photoOf" class="fixed inset-0 z-50 flex cursor-pointer flex-col items-center justify-center bg-black/70 p-6" @click="photoOf = null">

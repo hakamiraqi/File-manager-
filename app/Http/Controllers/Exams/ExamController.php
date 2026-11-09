@@ -63,6 +63,9 @@ class ExamController extends Controller
                 'in_seb' => $exam->sebAllows($request),
                 'grading_method' => $exam->grading_method,
                 'pass_mark' => $exam->pass_mark,
+                'assignment' => $exam->is_assignment,
+                'prerequisite' => ($pre = $exam->missingPrerequisiteFor($user)) && $pre->is_published
+                    ? ['id' => $pre->id, 'title' => $pre->text('title')] : null,
             ],
             'attempts' => $exam->attempts->map(fn (Attempt $a) => [
                 'id' => $a->id,
@@ -90,6 +93,9 @@ class ExamController extends Controller
             return back()->withErrors(['exam' => $wrongPc]);
         }
         $exam->load(['overrides' => fn ($q) => $q->where('user_id', $user->id)]);
+        if ($pre = $exam->missingPrerequisiteFor($user)) {
+            return back()->withErrors(['exam' => "أكمل أولاً الامتحان التجريبي «{$pre->text('title')}»."]);
+        }
 
         $open = $exam->attempts()->where('user_id', $user->id)->whereNull('submitted_at')->latest('id')->first();
         if ($open && ! $this->closeIfExpired($open)) {
@@ -181,7 +187,7 @@ class ExamController extends Controller
         }
         // With the resume code on, the attempt belongs to the page that opened it: opened again
         // (another tab, a reload, another computer) it locks until the invigilator's code.
-        if ($exam->resume_code_required && ! $attempt->locked_at) {
+        if ($exam->resume_code_required && ! $exam->is_assignment && ! $attempt->locked_at) {
             $sessionKey = 'exam_key.'.$attempt->id;
             if ($attempt->session_key === null) {
                 $attempt->update(['session_key' => Str::random(40)]);
@@ -200,14 +206,15 @@ class ExamController extends Controller
                 'seconds_left' => $attempt->secondsLeft(),
             ],
             'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice,
-                'sequential' => $exam->navigation === 'sequential', 'calculator' => $exam->calculator, 'position' => $attempt->position],
+                'sequential' => $exam->navigation === 'sequential', 'calculator' => $exam->calculator, 'position' => $attempt->position,
+                'assignment' => $exam->is_assignment, 'deadline' => $attempt->deadline_at?->toIso8601String()],
             'hall' => [
                 'locked' => $attempt->locked_at !== null,
                 'help' => $attempt->help_requested_at !== null,
                 'computer' => $exam->computerFor($request->user())?->label,
                 'variant' => $attempt->variantLetter(),
                 // The questions page carries the student's name across it and blocks copying.
-                'protect' => $exam->protect_content && ! $exam->is_practice,
+                'protect' => $exam->protect_content && ! $exam->is_practice && ! $exam->is_assignment,
                 'watermark' => trim($request->user()->name.' · '.($request->user()->student_number ?: $request->user()->email)),
             ],
             'questions' => $questions->map(fn (Question $q) => $this->presenter->forStudent($q, $exam, $attempt))->values(),
@@ -275,10 +282,14 @@ class ExamController extends Controller
         if ($attempt->isSubmitted() || $this->closeIfExpired($attempt)) {
             return response()->json(['closed' => true]);
         }
-        $attempt->forceFill(['last_seen_at' => now()])->saveQuietly();
+        // The computer's clock against the server's (only a wrong clock is a problem for the
+        // invigilator to know; the timer itself counts from the server).
+        $offset = $request->filled('client_time') ? (int) round(((int) $request->input('client_time') - now()->getTimestampMs()) / 1000) : $attempt->clock_offset;
+        $attempt->forceFill(['last_seen_at' => now(), 'clock_offset' => abs((int) $offset) > 86400 * 400 ? null : $offset])->saveQuietly();
 
         return response()->json([
             'closed' => false,
+            'server_time' => now()->getTimestampMs(),
             'locked' => $attempt->locked_at !== null,
             'help' => $attempt->help_requested_at !== null,
             'seconds_left' => $attempt->secondsLeft(),
@@ -457,7 +468,7 @@ class ExamController extends Controller
         if (! $attempt->isSubmitted() && $attempt->events()->count() < 500) {
             Event::create(['exam_attempt_id' => $attempt->id, 'type' => $data['type'], 'meta' => $data['meta'] ?? null]);
         }
-        if ($data['type'] === 'hidden' && $attempt->exam->resume_code_required) {
+        if ($data['type'] === 'hidden' && $attempt->exam->resume_code_required && ! $attempt->exam->is_assignment) {
             $attempt->lock('left');
         }
 

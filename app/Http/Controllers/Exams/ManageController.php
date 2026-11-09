@@ -81,6 +81,9 @@ class ManageController extends Controller
             'types' => Question::TYPES,
             'categories' => \App\Models\Exams\BankCategory::usableBy($request->user())->withCount('questions')->orderBy('name')->get(['id', 'name', 'subject', 'user_id', 'is_shared']),
             'templates' => \App\Models\Exams\Template::where('user_id', $request->user()->id)->orderBy('name')->get(['id', 'name', 'settings']),
+            // Exams that can be required first (a practice run of the interface, usually).
+            'prerequisites' => Exam::where('id', '!=', $exam->id)->when(! $request->user()->isAdmin(), fn ($q) => $q->where('user_id', $request->user()->id))
+                ->orderByDesc('is_practice')->latest('id')->limit(200)->get(['id', 'title', 'is_practice'])->map(fn (Exam $e) => ['id' => $e->id, 'title' => $e->text('title'), 'practice' => $e->is_practice]),
         ]);
     }
 
@@ -143,6 +146,8 @@ class ManageController extends Controller
             'variants' => ['nullable', 'integer', 'min:1', 'max:4'],
             'protect_content' => ['boolean'],
             'reviewer_email' => ['nullable', 'email'],
+            'is_assignment' => ['boolean'],
+            'requires_exam_id' => ['nullable', 'integer', 'exists:exams,id'],
             'allowed_ips' => ['nullable', 'string', 'max:2000'],
             'group_ids' => ['nullable', 'array'],
             'group_ids.*' => ['integer', 'exists:exam_groups,id'],
@@ -174,6 +179,11 @@ class ManageController extends Controller
             throw ValidationException::withMessages(['allowed_ips' => 'عناوين غير صالحة: '.$bad->implode('، ').' (مثال: 192.168.1.0/24).']);
         }
 
+        if (($data['requires_exam_id'] ?? null) == $exam->id) {
+            throw ValidationException::withMessages(['requires_exam_id' => 'لا يكون الامتحان شرطاً لنفسه.']);
+        }
+        $exam->requires_exam_id = $data['requires_exam_id'] ?? null;
+
         // The reviewer: another teacher (or an admin) who approves the questions before publishing.
         $reviewer = null;
         if (filled($data['reviewer_email'] ?? null)) {
@@ -191,7 +201,7 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open', 'protect_content',
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open', 'protect_content', 'is_assignment',
             ])->all() + array_filter(['navigation' => $data['navigation'] ?? null, 'calculator' => $data['calculator'] ?? null, 'variants' => $data['variants'] ?? null]) + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');

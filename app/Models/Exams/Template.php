@@ -11,7 +11,7 @@ class Template extends Model
     public const KEYS = [
         'duration_minutes', 'max_attempts', 'grading_method', 'pass_mark', 'shuffle_questions', 'shuffle_choices',
         'show_results', 'show_answers', 'is_practice', 'navigation', 'calculator', 'resume_code_required', 'bind_computers',
-        'protect_content', 'variants', 'anonymous_marking', 'appeals_open', 'double_marking', 'seb_required', 'allowed_ips',
+        'protect_content', 'variants', 'is_assignment', 'anonymous_marking', 'appeals_open', 'double_marking', 'seb_required', 'allowed_ips',
     ];
 
     protected $table = 'exam_templates';

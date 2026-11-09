@@ -285,6 +285,12 @@ let tick;
 const clock = computed(() => {
     if (secondsLeft.value === null) return null;
     const s = Math.max(0, secondsLeft.value);
+    // An assignment due in days: the date and the days left, not a ticking clock.
+    if (s >= 86400) {
+        const days = Math.floor(s / 86400);
+        const due = props.exam.deadline ? new Date(props.exam.deadline).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+        return t('exam.due_in_days', ':d يوم — حتى :at', { d: days, at: due });
+    }
     const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
     return (h ? h + ':' : '') + String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
 });
@@ -307,7 +313,7 @@ const announcements = ref([]);
 const seenNotes = new Set();
 async function ping() {
     try {
-        const res = await window.axios.post(route('exams.attempts.ping', props.attempt.id));
+        const res = await window.axios.post(route('exams.attempts.ping', props.attempt.id), { client_time: Date.now() });
         if (res.data.closed) return finish(true);
         locked.value = !!res.data.locked;
         help.value = !!res.data.help;

@@ -34,14 +34,58 @@ class BankController extends Controller
                 'questions' => $c->questions_count, 'owner' => $c->owner?->name, 'editable' => $c->isEditableBy($user),
             ]),
             'current' => $current?->id,
-            'questions' => $current ? $current->questions()->with('choices')->get()->map(fn (Question $q) => [
+            'questions' => $current ? ($qs = $current->questions()->with('choices')->get())->map(fn (Question $q) => [
                 'id' => $q->id,
                 'type' => $q->type,
                 'points' => $q->points,
                 'body' => $q->plainBody([]),
                 'languages' => array_keys((array) $q->body),
+                'quality' => ($quality ??= self::quality($qs))[$q->id] ?? null,
             ]) : [],
         ]);
+    }
+
+    /**
+     * How the bank's questions did in real exams (drawn by random slots): how often they were
+     * used (a question seen by many is no secret any more), how easy, and whether the stronger
+     * students got them more often than the weaker (discrimination).
+     */
+    public static function quality(\Illuminate\Support\Collection $questions): array
+    {
+        $rows = \Illuminate\Support\Facades\DB::table('exam_answers')->join('exam_attempts', 'exam_attempts.id', '=', 'exam_answers.exam_attempt_id')
+            ->whereIn('exam_answers.exam_question_id', $questions->pluck('id'))->whereNotNull('exam_attempts.submitted_at')->whereNotNull('exam_answers.points')
+            ->get(['exam_answers.exam_question_id as q', 'exam_answers.points as p', 'exam_attempts.score as s', 'exam_attempts.max_score as m'])->groupBy('q');
+        $out = [];
+        foreach ($questions as $q) {
+            $list = $rows[$q->id] ?? collect();
+            $n = $list->count();
+            if ($n === 0 || $q->points <= 0) {
+                $out[$q->id] = ['uses' => 0, 'facility' => null, 'discrimination' => null, 'flags' => []];
+
+                continue;
+            }
+            $x = $list->map(fn ($r) => min(1, max(0, $r->p / $q->points)))->values();
+            $y = $list->map(fn ($r) => $r->m > 0 ? $r->s / $r->m : 0)->values();
+            $facility = round($x->avg(), 2);
+            $disc = null;
+            if ($n >= 10) {
+                [$mx, $my] = [$x->avg(), $y->avg()];
+                $cov = $x->keys()->sum(fn ($i) => ($x[$i] - $mx) * ($y[$i] - $my));
+                $sx = sqrt($x->sum(fn ($v) => ($v - $mx) ** 2));
+                $sy = sqrt($y->sum(fn ($v) => ($v - $my) ** 2));
+                $disc = $sx > 0 && $sy > 0 ? round($cov / ($sx * $sy), 2) : null;
+            }
+            $flags = array_values(array_filter([
+                $n >= 100 ? 'exposed' : null,
+                $n >= 10 && $facility >= 0.9 ? 'too_easy' : null,
+                $n >= 10 && $facility <= 0.2 ? 'too_hard' : null,
+                $disc !== null && $disc < 0.15 ? 'weak' : null,
+                $disc !== null && $disc < 0 ? 'check_key' : null,
+            ]));
+            $out[$q->id] = ['uses' => $n, 'facility' => $facility, 'discrimination' => $disc, 'flags' => $flags];
+        }
+
+        return $out;
     }
 
     public function store(Request $request): RedirectResponse

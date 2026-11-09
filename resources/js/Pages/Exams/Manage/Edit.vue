@@ -9,7 +9,7 @@ import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] } });
+const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] }, prerequisites: { type: Array, default: () => [] } });
 const { t } = useTrans();
 const page = usePage();
 
@@ -39,14 +39,16 @@ const form = useForm(fromProps(props.exam));
 // ---- Settings templates: ready ones, and the teacher's own (settings only; title and questions stay) ----
 const PRESETS = [
     { key: 'final', name: 'نهائي في القاعة', settings: { duration_minutes: 90, max_attempts: 1, grading_method: 'highest', shuffle_questions: true, shuffle_choices: true,
-        show_results: 'after_close', show_answers: false, is_practice: false, navigation: 'free', resume_code_required: true, bind_computers: true, protect_content: true, variants: 2, appeals_open: false } },
+        show_results: 'after_close', show_answers: false, is_practice: false, is_assignment: false, navigation: 'free', resume_code_required: true, bind_computers: true, protect_content: true, variants: 2, appeals_open: false } },
     { key: 'quiz', name: 'اختبار قصير', settings: { duration_minutes: 20, max_attempts: 1, grading_method: 'highest', shuffle_questions: true, shuffle_choices: true,
-        show_results: 'after_submit', show_answers: true, is_practice: false, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: true, variants: 1 } },
+        show_results: 'after_submit', show_answers: true, is_practice: false, is_assignment: false, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: true, variants: 1 } },
+    { key: 'assignment', name: 'واجب', settings: { duration_minutes: null, max_attempts: 1, grading_method: 'highest', shuffle_questions: false, shuffle_choices: false,
+        show_results: 'after_close', show_answers: true, is_practice: false, is_assignment: true, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: false, variants: 1 } },
     { key: 'practice', name: 'تدريبي', settings: { duration_minutes: null, max_attempts: 5, grading_method: 'highest', shuffle_questions: false, shuffle_choices: true,
-        show_results: 'after_submit', show_answers: true, is_practice: true, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: false, variants: 1 } },
+        show_results: 'after_submit', show_answers: true, is_practice: true, is_assignment: false, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: false, variants: 1 } },
 ];
 const TEMPLATE_KEYS = ['duration_minutes', 'max_attempts', 'grading_method', 'pass_mark', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_practice',
-    'navigation', 'calculator', 'resume_code_required', 'bind_computers', 'protect_content', 'variants', 'anonymous_marking', 'appeals_open', 'double_marking', 'seb_required', 'allowed_ips'];
+    'navigation', 'calculator', 'resume_code_required', 'bind_computers', 'protect_content', 'variants', 'is_assignment', 'anonymous_marking', 'appeals_open', 'double_marking', 'seb_required', 'allowed_ips'];
 const myTemplates = ref([...props.templates]);
 const templateMsg = ref('');
 function applyTemplate(settings, name) {
@@ -396,6 +398,15 @@ function save() {
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.show_answers', 'إظهار الإجابات الصحيحة في المراجعة') }} <ToggleSwitch v-model="form.show_answers" /></label>
                     <label class="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm" :class="form.is_published ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-gray-700'">
                         {{ t('exam.publish', 'منشور (يراه الطلاب)') }} <ToggleSwitch v-model="form.is_published" /></label>
+                    <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.assignment', 'واجب') }}<span class="block text-xs text-gray-500">{{ t('exam.assignment_hint', 'بلا مؤقت: يُسلَّم قبل موعد الإغلاق، ويخرج الطالب ويعود متى شاء. اترك المدة فارغة.') }}</span></span>
+                        <ToggleSwitch v-model="form.is_assignment" /></label>
+                    <label class="block rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.prerequisite', 'يُشترط قبله إكمال امتحان (تجريبي عادةً)') }}</span>
+                        <select v-model="form.requires_exam_id" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option :value="null">{{ t('exam.no_prerequisite', 'لا شيء') }}</option>
+                            <option v-for="p in prerequisites" :key="p.id" :value="p.id">{{ p.title }}{{ p.practice ? ' (' + t('exam.practice', 'امتحان تدريبي') + ')' : '' }}</option>
+                        </select>
+                        <span v-if="form.errors.requires_exam_id" class="text-xs text-red-600">{{ form.errors.requires_exam_id }}</span></label>
                     <div class="space-y-1 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
                         <label class="block"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.reviewer', 'مراجع الأسئلة قبل النشر (بريد أستاذ آخر، اختياري)') }}</span>
                             <input v-model="form.reviewer_email" type="email" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>

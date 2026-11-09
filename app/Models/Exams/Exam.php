@@ -24,7 +24,7 @@ class Exam extends Model
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
         'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
-        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash',
+        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash', 'requires_exam_id', 'is_assignment',
     ];
 
     protected $hidden = ['password'];
@@ -56,12 +56,27 @@ class Exam extends Model
             'variants' => 'integer',
             'protect_content' => 'boolean',
             'reviewed_at' => 'datetime',
+            'is_assignment' => 'boolean',
         ];
     }
 
     public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /** The practice exam a student must have submitted before starting this one. */
+    public function prerequisite(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'requires_exam_id');
+    }
+
+    /** The prerequisite the student has not finished yet, if any. */
+    public function missingPrerequisiteFor(User $user): ?self
+    {
+        $pre = $this->requires_exam_id ? $this->prerequisite : null;
+
+        return $pre && ! $pre->attempts()->where('user_id', $user->id)->whereNotNull('submitted_at')->exists() ? $pre : null;
     }
 
     /** The second teacher who reviews the questions before the exam can be published. */

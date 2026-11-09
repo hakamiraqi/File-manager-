@@ -5,9 +5,11 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, PencilSquareIcon, UsersIcon, ArchiveBoxIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, PencilSquareIcon, UsersIcon, ArchiveBoxIcon, ChartBarIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ categories: Array, current: Number, questions: Array });
+// The question's record in real exams.
+const FLAGS = { exposed: 'مكشوف: رآه طلاب كثيرون', too_easy: 'سهل جداً', too_hard: 'صعب جداً', weak: 'تمييز ضعيف', check_key: 'راجع مفتاح الإجابة' };
 const { t } = useTrans();
 
 const TYPE_LABELS = {
@@ -105,6 +107,13 @@ const currentCategory = () => props.categories.find((c) => c.id === props.curren
                     <div class="min-w-0 flex-1">
                         <p class="line-clamp-2 whitespace-pre-line" dir="auto">{{ q.body }}</p>
                         <p class="mt-1 text-xs text-gray-500">{{ t('exam.type_' + q.type, TYPE_LABELS[q.type]) }} · {{ q.points }} {{ t('exam.points', 'درجة') }} · {{ q.languages.join(' / ') }}</p>
+                        <p v-if="q.quality?.uses" class="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                            <ChartBarIcon class="h-3.5 w-3.5" />
+                            {{ t('exam.bank_used', 'استُعمل :n مرة', { n: q.quality.uses }) }}
+                            <template v-if="q.quality.facility !== null"> · {{ t('exam.bank_facility', 'السهولة') }} {{ Math.round(q.quality.facility * 100) }}%</template>
+                            <template v-if="q.quality.discrimination !== null"> · {{ t('exam.bank_disc', 'التمييز') }} {{ q.quality.discrimination }}</template>
+                            <span v-for="f in q.quality.flags" :key="f" class="rounded-full px-2 py-0.5" :class="f === 'check_key' || f === 'exposed' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'">{{ t('exam.bank_flag_' + f, FLAGS[f]) }}</span>
+                        </p>
                     </div>
                     <button v-if="currentCategory()?.editable" @click="removeQuestion(q)" class="rounded p-1.5 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
                 </div>

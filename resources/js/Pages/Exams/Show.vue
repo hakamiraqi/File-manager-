@@ -46,6 +46,10 @@ function start() {
                     {{ t('exam.seb_needed', 'هذا الامتحان يُؤدّى في متصفح Safe Exam Browser فقط. افتحه من أجهزة القاعة أو من SEB بالإعدادات التي يعطيها الأستاذ.') }}
                 </p>
                 <p v-if="exam.is_practice" class="mt-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-800 dark:bg-sky-900/30 dark:text-sky-200">{{ t('exam.practice_note', 'امتحان تدريبي: تحقّق من كل إجابة فور كتابتها.') }}</p>
+                <p v-if="exam.assignment" class="mt-4 rounded-lg bg-violet-50 p-3 text-sm text-violet-800 dark:bg-violet-900/30 dark:text-violet-200">{{ t('exam.assignment_note', 'واجب: تحفظ إجاباتك أولاً بأول، وتستطيع الخروج والعودة إليه حتى موعد التسليم، ثم تسلّمه.') }}</p>
+                <p v-if="exam.prerequisite" class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                    {{ t('exam.prerequisite_note', 'قبل هذا الامتحان أكمل الامتحان التجريبي:') }}
+                    <Link :href="route('exams.show', exam.prerequisite.id)" class="font-semibold underline">{{ exam.prerequisite.title }}</Link></p>
                 <p v-if="page.props.errors.exam" class="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ page.props.errors.exam }}</p>
 
                 <form v-if="canStart" @submit.prevent="start" class="mt-5 flex flex-wrap items-end gap-3">

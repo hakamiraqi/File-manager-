@@ -412,6 +412,8 @@ class MonitorController extends Controller
                     'locked' => $a->locked_at ? ['reason' => $a->lock_reason, 'code' => $a->resume_code] : null,
                     'help' => $a->help_requested_at?->toIso8601String(),
                     'variant' => $a->variantLetter(), 'receipt' => $a->receipt(),
+                    // Only a clock off by more than a minute is worth showing.
+                    'clock' => $a->clock_offset !== null && abs($a->clock_offset) > 60 ? $a->clock_offset : null,
                 ] : null,
             ];
         })->values();
