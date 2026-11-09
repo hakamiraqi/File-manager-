@@ -2052,5 +2052,15 @@
     "exam.draft_drop": "Discard them",
     "exam.draft_kept_hint": "The changes are kept for now on this device until you press «Save».",
     "exam.draft_kept": "Not saved · temporary copy :t",
-    "exam.unsaved": "Not saved"
+    "exam.unsaved": "Not saved",
+    "search.page": "Page",
+    "search.exam": "Exam",
+    "search.student": "Student",
+    "search.group": "Group",
+    "search.computer": "Computer",
+    "search.title": "Quick search",
+    "search.short": "Search…",
+    "search.ph": "Search for an exam, student, group, computer or page",
+    "search.keys": "↑↓ to move · Enter to open · / or Ctrl+K from any page",
+    "today.title": "Today"
 }
