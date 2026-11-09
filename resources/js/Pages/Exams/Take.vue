@@ -87,6 +87,9 @@ const answered = (q) => {
     return s.choice !== null;
 };
 const answeredCount = computed(() => graded.value.filter(answered).length);
+// The summary before submitting: what is left, and a way straight to it.
+const unansweredList = computed(() => props.questions.map((q, i) => ({ q, i })).filter(({ q }) => q.type !== 'description' && !answered(q)));
+const flaggedList = computed(() => props.questions.map((q, i) => ({ q, i })).filter(({ q }) => flags[q.id]));
 
 // ---- Saving: every change is kept on this device first, then sent; what could not be sent
 // is sent again when the network is back (a dropped Wi-Fi never loses an answer). ----
@@ -660,6 +663,20 @@ onBeforeUnmount(() => {
                     <span v-if="answeredCount < graded.length" class="font-medium text-amber-600">{{ t('exam.unanswered_warn', 'بقيت أسئلة بلا إجابة.') }}</span>
                     {{ t('exam.no_changes_after', 'لا يمكن تعديل الإجابات بعد التسليم.') }}
                 </p>
+                <div v-if="unansweredList.length" class="space-y-1">
+                    <p class="text-xs font-medium text-gray-500">{{ t('exam.left_unanswered', 'بلا إجابة') }} ({{ unansweredList.length }})</p>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button v-for="u in unansweredList" :key="u.q.id" type="button" :disabled="!canGo(u.i)" @click="confirmOpen = false; go(u.i)"
+                            class="h-8 min-w-8 rounded-lg border border-amber-300 bg-amber-50 px-2 text-sm text-amber-800 disabled:opacity-40 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">{{ u.i + 1 }}</button>
+                    </div>
+                </div>
+                <div v-if="flaggedList.length" class="space-y-1">
+                    <p class="flex items-center gap-1 text-xs font-medium text-gray-500"><FlagIcon class="h-3.5 w-3.5" /> {{ t('exam.flagged_review', 'معلّمة للمراجعة') }} ({{ flaggedList.length }})</p>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button v-for="u in flaggedList" :key="u.q.id" type="button" :disabled="!canGo(u.i)" @click="confirmOpen = false; go(u.i)"
+                            class="h-8 min-w-8 rounded-lg border border-sky-300 bg-sky-50 px-2 text-sm text-sky-800 disabled:opacity-40 dark:border-sky-700 dark:bg-sky-900/30 dark:text-sky-200">{{ u.i + 1 }}</button>
+                    </div>
+                </div>
                 <div class="flex justify-end gap-2">
                     <button @click="confirmOpen = false" class="rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
                     <button @click="finish" :disabled="submitting" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white disabled:opacity-50">{{ t('exam.submit', 'تسليم') }}</button>

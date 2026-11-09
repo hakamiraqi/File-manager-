@@ -7,9 +7,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] } });
+const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] } });
 const { t } = useTrans();
 const page = usePage();
 
@@ -35,6 +35,38 @@ function fromProps(exam) {
     return e;
 }
 const form = useForm(fromProps(props.exam));
+
+// ---- Settings templates: ready ones, and the teacher's own (settings only; title and questions stay) ----
+const PRESETS = [
+    { key: 'final', name: 'نهائي في القاعة', settings: { duration_minutes: 90, max_attempts: 1, grading_method: 'highest', shuffle_questions: true, shuffle_choices: true,
+        show_results: 'after_close', show_answers: false, is_practice: false, navigation: 'free', resume_code_required: true, bind_computers: true, protect_content: true, variants: 2, appeals_open: false } },
+    { key: 'quiz', name: 'اختبار قصير', settings: { duration_minutes: 20, max_attempts: 1, grading_method: 'highest', shuffle_questions: true, shuffle_choices: true,
+        show_results: 'after_submit', show_answers: true, is_practice: false, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: true, variants: 1 } },
+    { key: 'practice', name: 'تدريبي', settings: { duration_minutes: null, max_attempts: 5, grading_method: 'highest', shuffle_questions: false, shuffle_choices: true,
+        show_results: 'after_submit', show_answers: true, is_practice: true, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: false, variants: 1 } },
+];
+const TEMPLATE_KEYS = ['duration_minutes', 'max_attempts', 'grading_method', 'pass_mark', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_practice',
+    'navigation', 'calculator', 'resume_code_required', 'bind_computers', 'protect_content', 'variants', 'anonymous_marking', 'appeals_open', 'double_marking', 'seb_required', 'allowed_ips'];
+const myTemplates = ref([...props.templates]);
+const templateMsg = ref('');
+function applyTemplate(settings, name) {
+    for (const [k, v] of Object.entries(settings)) if (TEMPLATE_KEYS.includes(k)) form[k] = v;
+    templateMsg.value = t('exam.template_applied', 'طُبّق «:n» — راجع الإعدادات ثم احفظ.', { n: name });
+}
+const templateName = ref('');
+async function saveTemplate() {
+    const name = templateName.value.trim();
+    if (!name) return;
+    const settings = Object.fromEntries(TEMPLATE_KEYS.map((k) => [k, form[k] ?? null]));
+    const saved = (await window.axios.post(route('exams.manage.templates.store'), { name, settings })).data;
+    myTemplates.value = [...myTemplates.value.filter((x) => x.id !== saved.id), saved].sort((a, b) => a.name.localeCompare(b.name));
+    templateName.value = '';
+    templateMsg.value = t('exam.template_saved', 'حُفظ القالب «:n».', { n: name });
+}
+async function removeTemplate(tpl) {
+    await window.axios.delete(route('exams.manage.templates.destroy', tpl.id));
+    myTemplates.value = myTemplates.value.filter((x) => x.id !== tpl.id);
+}
 
 const blank = () => Object.fromEntries(form.languages.map((l) => [l, '']));
 function choice(body = null, correct = false) {
@@ -240,6 +272,21 @@ function save() {
             <p v-if="Object.keys(form.errors).length" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.fix_errors', 'لم يُحفظ: صحّح الأخطاء المشار إليها.') }}</p>
 
             <!-- Settings -->
+            <!-- Settings templates -->
+            <section class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">
+                <span class="flex items-center gap-1 text-xs font-medium text-gray-500"><Squares2X2Icon class="h-4 w-4" /> {{ t('exam.templates', 'قوالب الإعدادات') }}</span>
+                <button v-for="p in PRESETS" :key="p.key" type="button" @click="applyTemplate(p.settings, t('exam.preset_' + p.key, p.name))"
+                    class="rounded-full border border-gray-300 px-3 py-1 hover:border-[var(--accent-500)] dark:border-gray-600">{{ t('exam.preset_' + p.key, p.name) }}</button>
+                <span v-for="tpl in myTemplates" :key="tpl.id" class="flex items-center rounded-full border border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-gray-700">
+                    <button type="button" @click="applyTemplate(tpl.settings, tpl.name)" class="ps-3 pe-1 py-1">{{ tpl.name }}</button>
+                    <button type="button" @click="removeTemplate(tpl)" class="pe-2 text-gray-400 hover:text-red-500" :title="t('action.delete', 'حذف')"><XMarkIcon class="h-3.5 w-3.5" /></button>
+                </span>
+                <span class="flex-1" />
+                <input v-model="templateName" maxlength="100" :placeholder="t('exam.template_name', 'اسم قالب جديد من الإعدادات الحالية')" class="w-56 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" @keydown.enter.prevent="saveTemplate" />
+                <button type="button" @click="saveTemplate" :disabled="!templateName.trim()" class="rounded-lg border border-gray-300 px-3 py-1 disabled:opacity-40 dark:border-gray-600">{{ t('exam.template_save', 'حفظ كقالب') }}</button>
+                <p v-if="templateMsg" class="w-full text-xs text-emerald-700 dark:text-emerald-400">{{ templateMsg }}</p>
+            </section>
+
             <section class="space-y-4 rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
                 <div>
                     <p class="mb-1 text-xs font-medium text-gray-500">{{ t('exam.languages', 'لغات الامتحان (الأولى هي الافتراضية)') }}</p>

@@ -125,4 +125,43 @@ class MarkingExtrasTest extends TestCase
         $csv = $this->actingAs($this->teacher)->get(route('exams.manage.groups.gradebook', ['group' => $group, 'csv' => 1]))->assertOk()->streamedContent();
         $this->assertStringContainsString($a->name, $csv);
     }
+
+    public function test_neighbours_sharing_wrong_answers_come_first(): void
+    {
+        $exam = $this->exam([], collect(range(1, 2))->map(fn ($n) => ['type' => 'single', 'points' => 1, 'body' => ['ar' => "س{$n}"], 'choices' => [
+            ['body' => ['ar' => 'صح'], 'is_correct' => true], ['body' => ['ar' => 'خطأ'], 'is_correct' => false],
+        ]])->all());
+        $questions = $exam->questions()->with('choices')->get();
+        $wrong = $questions->mapWithKeys(fn ($q) => [$q->id => ['choice' => $q->choices[1]->id]])->all();
+        $students = User::factory()->count(3)->create();
+        foreach ([[1, 1], [1, 2], [3, 5]] as $i => [$row, $col]) {
+            $pc = \App\Models\Exams\Computer::create(['room' => 'A', 'label' => 'PC-'.($i + 1), 'ip' => '10.0.0.'.($i + 1), 'seat_row' => $row, 'seat_col' => $col]);
+            \Illuminate\Support\Facades\DB::table('exam_attendance')->insert(['exam_id' => $exam->id, 'user_id' => $students[$i]->id, 'computer_id' => $pc->id, 'created_at' => now(), 'updated_at' => now()]);
+            $this->sit($exam, $students[$i], $wrong);
+        }
+
+        // Two shared wrong answers count only between the two side by side.
+        $pairs = collect($this->actingAs($this->teacher)->getJson(route('exams.manage.similarity', $exam))->assertOk()->json());
+        $this->assertCount(1, $pairs);
+        $this->assertTrue($pairs[0]['neighbours']);
+        $this->assertSame(['PC-1', 'PC-2'], collect($pairs[0]['seats'])->sort()->values()->all());
+        $this->assertSame(2, $pairs[0]['score']);
+    }
+
+    public function test_settings_templates_belong_to_their_teacher(): void
+    {
+        $exam = $this->exam();
+        $this->actingAs($this->teacher)->get(route('exams.manage.edit', $exam))->assertInertia(fn (AssertableInertia $p) => $p->has('templates', 0));
+        $saved = $this->actingAs($this->teacher)->postJson(route('exams.manage.templates.store'), ['name' => 'نهائي القاعة 3',
+            'settings' => ['duration_minutes' => 120, 'variants' => 3, 'title' => ['ar' => 'لا'], 'questions' => []]])->assertOk()->json();
+        $this->assertSame(['duration_minutes' => 120, 'variants' => 3], $saved['settings']);
+        // The same name replaces it.
+        $this->actingAs($this->teacher)->postJson(route('exams.manage.templates.store'), ['name' => 'نهائي القاعة 3', 'settings' => ['duration_minutes' => 60]])->assertOk();
+        $this->actingAs($this->teacher)->get(route('exams.manage.edit', $exam))->assertInertia(fn (AssertableInertia $p) => $p->has('templates', 1)->where('templates.0.settings.duration_minutes', 60));
+
+        $other = User::factory()->create(['is_examiner' => true]);
+        $this->actingAs($other)->deleteJson(route('exams.manage.templates.destroy', $saved['id']))->assertNotFound();
+        $this->actingAs($this->teacher)->deleteJson(route('exams.manage.templates.destroy', $saved['id']))->assertOk();
+        $this->assertSame(0, \App\Models\Exams\Template::count());
+    }
 }

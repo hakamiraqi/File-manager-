@@ -909,5 +909,17 @@
     "exam.question_short": "Question",
     "exam.audit_answer": "Answer",
     "exam.audit_from": "From",
-    "exam.audit_offline": "Emergency file"
+    "exam.audit_offline": "Emergency file",
+    "exam.left_unanswered": "Not answered",
+    "exam.flagged_review": "Flagged for review",
+    "exam.neighbours": "Neighbours",
+    "exam.same_wrong_of": ":n of :of wrong answers identical",
+    "exam.templates": "Settings templates",
+    "exam.preset_final": "Final in the hall",
+    "exam.preset_quiz": "Short quiz",
+    "exam.preset_practice": "Practice",
+    "exam.template_name": "Name a new template from these settings",
+    "exam.template_save": "Save as template",
+    "exam.template_applied": "Applied «:n» — check the settings, then save.",
+    "exam.template_saved": "Template «:n» saved."
 }

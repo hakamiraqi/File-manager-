@@ -18,6 +18,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/duplicate', [ManageController::class, 'duplicate'])->whereNumber('exam')->name('duplicate');
         Route::post('/{exam}/import', [\App\Http\Controllers\Exams\ImportController::class, 'questions'])->whereNumber('exam')->name('import');
         Route::get('/import/template', [\App\Http\Controllers\Exams\ImportController::class, 'questionsTemplate'])->name('import.template');
+        Route::post('/templates', [ManageController::class, 'storeTemplate'])->name('templates.store');
+        Route::delete('/templates/{template}', [ManageController::class, 'destroyTemplate'])->name('templates.destroy');
         Route::post('/images', [ManageController::class, 'image'])->middleware('throttle:60,1')->name('images.store');
         Route::post('/students/import', [\App\Http\Controllers\Exams\ImportController::class, 'students'])->name('students.import');
 

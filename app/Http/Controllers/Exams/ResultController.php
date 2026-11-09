@@ -16,6 +16,7 @@ use App\Services\Exams\Presenter;
 use App\Services\Exams\Statistics;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -254,12 +255,38 @@ class ResultController extends Controller
             }
         }
 
-        // Choices: the same wrong answers on the same questions.
+        // Where each student sat: two papers from neighbouring seats weigh more.
+        $seats = DB::table('exam_attendance')->join('exam_computers', 'exam_computers.id', '=', 'exam_attendance.computer_id')
+            ->where('exam_attendance.exam_id', $exam->id)->get(['exam_attendance.user_id', 'exam_computers.room', 'exam_computers.label', 'exam_computers.seat_row', 'exam_computers.seat_col'])
+            ->keyBy('user_id');
+        $roomOrder = $seats->groupBy('room')->map(fn ($s) => $s->pluck('label')->sort(SORT_NATURAL)->values()->flip());
+        $seatOf = fn ($attemptId) => ($a = $attempts->firstWhere('id', $attemptId)) ? ($seats[$a->user_id] ?? null) : null;
+        $neighbours = function ($x, $y) use ($seatOf, $roomOrder): bool {
+            [$p, $q] = [$seatOf($x), $seatOf($y)];
+            if (! $p || ! $q || $p->room !== $q->room) {
+                return false;
+            }
+            if ($p->seat_row && $p->seat_col && $q->seat_row && $q->seat_col) {
+                return max(abs($p->seat_row - $q->seat_row), abs($p->seat_col - $q->seat_col)) <= 1;
+            }
+            $order = $roomOrder[$p->room] ?? collect();
+
+            return abs(($order[$p->label] ?? -9) - ($order[$q->label] ?? 9)) <= 1;
+        };
+
+        // Choices: the same wrong answers on the same questions (fewer are enough between neighbours).
         $wrong = [];
         foreach ($attempts as $a) {
             foreach ($a->answers as $ans) {
-                if (in_array($ans->question?->type, [Question::SINGLE, Question::TRUE_FALSE], true) && $ans->points !== null && $ans->points <= 0 && isset($ans->response['choice'])) {
-                    $wrong[$a->id][$ans->exam_question_id] = (int) $ans->response['choice'];
+                if ($ans->points === null || $ans->points > 0) {
+                    continue;
+                }
+                if (in_array($ans->question?->type, [Question::SINGLE, Question::TRUE_FALSE], true) && isset($ans->response['choice'])) {
+                    $wrong[$a->id][$ans->exam_question_id] = (string) (int) $ans->response['choice'];
+                } elseif ($ans->question?->type === Question::MULTIPLE && ! empty($ans->response['choices'])) {
+                    $picked = array_map('intval', (array) $ans->response['choices']);
+                    sort($picked);
+                    $wrong[$a->id][$ans->exam_question_id] = implode(',', $picked);
                 }
             }
         }
@@ -267,16 +294,23 @@ class ResultController extends Controller
         for ($i = 0; $i < count($ids); $i++) {
             for ($j = $i + 1; $j < count($ids); $j++) {
                 $same = count(array_intersect_assoc($wrong[$ids[$i]], $wrong[$ids[$j]]));
-                if ($same >= 3) {
-                    $pairs[] = ['kind' => 'choices', 'question' => null, 'a' => $ids[$i], 'b' => $ids[$j], 'score' => $same];
+                $near = $neighbours($ids[$i], $ids[$j]);
+                if ($same >= ($near ? 2 : 3)) {
+                    $pairs[] = ['kind' => 'choices', 'question' => null, 'a' => $ids[$i], 'b' => $ids[$j], 'score' => $same,
+                        'of' => min(count($wrong[$ids[$i]]), count($wrong[$ids[$j]]))];
                 }
             }
         }
+        foreach ($pairs as &$p) {
+            $p['neighbours'] = $neighbours($p['a'], $p['b']);
+            $p['seats'] = array_values(array_filter([$seatOf($p['a'])?->label, $seatOf($p['b'])?->label]));
+        }
+        unset($p);
 
         $hidden = $exam->anonymous_marking && ! ($exam->isManageableBy($request->user()) && $request->boolean('names'));
         $name = fn ($id) => ($a = $attempts->firstWhere('id', $id)) ? ($hidden ? 'ورقة '.strtoupper(substr(hash_hmac('sha256', 'paper|'.$a->user_id.'|'.$exam->id, (string) config('app.key')), 0, 6)) : $a->user?->name) : null;
 
-        return response()->json(collect($pairs)->sortByDesc('score')->take(100)->map(fn ($p) => $p + ['a_name' => $name($p['a']), 'b_name' => $name($p['b'])])->values());
+        return response()->json(collect($pairs)->sortBy([['neighbours', 'desc'], ['score', 'desc']])->take(100)->map(fn ($p) => $p + ['a_name' => $name($p['a']), 'b_name' => $name($p['b'])])->values());
     }
 
     /** A suggested mark (hosted site, with an AI key); the teacher still decides. */

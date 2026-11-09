@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon, MapPinIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
@@ -236,8 +236,10 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 <p v-if="similar && !similar.length" class="rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-gray-600">{{ t('exam.no_similar', 'لا تشابه لافت.') }}</p>
                 <div v-for="(p, k) in similar ?? []" :key="k" class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800">
                     <span class="rounded-full px-2 py-0.5 text-xs" :class="p.kind === 'essay' ? 'bg-violet-100 text-violet-700' : 'bg-amber-100 text-amber-700'">{{ p.kind === 'essay' ? t('exam.similar_essay', 'مقالي') : t('exam.similar_choices', 'أخطاء متطابقة') }}</span>
-                    <span class="flex-1">{{ p.a_name }} <ArrowsRightLeftIcon class="inline h-4 w-4 align-text-bottom" /> {{ p.b_name }}</span>
-                    <span class="font-semibold">{{ p.kind === 'essay' ? p.score + '%' : p.score + ' ' + t('exam.same_wrong', 'إجابة خاطئة متطابقة') }}</span>
+                    <span class="flex-1">{{ p.a_name }} <ArrowsRightLeftIcon class="inline h-4 w-4 align-text-bottom" /> {{ p.b_name }}
+                        <span v-if="p.seats?.length === 2" class="ms-1 font-mono text-xs text-gray-500" dir="ltr">({{ p.seats[0] }} / {{ p.seats[1] }})</span></span>
+                    <span v-if="p.neighbours" class="flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-300"><MapPinIcon class="h-3.5 w-3.5" /> {{ t('exam.neighbours', 'متجاوران') }}</span>
+                    <span class="font-semibold">{{ p.kind === 'essay' ? p.score + '%' : t('exam.same_wrong_of', ':n من :of إجابة خاطئة متطابقة', { n: p.score, of: p.of }) }}</span>
                     <Link :href="route('exams.attempts.result', p.a)" class="text-xs text-[var(--accent-600)] underline">A</Link>
                     <Link :href="route('exams.attempts.result', p.b)" class="text-xs text-[var(--accent-600)] underline">B</Link>
                 </div>

@@ -77,7 +77,26 @@ class ManageController extends Controller
             'languages' => Exam::LANGUAGES,
             'types' => Question::TYPES,
             'categories' => \App\Models\Exams\BankCategory::usableBy($request->user())->withCount('questions')->orderBy('name')->get(['id', 'name', 'subject', 'user_id', 'is_shared']),
+            'templates' => \App\Models\Exams\Template::where('user_id', $request->user()->id)->orderBy('name')->get(['id', 'name', 'settings']),
         ]);
+    }
+
+    /** Saves the settings now in the editor as one of the teacher's templates (same name: replaced). */
+    public function storeTemplate(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $data = $request->validate(['name' => ['required', 'string', 'max:100'], 'settings' => ['required', 'array']]);
+        $template = \App\Models\Exams\Template::updateOrCreate(['user_id' => $request->user()->id, 'name' => trim($data['name'])],
+            ['settings' => collect($data['settings'])->only(\App\Models\Exams\Template::KEYS)->all()]);
+
+        return response()->json($template->only('id', 'name', 'settings'));
+    }
+
+    public function destroyTemplate(Request $request, \App\Models\Exams\Template $template): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($template->user_id === $request->user()->id, 404);
+        $template->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     public function update(Request $request, Exam $exam): RedirectResponse
