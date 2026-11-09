@@ -1,12 +1,14 @@
 <script setup>
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import { Link } from '@inertiajs/vue3';
+import LanguageSwitcher from '@/Components/LanguageSwitcher.vue';
 </script>
 
 <template>
     <div
-        class="flex min-h-screen flex-col items-center bg-gray-100 pt-6 sm:justify-center sm:pt-0 dark:bg-gray-900"
+        class="relative flex min-h-screen flex-col items-center bg-gray-100 pt-6 sm:justify-center sm:pt-0 dark:bg-gray-900"
     >
+        <div class="absolute end-3 top-3"><LanguageSwitcher /></div>
         <div class="flex flex-col items-center gap-2">
             <Link href="/">
                 <ApplicationLogo class="h-16 w-16 fill-current text-[var(--accent-600)]" />

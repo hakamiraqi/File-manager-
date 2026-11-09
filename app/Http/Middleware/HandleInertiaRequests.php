@@ -33,7 +33,10 @@ class HandleInertiaRequests extends Middleware
     {
         $settings = Setting::all_settings();
         $user = $request->user();
-        $locale = $user->locale ?? $settings['default_locale'] ?? config('app.locale');
+        $locale = $user->locale ?? ($request->hasSession() ? $request->session()->get('locale') : null) ?? $settings['default_locale'] ?? config('app.locale');
+        if (! \App\Support\Locales::isActive($locale)) {
+            $locale = $settings['default_locale'] ?? config('app.locale');
+        }
 
         return [
             ...parent::share($request),

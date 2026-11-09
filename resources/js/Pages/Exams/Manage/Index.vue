@@ -206,6 +206,7 @@ const destroy = () => router.delete(route('exams.manage.destroy', toDelete.value
             <form @submit.prevent="importStudents" class="space-y-4 p-6">
                 <h3 class="text-lg font-semibold">{{ t('exam.import_students', 'استيراد طلاب') }}</h3>
                 <p class="text-sm text-gray-600 dark:text-gray-300">{{ t('exam.students_hint', 'ملف Excel أو CSV بأعمدة: الاسم، البريد أو الرقم الجامعي (أو كلاهما)، كلمة المرور (اختياري؛ تُولَّد إن تُركت فارغة). يُنزَّل بعدها ملف فيه كل حساب وكلمة مروره — احفظه، فلا يظهر مرة أخرى.') }}</p>
+                <p class="rounded-lg bg-[var(--accent-50)] px-3 py-2 text-xs text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-200">{{ t('exam.students_group_hint', 'أضف عمود «المجموعة» (واختيارياً «المرحلة» و«القسم») ليدخل كل طالب مجموعته مباشرة؛ تُنشأ المجموعة إن لم تكن موجودة، ومن له حساب يُنقل إليها.') }}</p>
                 <input type="file" accept=".xlsx,.csv" @input="studentsFile = $event.target.files[0]" class="block w-full text-sm" />
                 <p v-if="studentsError" class="text-sm text-red-600">{{ studentsError }}</p>
                 <div class="space-y-1 border-t border-gray-200 pt-3 dark:border-gray-700">

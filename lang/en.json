@@ -2043,5 +2043,14 @@
     "exam.choose_sheet": "Choose an Excel or CSV file",
     "exam.group_name_ph": "e.g. Second year — section A",
     "exam.remove_one_q": "Remove «:n» from the group? Their account stays, and they are offered again when adding students to any group.",
-    "exam.remove_many_q": "Remove :n students from the group? Their accounts stay."
+    "exam.remove_many_q": "Remove :n students from the group? Their accounts stay.",
+    "nav.language": "Language",
+    "exam.students_group_hint": "Add a «المجموعة» (group) column — and optionally «المرحلة» (stage) and «القسم» (department) — so each student goes straight into their group; a missing group is created, and students who already have an account move into it.",
+    "exam.leave_unsaved": "There are unsaved changes (kept for now on this device). Leave anyway?",
+    "exam.draft_found": "You have changes not saved, from :t on this device.",
+    "exam.draft_restore": "Restore them",
+    "exam.draft_drop": "Discard them",
+    "exam.draft_kept_hint": "The changes are kept for now on this device until you press «Save».",
+    "exam.draft_kept": "Not saved · temporary copy :t",
+    "exam.unsaved": "Not saved"
 }

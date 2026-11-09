@@ -148,4 +148,20 @@ class GroupsTest extends TestCase
         $this->assertSame(0, $a->members()->count());
         $this->assertSame(['سارة'], collect($this->actingAs($teacher)->getJson(route('exams.manage.groups.candidates', $a))->json('students'))->pluck('name')->all());
     }
+    public function test_students_imported_with_their_group_column(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'is_master_admin' => true, 'can_manage_users' => true]);
+        $old = Group::create(['user_id' => $admin->id, 'name' => 'قديمة']);
+        $existing = User::factory()->create(['email' => 'old@x.test']);
+        $old->members()->attach($existing->id);
+        $csv = "الاسم,البريد,المجموعة,المرحلة\nعلي,ali@x.test,شعبة أ,الأولى\nسارة,sara@x.test,شعبة ب,الأولى\nقديم,old@x.test,شعبة أ,\nزيد,zaid@x.test,,\n";
+
+        $this->actingAs($admin)->post(route('exams.manage.students.import'), ['file' => UploadedFile::fake()->createWithContent('s.csv', $csv)])->assertOk();
+        $a = Group::where('name', 'شعبة أ')->firstOrFail();
+        $this->assertSame('الأولى', $a->stage);
+        $this->assertEqualsCanonicalizing(['ali@x.test', 'old@x.test'], $a->members()->pluck('email')->all());
+        $this->assertSame(['sara@x.test'], Group::where('name', 'شعبة ب')->firstOrFail()->members()->pluck('email')->all());
+        $this->assertSame(0, $old->members()->count());
+        $this->assertFalse(User::where('email', 'zaid@x.test')->firstOrFail()->examGroups()->exists());
+    }
 }

@@ -174,13 +174,32 @@ class ImportController extends Controller
         $numberCol = $col(['الرقم الجامعي', 'الرقم', 'رقم الطالب', 'student number', 'student_number', 'id']);
         $passCol = $col(['كلمه المرور', 'password']);
         $phoneCol = $col(['الهاتف', 'رقم الهاتف', 'الموبايل', 'phone', 'mobile']);
+        // «المجموعة» (2026-11-09, by request): each student straight into their group, made when
+        // it does not exist yet (with «المرحلة» and «القسم» when the sheet has them).
+        $groupCol = $col(['المجموعه', 'الشعبه', 'الصف', 'group', 'section', 'class']);
+        $stageCol = $col(['المرحله', 'stage', 'year']);
+        $deptCol = $col(['القسم', 'department']);
+        $owner = $request->user();
+        $groups = [];
+        $groupFor = function (array $row) use ($groupCol, $stageCol, $deptCol, $owner, &$groups) {
+            $name = $groupCol === false ? '' : trim((string) ($row[$groupCol] ?? ''));
+            if ($name === '') {
+                return null;
+            }
+            $key = \App\Services\Exams\Grader::normalize($name);
+
+            return $groups[$key] ??= \App\Models\Exams\Group::all()->first(fn ($g) => \App\Services\Exams\Grader::normalize($g->name) === $key)
+                ?? \App\Models\Exams\Group::create(['user_id' => $owner->id, 'name' => mb_substr($name, 0, 255),
+                    'stage' => $stageCol === false ? null : (mb_substr(trim((string) ($row[$stageCol] ?? '')), 0, 100) ?: null),
+                    'department' => $deptCol === false ? null : (mb_substr(trim((string) ($row[$deptCol] ?? '')), 0, 255) ?: null)]);
+        };
         if ($nameCol === false || ($emailCol === false && $numberCol === false)) {
             throw ValidationException::withMessages(['file' => 'أحتاج عمود «الاسم» وعمود «البريد» أو «الرقم الجامعي» في الصف الأول.']);
         }
 
         $created = [];
         $skipped = [];
-        DB::transaction(function () use ($rows, $nameCol, $emailCol, $numberCol, $passCol, $phoneCol, $group, &$created, &$skipped) {
+        DB::transaction(function () use ($rows, $nameCol, $emailCol, $numberCol, $passCol, $phoneCol, $group, $groupFor, &$created, &$skipped) {
             foreach ($rows as $i => $row) {
                 $name = trim((string) ($row[$nameCol] ?? ''));
                 $email = $emailCol === false ? '' : mb_strtolower(trim((string) ($row[$emailCol] ?? '')));
@@ -201,9 +220,16 @@ class ImportController extends Controller
                 }
                 $existing = ($email !== '' ? User::where('email', $email)->first() : null)
                     ?? ($number !== '' ? User::where('student_number', $number)->first() : null);
+                $rowGroup = $groupFor($row);
                 if ($existing) {
-                    $group?->members()->syncWithoutDetaching([$existing->id]);
-                    $skipped[] = [$name, $who, $group ? 'موجود مسبقاً؛ أُضيف إلى المجموعة' : 'موجود مسبقاً'];
+                    if ($rowGroup) {
+                        // The sheet says where the student belongs: one group each, so they move there.
+                        DB::table('exam_group_user')->where('user_id', $existing->id)->where('exam_group_id', '!=', $rowGroup->id)->delete();
+                        $rowGroup->members()->syncWithoutDetaching([$existing->id]);
+                    } else {
+                        $group?->members()->syncWithoutDetaching([$existing->id]);
+                    }
+                    $skipped[] = [$name, $who, $rowGroup ? 'موجود مسبقاً؛ في المجموعة «'.$rowGroup->name.'»' : ($group ? 'موجود مسبقاً؛ أُضيف إلى المجموعة' : 'موجود مسبقاً')];
 
                     continue;
                 }
@@ -217,7 +243,7 @@ class ImportController extends Controller
                     'password' => Hash::make($password),
                     'role' => 'user', 'is_active' => true, 'email_verified_at' => now(),
                 ]);
-                $group?->members()->attach($user->id);
+                ($rowGroup ?? $group)?->members()->attach($user->id);
                 $created[] = [$name, $who, $password];
             }
         });

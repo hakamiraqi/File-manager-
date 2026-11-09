@@ -7,6 +7,7 @@ import Dropdown from '@/Components/Dropdown.vue';
 import DropdownLink from '@/Components/DropdownLink.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
+import LanguageSwitcher from '@/Components/LanguageSwitcher.vue';
 import NotificationBell from '@/Components/NotificationBell.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { useWide } from '@/Composables/useWide';
@@ -113,6 +114,7 @@ function logout() {
                         <slot name="header" />
                     </div>
                     <div class="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
+                        <LanguageSwitcher />
                         <NotificationBell />
                         <ThemeToggle />
                         <Dropdown align="right" width="48">

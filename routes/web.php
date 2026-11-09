@@ -55,6 +55,14 @@ Route::get('/manifest.webmanifest', function () {
 });
 
 // A hall computer saying it is on (any page, every half minute): the halls' live map (HallMapController).
+// «اللغة» from the top bar or the sign-in page: on the account, or in the session for a guest.
+Route::post('/locale/{code}', function (Illuminate\Http\Request $request, string $code) {
+    abort_unless(\App\Support\Locales::isActive($code), 404);
+    $request->session()->put('locale', $code);
+    $request->user()?->forceFill(['locale' => $code])->save();
+
+    return back();
+})->where('code', '[a-zA-Z_-]{2,10}')->middleware('throttle:30,1')->name('locale.switch');
 Route::get('/hall/ping', [\App\Http\Controllers\Exams\HallMapController::class, 'ping'])->middleware('throttle:12,1')->name('hall.ping');
 
 // A printed login card's QR code (see CardLoginController).

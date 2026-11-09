@@ -1,6 +1,6 @@
 <script setup>
 import RichText from '@/Components/Exams/RichText.vue';
-import { computed, nextTick, ref, toRaw, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, toRaw, watch } from 'vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -42,6 +42,45 @@ function fromProps(exam) {
     return e;
 }
 const form = useForm(fromProps(props.exam));
+
+// «حفظ تلقائي» (2026-11-09, by request): unsaved edits are kept in this browser every few
+// seconds, so a reload, a lost connection or a closed tab loses nothing; they come back with one
+// tap. Leaving with unsaved edits asks first. Saving clears the copy.
+const DRAFT = `exam-draft-${props.exam.id}`;
+const draft = ref(null); // { at, data } found when the page opened
+try {
+    const d = JSON.parse(localStorage.getItem(DRAFT) || 'null');
+    if (d?.data && JSON.stringify(d.data) !== JSON.stringify(form.data())) draft.value = d;
+    else localStorage.removeItem(DRAFT);
+} catch {}
+let draftTimer = null;
+const draftSavedAt = ref(null);
+watch(() => form.data(), () => {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(() => {
+        try {
+            if (form.isDirty) { localStorage.setItem(DRAFT, JSON.stringify({ at: Date.now(), data: form.data() })); draftSavedAt.value = Date.now(); }
+            else localStorage.removeItem(DRAFT);
+        } catch {}
+    }, 1500);
+}, { deep: true });
+function restoreDraft() {
+    const d = draft.value?.data;
+    if (d) Object.keys(d).forEach((k) => (form[k] = d[k]));
+    draft.value = null;
+}
+function dropDraft() {
+    draft.value = null;
+    try { localStorage.removeItem(DRAFT); } catch {}
+}
+const draftTime = (ms) => new Date(ms).toLocaleTimeString(document.documentElement.lang || 'ar', { hour: '2-digit', minute: '2-digit' });
+const leaveGuard = (e) => { if (form.isDirty) { e.preventDefault(); e.returnValue = ''; } };
+window.addEventListener('beforeunload', leaveGuard);
+const stopNavGuard = router.on('before', (e) => {
+    if (!form.isDirty || form.processing || e.detail.visit.method !== 'get') return;
+    if (!confirm(t('exam.leave_unsaved', 'في تعديلات غير محفوظة (محفوظة مؤقتاً على هذا الجهاز). تريد المغادرة؟'))) e.preventDefault();
+});
+onBeforeUnmount(() => { window.removeEventListener('beforeunload', leaveGuard); stopNavGuard(); clearTimeout(draftTimer); });
 
 // ---- The editor in two tabs, like Google Forms (2026-11-09, by request): the questions, and the
 // settings split by subject. Each question folds to one line and opens to edit. ----
@@ -375,6 +414,7 @@ function save() {
     })).put(route('exams.manage.update', props.exam.id), {
         preserveScroll: true,
         onSuccess: () => {
+            try { localStorage.removeItem(DRAFT); } catch {}
             const fresh = fromProps(page.props.exam);
             Object.keys(fresh).forEach((k) => (form[k] = fresh[k]));
             form.defaults(fresh);
@@ -411,6 +451,7 @@ function save() {
                         <a :href="route('exams.manage.qti', exam.id)" class="flex items-center gap-2 px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700"><ArrowDownTrayIcon class="h-4 w-4" /> QTI</a>
                     </div>
                 </div>
+                <span v-if="form.isDirty" class="hidden items-center gap-1 text-xs text-amber-600 sm:inline-flex" :title="t('exam.draft_kept_hint', 'التعديلات محفوظة مؤقتاً على هذا الجهاز حتى تضغط «حفظ».')"><span class="h-2 w-2 rounded-full bg-amber-500" /> {{ draftSavedAt ? t('exam.draft_kept', 'غير محفوظ · نسخة مؤقتة :t', { t: draftTime(draftSavedAt) }) : t('exam.unsaved', 'غير محفوظ') }}</span>
                 <button @click="save" :disabled="form.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">{{ t('action.save', 'حفظ') }}</button>
             </div>
         </template>
@@ -419,6 +460,11 @@ function save() {
             <p v-if="attempts" class="rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
                 {{ t('exam.has_attempts', 'لهذا الامتحان :n محاولة. تعديل الأسئلة لا يغيّر الدرجات حتى تضغط «إعادة التصحيح» في صفحة النتائج، وحذف سؤال يحذف إجاباته.', { n: attempts }) }}
             </p>
+            <div v-if="draft" class="flex flex-wrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-100">
+                <span class="min-w-0 flex-1">{{ t('exam.draft_found', 'عندك تعديلات لم تُحفظ من الساعة :t على هذا الجهاز.', { t: draftTime(draft.at) }) }}</span>
+                <button type="button" @click="restoreDraft" class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white">{{ t('exam.draft_restore', 'استرجعها') }}</button>
+                <button type="button" @click="dropDraft" class="rounded-lg px-2 py-1.5 text-xs underline">{{ t('exam.draft_drop', 'تجاهلها') }}</button>
+            </div>
             <p v-if="Object.keys(form.errors).length" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.fix_errors', 'لم يُحفظ: صحّح الأخطاء المشار إليها.') }}</p>
 
             <!-- Questions | Settings -->
