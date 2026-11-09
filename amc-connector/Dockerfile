@@ -1,7 +1,7 @@
 # The AMC connector: Auto Multiple Choice (free software for paper MCQ exams) behind a small HTTP
 # API, for the exam system to drive. The same image runs on the hosted server (beside the exam
 # system's containers) or on a hall's own Linux server.
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 ENV DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8
 RUN apt-get update \
