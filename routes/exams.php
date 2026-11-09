@@ -20,6 +20,11 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::get('/import/template', [\App\Http\Controllers\Exams\ImportController::class, 'questionsTemplate'])->name('import.template');
         Route::post('/templates', [ManageController::class, 'storeTemplate'])->name('templates.store');
         Route::post('/{exam}/review', [ManageController::class, 'review'])->whereNumber('exam')->name('review');
+        Route::get('/{exam}/osce', [\App\Http\Controllers\Exams\OsceController::class, 'manage'])->whereNumber('exam')->name('osce');
+        Route::put('/{exam}/osce/stations', [\App\Http\Controllers\Exams\OsceController::class, 'saveStations'])->whereNumber('exam')->name('osce.stations');
+        Route::get('/{exam}/omr', [\App\Http\Controllers\Exams\OmrController::class, 'sheets'])->whereNumber('exam')->name('omr');
+        Route::get('/{exam}/omr/scan', [\App\Http\Controllers\Exams\OmrController::class, 'scan'])->whereNumber('exam')->name('omr.scan');
+        Route::post('/{exam}/omr', [\App\Http\Controllers\Exams\OmrController::class, 'store'])->whereNumber('exam')->name('omr.store');
         Route::post('/{exam}/resources', [ManageController::class, 'uploadResource'])->whereNumber('exam')->name('resources.store');
         Route::get('/{exam}/resources/{file}', [ManageController::class, 'resource'])->whereNumber('exam')->where('file', '[a-f0-9]{40}\.pdf')->name('resources.show');
         Route::get('/schedule', [ManageController::class, 'schedule'])->name('schedule');
@@ -117,6 +122,13 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/computers', [$pcs, 'index'])->name('computers');
     Route::get('/photos/{user}', [$m, 'photo'])->name('photo');
     Route::get('/health', [$m, 'health'])->name('health');
+    Route::get('/mirror', [\App\Http\Controllers\Exams\MirrorController::class, 'show'])->name('mirror');
+    Route::post('/mirror/key', [\App\Http\Controllers\Exams\MirrorController::class, 'key'])->name('mirror.key');
+    Route::post('/mirror/standby', [\App\Http\Controllers\Exams\MirrorController::class, 'standby'])->name('mirror.standby');
+    $osce = \App\Http\Controllers\Exams\OsceController::class;
+    Route::get('/osce', [$osce, 'mine'])->name('osce');
+    Route::get('/osce/{station}', [$osce, 'station'])->name('osce.station');
+    Route::post('/osce/{station}/marks/{user}', [$osce, 'mark'])->name('osce.mark');
     Route::post('/computers', [$pcs, 'store'])->name('computers.store');
     Route::post('/computers/arrange', [$pcs, 'arrange'])->name('computers.arrange');
     Route::get('/computers/kiosk', [$pcs, 'kiosk'])->name('computers.kiosk');

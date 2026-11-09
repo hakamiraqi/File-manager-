@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Offline server: a daily backup (does nothing unless BACKUP_DAILY is on).
 Schedule::command('backup:run')->hourly();
+
+// A standby exam server copies the main one every minute (does nothing on the main server).
+Schedule::command('exams:mirror')->everyMinute()->withoutOverlapping()->when(fn () => filled(\App\Models\Setting::get('mirror_from')));

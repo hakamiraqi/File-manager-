@@ -149,6 +149,11 @@ class ManageController extends Controller
             'protect_content' => ['boolean'],
             'reviewer_email' => ['nullable', 'email'],
             'is_assignment' => ['boolean'],
+            'adaptive' => ['nullable', 'array'],
+            'adaptive.category_id' => ['required_with:adaptive', 'integer', 'exists:exam_bank_categories,id'],
+            'adaptive.count' => ['required_with:adaptive', 'integer', 'min:2', 'max:200'],
+            'adaptive.points' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'adaptive.tag' => ['nullable', 'string', 'max:100'],
             'hall' => ['nullable', 'string', 'max:100'],
             'sessions' => ['nullable', 'array', 'max:10'],
             'sessions.*.label' => ['nullable', 'string', 'max:50'],
@@ -201,6 +206,12 @@ class ManageController extends Controller
             throw ValidationException::withMessages(['requires_exam_id' => 'لا يكون الامتحان شرطاً لنفسه.']);
         }
         $exam->requires_exam_id = $data['requires_exam_id'] ?? null;
+        // Adaptive: questions come from the bank one by one, so the exam runs forward only.
+        $exam->adaptive = ! empty($data['adaptive']['category_id']) ? ['category_id' => (int) $data['adaptive']['category_id'], 'count' => (int) $data['adaptive']['count'],
+            'points' => (float) ($data['adaptive']['points'] ?? 1), 'tag' => trim((string) ($data['adaptive']['tag'] ?? ''))] : null;
+        if ($exam->adaptive) {
+            $data['navigation'] = 'sequential';
+        }
 
         // The reviewer: another teacher (or an admin) who approves the questions before publishing.
         $reviewer = null;

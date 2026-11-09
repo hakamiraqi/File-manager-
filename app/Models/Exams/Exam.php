@@ -24,7 +24,7 @@ class Exam extends Model
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
         'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
-        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash', 'requires_exam_id', 'is_assignment', 'hall', 'sessions', 'resources',
+        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash', 'requires_exam_id', 'is_assignment', 'hall', 'sessions', 'resources', 'is_osce', 'adaptive',
     ];
 
     protected $hidden = ['password'];
@@ -59,12 +59,20 @@ class Exam extends Model
             'is_assignment' => 'boolean',
             'sessions' => 'array',
             'resources' => 'array',
+            'is_osce' => 'boolean',
+            'adaptive' => 'array',
         ];
     }
 
     public function author(): BelongsTo
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    /** A practical exam's stations, in their order. */
+    public function osceStations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(OsceStation::class)->orderBy('position');
     }
 
     /** The practice exam a student must have submitted before starting this one. */
@@ -311,6 +319,13 @@ class Exam extends Model
 
     public function maxScore(): float
     {
+        if ($this->is_osce) {
+            return (float) $this->osceStations()->get()->sum(fn ($s) => $s->maxScore());
+        }
+        if ($this->adaptive) {
+            return (float) ($this->adaptive['count'] ?? 0) * (float) ($this->adaptive['points'] ?? 1);
+        }
+
         return (float) $this->questions->where('type', '!=', Question::DESCRIPTION)->sum(fn (Question $q) => $q->slotPoints());
     }
 

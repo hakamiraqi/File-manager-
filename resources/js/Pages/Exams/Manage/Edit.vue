@@ -7,7 +7,7 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon, ClipboardDocumentCheckIcon, DocumentCheckIcon, AdjustmentsHorizontalIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] }, prerequisites: { type: Array, default: () => [] }, halls: { type: Array, default: () => [] } });
 const { t } = useTrans();
@@ -307,6 +307,8 @@ function save() {
                 <Link :href="route('exams.show', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><EyeIcon class="h-4 w-4" /> {{ t('exam.preview', 'معاينة') }}</Link>
                 <a :href="route('exams.manage.package', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600" :title="t('exam.export_package_hint', 'لنقل الامتحان إلى سيرفر قاعة أو سيرفر آخر بفلاشة')">{{ t('exam.export_package', 'ملف نقل') }}</a>
                 <a :href="route('exams.manage.qti', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm lg:flex dark:border-gray-600" :title="t('exam.export_qti_hint', 'للأنظمة الأخرى (Moodle وغيرها): الاختيار والصح/الخطأ والقصيرة والرقمية والمقالية')">QTI</a>
+                <Link :href="route('exams.manage.osce', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600" :title="t('exam.osce_hint_short', 'محطات وقوائم تقييم لامتحان عملي/سريري')"><ClipboardDocumentCheckIcon class="h-4 w-4" /> OSCE</Link>
+                <Link :href="route('exams.manage.omr', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600" :title="t('exam.omr_hint_short', 'أوراق إجابة بالفقاعات تُصحَّح بالمسح')"><DocumentCheckIcon class="h-4 w-4" /> {{ t('exam.omr', 'ورق الفقاعات') }}</Link>
                 <Link :href="route('exams.manage.print', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('exam.print', 'طباعة') }}</Link>
                 <Link :href="route('exams.manage.results', exam.id)" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ChartBarIcon class="h-4 w-4" /> {{ t('exam.results', 'النتائج') }}</Link>
                 <button @click="save" :disabled="form.processing" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50">{{ t('action.save', 'حفظ') }}</button>
@@ -746,6 +748,18 @@ function save() {
             </section>
 
             <!-- From the bank -->
+            <section v-if="categories.length" class="space-y-2 rounded-xl border border-dashed border-gray-300 p-4 text-sm dark:border-gray-600">
+                <label class="flex items-center gap-2 font-medium"><input type="checkbox" :checked="!!form.adaptive" @change="form.adaptive = $event.target.checked ? { category_id: categories[0].id, count: 20, points: 1, tag: '' } : null" class="rounded" />
+                    <AdjustmentsHorizontalIcon class="h-5 w-5 text-gray-500" /> {{ t('exam.adaptive', 'امتحان تكيّفي') }}</label>
+                <p class="text-xs text-gray-500">{{ t('exam.adaptive_hint', 'الأسئلة من البنك واحداً واحداً: يبدأ متوسطاً، والإجابة الصحيحة تجلب سؤالاً أصعب والخاطئة أسهل. يعمل للأمام فقط، وتُتجاهل أسئلة الامتحان المكتوبة هنا.') }}</p>
+                <div v-if="form.adaptive" class="flex flex-wrap items-end gap-3">
+                    <label><span class="mb-1 block text-xs text-gray-500">{{ t('exam.category', 'فئة البنك') }}</span>
+                        <select v-model="form.adaptive.category_id" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }} ({{ c.questions_count }})</option></select></label>
+                    <label><span class="mb-1 block text-xs text-gray-500">{{ t('exam.adaptive_count', 'عدد الأسئلة') }}</span><input v-model.number="form.adaptive.count" type="number" min="2" max="200" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label><span class="mb-1 block text-xs text-gray-500">{{ t('exam.points_each', 'درجة كل سؤال') }}</span><input v-model.number="form.adaptive.points" type="number" min="0" step="0.5" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <label><span class="mb-1 block text-xs text-gray-500">{{ t('exam.tag_optional', 'وسم (اختياري)') }}</span><input v-model="form.adaptive.tag" class="w-40 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                </div>
+            </section>
             <section v-if="categories.length" class="rounded-xl border border-dashed border-gray-300 p-4 text-sm dark:border-gray-600">
                 <button type="button" @click="blueprintOpen ? (blueprintOpen = false) : openBlueprint()" class="flex items-center gap-2 font-medium"><TableCellsIcon class="h-5 w-5 text-gray-500" /> {{ t('exam.blueprint', 'جدول المواصفات: اسحب الامتحان من البنك حسب الفصل والصعوبة') }}</button>
                 <div v-if="blueprintOpen" class="mt-3 space-y-3">

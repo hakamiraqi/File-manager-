@@ -303,6 +303,8 @@ class Presenter
             'group_ids' => $exam->groups()->pluck('exam_groups.id')->all(),
             'reviewer_email' => $exam->reviewer?->email,
             'is_assignment' => (bool) $exam->is_assignment,
+            'is_osce' => (bool) $exam->is_osce,
+            'adaptive' => $exam->adaptive,
             'hall' => $exam->hall,
             'sessions' => collect($exam->sessions ?? [])->map(fn ($s) => ['label' => $s['label'] ?? '', 'opens_at' => filled($s['opens_at'] ?? null) ? \Illuminate\Support\Carbon::parse($s['opens_at'])->format('Y-m-d\TH:i') : '',
                 'closes_at' => filled($s['closes_at'] ?? null) ? \Illuminate\Support\Carbon::parse($s['closes_at'])->format('Y-m-d\TH:i') : ''])->all(),

@@ -26,6 +26,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 require __DIR__.'/auth.php';
 
 // The offline server's activation page (2026-11-05); see EnsureOfflineActivated.
+// A standby exam server takes the main one's changes (see MirrorController).
+Route::get('/mirror/changes', [\App\Http\Controllers\Exams\MirrorController::class, 'changes'])->middleware('throttle:30,1');
+
 // A printed login card's QR code (see CardLoginController).
 Route::get('/card/{code}', \App\Http\Controllers\Auth\CardLoginController::class)->where('code', '[A-Za-z0-9]{16,40}')->middleware('throttle:20,1')->name('card.login');
 

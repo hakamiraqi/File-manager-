@@ -64,6 +64,7 @@ class ExamController extends Controller
                 'grading_method' => $exam->grading_method,
                 'pass_mark' => $exam->pass_mark,
                 'assignment' => $exam->is_assignment,
+                'osce' => $exam->is_osce,
                 'prerequisite' => ($pre = $exam->missingPrerequisiteFor($user)) && $pre->is_published
                     ? ['id' => $pre->id, 'title' => $pre->text('title')] : null,
             ],
@@ -83,6 +84,9 @@ class ExamController extends Controller
     {
         $user = $request->user();
         abort_unless($exam->is_published && $exam->isAssignedTo($user), 404);
+        if ($exam->is_osce) {
+            return back()->withErrors(['exam' => 'هذا امتحان عملي: يُقيَّم في المحطات، لا على الحاسبة.']);
+        }
         if (! $exam->sebAllows($request)) {
             return back()->withErrors(['exam' => self::SEB_MESSAGE]);
         }
@@ -118,7 +122,7 @@ class ExamController extends Controller
         if (filled($exam->access_code) && mb_strtoupper(trim((string) $request->input('access_code'))) !== mb_strtoupper($exam->access_code)) {
             return back()->withErrors(['access_code' => 'رمز الدخول غير صحيح. يعلنه المراقب في القاعة.']);
         }
-        if (! $exam->questions()->exists()) {
+        if (! $exam->adaptive && ! $exam->questions()->exists()) {
             return back()->withErrors(['exam' => 'لا توجد أسئلة في هذا الامتحان بعد.']);
         }
 
@@ -143,6 +147,15 @@ class ExamController extends Controller
                 $drawn[$id] = $q->points;
                 $ids->push($id);
             }
+        }
+        // Adaptive: one question to begin with, of middle difficulty; the rest come one by one.
+        if ($exam->adaptive) {
+            $first = self::adaptivePick($exam->adaptive, 2, []);
+            if (! $first) {
+                return back()->withErrors(['exam' => 'لا أسئلة كافية في البنك لهذا الامتحان التكيّفي.']);
+            }
+            $ids = collect([$first]);
+            $drawn = [$first => (float) ($exam->adaptive['points'] ?? 1)];
         }
         // Versions A/B/C: neighbouring seats get different versions, each version one fixed order
         // (A as written unless questions are shuffled anyway).
@@ -211,6 +224,7 @@ class ExamController extends Controller
             ],
             'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice,
                 'sequential' => $exam->navigation === 'sequential', 'calculator' => $exam->calculator, 'position' => $attempt->position,
+                'adaptive' => $exam->adaptive ? ['total' => (int) ($exam->adaptive['count'] ?? 0)] : null,
                 'assignment' => $exam->is_assignment, 'deadline' => $attempt->deadline_at?->toIso8601String(),
                 'resources' => collect($exam->resources ?? [])->map(fn ($r) => ['name' => $r['name'], 'url' => route('exams.attempts.resource', [$attempt, $r['file']])])->values()],
             'hall' => [
@@ -333,6 +347,22 @@ class ExamController extends Controller
     {
         $this->own($request, $attempt);
         $to = (int) $request->validate(['to' => ['required', 'integer', 'min:0']])['to'];
+        $exam = $attempt->exam;
+        // Adaptive: right → a harder question next, wrong → an easier one, until the length is reached.
+        $order = $attempt->question_order ?? [];
+        if ($exam->adaptive && ! $attempt->isSubmitted() && $to >= count($order) && count($order) < (int) ($exam->adaptive['count'] ?? 0)) {
+            $lastId = (int) end($order);
+            $last = Question::with('choices')->find($lastId);
+            $answer = Answer::where('exam_attempt_id', $attempt->id)->where('exam_question_id', $lastId)->first();
+            $right = $last && $this->grader->fraction($last, $answer?->response, $attempt->id) >= 0.999;
+            $level = max(1, min(3, (int) ($last?->difficulty ?: 2) + ($right ? 1 : -1)));
+            if ($next = self::adaptivePick($exam->adaptive, $level, $order)) {
+                $drawn = $attempt->drawn ?? [];
+                $drawn[$next] = (float) ($exam->adaptive['points'] ?? 1);
+                $order[] = $next;
+                $attempt->update(['question_order' => $order, 'drawn' => $drawn]);
+            }
+        }
         if (! $attempt->isSubmitted()) {
             $attempt->update(['position' => max($attempt->position, min($to, count($attempt->question_order ?? []) - 1))]);
         }
@@ -543,6 +573,22 @@ class ExamController extends Controller
             return;
         }
         abort_unless($allowManager && $attempt->exam->isManageableBy($user), 404);
+    }
+
+    /** An unused bank question for an adaptive exam at this difficulty, or the nearest one there is. */
+    private static function adaptivePick(array $settings, int $level, array $used): ?int
+    {
+        foreach ([$level, $level - 1, $level + 1, $level - 2, $level + 2] as $d) {
+            if ($d < 1 || $d > 3) {
+                continue;
+            }
+            $pool = Question::randomPool(['category_id' => $settings['category_id'] ?? 0, 'tag' => $settings['tag'] ?? '', 'difficulty' => $d])->diff($used);
+            if ($pool->isNotEmpty()) {
+                return (int) $pool->random();
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -10,7 +10,7 @@ const { t } = useTrans();
 const page = usePage();
 const form = useForm({ password: '', access_code: '' });
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-const canStart = computed(() => (!props.exam.seb_required || props.exam.in_seb) && (props.exam.in_progress || (props.exam.window === 'open' && props.exam.attempts_used < props.exam.max_attempts)));
+const canStart = computed(() => !props.exam.osce && (!props.exam.seb_required || props.exam.in_seb) && (props.exam.in_progress || (props.exam.window === 'open' && props.exam.attempts_used < props.exam.max_attempts)));
 const grading = { highest: 'أعلى درجة', average: 'المعدّل', first: 'المحاولة الأولى', last: 'المحاولة الأخيرة' };
 
 function start() {
@@ -46,6 +46,7 @@ function start() {
                     {{ t('exam.seb_needed', 'هذا الامتحان يُؤدّى في متصفح Safe Exam Browser فقط. افتحه من أجهزة القاعة أو من SEB بالإعدادات التي يعطيها الأستاذ.') }}
                 </p>
                 <p v-if="exam.is_practice" class="mt-4 rounded-lg bg-sky-50 p-3 text-sm text-sky-800 dark:bg-sky-900/30 dark:text-sky-200">{{ t('exam.practice_note', 'امتحان تدريبي: تحقّق من كل إجابة فور كتابتها.') }}</p>
+                <p v-if="exam.osce" class="mt-4 rounded-lg bg-teal-50 p-3 text-sm text-teal-800 dark:bg-teal-900/30 dark:text-teal-200">{{ t('exam.osce_note', 'امتحان عملي: تتنقّل بين المحطات، ويقيّمك المقيِّم في كل محطة. تظهر درجتك هنا بعد التقييم.') }}</p>
                 <p v-if="exam.assignment" class="mt-4 rounded-lg bg-violet-50 p-3 text-sm text-violet-800 dark:bg-violet-900/30 dark:text-violet-200">{{ t('exam.assignment_note', 'واجب: تحفظ إجاباتك أولاً بأول، وتستطيع الخروج والعودة إليه حتى موعد التسليم، ثم تسلّمه.') }}</p>
                 <p v-if="exam.prerequisite" class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
                     {{ t('exam.prerequisite_note', 'قبل هذا الامتحان أكمل الامتحان التجريبي:') }}

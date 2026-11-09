@@ -20,6 +20,10 @@ class Grader
 {
     public function grade(Attempt $attempt): Attempt
     {
+        // A practical exam's mark comes from its stations' checklists, not from answers.
+        if ($attempt->exam?->is_osce) {
+            return $attempt;
+        }
         $questions = $attempt->orderedQuestions();
         $answers = $attempt->answers()->get()->keyBy('exam_question_id');
         $score = 0.0;

@@ -53,7 +53,7 @@ const state = reactive({});
 const touched = reactive({});
 const flags = reactive({});
 const checks = reactive({});   // practice: the result of «check», once per question
-for (const q of props.questions) {
+function initState(q) {
     const saved = props.answers?.[q.id] ?? {};
     flags[q.id] = !!saved.flagged;
     if (saved.checked) checks[q.id] = saved.checked;
@@ -73,6 +73,7 @@ for (const q of props.questions) {
     else if (q.type === 'short' || q.type === 'essay') state[q.id] = { text: r.text ?? '' };
     else state[q.id] = { choice: r.choice ?? null };
 }
+props.questions.forEach(initState);
 
 const graded = computed(() => props.questions.filter((q) => q.type !== 'description'));
 const number = (q) => graded.value.indexOf(q) + 1;
@@ -246,6 +247,25 @@ const index = ref(props.exam.sequential ? Math.min(props.exam.position ?? 0, pro
 const furthest = ref(props.exam.position ?? 0);
 const canGo = (i) => !props.exam.sequential || i >= furthest.value;
 const current = computed(() => props.questions[index.value]);
+// Adaptive: the next question is chosen by the server from how this one went.
+const adaptiveBusy = ref(false);
+async function nextAdaptive() {
+    const q = props.questions[index.value];
+    if (q && pending.has(q.id)) { clearTimeout(timers[q.id]); await send(q); }
+    adaptiveBusy.value = true;
+    try {
+        const to = index.value + 1;
+        await window.axios.post(route('exams.attempts.advance', props.attempt.id), { to });
+        router.reload({ only: ['questions', 'answers', 'exam'], onSuccess: () => {
+            props.questions.forEach((x) => { if (!state[x.id]) initState(x); });
+            furthest.value = to;
+            index.value = Math.min(to, props.questions.length - 1);
+            window.scrollTo({ top: 0 });
+        }, onFinish: () => (adaptiveBusy.value = false) });
+    } catch {
+        adaptiveBusy.value = false;
+    }
+}
 function go(i) {
     const to = Math.max(0, Math.min(props.questions.length - 1, i));
     if (!canGo(to)) return;
@@ -634,7 +654,10 @@ onBeforeUnmount(() => {
                         <ChevronRightIcon class="h-4 w-4 ltr:rotate-180" /> {{ t('exam.previous', 'السابق') }}
                     </button>
                     <span v-if="exam.sequential" class="text-xs text-amber-600">{{ t('exam.no_going_back', 'لا رجوع إلى الأسئلة السابقة') }}</span>
-                    <button v-if="index < questions.length - 1" @click="go(index + 1)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">
+                    <button v-if="exam.adaptive && index === questions.length - 1 && questions.length < exam.adaptive.total" @click="nextAdaptive" :disabled="adaptiveBusy || !answered(questions[index])" class="flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm disabled:opacity-40 dark:border-gray-600">
+                        {{ adaptiveBusy ? '…' : t('exam.next', 'التالي') }} <ChevronLeftIcon class="h-4 w-4 ltr:rotate-180" />
+                    </button>
+                    <button v-else-if="index < questions.length - 1" @click="go(index + 1)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">
                         {{ t('exam.next', 'التالي') }} <ChevronLeftIcon class="h-4 w-4 ltr:rotate-180" />
                     </button>
                     <button v-else @click="confirmOpen = true" class="flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white">
