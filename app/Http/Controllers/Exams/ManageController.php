@@ -51,21 +51,53 @@ class ManageController extends Controller
                 'opens_at' => $e->opens_at?->toIso8601String(),
                 'closes_at' => $e->closes_at?->toIso8601String(),
             ]),
+            // For «امتحان جديد» in three steps.
+            'wizard' => [
+                'groups' => \App\Models\Exams\Group::withCount('members')->orderBy('stage')->orderBy('name')->get(['id', 'name', 'stage'])
+                    ->map(fn ($g) => ['id' => $g->id, 'name' => $g->name, 'stage' => $g->stage, 'members' => $g->members_count]),
+                'halls' => \App\Models\Exams\Computer::whereNotNull('room')->distinct()->orderBy('room')->pluck('room')
+                    ->merge(Exam::whereNotNull('hall')->distinct()->pluck('hall'))->unique()->values(),
+                'subjects' => Exam::where('user_id', $user->id)->whereNotNull('subject')->distinct()->latest('id')->limit(30)->pluck('subject')->unique()->values(),
+                'has_bank' => \App\Models\Exams\BankCategory::usableBy($user)->exists(),
+            ],
         ]);
     }
 
+    /**
+     * A new exam: blank, or (2026-11-09, by request) from «امتحان جديد» in three steps — its name and
+     * subject, how the questions will come in, and the group, time and hall. Everything else stays
+     * at its default, in the settings.
+     */
     public function store(Request $request): RedirectResponse
     {
+        $data = $request->validate([
+            'title' => ['nullable', 'string', 'max:255'],
+            'subject' => ['nullable', 'string', 'max:255'],
+            'stage' => ['nullable', 'string', 'max:100'],
+            'duration_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'],
+            'opens_at' => ['nullable', 'date'],
+            'hall' => ['nullable', 'string', 'max:100'],
+            'group_ids' => ['nullable', 'array'],
+            'group_ids.*' => ['integer', 'exists:exam_groups,id'],
+            'start' => ['nullable', 'in:write,bank,import'],
+        ]);
         $lang = in_array(app()->getLocale(), Exam::LANGUAGES, true) ? app()->getLocale() : 'ar';
         $exam = Exam::create([
             'user_id' => $request->user()->id,
-            'title' => [$lang => $lang === 'ar' ? 'امتحان جديد' : 'New exam'],
+            'title' => [$lang => trim((string) ($data['title'] ?? '')) ?: ($lang === 'ar' ? 'امتحان جديد' : 'New exam')],
             'languages' => [$lang],
-            'duration_minutes' => 60,
+            'duration_minutes' => $data['duration_minutes'] ?? 60,
+            'subject' => $data['subject'] ?? null,
+            'stage' => $data['stage'] ?? null,
+            'opens_at' => $data['opens_at'] ?? null,
+            'hall' => $data['hall'] ?? null,
         ]);
+        if (! empty($data['group_ids'])) {
+            $exam->groups()->sync($data['group_ids']);
+        }
         ActivityLog::record('exam.created', 'أنشأ امتحاناً جديداً', $exam);
 
-        return redirect()->route('exams.manage.edit', $exam);
+        return redirect()->route('exams.manage.edit', array_filter(['exam' => $exam->id, 'start' => $data['start'] ?? null]));
     }
 
     public function edit(Request $request, Exam $exam): Response

@@ -1,6 +1,6 @@
 <script setup>
 import RichText from '@/Components/Exams/RichText.vue';
-import { computed, nextTick, onBeforeUnmount, ref, toRaw, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, toRaw, watch } from 'vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
@@ -155,6 +155,19 @@ function removeQ(i) {
     form.questions.splice(i, 1);
 }
 const scrollToAdd = () => document.getElementById('add-q')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+// Coming from «امتحان جديد»: straight to where the questions come in (write, bank or a file).
+const highlightImport = ref(false);
+onMounted(() => {
+    const start = new URLSearchParams(window.location.search).get('start');
+    if (!start) return;
+    window.history.replaceState(window.history.state, '', window.location.pathname);
+    mainTab.value = 'questions';
+    setTimeout(() => {
+        if (start === 'write') scrollToAdd();
+        else if (start === 'bank' && props.categories.length) { bankOpen.value = true; loadBank(props.categories[0].id); }
+        else if (start === 'import') { highlightImport.value = true; document.getElementById('import-q')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }, 400);
+});
 
 // ---- Settings templates: ready ones, and the teacher's own (settings only; title and questions stay) ----
 const PRESETS = [
@@ -973,7 +986,7 @@ function save() {
             </section>
 
             <!-- Import -->
-            <section class="space-y-2 rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-600">
+            <section id="import-q" class="space-y-2 rounded-xl border border-dashed border-gray-300 p-4 dark:border-gray-600" :class="highlightImport ? 'ring-2 ring-[var(--accent-500)]' : ''">
                 <p class="text-sm font-medium">{{ t('exam.import_title', 'استيراد أسئلة') }}</p>
                 <p class="text-xs text-gray-500">
                     {{ t('exam.import_hint', 'ملف Excel أو CSV بأعمدة: النوع، السؤال، الخيار 1…، الإجابة، الدرجة — أو ملف Word (.docx) أو نص بصيغة Aiken أو GIFT، أو Moodle XML (.xml). تُضاف الأسئلة في آخر الامتحان. احفظ تعديلاتك أولاً.') }}
