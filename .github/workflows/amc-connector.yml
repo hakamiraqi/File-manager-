@@ -33,7 +33,7 @@ jobs:
       - name: How AMC-TXT sets up Arabic
         continue-on-error: true
         run: |
-          docker exec amc sh -c 'f=$(find / -path /proc -prune -o -name plain.pm -print 2>/dev/null | grep Filter | head -1); echo $f; grep -n -i -E "arab|bidi|font|xelatex|polyglossia|numer|LR|latex|escape|sub parse_options|option" $f | head -250'
+          docker exec amc sh -c 'f=/usr/share/perl5/AMC/Filter/plain.pm; grep -n -i -E "arab|bidi|font|xelatex|polyglossia|numer|\\\\LR|latex_engine|rtl|lang" $f | head -200'
           docker exec amc sh -c 'fc-list : family | sort -u | head -60'
       - name: End to end
         env:
