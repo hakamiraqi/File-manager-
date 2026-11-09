@@ -125,4 +125,21 @@ class PicturesTest extends TestCase
             ->assertSessionHas('success', fn ($m) => str_contains($m, 'missing.png'));
         $this->assertSame(1, $exam->questions()->count());
     }
+    public function test_pictures_go_on_the_paper_sheets(): void
+    {
+        $exam = $this->exam();
+        $single = $exam->questions()->with('choices')->first();
+        $amc = app(\App\Services\Exams\AutoMultipleChoice::class);
+        $source = $amc->source($exam);
+        $q = substr($single->image, 0, 64);
+        $this->assertStringContainsString('\\includegraphics[height=3.5cm,keepaspectratio]{img/'.$q.'.png}', $source);
+        $this->assertStringContainsString('img/'.substr($single->choices[0]->image, 0, 64).'.png', $source);
+        $this->assertCount(3, $amc->pictures($exam));
+
+        $res = $this->actingAs($this->teacher)->get(route('exams.manage.amc', $exam))->assertOk();
+        $zip = new \ZipArchive;
+        $zip->open($res->baseResponse->getFile()->getPathname());
+        $this->assertNotFalse($zip->getFromName('img/'.$q.'.png'));
+        $zip->close();
+    }
 }

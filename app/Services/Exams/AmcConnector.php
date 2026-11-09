@@ -64,7 +64,8 @@ class AmcConnector
     /** Builds the sheets (one named sheet per student) from the exam as it is now. */
     public function build(Exam $exam): array
     {
-        $r = $this->http(900)->put('/projects/'.self::project($exam), ['source' => $this->amc->source($exam), 'students' => $this->amc->students($exam)]);
+        $r = $this->http(900)->put('/projects/'.self::project($exam), ['source' => $this->amc->source($exam), 'students' => $this->amc->students($exam),
+            'pictures' => collect($this->amc->pictures($exam))->mapWithKeys(fn ($p) => [$p['file'] => base64_encode($p['bytes'])])->all()]);
         if (! $r->successful()) {
             throw new RuntimeException('تعذّر تجهيز أوراق AMC: '.($r->json('error') ?? 'HTTP '.$r->status()).($r->json('log') ? "\n".mb_substr((string) $r->json('log'), -1500) : ''));
         }

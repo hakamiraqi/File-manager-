@@ -28,7 +28,17 @@ def sh(*cmd):
 
 
 print(call('GET', '/health'))
-code, s = call('PUT', f'/projects/{P}', json.dumps({'source': open(f'{here}/sample.txt', encoding='utf-8').read(),
+# A picture beside the first question and its first choice, as the exam system sends them.
+import base64, hashlib, io
+buf = io.BytesIO()
+Image.new('RGB', (120, 60), (40, 120, 200)).save(buf, 'PNG')
+png = buf.getvalue()
+pic = hashlib.sha256(png).hexdigest() + '.png'
+source = open(f'{here}/sample.txt', encoding='utf-8').read()
+source = source.replace('ما صيغة الماء؟', 'ما صيغة الماء؟ \\\\ \\includegraphics[height=1cm,keepaspectratio]{img/' + pic + '}', 1)
+source = source.replace('+ {\\beginL\\rmfamily H2O\\endL}', '+ {\\beginL\\rmfamily H2O\\endL} \\includegraphics[height=6mm,keepaspectratio]{img/' + pic + '}', 1)
+assert 'includegraphics' in source and source.count('img/' + pic) == 2, 'the picture was not put in the source'
+code, s = call('PUT', f'/projects/{P}', json.dumps({'source': source, 'pictures': {pic: base64.b64encode(png).decode()},
                                                   'students': open(f'{here}/students.csv', encoding='utf-8').read()}).encode())
 print('build', code, json.dumps(s, ensure_ascii=False)[:3000])
 assert code == 200 and s['state'] == 'built', 'build failed'

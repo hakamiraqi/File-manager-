@@ -62,19 +62,63 @@ class AutoMultipleChoice
         $out[] = 'PreAssociationName: \\name{}';
         $out[] = 'SeparateAnswerSheet: 1';
         $out[] = '';
+        // Pictures (2026-11-09): put next to the text, from the project's img/ folder; as LaTeX on
+        // Arabic sheets (the text is LaTeX there), in AMC-TXT's own form otherwise.
+        $pictures = $this->pictures($exam);
+        $pic = function (?string $name, string $height, bool $ownLine = false) use ($pictures, $arabic) {
+            $file = $name ? ($pictures[$name]['file'] ?? null) : null;
+            if (! $file) {
+                return '';
+            }
+
+            return $arabic ? ($ownLine ? ' \\\\ ' : ' ').'\\includegraphics[height='.$height.',keepaspectratio]{img/'.$file.'}' : ' ![height='.$height.']img/'.$file.'!';
+        };
         foreach ($this->questions($exam) as $q) {
             $marker = $q->type === Question::MULTIPLE ? '**' : '*';
             $opts = 'id=q'.$q->id.($exam->shuffle_choices && $q->type !== Question::TRUE_FALSE ? '' : ',ordered');
             $points = rtrim(rtrim(number_format((float) $q->points, 2, '.', ''), '0'), '.') ?: '0';
             $scoring = $q->type === Question::MULTIPLE ? '{haut='.$points.'}' : '{b='.$points.'}';
-            $out[] = $marker.'['.$opts.']'.$scoring.' '.$t(HtmlCleaner::text($text($q->body)));
+            $out[] = $marker.'['.$opts.']'.$scoring.' '.$t(HtmlCleaner::text($text($q->body))).$pic($q->image, '3.5cm', true);
             foreach ($q->choices as $c) {
-                $out[] = ($c->is_correct ? '+ ' : '- ').$t(HtmlCleaner::text($text($c->body)));
+                $out[] = ($c->is_correct ? '+ ' : '- ').$t(HtmlCleaner::text($text($c->body))).$pic($c->image, '1.6cm');
             }
             $out[] = '';
         }
 
         return implode("\n", $out);
+    }
+
+    /**
+     * The pictures the sheets show: stored name → the file for the project's img/ folder (PNG or
+     * JPEG, which LaTeX reads; WEBP and GIF are turned into PNG) and its bytes.
+     *
+     * @return array<string, array{file: string, bytes: string}>
+     */
+    public function pictures(Exam $exam): array
+    {
+        $out = [];
+        foreach ($this->questions($exam) as $q) {
+            foreach ([$q->image, ...$q->choices->pluck('image')->all()] as $name) {
+                if (! $name || isset($out[$name]) || ! \App\Http\Controllers\Exams\ManageController::picture($name)) {
+                    continue;
+                }
+                $bytes = \Illuminate\Support\Facades\Storage::disk('local')->get(\App\Http\Controllers\Exams\ManageController::IMAGES.'/'.$name);
+                $ext = pathinfo($name, PATHINFO_EXTENSION);
+                if (! in_array($ext, ['png', 'jpg', 'jpeg'], true)) {
+                    $img = function_exists('imagecreatefromstring') ? @imagecreatefromstring($bytes) : false;
+                    if (! $img) {
+                        continue;
+                    }
+                    ob_start();
+                    imagepng($img);
+                    $bytes = (string) ob_get_clean();
+                    $ext = 'png';
+                }
+                $out[$name] = ['file' => substr($name, 0, 64).'.'.($ext === 'jpeg' ? 'jpg' : $ext), 'bytes' => $bytes];
+            }
+        }
+
+        return $out;
     }
 
     /** The students list AMC prints the sheets from. */

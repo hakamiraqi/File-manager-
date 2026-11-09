@@ -90,6 +90,9 @@ class OmrController extends Controller
         $zip->open($zipPath, \ZipArchive::OVERWRITE);
         $zip->addFromString('exam.txt', $amc->source($exam));
         $zip->addFromString('students.csv', $amc->students($exam));
+        foreach ($amc->pictures($exam) as $p) {
+            $zip->addFromString('img/'.$p['file'], $p['bytes']);
+        }
         $zip->addFromString('README-ar.txt', implode("\n", [
             'مشروع Auto Multiple Choice لامتحان: '.$exam->text('title'),
             '',

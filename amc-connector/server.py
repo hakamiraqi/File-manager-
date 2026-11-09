@@ -6,7 +6,7 @@ Every request carries `Authorization: Bearer <AMC_TOKEN>`. One AMC project per e
 $AMC_DATA/<project>/:
 
   GET    /health                          AMC's version (no token needed)
-  PUT    /projects/<p>                     {"source": AMC-TXT, "students": CSV} → builds the sheets
+  PUT    /projects/<p>                     {"source": AMC-TXT, "students": CSV, "pictures": {name: base64}} → builds the sheets
   GET    /projects/<p>/subject.pdf         the sheets to print (one named sheet per student)
   GET    /projects/<p>/correction.pdf      the corrected sheet
   POST   /projects/<p>/scans?name=<file>   a scan (PDF or picture) as the request body
@@ -18,6 +18,7 @@ $AMC_DATA/<project>/:
 
 Only the standard library: the image stays the Debian AMC package and Python.
 """
+import base64
 import json, os, re, shutil, subprocess, threading, time, hmac
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
@@ -61,9 +62,18 @@ def tail(p, n=40):
         return ''
 
 
-def build(p, source, students):
+def build(p, source, students, pictures=None):
     d = os.path.join(DATA, p)
     os.makedirs(os.path.join(d, 'data'), exist_ok=True)
+    # The questions' and choices' pictures (2026-11-09), named in the source as img/<name>.
+    img = os.path.join(d, 'img')
+    if os.path.isdir(img):
+        shutil.rmtree(img)
+    os.makedirs(img, exist_ok=True)
+    for name, data in (pictures or {}).items():
+        if re.fullmatch(r'[a-f0-9]{64}\.(png|jpg)', name):
+            with open(os.path.join(img, name), 'wb') as f:
+                f.write(base64.b64decode(data))
     os.makedirs(os.path.join(d, 'scans'), exist_ok=True)
     log = os.path.join(d, 'amc.log')
     open(log, 'w').close()
@@ -181,7 +191,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if os.path.isdir(d + '/data'):
                     shutil.rmtree(d + '/data')
-                build(p, body['source'], body['students'])
+                build(p, body['source'], body['students'], body.get('pictures') if isinstance(body.get('pictures'), dict) else None)
             finally:
                 lock.release()
             s = status(p)
