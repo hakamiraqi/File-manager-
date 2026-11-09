@@ -47,6 +47,9 @@ const stateLabel = (e) => {
                     </div>
                     <p v-if="e.closes_at" class="mt-1 text-xs text-gray-500">{{ t('exam.closes', 'يغلق') }}: {{ fmt(e.closes_at) }}</p>
                     <p v-else-if="e.window === 'upcoming' && e.opens_at" class="mt-1 text-xs text-gray-500">{{ t('exam.opens', 'يفتح') }}: {{ fmt(e.opens_at) }}</p>
+                    <p v-else-if="e.window === 'no_session'" class="mt-1 text-xs text-amber-700">{{ t('exam.no_session_yet', 'لم تُحدَّد جلستك بعد.') }}</p>
+                    <p v-if="e.session" class="mt-1 text-xs text-gray-500">{{ e.session }}</p>
+                    <p v-if="e.assignment" class="mt-1 text-xs text-violet-700 dark:text-violet-300">{{ t('exam.assignment', 'واجب') }}<template v-if="e.closes_at"> · {{ t('exam.due', 'التسليم') }}: {{ fmt(e.closes_at) }}</template></p>
                     <div class="mt-auto flex items-center justify-between pt-4">
                         <span v-if="e.score !== null" class="flex items-center gap-1 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
                             <CheckCircleIcon class="h-5 w-5" /> {{ e.score }} / {{ e.max_score }}

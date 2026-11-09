@@ -418,6 +418,46 @@ class ResultController extends Controller
     }
 
     /**
+     * One student across the exams this teacher manages (all of them for an admin): each mark,
+     * and how they did by tag (chapter, objective) — for academic advising.
+     */
+    public function studentReport(Request $request, User $student): Response
+    {
+        $me = $request->user();
+        $exams = Exam::with('questions')->whereHas('attempts', fn ($q) => $q->where('user_id', $student->id)->whereNotNull('submitted_at'))
+            ->when(! $me->isAdmin(), fn ($q) => $q->where('user_id', $me->id))->orderBy('opens_at')->orderBy('id')->get();
+        abort_if($exams->isEmpty() && ! $me->isAdmin(), 404);
+        $rows = $exams->map(function (Exam $e) use ($student) {
+            $score = $e->finalScoreFor($student);
+            $max = $e->maxScore();
+
+            return ['id' => $e->id, 'title' => $e->text('title'), 'subject' => $e->subject, 'date' => ($e->opens_at ?? $e->created_at)?->toIso8601String(),
+                'score' => $score, 'max' => $max, 'percent' => $score !== null && $max > 0 ? round($score / $max * 100, 1) : null];
+        })->values();
+        // By tag: what the student got of what the tagged questions were worth.
+        $answers = Answer::with('question:id,tags,points,type')->whereIn('exam_attempt_id', Attempt::where('user_id', $student->id)->whereIn('exam_id', $exams->pluck('id'))->whereNotNull('submitted_at')->pluck('id'))
+            ->whereNotNull('points')->get();
+        $tags = [];
+        foreach ($answers as $a) {
+            foreach ($a->question?->tags ?? [] as $tag) {
+                $tags[$tag]['got'] = ($tags[$tag]['got'] ?? 0) + (float) $a->points;
+                $tags[$tag]['of'] = ($tags[$tag]['of'] ?? 0) + (float) $a->question->points;
+                $tags[$tag]['n'] = ($tags[$tag]['n'] ?? 0) + 1;
+            }
+        }
+        $byTag = collect($tags)->map(fn ($t, $tag) => ['tag' => $tag, 'n' => $t['n'], 'percent' => $t['of'] > 0 ? round($t['got'] / $t['of'] * 100) : null])
+            ->sortBy('percent')->values();
+
+        return Inertia::render('Exams/Manage/StudentReport', [
+            'student' => ['id' => $student->id, 'name' => $student->name, 'email' => str_ends_with($student->email, '@students.invalid') ? null : $student->email,
+                'number' => $student->student_number, 'photo' => $student->photoUrl()],
+            'exams' => $rows,
+            'by_tag' => $byTag,
+            'average' => $rows->whereNotNull('percent')->avg('percent') !== null ? round($rows->whereNotNull('percent')->avg('percent'), 1) : null,
+        ]);
+    }
+
+    /**
      * The official grade sheet: every student on the exam's list with their counted mark and
      * result, the department's heading, the committee's signatures and the stamp — to print.
      */

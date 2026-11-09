@@ -117,7 +117,7 @@ class GroupController extends Controller
         $exams = $group->exams()->with('questions')->orderBy('opens_at')->orderBy('id')->get();
         $students = $group->members()->orderBy('name')->get(['users.id', 'name', 'email']);
         $rows = $students->map(fn (User $u) => [
-            'name' => $u->name, 'email' => $u->email,
+            'id' => $u->id, 'name' => $u->name, 'email' => $u->email,
             'marks' => $exams->map(function ($e) use ($u) {
                 $score = $e->finalScoreFor($u);
                 $max = $e->maxScore();

@@ -123,7 +123,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 <div v-for="a in attempts" :key="a.id" class="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                     <div class="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
                         <div class="min-w-0 flex-1">
-                            <p class="font-medium">{{ a.user.name }} <span class="text-xs text-gray-400">#{{ a.number }}</span></p>
+                            <p class="font-medium"><Link v-if="a.user.id && can_manage" :href="route('exams.manage.students.report', a.user.id)" class="hover:underline" :title="t('exam.student_report', 'تقرير الطالب')">{{ a.user.name }}</Link><template v-else>{{ a.user.name }}</template> <span class="text-xs text-gray-400">#{{ a.number }}</span></p>
                             <p class="text-xs text-gray-500">{{ a.user.email }} · {{ fmt(a.started_at) }} – {{ a.submitted_at ? fmt(a.submitted_at) : t('exam.in_progress', 'جارٍ') }}<template v-if="a.variant"> · {{ t('exam.variant_short', 'نسخة') }} {{ a.variant }}</template><template v-if="a.receipt"> · <span class="font-mono" dir="ltr" :title="t('exam.receipt_code', 'رمز الإيصال')">{{ a.receipt }}</span></template></p>
                         </div>
                         <span v-for="(n, type) in a.events" :key="type" class="rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-700 dark:bg-red-900/30 dark:text-red-300">{{ t('exam.event_' + type, EVENT_LABELS[type]) }} × {{ n }}</span>

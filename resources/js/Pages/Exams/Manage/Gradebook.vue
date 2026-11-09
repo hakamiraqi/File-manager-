@@ -33,7 +33,7 @@ const printPage = () => window.print();
                 <tbody>
                     <tr v-for="(r, i) in rows" :key="r.email" class="border-t border-gray-100 dark:border-gray-700">
                         <td class="px-3 py-1.5 text-gray-400 print:border print:border-black">{{ i + 1 }}</td>
-                        <td class="px-3 py-1.5 print:border print:border-black">{{ r.name }}</td>
+                        <td class="px-3 py-1.5 print:border print:border-black"><Link v-if="r.id" :href="route('exams.manage.students.report', r.id)" class="hover:underline print:no-underline">{{ r.name }}</Link><template v-else>{{ r.name }}</template></td>
                         <td v-for="(m, k) in r.marks" :key="k" class="px-2 py-1.5 text-center print:border print:border-black"
                             :class="m.percent !== null && columns[k].pass_mark !== null && m.percent < columns[k].pass_mark ? 'text-red-600' : ''">{{ m.score ?? '—' }}</td>
                         <td class="px-3 py-1.5 text-center font-semibold print:border print:border-black">{{ r.average !== null ? Math.round(r.average * 10) / 10 : '—' }}</td>

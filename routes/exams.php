@@ -20,6 +20,10 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::get('/import/template', [\App\Http\Controllers\Exams\ImportController::class, 'questionsTemplate'])->name('import.template');
         Route::post('/templates', [ManageController::class, 'storeTemplate'])->name('templates.store');
         Route::post('/{exam}/review', [ManageController::class, 'review'])->whereNumber('exam')->name('review');
+        Route::post('/{exam}/resources', [ManageController::class, 'uploadResource'])->whereNumber('exam')->name('resources.store');
+        Route::get('/{exam}/resources/{file}', [ManageController::class, 'resource'])->whereNumber('exam')->where('file', '[a-f0-9]{40}\.pdf')->name('resources.show');
+        Route::get('/schedule', [ManageController::class, 'schedule'])->name('schedule');
+        Route::get('/students/{student}/report', [ResultController::class, 'studentReport'])->name('students.report');
         Route::delete('/templates/{template}', [ManageController::class, 'destroyTemplate'])->name('templates.destroy');
         Route::post('/images', [ManageController::class, 'image'])->middleware('throttle:60,1')->name('images.store');
         Route::post('/students/import', [\App\Http\Controllers\Exams\ImportController::class, 'students'])->name('students.import');
@@ -42,6 +46,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::put('/bank/categories/{category}', [$bank, 'update'])->name('bank.categories.update');
         Route::delete('/bank/categories/{category}', [$bank, 'destroy'])->name('bank.categories.destroy');
         Route::post('/bank/categories/{category}/import', [$bank, 'import'])->name('bank.categories.import');
+        Route::get('/bank/categories/{category}/matrix', [$bank, 'matrix'])->name('bank.categories.matrix');
         Route::delete('/bank/questions/{question}', [$bank, 'destroyQuestion'])->name('bank.questions.destroy');
         Route::post('/questions/{question}/to-bank', [$bank, 'fromExam'])->name('bank.from-exam');
         Route::post('/{exam}/from-bank', [$bank, 'toExam'])->whereNumber('exam')->name('bank.to-exam');
@@ -71,6 +76,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
     Route::get('/{exam}', [ExamController::class, 'show'])->whereNumber('exam')->name('show');
     Route::post('/{exam}/start', [ExamController::class, 'start'])->whereNumber('exam')->middleware('throttle:20,1')->name('start');
     Route::get('/attempts/{attempt}', [ExamController::class, 'take'])->name('attempts.take');
+    Route::get('/attempts/{attempt}/resources/{file}', [ExamController::class, 'resource'])->where('file', '[a-f0-9]{40}\.pdf')->name('attempts.resource');
     Route::post('/attempts/{attempt}/answers', [ExamController::class, 'save'])->middleware('throttle:240,1')->name('attempts.save');
     Route::post('/attempts/{attempt}/appeals', [ExamController::class, 'appeal'])->middleware('throttle:10,1')->name('attempts.appeals.store');
     Route::post('/attempts/{attempt}/advance', [ExamController::class, 'advance'])->middleware('throttle:240,1')->name('attempts.advance');
@@ -103,6 +109,8 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::post('/{exam}/settings', [$m, 'settings'])->whereNumber('exam')->name('settings');
     Route::post('/{exam}/seat/{user}', [$m, 'seat'])->whereNumber('exam')->name('seat');
     Route::post('/{exam}/distribute', [$m, 'distribute'])->whereNumber('exam')->name('distribute');
+    Route::post('/{exam}/session/{user}', [$m, 'session'])->whereNumber('exam')->name('session');
+    Route::post('/{exam}/distribute-sessions', [$m, 'distributeSessions'])->whereNumber('exam')->name('distribute-sessions');
     Route::post('/attempts/{attempt}/unlock', [$m, 'unlock'])->name('unlock');
     Route::post('/attempts/{attempt}/help-done', [$m, 'helpDone'])->name('help-done');
     $pcs = \App\Http\Controllers\Exams\ComputerController::class;
@@ -111,6 +119,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/health', [$m, 'health'])->name('health');
     Route::post('/computers', [$pcs, 'store'])->name('computers.store');
     Route::post('/computers/arrange', [$pcs, 'arrange'])->name('computers.arrange');
+    Route::get('/computers/kiosk', [$pcs, 'kiosk'])->name('computers.kiosk');
     Route::put('/computers/{computer}', [$pcs, 'update'])->name('computers.update');
     Route::delete('/computers/{computer}', [$pcs, 'destroy'])->name('computers.destroy');
     Route::post('/attempts/{attempt}/extend', [$m, 'extend'])->name('extend');

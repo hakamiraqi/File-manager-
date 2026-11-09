@@ -63,6 +63,36 @@ class ComputerController extends Controller
         return back()->with('success', 'رُتّبت '.$pcs->count().' حاسبة على الخريطة.');
     }
 
+    /**
+     * Kiosk mode for a hall computer: a Windows file that opens the exam site full screen in
+     * Edge (or Chrome) with no address bar, tabs or way out but the exam. Put it in the
+     * computer's Startup folder (Win+R, shell:startup) and the computer opens on the exam.
+     */
+    public function kiosk(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $url = rtrim($request->input('url') && filter_var($request->input('url'), FILTER_VALIDATE_URL) ? $request->input('url') : config('app.url'), '/').'/exams';
+        $edge = '"%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe"';
+        $chrome = '"%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe"';
+        $bat = implode("\r\n", [
+            '@echo off',
+            'rem '.config('app.name').' - kiosk mode for a hall computer',
+            'set URL='.$url,
+            'if exist '.$edge.' (',
+            '  start "" '.$edge.' --kiosk "%URL%" --edge-kiosk-type=fullscreen --no-first-run --kiosk-idle-timeout-minutes=0',
+            '  exit /b',
+            ')',
+            'if exist '.$chrome.' (',
+            '  start "" '.$chrome.' --kiosk --incognito --no-first-run --disable-pinch --overscroll-history-navigation=0 "%URL%"',
+            '  exit /b',
+            ')',
+            'echo Microsoft Edge or Google Chrome was not found on this computer.',
+            'pause',
+            '',
+        ]);
+
+        return response($bat, 200, ['Content-Type' => 'application/octet-stream', 'Content-Disposition' => 'attachment; filename="exam-kiosk.bat"']);
+    }
+
     public function update(Request $request, Computer $computer): RedirectResponse
     {
         $computer->update($this->validated($request, $computer));

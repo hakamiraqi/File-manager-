@@ -7,9 +7,9 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon } from '@heroicons/vue/24/outline';
+import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] }, prerequisites: { type: Array, default: () => [] } });
+const props = defineProps({ exam: Object, attempts: Number, languages: Array, types: Array, categories: { type: Array, default: () => [] }, groups: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] }, prerequisites: { type: Array, default: () => [] }, halls: { type: Array, default: () => [] } });
 const { t } = useTrans();
 const page = usePage();
 
@@ -44,6 +44,8 @@ const PRESETS = [
         show_results: 'after_submit', show_answers: true, is_practice: false, is_assignment: false, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: true, variants: 1 } },
     { key: 'assignment', name: 'واجب', settings: { duration_minutes: null, max_attempts: 1, grading_method: 'highest', shuffle_questions: false, shuffle_choices: false,
         show_results: 'after_close', show_answers: true, is_practice: false, is_assignment: true, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: false, variants: 1 } },
+    { key: 'oral', name: 'شفهي مسجّل', settings: { duration_minutes: 30, max_attempts: 1, grading_method: 'highest', shuffle_questions: false, shuffle_choices: false,
+        show_results: 'after_close', show_answers: false, is_practice: false, is_assignment: false, navigation: 'sequential', resume_code_required: true, bind_computers: false, protect_content: true, variants: 1 } },
     { key: 'practice', name: 'تدريبي', settings: { duration_minutes: null, max_attempts: 5, grading_method: 'highest', shuffle_questions: false, shuffle_choices: true,
         show_results: 'after_submit', show_answers: true, is_practice: true, is_assignment: false, navigation: 'free', resume_code_required: false, bind_computers: false, protect_content: false, variants: 1 } },
 ];
@@ -93,6 +95,50 @@ function addQuestion(type) {
     if (type === 'random') q.settings = { category_id: props.categories[0]?.id ?? '', count: 5 };
     form.questions.push(q);
 }
+// ---- Open-book files ----
+const resourceBusy = ref(false);
+async function uploadResource(event) {
+    const file = event.target.files[0];
+    event.target.value = '';
+    if (!file) return;
+    resourceBusy.value = true;
+    try {
+        const body = new FormData();
+        body.append('file', file);
+        const r = (await window.axios.post(route('exams.manage.resources.store', props.exam.id), body)).data;
+        if (!form.resources.some((x) => x.file === r.file)) form.resources.push(r);
+    } finally {
+        resourceBusy.value = false;
+    }
+}
+
+// ---- Blueprint: draw the exam from the bank by chapter (tag) × difficulty, as random slots ----
+const blueprintOpen = ref(false);
+const bp = ref({ category: null, data: null, cells: {}, points: 1, loading: false });
+async function loadBlueprint() {
+    if (!bp.value.category) return;
+    bp.value.loading = true;
+    try { bp.value.data = (await window.axios.get(route('exams.manage.bank.categories.matrix', bp.value.category))).data; bp.value.cells = {}; } finally { bp.value.loading = false; }
+}
+function openBlueprint() {
+    blueprintOpen.value = true;
+    if (!bp.value.category && props.categories.length) { bp.value.category = props.categories[0].id; loadBlueprint(); }
+}
+const bpRows = computed(() => (bp.value.data ? [{ tag: '', counts: bp.value.data.total }, ...bp.value.data.tags] : []));
+const bpTotal = computed(() => Object.values(bp.value.cells).reduce((s, n) => s + Number(n || 0), 0));
+function applyBlueprint() {
+    for (const [key, n] of Object.entries(bp.value.cells)) {
+        const count = Number(n || 0);
+        if (!count) continue;
+        const [tag, diff] = key.split('|');
+        addQuestion('random');
+        const q = form.questions[form.questions.length - 1];
+        q.points = bp.value.points;
+        q.settings = { category_id: bp.value.category, count, tag: tag || '', difficulty: diff === '0' ? '' : Number(diff) };
+    }
+    blueprintOpen.value = false;
+}
+
 function moveQuestion(i, step) {
     const j = i + step;
     if (j < 0 || j >= form.questions.length) return;
@@ -312,6 +358,35 @@ function save() {
                     <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.subject', 'المادة') }}</span><input v-model="form.subject" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.stage', 'المرحلة / الصف') }}</span><input v-model="form.stage" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.department', 'القسم') }}</span><input v-model="form.department" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                </div>
+                <!-- Hall, sittings and open-book files -->
+                <div class="grid gap-3 sm:grid-cols-3">
+                    <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.hall', 'القاعة (للجدول)') }}</span>
+                        <input v-model="form.hall" list="halls" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <div class="text-sm sm:col-span-2">
+                        <p class="mb-1 flex items-center gap-2 text-xs text-gray-500">{{ t('exam.sessions', 'جلسات متعددة للامتحان نفسه (اختياري)') }}
+                            <button type="button" @click="form.sessions.push({ label: '', opens_at: '', closes_at: '' })" class="flex items-center gap-1 text-[var(--accent-600)]"><PlusIcon class="h-3.5 w-3.5" /> {{ t('exam.add_session', 'جلسة') }}</button></p>
+                        <div v-for="(s, k) in form.sessions" :key="k" class="mb-1 flex flex-wrap items-center gap-1">
+                            <input v-model="s.label" :placeholder="t('exam.session_n', 'الجلسة :n', { n: k + 1 })" class="w-28 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <input v-model="s.opens_at" type="datetime-local" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <input v-model="s.closes_at" type="datetime-local" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                            <button type="button" @click="form.sessions.splice(k, 1)" class="p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
+                        </div>
+                        <p v-if="form.sessions.length" class="text-xs text-gray-500">{{ t('exam.sessions_hint', 'كل طالب يدخل في جلسته فقط؛ يوزّعهم المراقب من لوحة المراقبة. الأسئلة العشوائية تختلف لكل طالب.') }}</p>
+                        <span v-if="form.errors.sessions" class="text-xs text-red-600">{{ form.errors.sessions }}</span>
+                    </div>
+                    <div class="text-sm sm:col-span-3">
+                        <p class="mb-1 flex items-center gap-2 text-xs text-gray-500">{{ t('exam.resources', 'امتحان مفتوح الكتاب: ملفات PDF يفتحها الطالب داخل الامتحان') }}
+                            <label class="flex cursor-pointer items-center gap-1 text-[var(--accent-600)]"><input type="file" accept="application/pdf" class="sr-only" @change="uploadResource" /><PaperClipIcon class="h-3.5 w-3.5" /> {{ resourceBusy ? '…' : t('exam.add_pdf', 'إضافة PDF') }}</label></p>
+                        <div class="flex flex-wrap gap-2">
+                            <span v-for="(r, k) in form.resources" :key="r.file" class="flex items-center gap-1 rounded-full border border-gray-300 px-3 py-1 dark:border-gray-600">
+                                <DocumentTextIcon class="h-4 w-4 text-gray-500" />
+                                <a :href="route('exams.manage.resources.show', [exam.id, r.file])" target="_blank" class="hover:underline">{{ r.name }}</a>
+                                <button type="button" @click="form.resources.splice(k, 1)" class="text-gray-400 hover:text-red-500"><XMarkIcon class="h-3.5 w-3.5" /></button>
+                            </span>
+                        </div>
+                    </div>
+                    <datalist id="halls"><option v-for="h in halls" :key="h" :value="h" /></datalist>
                 </div>
                 <div class="grid gap-3 sm:grid-cols-3">
                     <label class="text-sm"><span class="mb-1 block text-xs text-gray-500">{{ t('exam.opens', 'يفتح') }}</span><input v-model="form.opens_at" type="datetime-local" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
@@ -671,6 +746,38 @@ function save() {
             </section>
 
             <!-- From the bank -->
+            <section v-if="categories.length" class="rounded-xl border border-dashed border-gray-300 p-4 text-sm dark:border-gray-600">
+                <button type="button" @click="blueprintOpen ? (blueprintOpen = false) : openBlueprint()" class="flex items-center gap-2 font-medium"><TableCellsIcon class="h-5 w-5 text-gray-500" /> {{ t('exam.blueprint', 'جدول المواصفات: اسحب الامتحان من البنك حسب الفصل والصعوبة') }}</button>
+                <div v-if="blueprintOpen" class="mt-3 space-y-3">
+                    <p class="text-xs text-gray-500">{{ t('exam.blueprint_hint', 'الصفوف وسوم أسئلة البنك (فصول، أهداف، مستويات بلوم…)، والأعمدة الصعوبة. اكتب كم سؤالاً يُسحب من كل خانة؛ كل طالب يأخذ أسئلة مختلفة بالتوزيع نفسه.') }}</p>
+                    <div class="flex flex-wrap items-end gap-3">
+                        <label><span class="mb-1 block text-xs text-gray-500">{{ t('exam.category', 'فئة البنك') }}</span>
+                            <select v-model="bp.category" @change="loadBlueprint" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700"><option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+                        <label><span class="mb-1 block text-xs text-gray-500">{{ t('exam.points_each', 'درجة كل سؤال') }}</span>
+                            <input v-model.number="bp.points" type="number" min="0" step="0.5" class="w-24 rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                    </div>
+                    <p v-if="bp.loading" class="text-xs text-gray-500">…</p>
+                    <div v-else-if="bp.data" class="overflow-x-auto">
+                        <table class="text-sm">
+                            <thead class="text-xs text-gray-500"><tr><th class="px-2 py-1 text-start">{{ t('exam.tag', 'الوسم') }}</th>
+                                <th v-for="d in ['0', '1', '2', '3']" :key="d" class="px-2 py-1">{{ { 0: t('exam.any_difficulty', 'أي صعوبة'), 1: t('exam.easy', 'سهل'), 2: t('exam.medium', 'متوسط'), 3: t('exam.hard', 'صعب') }[d] }}</th></tr></thead>
+                            <tbody>
+                                <tr v-for="r in bpRows" :key="r.tag" class="border-t border-gray-100 dark:border-gray-700">
+                                    <td class="px-2 py-1">{{ r.tag || t('exam.all_tags', 'كل الأسئلة') }}</td>
+                                    <td v-for="d in ['0', '1', '2', '3']" :key="d" class="px-2 py-1 text-center">
+                                        <input v-model.number="bp.cells[r.tag + '|' + d]" type="number" min="0" :max="r.counts[d]" :disabled="!r.counts[d]" class="w-16 rounded border-gray-300 py-0.5 text-center text-sm disabled:opacity-30 dark:border-gray-600 dark:bg-gray-700" />
+                                        <span class="block text-[10px] text-gray-400">{{ t('exam.of_available', 'من :n', { n: r.counts[d] }) }}</span></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button type="button" @click="applyBlueprint" :disabled="!bpTotal" class="rounded-lg bg-[var(--accent-600)] px-4 py-1.5 text-white disabled:opacity-40">{{ t('exam.blueprint_apply', 'أضف :n سؤالاً عشوائياً', { n: bpTotal }) }}</button>
+                        <span class="text-xs text-gray-500">{{ t('exam.blueprint_total', 'المجموع :p درجة', { p: bpTotal * Number(bp.points || 0) }) }}</span>
+                    </div>
+                </div>
+            </section>
+
             <section v-if="categories.length" class="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-gray-300 p-4 text-sm dark:border-gray-600">
                 <span class="font-medium">{{ t('exam.from_bank', 'من بنك الأسئلة') }}</span>
                 <button @click="bankOpen = true; loadBank(categories[0].id)" :disabled="form.isDirty" class="rounded-lg border border-gray-300 px-3 py-1.5 disabled:opacity-40 dark:border-gray-600">{{ t('exam.pick_questions', 'اختيار أسئلة') }}</button>

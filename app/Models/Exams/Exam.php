@@ -24,7 +24,7 @@ class Exam extends Model
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
         'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
-        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash', 'requires_exam_id', 'is_assignment',
+        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash', 'requires_exam_id', 'is_assignment', 'hall', 'sessions', 'resources',
     ];
 
     protected $hidden = ['password'];
@@ -57,6 +57,8 @@ class Exam extends Model
             'protect_content' => 'boolean',
             'reviewed_at' => 'datetime',
             'is_assignment' => 'boolean',
+            'sessions' => 'array',
+            'resources' => 'array',
         ];
     }
 
@@ -252,10 +254,24 @@ class Exam extends Model
             ?? $this->overrides()->where('user_id', $user->id)->first();
     }
 
-    /** The closing time for this student (an override may extend it). */
+    /** The closing time for this student (an override may extend it; with sittings, their sitting's end). */
     public function closesAtFor(User $user): ?\Illuminate\Support\Carbon
     {
-        return $this->overrideFor($user)?->closes_at ?? $this->closes_at;
+        return $this->overrideFor($user)?->closes_at ?? ($this->sessions ? $this->sessionFor($user)['closes_at'] ?? null : null) ?? $this->closes_at;
+    }
+
+    /** With several sittings: the one this student was put in (number from 1, and its times). */
+    public function sessionFor(User $user): ?array
+    {
+        if (! $this->sessions) {
+            return null;
+        }
+        $n = (int) \Illuminate\Support\Facades\DB::table('exam_attendance')->where('exam_id', $this->id)->where('user_id', $user->id)->value('session');
+        $s = $this->sessions[$n - 1] ?? null;
+
+        return $s ? ['number' => $n, 'label' => $s['label'] ?? (string) $n,
+            'opens_at' => filled($s['opens_at'] ?? null) ? \Illuminate\Support\Carbon::parse($s['opens_at']) : null,
+            'closes_at' => filled($s['closes_at'] ?? null) ? \Illuminate\Support\Carbon::parse($s['closes_at']) : null] : null;
     }
 
     public function maxAttemptsFor(User $user): int
@@ -277,7 +293,15 @@ class Exam extends Model
     /** 'upcoming' | 'open' | 'closed' for this student. */
     public function windowFor(User $user): string
     {
-        if ($this->opens_at && now()->lt($this->opens_at)) {
+        if ($this->sessions) {
+            $s = $this->sessionFor($user);
+            if (! $s) {
+                return 'no_session';
+            }
+            if ($s['opens_at'] && now()->lt($s['opens_at'])) {
+                return 'upcoming';
+            }
+        } elseif ($this->opens_at && now()->lt($this->opens_at)) {
             return 'upcoming';
         }
         $closes = $this->closesAtFor($user);

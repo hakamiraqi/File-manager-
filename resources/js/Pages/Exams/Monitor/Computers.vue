@@ -3,10 +3,11 @@ import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ComputerDesktopIcon, TrashIcon, ArrowRightIcon } from '@heroicons/vue/24/outline';
+import { ComputerDesktopIcon, TrashIcon, ArrowRightIcon, LockClosedIcon, ArrowDownTrayIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ computers: Array, here: Object, rooms: Array });
 const { t } = useTrans();
+const origin = window.location.origin;
 
 // This computer: its address is already known; give it a name.
 const hereForm = useForm({ label: props.here.computer?.label ?? '', room: props.here.computer?.room ?? props.rooms[0] ?? '', ip: props.here.ip });
@@ -71,6 +72,15 @@ const input = 'rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-g
                     <div class="flex gap-2"><input v-model="bulkForm.room" list="rooms" :placeholder="t('exam.room', 'القاعة')" :class="input" class="flex-1" />
                         <button :disabled="bulkForm.processing || !bulkForm.bulk" class="rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('exam.add', 'إضافة') }}</button></div>
                 </form>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">
+                <LockClosedIcon class="h-5 w-5 text-gray-500" />
+                <div class="min-w-0 flex-1">
+                    <p class="font-medium">{{ t('exam.kiosk', 'وضع الكشك لحواسيب القاعة') }}</p>
+                    <p class="text-xs text-gray-500">{{ t('exam.kiosk_hint', 'ملف لويندوز يفتح موقع الامتحانات بملء الشاشة في Edge أو Chrome بلا شريط عنوان ولا تبويبات. ضعه في مجلد بدء التشغيل (Win+R ثم shell:startup) فتفتح الحاسبة على الامتحان مباشرة. للخروج: Alt+F4.') }}</p>
+                </div>
+                <a :href="route('exams.monitor.computers.kiosk', { url: origin })" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-2 dark:border-gray-600"><ArrowDownTrayIcon class="h-4 w-4" /> exam-kiosk.bat</a>
             </div>
 
             <form @submit.prevent="arrange" class="flex flex-wrap items-end gap-2 rounded-xl border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-800">

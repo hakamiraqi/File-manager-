@@ -88,6 +88,23 @@ class BankController extends Controller
         return $out;
     }
 
+    /**
+     * The blueprint's raw material: how many questions a category has for each tag (chapter,
+     * objective, Bloom level…) and each difficulty, so a teacher can draw an exam from it.
+     */
+    public function matrix(Request $request, BankCategory $category): \Illuminate\Http\JsonResponse
+    {
+        abort_unless(BankCategory::usableBy($request->user())->whereKey($category->id)->exists(), 404);
+        $qs = $category->questions()->whereNull('exam_id')->where('type', '!=', Question::RANDOM)->get(['id', 'tags', 'difficulty']);
+        $tags = $qs->flatMap(fn ($q) => $q->tags ?? [])->unique()->sort()->values();
+        $count = fn ($list) => ['0' => $list->count()] + collect([1, 2, 3])->mapWithKeys(fn ($d) => [(string) $d => $list->where('difficulty', $d)->count()])->all();
+
+        return response()->json([
+            'total' => $count($qs),
+            'tags' => $tags->map(fn ($t) => ['tag' => $t, 'counts' => $count($qs->filter(fn ($q) => in_array($t, $q->tags ?? [], true)))])->values(),
+        ]);
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate(['name' => ['required', 'string', 'max:255'], 'subject' => ['nullable', 'string', 'max:255'], 'is_shared' => ['boolean']]);

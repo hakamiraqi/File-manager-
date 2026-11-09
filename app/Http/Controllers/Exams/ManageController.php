@@ -81,6 +81,8 @@ class ManageController extends Controller
             'types' => Question::TYPES,
             'categories' => \App\Models\Exams\BankCategory::usableBy($request->user())->withCount('questions')->orderBy('name')->get(['id', 'name', 'subject', 'user_id', 'is_shared']),
             'templates' => \App\Models\Exams\Template::where('user_id', $request->user()->id)->orderBy('name')->get(['id', 'name', 'settings']),
+            'halls' => \App\Models\Exams\Computer::whereNotNull('room')->distinct()->orderBy('room')->pluck('room')
+                ->merge(Exam::whereNotNull('hall')->distinct()->pluck('hall'))->unique()->values(),
             // Exams that can be required first (a practice run of the interface, usually).
             'prerequisites' => Exam::where('id', '!=', $exam->id)->when(! $request->user()->isAdmin(), fn ($q) => $q->where('user_id', $request->user()->id))
                 ->orderByDesc('is_practice')->latest('id')->limit(200)->get(['id', 'title', 'is_practice'])->map(fn (Exam $e) => ['id' => $e->id, 'title' => $e->text('title'), 'practice' => $e->is_practice]),
@@ -147,6 +149,14 @@ class ManageController extends Controller
             'protect_content' => ['boolean'],
             'reviewer_email' => ['nullable', 'email'],
             'is_assignment' => ['boolean'],
+            'hall' => ['nullable', 'string', 'max:100'],
+            'sessions' => ['nullable', 'array', 'max:10'],
+            'sessions.*.label' => ['nullable', 'string', 'max:50'],
+            'sessions.*.opens_at' => ['required', 'date'],
+            'sessions.*.closes_at' => ['required', 'date'],
+            'resources' => ['nullable', 'array', 'max:20'],
+            'resources.*.name' => ['required', 'string', 'max:150'],
+            'resources.*.file' => ['required', 'string', 'regex:/^[a-f0-9]{40}\.pdf$/'],
             'requires_exam_id' => ['nullable', 'integer', 'exists:exams,id'],
             'allowed_ips' => ['nullable', 'string', 'max:2000'],
             'group_ids' => ['nullable', 'array'],
@@ -179,6 +189,14 @@ class ManageController extends Controller
             throw ValidationException::withMessages(['allowed_ips' => 'عناوين غير صالحة: '.$bad->implode('، ').' (مثال: 192.168.1.0/24).']);
         }
 
+        // Sittings: each ends after it starts; numbered by their order.
+        $sessions = collect($data['sessions'] ?? [])->values()->map(fn ($s, $i) => ['label' => trim((string) ($s['label'] ?? '')) ?: 'الجلسة '.($i + 1),
+            'opens_at' => \Illuminate\Support\Carbon::parse($s['opens_at'])->toIso8601String(), 'closes_at' => \Illuminate\Support\Carbon::parse($s['closes_at'])->toIso8601String()]);
+        if ($sessions->contains(fn ($s) => $s['closes_at'] <= $s['opens_at'])) {
+            throw ValidationException::withMessages(['sessions' => 'كل جلسة تنتهي بعد أن تبدأ.']);
+        }
+        $exam->sessions = $sessions->isEmpty() ? null : $sessions->all();
+        $exam->resources = collect($data['resources'] ?? [])->map(fn ($r) => ['name' => $r['name'], 'file' => $r['file']])->values()->all() ?: null;
         if (($data['requires_exam_id'] ?? null) == $exam->id) {
             throw ValidationException::withMessages(['requires_exam_id' => 'لا يكون الامتحان شرطاً لنفسه.']);
         }
@@ -201,7 +219,7 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open', 'protect_content', 'is_assignment',
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open', 'protect_content', 'is_assignment', 'hall',
             ])->all() + array_filter(['navigation' => $data['navigation'] ?? null, 'calculator' => $data['calculator'] ?? null, 'variants' => $data['variants'] ?? null]) + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');
@@ -250,6 +268,91 @@ class ManageController extends Controller
         }
 
         return back()->with('success', 'تم حفظ الامتحان.');
+    }
+
+    /**
+     * The department's exam timetable: every exam (and each of its sittings) by day, with its
+     * hall and groups, and the clashes — the same hall, or the same group, at the same time.
+     */
+    public function schedule(Request $request): Response
+    {
+        $user = $request->user();
+        $from = $request->filled('from') ? \Illuminate\Support\Carbon::parse($request->input('from'))->startOfDay() : now()->subDays(7)->startOfDay();
+        $to = $from->copy()->addDays(120);
+        $entries = collect();
+        foreach (Exam::with(['groups:id,name', 'author:id,name'])->where(fn ($q) => $q->whereNotNull('opens_at')->orWhereNotNull('sessions'))->get() as $e) {
+            $slots = $e->sessions
+                ? collect($e->sessions)->map(fn ($s) => [$s['label'] ?? null, \Illuminate\Support\Carbon::parse($s['opens_at']), \Illuminate\Support\Carbon::parse($s['closes_at'])])
+                : collect([[null, $e->opens_at, $e->closes_at ?? $e->opens_at->copy()->addMinutes($e->duration_minutes ?: 60)]]);
+            foreach ($slots as [$label, $start, $end]) {
+                if ($end->lt($from) || $start->gt($to)) {
+                    continue;
+                }
+                $entries->push(['exam' => $e, 'id' => $e->id.'-'.$entries->count(), 'label' => $label, 'start' => $start, 'end' => $end]);
+            }
+        }
+        $entries = $entries->sortBy('start')->values();
+        $clashes = [];
+        foreach ($entries as $i => $a) {
+            foreach ($entries->slice($i + 1) as $b) {
+                if ($b['start']->gte($a['end'])) {
+                    break;
+                }
+                if ($a['exam']->id === $b['exam']->id) {
+                    continue;
+                }
+                $why = [];
+                if (filled($a['exam']->hall) && mb_strtolower(trim($a['exam']->hall)) === mb_strtolower(trim((string) $b['exam']->hall))) {
+                    $why[] = 'القاعة '.$a['exam']->hall;
+                }
+                $shared = $a['exam']->groups->pluck('name', 'id')->intersectByKeys($b['exam']->groups->pluck('name', 'id'));
+                if ($shared->isNotEmpty()) {
+                    $why[] = 'المجموعة '.$shared->implode('، ');
+                }
+                foreach ($why ? [$a['id'] => $b, $b['id'] => $a] : [] as $id => $other) {
+                    $clashes[$id][] = ['with' => $other['exam']->text('title'), 'why' => implode(' و', $why)];
+                }
+            }
+        }
+
+        return Inertia::render('Exams/Manage/Schedule', [
+            'from' => $from->toDateString(),
+            'entries' => $entries->map(fn ($x) => [
+                'id' => $x['id'], 'exam_id' => $x['exam']->id, 'title' => $x['exam']->text('title'), 'session' => $x['label'],
+                'start' => $x['start']->toIso8601String(), 'end' => $x['end']->toIso8601String(), 'hall' => $x['exam']->hall,
+                'groups' => $x['exam']->groups->pluck('name'), 'author' => $x['exam']->author?->name, 'subject' => $x['exam']->subject,
+                'published' => $x['exam']->is_published, 'can_edit' => $x['exam']->isManageableBy($user), 'clashes' => $clashes[$x['id']] ?? [],
+            ]),
+        ]);
+    }
+
+    /** A PDF an open-book exam allows (kept privately, named by its content). */
+    public function uploadResource(Request $request, Exam $exam): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $request->validate(['file' => ['required', 'file', 'mimes:pdf', 'max:51200']]);
+        $file = $request->file('file');
+        $name = sha1_file($file->getRealPath()).'.pdf';
+        \Illuminate\Support\Facades\Storage::disk('local')->putFileAs('exam-resources', $file, $name);
+
+        return response()->json(['name' => \Illuminate\Support\Str::limit(pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME), 150, ''), 'file' => $name]);
+    }
+
+    /** The teacher's own look at an allowed file. */
+    public function resource(Request $request, Exam $exam, string $file): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->authorizeExam($request, $exam);
+
+        return self::streamResource($exam, $file);
+    }
+
+    public static function streamResource(Exam $exam, string $file): \Symfony\Component\HttpFoundation\Response
+    {
+        abort_unless(collect($exam->resources ?? [])->contains('file', $file) && \Illuminate\Support\Facades\Storage::disk('local')->exists('exam-resources/'.$file), 404);
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->response('exam-resources/'.$file, null, [
+            'Content-Type' => 'application/pdf', 'Content-Disposition' => 'inline', 'Cache-Control' => 'private, no-store', 'X-Frame-Options' => 'SAMEORIGIN',
+        ]);
     }
 
     /** The reviewer approves the questions as they are now, or returns them with a note. */

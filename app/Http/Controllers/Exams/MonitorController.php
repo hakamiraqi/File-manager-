@@ -54,6 +54,7 @@ class MonitorController extends Controller
                 'id' => $exam->id, 'title' => $exam->text('title'), 'duration' => $exam->duration_minutes,
                 'access_code' => $exam->access_code, 'can_manage' => $exam->isManageableBy($request->user()),
                 'resume_code_required' => $exam->resume_code_required, 'bind_computers' => $exam->bind_computers,
+                'sessions' => collect($exam->sessions ?? [])->map(fn ($s, $i) => ['number' => $i + 1, 'label' => $s['label'], 'opens_at' => $s['opens_at'], 'closes_at' => $s['closes_at']])->values(),
             ],
             'computers' => \App\Models\Exams\Computer::orderBy('room')->orderBy('label')->get(['id', 'room', 'label', 'ip', 'seat_row', 'seat_col']),
             'data' => $this->snapshot($exam),
@@ -316,17 +317,74 @@ class MonitorController extends Controller
         return response()->json(['ok' => true]);
     }
 
+    /**
+     * Students of different groups (sections) in turn — A, B, C, A, B, C… — shuffled within each
+     * group, so two classmates rarely sit side by side.
+     */
+    private static function mixGroups(Exam $exam, \Illuminate\Support\Collection $students): \Illuminate\Support\Collection
+    {
+        $groupIds = $exam->groups()->pluck('exam_groups.id');
+        $of = DB::table('exam_group_user')->whereIn('exam_group_id', $groupIds)->whereIn('user_id', $students->pluck('id'))
+            ->orderBy('exam_group_id')->get()->groupBy('user_id')->map(fn ($rows) => $rows->first()->exam_group_id);
+        $queues = $students->shuffle()->groupBy(fn (User $u) => $of[$u->id] ?? 0)->sortByDesc(fn ($g) => $g->count())->map->values()->values();
+        $out = collect();
+        while ($queues->contains(fn ($q) => $q->isNotEmpty())) {
+            foreach ($queues as $q) {
+                if ($q->isNotEmpty()) {
+                    $out->push($q->shift());
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /** Puts a student in one of the exam's sittings (or none). */
+    public function session(Request $request, Exam $exam, User $user): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $n = $request->validate(['session' => ['nullable', 'integer', 'min:1', 'max:'.max(1, count($exam->sessions ?? []))]])['session'] ?? null;
+        DB::table('exam_attendance')->updateOrInsert(['exam_id' => $exam->id, 'user_id' => $user->id], ['session' => $n, 'updated_at' => now()]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Splits the students evenly over the sittings, by name or at random (those already started stay). */
+    public function distributeSessions(Request $request, Exam $exam): JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        $order = $request->validate(['order' => ['required', 'in:name,random']])['order'];
+        $count = count($exam->sessions ?? []);
+        abort_if($count < 1, 422, 'لا جلسات في هذا الامتحان.');
+        $started = $exam->attempts()->pluck('user_id')->flip();
+        $students = $exam->roster()->reject(fn (User $u) => isset($started[$u->id]))->values();
+        if ($order === 'random') {
+            $students = $students->shuffle()->values();
+        }
+        $per = (int) ceil($students->count() / $count);
+        foreach ($students as $i => $u) {
+            DB::table('exam_attendance')->updateOrInsert(['exam_id' => $exam->id, 'user_id' => $u->id],
+                ['session' => intdiv($i, max(1, $per)) + 1, 'updated_at' => now()]);
+        }
+
+        return response()->json(['ok' => true, 'students' => $students->count()]);
+    }
+
     /** Spreads the students over a room's computers, by name or at random; absent students are left out. */
     public function distribute(Request $request, Exam $exam): JsonResponse
     {
         $this->authorizeExam($request, $exam);
-        $data = $request->validate(['room' => ['nullable', 'string', 'max:100'], 'order' => ['required', 'in:name,random']]);
+        $data = $request->validate(['room' => ['nullable', 'string', 'max:100'], 'order' => ['required', 'in:name,random,mixed']]);
+        // Seats in the hall's order: row by row on the map, else by name.
         $computers = \App\Models\Exams\Computer::when(filled($data['room'] ?? null), fn ($q) => $q->where('room', $data['room']))->get()
-            ->sortBy('label', SORT_NATURAL)->values();
+            ->sortBy([fn ($a, $b) => [$a->room, $a->seat_row ?? PHP_INT_MAX, $a->seat_col ?? 0] <=> [$b->room, $b->seat_row ?? PHP_INT_MAX, $b->seat_col ?? 0], fn ($a, $b) => strnatcmp($a->label, $b->label)])->values();
         $absent = DB::table('exam_attendance')->where('exam_id', $exam->id)->where('present', false)->pluck('user_id')->all();
         $students = $exam->roster()->reject(fn (User $u) => in_array($u->id, $absent, true))->values();
         if ($data['order'] === 'random') {
             $students = $students->shuffle()->values();
+        }
+        if ($data['order'] === 'mixed') {
+            $students = self::mixGroups($exam, $students);
         }
         DB::transaction(function () use ($exam, $students, $computers, $request) {
             DB::table('exam_attendance')->where('exam_id', $exam->id)->update(['computer_id' => null, 'seat' => null]);
@@ -401,6 +459,7 @@ class MonitorController extends Controller
                     'number' => $u->student_number, 'photo' => $u->photoUrl()],
                 'present' => isset($attendance[$u->id]) ? (bool) $attendance[$u->id]->present : null,
                 'seat' => $attendance[$u->id]->seat ?? null,
+                'session' => isset($attendance[$u->id]->session) ? (int) $attendance[$u->id]->session : null,
                 'note' => $attendance[$u->id]->note ?? null,
                 'computer' => ($pc = $computers[$attendance[$u->id]->computer_id ?? 0] ?? null) ? ['id' => $pc->id, 'label' => $pc->label, 'ip' => $pc->ip, 'room' => $pc->room] : null,
                 'status' => $status,

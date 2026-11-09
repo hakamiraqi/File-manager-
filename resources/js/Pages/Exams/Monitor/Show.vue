@@ -188,6 +188,10 @@ const helpDone = (r) => act(route('exams.monitor.help-done', r.attempt.id));
 const seat = (r, id) => act(route('exams.monitor.seat', [props.exam.id, r.user.id]), { computer_id: id ? Number(id) : null });
 const rooms = computed(() => [...new Set(props.computers.map((c) => c.room).filter(Boolean))]);
 const distributeRoom = ref('');
+// Sittings: one student at a time, or all of them evenly.
+const fmtTime = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '');
+const setSession = (r, v) => act(route('exams.monitor.session', [props.exam.id, r.user.id]), { session: v ? Number(v) : null });
+const splitSessions = (order) => act(route('exams.monitor.distribute-sessions', props.exam.id), { order });
 const distributeMsg = ref('');
 async function distribute(order) {
     const res = await window.axios.post(route('exams.monitor.distribute', props.exam.id), { room: distributeRoom.value || null, order });
@@ -290,9 +294,17 @@ async function uploadOffline(event) {
                     </select>
                     <button @click="distribute('name')" :disabled="!computers.length" class="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40 dark:border-gray-600">{{ t('exam.by_name', 'بالاسم') }}</button>
                     <button @click="distribute('random')" :disabled="!computers.length" class="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40 dark:border-gray-600">{{ t('exam.randomly', 'عشوائياً') }}</button>
+                    <button @click="distribute('mixed')" :disabled="!computers.length" class="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-40 dark:border-gray-600" :title="t('exam.mixed_hint', 'طلاب المجموعات (الشعب) بالتناوب حتى لا يجلس زميلا شعبة متجاورين')">{{ t('exam.mixed', 'خلط الشعب') }}</button>
                     <Link :href="route('exams.monitor.computers')" class="text-xs text-[var(--accent-600)] underline">{{ t('exam.computers', 'الحواسيب') }}</Link>
                     <span v-if="distributeMsg" class="w-full text-xs text-gray-500">{{ distributeMsg }}</span>
                 </div>
+            </div>
+            <div v-if="exam.sessions.length" class="flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-800">
+                <span class="text-xs text-gray-500">{{ t('exam.sessions_short', 'الجلسات') }}:</span>
+                <span v-for="s in exam.sessions" :key="s.number" class="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs dark:bg-gray-700">{{ s.label }} · {{ fmtTime(s.opens_at) }}–{{ fmtTime(s.closes_at) }} ({{ live.rows.filter((r) => r.session === s.number).length }})</span>
+                <span class="flex-1" />
+                <button @click="splitSessions('name')" class="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-600">{{ t('exam.split_by_name', 'توزيع بالاسم') }}</button>
+                <button @click="splitSessions('random')" class="rounded border border-gray-300 px-2 py-1 text-xs dark:border-gray-600">{{ t('exam.randomly', 'عشوائياً') }}</button>
             </div>
             <p v-if="live.counts.help" class="rounded-lg bg-amber-100 px-3 py-2 text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ t('exam.help_waiting', ':n طالب يطلب المساعدة', { n: live.counts.help }) }}</p>
             <p v-if="live.announcements.length" class="text-xs text-gray-500">{{ t('exam.last_announcement', 'آخر رسالة') }}: <span dir="auto">{{ live.announcements[0].body }}</span></p>
@@ -382,6 +394,10 @@ async function uploadOffline(event) {
                                 <button @click="setPresent(r, false)" class="ms-1 rounded px-1.5 py-0.5 text-xs" :class="r.present === false ? 'bg-red-600 text-white' : 'border border-gray-300 dark:border-gray-600'"><XMarkIcon class="h-4 w-4" /></button>
                             </td>
                             <td class="px-2 py-2 text-center">
+                                <select v-if="exam.sessions.length" :value="r.session ?? ''" @change="setSession(r, $event.target.value)" class="mb-1 block w-full rounded border-gray-300 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-700" :title="t('exam.session', 'الجلسة')">
+                                    <option value="">{{ t('exam.no_session', 'بلا جلسة') }}</option>
+                                    <option v-for="s in exam.sessions" :key="s.number" :value="s.number">{{ s.label }}</option>
+                                </select>
                                 <select v-if="computers.length" :value="r.computer?.id ?? ''" @change="seat(r, $event.target.value)" class="rounded border-gray-300 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-700">
                                     <option value="">—</option>
                                     <option v-for="c in computers" :key="c.id" :value="c.id">{{ c.label }}</option>

@@ -16,6 +16,7 @@ import { UserGroupIcon, EyeIcon,
     ClipboardDocumentListIcon,
     PencilSquareIcon,
     ArchiveBoxIcon,
+    CalendarDaysIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -27,9 +28,10 @@ const nav = computed(() => [
     { label: t('nav.exams', 'امتحاناتي'), href: route('exams.index'), icon: ClipboardDocumentListIcon, active: route().current('exams.index') || route().current('exams.show') || route().current('exams.attempts.*') },
     ...(page.props.permissions?.manage_exams
         ? [
-            { label: t('nav.exams_manage', 'إدارة الامتحانات'), href: route('exams.manage.index'), icon: PencilSquareIcon, active: route().current('exams.manage.*') && !route().current('exams.manage.bank') && !route().current('exams.manage.groups') },
+            { label: t('nav.exams_manage', 'إدارة الامتحانات'), href: route('exams.manage.index'), icon: PencilSquareIcon, active: route().current('exams.manage.*') && !route().current('exams.manage.bank') && !route().current('exams.manage.schedule') && !route().current('exams.manage.groups') },
             { label: t('exam.bank', 'بنك الأسئلة'), href: route('exams.manage.bank'), icon: ArchiveBoxIcon, active: route().current('exams.manage.bank') },
             { label: t('exam.groups', 'الصفوف والمجموعات'), href: route('exams.manage.groups'), icon: UserGroupIcon, active: route().current('exams.manage.groups') },
+            { label: t('exam.schedule', 'جدول الامتحانات'), href: route('exams.manage.schedule'), icon: CalendarDaysIcon, active: route().current('exams.manage.schedule') },
         ]
         : []),
     ...(page.props.permissions?.invigilate

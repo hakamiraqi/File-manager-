@@ -10,7 +10,7 @@ import { Head, router } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import FlashMessages from '@/Components/FlashMessages.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, CalculatorIcon, PencilSquareIcon, HandRaisedIcon, StopIcon, SpeakerWaveIcon, LockClosedIcon, BellAlertIcon, XMarkIcon, LanguageIcon } from '@heroicons/vue/24/outline';
+import { ClockIcon, FlagIcon, ChevronLeftIcon, ChevronRightIcon, ArrowUpIcon, ArrowDownIcon, CheckIcon, CalculatorIcon, PencilSquareIcon, HandRaisedIcon, StopIcon, SpeakerWaveIcon, LockClosedIcon, BellAlertIcon, XMarkIcon, LanguageIcon, BookOpenIcon } from '@heroicons/vue/24/outline';
 import OnScreenKeyboard from '@/Components/Exams/OnScreenKeyboard.vue';
 
 const props = defineProps({ attempt: Object, exam: Object, questions: Array, answers: Object, offline_token: String, hall: { type: Object, default: () => ({}) } });
@@ -43,6 +43,9 @@ function saveReading() { try { localStorage.setItem(PREFS, JSON.stringify(readin
 const readingStyle = computed(() => ({ fontFamily: reading.font || undefined, '--rs': reading.size / 100 }));
 const readingOpen = ref(false);
 const oskOpen = ref(false);
+// Open-book: the allowed files, read beside the questions.
+const bookOpen = ref(false);
+const bookIndex = ref(0);
 const { t } = useTrans();
 
 // ---- Answers (kept here, saved as they change) ----
@@ -432,6 +435,7 @@ onBeforeUnmount(() => {
             <span v-if="hall.computer" class="hidden rounded bg-gray-100 px-2 py-0.5 font-mono text-xs sm:inline dark:bg-gray-700" :title="t('exam.your_pc', 'حاسبتك')">{{ hall.computer }}</span>
             <button v-if="exam.calculator && exam.calculator !== 'none'" @click="calcOpen = !calcOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.calculator', 'آلة حاسبة')"><CalculatorIcon class="h-4 w-4" /></button>
             <button @click="padOpen = !padOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.scratch', 'مسودة')"><PencilSquareIcon class="h-4 w-4" /></button>
+            <button v-if="hall.resources?.length" @click="bookOpen = !bookOpen" class="flex items-center gap-1 rounded-lg border px-2 py-1 text-sm" :class="bookOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.allowed_files', 'المصادر المسموحة')"><BookOpenIcon class="h-4 w-4" /></button>
             <button @click="oskOpen = !oskOpen" class="rounded-lg border px-2 py-1 text-sm" :class="oskOpen ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-300 dark:border-gray-600'" :title="t('exam.osk', 'لوحة مفاتيح على الشاشة (عربي / English)')"><LanguageIcon class="h-4 w-4" /></button>
             <button @click="readingOpen = !readingOpen" class="rounded-lg border border-gray-300 px-2 py-1 text-sm dark:border-gray-600" :title="t('exam.reading', 'الخط والاتجاه')">Aa</button>
             <button @click="toggleHelp" class="rounded-lg px-2.5 py-1 text-sm" :class="help ? 'bg-amber-400 font-semibold text-amber-950' : 'border border-gray-300 dark:border-gray-600'" :title="t('exam.help_hint', 'يظهر طلبك عند المراقب')"><HandRaisedIcon class="inline h-4 w-4 align-text-bottom" /> {{ help ? t('exam.help_sent', 'طُلبت المساعدة') : t('exam.ask_help', 'مساعدة') }}</button>
@@ -664,6 +668,16 @@ onBeforeUnmount(() => {
             </form>
         </div>
 
+        <aside v-if="bookOpen && hall.resources?.length" class="fixed inset-y-0 end-0 z-30 flex w-full max-w-xl flex-col border-s border-gray-300 bg-white shadow-2xl dark:border-gray-600 dark:bg-gray-800">
+            <div class="flex items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
+                <BookOpenIcon class="h-5 w-5 text-gray-500" />
+                <select v-model="bookIndex" class="min-w-0 flex-1 rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-700">
+                    <option v-for="(r, k) in hall.resources" :key="k" :value="k">{{ r.name }}</option>
+                </select>
+                <button @click="bookOpen = false" :aria-label="t('action.close', 'إغلاق')"><XMarkIcon class="h-5 w-5" /></button>
+            </div>
+            <iframe :src="hall.resources[bookIndex].url + '#toolbar=0&navpanes=0'" class="min-h-0 w-full flex-1" :title="hall.resources[bookIndex].name" />
+        </aside>
         <OnScreenKeyboard v-if="oskOpen" @close="oskOpen = false" />
         <div v-if="oskOpen" class="h-72" aria-hidden="true" />
 

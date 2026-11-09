@@ -102,7 +102,11 @@ class ExamController extends Controller
             return redirect()->route('exams.attempts.take', $open);
         }
         if ($exam->windowFor($user) !== 'open') {
-            return back()->withErrors(['exam' => $exam->windowFor($user) === 'upcoming' ? 'لم يبدأ الامتحان بعد.' : 'انتهى وقت الامتحان.']);
+            return back()->withErrors(['exam' => match ($exam->windowFor($user)) {
+                'upcoming' => 'لم يبدأ الامتحان بعد.',
+                'no_session' => 'لم تُحدَّد جلستك في هذا الامتحان بعد؛ راجع المراقب.',
+                default => 'انتهى وقت الامتحان.',
+            }]);
         }
         $used = $exam->attempts()->where('user_id', $user->id)->count();
         if ($used >= $exam->maxAttemptsFor($user)) {
@@ -207,7 +211,8 @@ class ExamController extends Controller
             ],
             'exam' => ['id' => $exam->id, 'title' => $exam->text('title'), 'dir' => $this->presenter->dir($exam), 'lang' => $exam->languages[0] ?? 'ar', 'practice' => $exam->is_practice,
                 'sequential' => $exam->navigation === 'sequential', 'calculator' => $exam->calculator, 'position' => $attempt->position,
-                'assignment' => $exam->is_assignment, 'deadline' => $attempt->deadline_at?->toIso8601String()],
+                'assignment' => $exam->is_assignment, 'deadline' => $attempt->deadline_at?->toIso8601String(),
+                'resources' => collect($exam->resources ?? [])->map(fn ($r) => ['name' => $r['name'], 'url' => route('exams.attempts.resource', [$attempt, $r['file']])])->values()],
             'hall' => [
                 'locked' => $attempt->locked_at !== null,
                 'help' => $attempt->help_requested_at !== null,
@@ -222,6 +227,15 @@ class ExamController extends Controller
             'answers' => $answers->map(fn (Answer $a) => ['response' => $a->response, 'flagged' => $a->flagged,
                 'checked' => $a->checked_at && ($q = $questions->firstWhere('id', $a->exam_question_id)) ? $this->checkResult($q, $exam, $a) : null]),
         ]);
+    }
+
+    /** An allowed file of an open-book exam, while the attempt is open. */
+    public function resource(Request $request, Attempt $attempt, string $file): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->own($request, $attempt);
+        abort_if($attempt->isSubmitted() || $attempt->isExpired(Attempt::GRACE_SECONDS) || $attempt->locked_at, 403);
+
+        return ManageController::streamResource($attempt->exam, $file);
     }
 
     /** Autosave of one answer (and the «review later» flag). */
