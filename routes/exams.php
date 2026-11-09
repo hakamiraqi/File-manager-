@@ -57,6 +57,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::get('/groups/{group}/gradebook', [$groups, 'gradebook'])->name('groups.gradebook');
         Route::post('/groups/{group}/cards', [$groups, 'cards'])->name('groups.cards');
         Route::delete('/groups/{group}/members/{user}', [$groups, 'removeMember'])->name('groups.members.destroy');
+        Route::get('/groups/{group}/candidates', [$groups, 'candidates'])->name('groups.candidates');
+        Route::post('/groups/{group}/members/remove', [$groups, 'removeMembers'])->name('groups.members.remove');
 
         $bank = \App\Http\Controllers\Exams\BankController::class;
         Route::get('/bank', [$bank, 'index'])->name('bank');

@@ -113,4 +113,39 @@ class GroupsTest extends TestCase
         $this->assertSame($teacherHash, $teacher->fresh()->password);
         $this->actingAs($teacher)->post(route('exams.manage.groups.cards', $group))->assertNotFound();
     }
+    public function test_a_student_is_in_one_group_and_is_picked_from_the_list(): void
+    {
+        $teacher = User::factory()->create(['is_examiner' => true]);
+        $a = Group::create(['user_id' => $teacher->id, 'name' => 'أ']);
+        $b = Group::create(['user_id' => $teacher->id, 'name' => 'ب']);
+        $ali = User::factory()->create(['name' => 'علي', 'student_number' => '2025001']);
+        $sara = User::factory()->create(['name' => 'سارة']);
+        User::factory()->create(['name' => 'أستاذ', 'is_examiner' => true]);
+
+        // Only students, and only those in no group yet, are offered.
+        $offered = $this->actingAs($teacher)->getJson(route('exams.manage.groups.candidates', $a))->assertOk()->json();
+        $this->assertSame(2, $offered['total']);
+        $this->assertSame(['علي'], collect($this->actingAs($teacher)->getJson(route('exams.manage.groups.candidates', [$a, 'q' => '2025']))->json('students'))->pluck('name')->all());
+
+        $this->actingAs($teacher)->post(route('exams.manage.groups.members.store', $a), ['ids' => [$ali->id, $sara->id]])->assertSessionHasNoErrors();
+        $this->assertSame(2, $a->members()->count());
+        $this->assertSame(0, $this->actingAs($teacher)->getJson(route('exams.manage.groups.candidates', $b))->json('total'));
+        $this->actingAs($teacher)->get(route('exams.manage.groups', ['group' => $b->id]))->assertInertia(fn (AssertableInertia $p) => $p->where('unassigned', 0));
+
+        // In another group: not added unless moved.
+        $this->actingAs($teacher)->post(route('exams.manage.groups.members.store', $b), ['ids' => [$ali->id]])
+            ->assertSessionHas('success', fn ($m) => str_contains($m, 'علي'));
+        $this->assertFalse($b->members()->whereKey($ali->id)->exists());
+        $others = $this->actingAs($teacher)->getJson(route('exams.manage.groups.candidates', [$b, 'others' => 1]))->json('students');
+        $this->assertEqualsCanonicalizing(['علي', 'سارة'], collect($others)->pluck('name')->all());
+        $this->assertSame('أ', $others[0]['group']);
+        $this->actingAs($teacher)->post(route('exams.manage.groups.members.store', $b), ['ids' => [$ali->id], 'move' => true])->assertSessionHasNoErrors();
+        $this->assertTrue($b->members()->whereKey($ali->id)->exists());
+        $this->assertFalse($a->members()->whereKey($ali->id)->exists());
+
+        // Several taken out at once; they are offered again.
+        $this->actingAs($teacher)->post(route('exams.manage.groups.members.remove', $a), ['ids' => [$sara->id]])->assertSessionHasNoErrors();
+        $this->assertSame(0, $a->members()->count());
+        $this->assertSame(['سارة'], collect($this->actingAs($teacher)->getJson(route('exams.manage.groups.candidates', $a))->json('students'))->pluck('name')->all());
+    }
 }
