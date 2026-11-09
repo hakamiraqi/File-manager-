@@ -24,7 +24,7 @@ class Exam extends Model
         'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
         'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'marking_tolerance',
         'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'navigation', 'calculator',
-        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash', 'requires_exam_id', 'is_assignment', 'hall', 'sessions', 'resources', 'is_osce', 'adaptive',
+        'results_at', 'anonymous_marking', 'appeals_open', 'transfer_key', 'variants', 'protect_content', 'reviewer_id', 'review_status', 'review_note', 'reviewed_at', 'review_hash', 'requires_exam_id', 'is_assignment', 'hall', 'sessions', 'resources', 'is_osce', 'adaptive', 'hall_sync',
     ];
 
     protected $hidden = ['password'];
@@ -61,6 +61,7 @@ class Exam extends Model
             'resources' => 'array',
             'is_osce' => 'boolean',
             'adaptive' => 'array',
+            'hall_sync' => 'boolean',
         ];
     }
 

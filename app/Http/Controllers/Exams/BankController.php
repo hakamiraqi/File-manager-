@@ -34,6 +34,7 @@ class BankController extends Controller
                 'questions' => $c->questions_count, 'owner' => $c->owner?->name, 'editable' => $c->isEditableBy($user),
             ]),
             'current' => $current?->id,
+            'ai' => \App\Services\Exams\AiMarker::enabled(),
             'questions' => $current ? ($qs = $current->questions()->with('choices')->get())->map(fn (Question $q) => [
                 'id' => $q->id,
                 'type' => $q->type,
@@ -103,6 +104,60 @@ class BankController extends Controller
             'total' => $count($qs),
             'tags' => $tags->map(fn ($t) => ['tag' => $t, 'counts' => $count($qs->filter(fn ($q) => in_array($t, $q->tags ?? [], true)))])->values(),
         ]);
+    }
+
+    /** Draft questions from a lecture, by AI (hosted site), for the teacher to review. */
+    public function generate(Request $request, BankCategory $category, \App\Services\Exams\AiQuestions $ai): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($category->isEditableBy($request->user()) && \App\Services\Exams\AiMarker::enabled(), 404);
+        $data = $request->validate(['file' => ['nullable', 'file', 'max:30720', 'extensions:pdf,docx,txt'], 'text' => ['nullable', 'string', 'max:200000'],
+            'count' => ['required', 'integer', 'min:1', 'max:40'], 'types' => ['required', 'array'], 'types.*' => ['in:single,true_false,short'], 'lang' => ['nullable', 'in:ar,en']]);
+        $file = $request->file('file');
+        $ext = $file ? strtolower($file->getClientOriginalExtension()) : null;
+        $text = (string) ($data['text'] ?? '');
+        if ($ext === 'docx') {
+            $text .= "\n".QuestionImporter::docxText($file->getRealPath());
+        } elseif ($ext === 'txt') {
+            $text .= "\n".file_get_contents($file->getRealPath());
+        }
+        if ($ext !== 'pdf' && trim($text) === '') {
+            throw \Illuminate\Validation\ValidationException::withMessages(['file' => 'أرفق ملف المحاضرة أو الصق نصها.']);
+        }
+        try {
+            $questions = $ai->generate($ext === 'pdf' ? $file->getRealPath() : null, $text, $data['count'], $data['types'], $data['lang'] ?? 'ar');
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['questions' => $questions]);
+    }
+
+    /** The drafts the teacher kept, into the category. */
+    public function saveGenerated(Request $request, BankCategory $category): RedirectResponse
+    {
+        abort_unless($category->isEditableBy($request->user()), 404);
+        $data = $request->validate(['lang' => ['nullable', 'in:ar,en'], 'questions' => ['required', 'array', 'max:40'],
+            'questions.*.type' => ['required', 'in:single,true_false,short'], 'questions.*.body' => ['required', 'string', 'max:3000'],
+            'questions.*.choices' => ['array'], 'questions.*.choices.*.text' => ['required', 'string', 'max:500'], 'questions.*.choices.*.correct' => ['boolean'],
+            'questions.*.answer' => ['nullable', 'string', 'max:300'], 'questions.*.difficulty' => ['nullable', 'integer', 'min:1', 'max:3'], 'questions.*.tag' => ['nullable', 'string', 'max:100']]);
+        $lang = $data['lang'] ?? 'ar';
+        DB::transaction(function () use ($data, $category, $lang) {
+            foreach ($data['questions'] as $q) {
+                $question = Question::create(['bank_category_id' => $category->id, 'type' => $q['type'], 'body' => [$lang => $q['body']], 'points' => 1,
+                    'difficulty' => $q['difficulty'] ?? null, 'tags' => filled($q['tag'] ?? null) ? [$q['tag']] : null,
+                    'settings' => $q['type'] === 'short' ? ['answers' => array_values(array_filter([trim((string) ($q['answer'] ?? ''))]))] : null]);
+                $choices = $q['type'] === 'true_false'
+                    ? [['text' => $lang === 'en' ? 'True' : 'صح', 'correct' => in_array(mb_strtolower((string) ($q['answer'] ?? '')), ['true', 'صح', 'صحيح'], true)],
+                        ['text' => $lang === 'en' ? 'False' : 'خطأ', 'correct' => ! in_array(mb_strtolower((string) ($q['answer'] ?? '')), ['true', 'صح', 'صحيح'], true)]]
+                    : ($q['choices'] ?? []);
+                foreach (array_values($choices) as $j => $c) {
+                    \App\Models\Exams\Choice::create(['exam_question_id' => $question->id, 'body' => [$lang => $c['text']], 'is_correct' => (bool) ($c['correct'] ?? false), 'position' => $j]);
+                }
+            }
+        });
+        ActivityLog::record('exam.ai_questions', 'أضاف '.count($data['questions']).' سؤالاً مولّداً إلى «'.$category->name.'»');
+
+        return back()->with('success', 'أُضيف '.count($data['questions']).' سؤالاً إلى البنك.');
     }
 
     public function store(Request $request): RedirectResponse

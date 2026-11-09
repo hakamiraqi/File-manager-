@@ -67,6 +67,7 @@ class ResultController extends Controller
                 ]),
             'can_manage' => $canManage,
             'ai_enabled' => \App\Services\Exams\AiMarker::enabled(),
+            'messaging' => \App\Services\Exams\Messenger::enabled() && $canManage,
             'markers' => $exam->markers()->get(['users.id', 'name', 'email'])->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]),
             'summary' => [
                 'attempts' => $attempts->count(),
@@ -415,6 +416,77 @@ class ResultController extends Controller
             }
             fclose($out);
         }, 'exam-'.$exam->id.'-results-'.now()->format('Y-m-d').'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * SMS / WhatsApp to the exam's students (hosted site, with a gateway set): each one's mark,
+     * or a reminder of the exam's time and hall. Students without a phone number are counted.
+     */
+    public function notify(Request $request, Exam $exam, \App\Services\Exams\Messenger $messenger): \Illuminate\Http\JsonResponse
+    {
+        $this->authorizeExam($request, $exam);
+        abort_unless(\App\Services\Exams\Messenger::enabled(), 404);
+        $kind = $request->validate(['kind' => ['required', 'in:results,reminder']])['kind'];
+        $exam->load('questions');
+        $title = $exam->text('title');
+        $max = $exam->maxScore();
+        $messages = [];
+        $noPhone = 0;
+        foreach ($exam->roster() as $u) {
+            $phone = \App\Services\Exams\Messenger::normalize(\App\Models\User::whereKey($u->id)->value('phone'));
+            if (! $phone) {
+                $noPhone++;
+
+                continue;
+            }
+            if ($kind === 'results') {
+                $score = $exam->finalScoreFor($u);
+                if ($score === null) {
+                    continue;
+                }
+                $messages[$phone] = "{$u->name}: درجتك في «{$title}» {$score} من {$max}.";
+            } else {
+                $at = ($exam->sessionFor($u)['opens_at'] ?? null) ?? $exam->opens_at;
+                $messages[$phone] = "تذكير: امتحان «{$title}»".($at ? ' '.$at->locale('ar')->translatedFormat('l j F، H:i') : '').($exam->hall ? " في {$exam->hall}" : '').'.';
+            }
+        }
+        $r = $messenger->send($messages);
+        ActivityLog::record('exam.notify', "أرسل {$r['sent']} رسالة ".($kind === 'results' ? 'نتائج' : 'تذكير')." لطلاب \"{$title}\"", $exam);
+
+        return response()->json(['sent' => $r['sent'], 'failed' => count($r['failed']), 'no_phone' => $noPhone]);
+    }
+
+    /**
+     * The university's view (hosted, admins): by department and subject — exams, students,
+     * the average mark, the pass rate and how the questions behaved.
+     */
+    public function dashboard(Request $request): Response
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+        $exams = Exam::with('questions')->withCount(['attempts as submitted' => fn ($q) => $q->whereNotNull('submitted_at')])->get();
+        $attempts = Attempt::whereNotNull('submitted_at')->whereNotNull('score')->where('max_score', '>', 0)->get(['exam_id', 'user_id', 'score', 'max_score'])->groupBy('exam_id');
+        $row = function ($group) use ($attempts) {
+            $list = $group->flatMap(fn (Exam $e) => ($attempts[$e->id] ?? collect())->map(fn ($a) => ['p' => $a->score / $a->max_score * 100, 'pass' => $e->pass_mark]));
+
+            return [
+                'exams' => $group->count(),
+                'students' => $group->flatMap(fn (Exam $e) => ($attempts[$e->id] ?? collect())->pluck('user_id'))->unique()->count(),
+                'attempts' => $list->count(),
+                'average' => $list->isEmpty() ? null : round($list->avg('p'), 1),
+                'pass_rate' => ($withPass = $list->whereNotNull('pass'))->isEmpty() ? null : round($withPass->filter(fn ($x) => $x['p'] >= $x['pass'])->count() / $withPass->count() * 100),
+            ];
+        };
+        $departments = $exams->groupBy(fn (Exam $e) => $e->department ?: '—')->map(fn ($g, $d) => ['name' => $d] + $row($g)
+            + ['subjects' => $g->groupBy(fn (Exam $e) => $e->subject ?: '—')->map(fn ($sg, $s) => ['name' => $s] + $row($sg))->sortByDesc('attempts')->values()])
+            ->sortByDesc('attempts')->values();
+        $bank = \App\Http\Controllers\Exams\BankController::quality(Question::whereNull('exam_id')->get());
+        $flags = collect($bank)->flatMap(fn ($q) => $q['flags'])->countBy();
+
+        return Inertia::render('Exams/Manage/Dashboard', [
+            'totals' => $row($exams) + ['questions' => Question::whereNull('exam_id')->count(), 'used' => collect($bank)->where('uses', '>', 0)->count()],
+            'departments' => $departments,
+            'flags' => $flags,
+        ]);
     }
 
     /**

@@ -116,7 +116,7 @@ class OsceOmrAdaptiveMirrorTest extends TestCase
         $this->assertCount(1, $order);
         $this->assertSame(2, Question::find($order[0])->difficulty);
 
-        $answer = fn ($text) => $this->actingAs($student)->postJson(route('exams.attempts.save', $attempt), ['question_id' => end($attempt->refresh()->question_order), 'response' => ['text' => $text]])->assertOk();
+        $answer = fn ($text) => $this->actingAs($student)->postJson(route('exams.attempts.save', $attempt), ['question_id' => collect($attempt->refresh()->question_order)->last(), 'response' => ['text' => $text]])->assertOk();
         $answer('نعم');
         $this->actingAs($student)->postJson(route('exams.attempts.advance', $attempt), ['to' => 1])->assertOk();
         $this->assertSame(3, Question::find($attempt->fresh()->question_order[1])->difficulty);

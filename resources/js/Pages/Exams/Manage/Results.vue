@@ -3,9 +3,9 @@ import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon, MapPinIcon, PrinterIcon } from '@heroicons/vue/24/outline';
+import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon, MapPinIcon, PrinterIcon, ChatBubbleLeftRightIcon, BellAlertIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
+const props = defineProps({ messaging: Boolean, ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const open = ref({});
@@ -69,6 +69,22 @@ const overrideForm = useForm({ email: '', extra_minutes: '', closes_at: '', max_
 const saveOverride = () => overrideForm.post(route('exams.manage.overrides.store', props.exam.id), { preserveScroll: true, onSuccess: () => overrideForm.reset() });
 const removeOverride = (o) => router.delete(route('exams.manage.overrides.destroy', o.id), { preserveScroll: true });
 
+// SMS / WhatsApp to the students: their marks, or a reminder of the exam.
+const notifyBusy = ref(false);
+const notifyMsg = ref('');
+async function notify(kind) {
+    if (!window.confirm(kind === 'results' ? t('exam.notify_results_q', 'إرسال درجة كل طالب إليه برسالة؟') : t('exam.notify_reminder_q', 'إرسال تذكير بموعد الامتحان لكل الطلاب؟'))) return;
+    notifyBusy.value = true;
+    try {
+        const r = (await window.axios.post(route('exams.manage.notify', props.exam.id), { kind })).data;
+        notifyMsg.value = t('exam.notify_done', 'أُرسلت :s رسالة، وفشلت :f، وبلا رقم هاتف :n.', { s: r.sent, f: r.failed, n: r.no_phone });
+    } catch (e) {
+        notifyMsg.value = e.response?.data?.message || t('exam.notify_failed', 'تعذّر الإرسال.');
+    } finally {
+        notifyBusy.value = false;
+    }
+}
+
 // The answers audit log of one attempt, in a dialog.
 const auditFor = ref(null);   // { attempt, entries, loading }
 async function openAudit(a) {
@@ -96,6 +112,9 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 <label v-if="can_manage" class="hidden cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm md:block dark:border-gray-600" :title="t('exam.results_import_hint', 'ملف نتائج من سيرفر قاعة لهذا الامتحان نفسه')">
                     <input type="file" accept=".json" class="sr-only" @change="importResults" />{{ t('exam.results_import', 'إدخال نتائج') }}</label>
                 <span v-if="$page.props.errors.file" class="text-xs text-red-600">{{ $page.props.errors.file }}</span>
+                <button v-if="messaging" @click="notify('results')" :disabled="notifyBusy" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600" :title="t('exam.notify_results_hint', 'رسالة SMS/واتساب لكل طالب بدرجته')"><ChatBubbleLeftRightIcon class="h-4 w-4" /> {{ t('exam.notify_results', 'إرسال الدرجات') }}</button>
+                <button v-if="messaging" @click="notify('reminder')" :disabled="notifyBusy" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600"><BellAlertIcon class="h-4 w-4" /> {{ t('exam.notify_reminder', 'تذكير بالموعد') }}</button>
+                <span v-if="notifyMsg" class="text-xs text-gray-600 dark:text-gray-300">{{ notifyMsg }}</span>
                 <Link v-if="can_manage" :href="route('exams.manage.gradesheet', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><PrinterIcon class="h-4 w-4" /> {{ t('exam.gradesheet', 'كشف الدرجات') }}</Link>
                 <a v-if="can_manage" :href="route('exams.manage.export', exam.id)" class="flex items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600"><ArrowDownTrayIcon class="h-4 w-4" /> Excel</a>
             </div>

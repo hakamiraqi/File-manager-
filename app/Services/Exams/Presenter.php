@@ -304,6 +304,8 @@ class Presenter
             'reviewer_email' => $exam->reviewer?->email,
             'is_assignment' => (bool) $exam->is_assignment,
             'is_osce' => (bool) $exam->is_osce,
+            'hall_sync' => (bool) $exam->hall_sync,
+            'online' => ! config('offline.edition'),
             'adaptive' => $exam->adaptive,
             'hall' => $exam->hall,
             'sessions' => collect($exam->sessions ?? [])->map(fn ($s) => ['label' => $s['label'] ?? '', 'opens_at' => filled($s['opens_at'] ?? null) ? \Illuminate\Support\Carbon::parse($s['opens_at'])->format('Y-m-d\TH:i') : '',

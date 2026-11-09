@@ -475,6 +475,9 @@ function save() {
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">{{ t('exam.show_answers', 'إظهار الإجابات الصحيحة في المراجعة') }} <ToggleSwitch v-model="form.show_answers" /></label>
                     <label class="flex items-center justify-between gap-2 rounded-lg border p-3 text-sm" :class="form.is_published ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20' : 'border-gray-200 dark:border-gray-700'">
                         {{ t('exam.publish', 'منشور (يراه الطلاب)') }} <ToggleSwitch v-model="form.is_published" /></label>
+                    <label v-if="exam.online" class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
+                        <span>{{ t('exam.hall_sync', 'يُرسل إلى سيرفرات القاعات') }}<span class="block text-xs text-gray-500">{{ t('exam.hall_sync_hint', 'سيرفرات القاعات المرتبطة تأخذه (غير منشور) عند اتصالها بالإنترنت، وترجع نتائجه إلى هنا.') }}</span></span>
+                        <ToggleSwitch v-model="form.hall_sync" /></label>
                     <label class="flex items-center justify-between gap-2 rounded-lg border border-gray-200 p-3 text-sm dark:border-gray-700">
                         <span>{{ t('exam.assignment', 'واجب') }}<span class="block text-xs text-gray-500">{{ t('exam.assignment_hint', 'بلا مؤقت: يُسلَّم قبل موعد الإغلاق، ويخرج الطالب ويعود متى شاء. اترك المدة فارغة.') }}</span></span>
                         <ToggleSwitch v-model="form.is_assignment" /></label>

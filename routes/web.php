@@ -26,6 +26,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
 require __DIR__.'/auth.php';
 
 // The offline server's activation page (2026-11-05); see EnsureOfflineActivated.
+// Halls' servers and the central one (see CentralController); throttled per hall.
+Route::middleware('throttle:60,1')->prefix('central')->group(function () {
+    Route::get('/exams', [\App\Http\Controllers\Exams\CentralController::class, 'exams']);
+    Route::get('/exams/{key}', [\App\Http\Controllers\Exams\CentralController::class, 'exam'])->where('key', '[A-Za-z0-9-]{8,64}');
+    Route::post('/results/{key}', [\App\Http\Controllers\Exams\CentralController::class, 'results'])->where('key', '[A-Za-z0-9-]{8,64}')
+        ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class, \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class]);
+});
+
 // A standby exam server takes the main one's changes (see MirrorController).
 Route::get('/mirror/changes', [\App\Http\Controllers\Exams\MirrorController::class, 'changes'])->middleware('throttle:30,1');
 

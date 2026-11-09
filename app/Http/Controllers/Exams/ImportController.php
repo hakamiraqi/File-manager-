@@ -105,13 +105,14 @@ class ImportController extends Controller
         $emailCol = $col(['البريد', 'البريد الالكتروني', 'الايميل', 'email']);
         $numberCol = $col(['الرقم الجامعي', 'الرقم', 'رقم الطالب', 'student number', 'student_number', 'id']);
         $passCol = $col(['كلمه المرور', 'password']);
+        $phoneCol = $col(['الهاتف', 'رقم الهاتف', 'الموبايل', 'phone', 'mobile']);
         if ($nameCol === false || ($emailCol === false && $numberCol === false)) {
             throw ValidationException::withMessages(['file' => 'أحتاج عمود «الاسم» وعمود «البريد» أو «الرقم الجامعي» في الصف الأول.']);
         }
 
         $created = [];
         $skipped = [];
-        DB::transaction(function () use ($rows, $nameCol, $emailCol, $numberCol, $passCol, $group, &$created, &$skipped) {
+        DB::transaction(function () use ($rows, $nameCol, $emailCol, $numberCol, $passCol, $phoneCol, $group, &$created, &$skipped) {
             foreach ($rows as $i => $row) {
                 $name = trim((string) ($row[$nameCol] ?? ''));
                 $email = $emailCol === false ? '' : mb_strtolower(trim((string) ($row[$emailCol] ?? '')));
@@ -144,6 +145,7 @@ class ImportController extends Controller
                     // A student with only a number gets an address that can never receive mail.
                     'email' => $email !== '' ? $email : 'student-'.Str::slug($number).'-'.Str::lower(Str::random(4)).'@students.invalid',
                     'student_number' => $number !== '' ? $number : null,
+                    'phone' => $phoneCol !== false && trim((string) ($row[$phoneCol] ?? '')) !== '' ? mb_substr(trim((string) $row[$phoneCol]), 0, 30) : null,
                     'password' => Hash::make($password),
                     'role' => 'user', 'is_active' => true, 'email_verified_at' => now(),
                 ]);

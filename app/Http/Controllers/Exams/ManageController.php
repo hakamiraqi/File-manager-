@@ -149,6 +149,7 @@ class ManageController extends Controller
             'protect_content' => ['boolean'],
             'reviewer_email' => ['nullable', 'email'],
             'is_assignment' => ['boolean'],
+            'hall_sync' => ['boolean'],
             'adaptive' => ['nullable', 'array'],
             'adaptive.category_id' => ['required_with:adaptive', 'integer', 'exists:exam_bank_categories,id'],
             'adaptive.count' => ['required_with:adaptive', 'integer', 'min:2', 'max:200'],
@@ -230,7 +231,7 @@ class ManageController extends Controller
             ] + collect($data)->only([
                 'subject', 'stage', 'department', 'direction', 'duration_minutes', 'opens_at', 'closes_at', 'max_attempts',
                 'grading_method', 'pass_mark', 'password', 'shuffle_questions', 'shuffle_choices', 'show_results', 'show_answers', 'is_published',
-                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open', 'protect_content', 'is_assignment', 'hall',
+                'is_practice', 'seb_required', 'seb_keys', 'double_marking', 'access_code', 'allowed_ips', 'resume_code_required', 'bind_computers', 'results_at', 'anonymous_marking', 'appeals_open', 'protect_content', 'is_assignment', 'hall', 'hall_sync',
             ])->all() + array_filter(['navigation' => $data['navigation'] ?? null, 'calculator' => $data['calculator'] ?? null, 'variants' => $data['variants'] ?? null]) + (isset($data['marking_tolerance']) ? ['marking_tolerance' => $data['marking_tolerance']] : []));
 
             $existing = $exam->questions()->with('choices')->get()->keyBy('id');
@@ -257,6 +258,10 @@ class ManageController extends Controller
             $exam->groups()->sync($data['group_ids'] ?? []);
         });
 
+        // Handed to the halls' servers: they find it by its transfer key.
+        if ($exam->hall_sync && ! $exam->transfer_key) {
+            $exam->update(['transfer_key' => (string) \Illuminate\Support\Str::uuid()]);
+        }
         // Review: a new reviewer, or questions changed since the approval, means a new review;
         // until then the exam stays unpublished.
         $exam->refresh();

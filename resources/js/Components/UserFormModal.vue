@@ -79,6 +79,7 @@ const form = useForm({
     is_invigilator: false,
     exam_time_multiplier: 1,
     student_number: '',
+    phone: '',
     is_active: true,
     can_manage_appearance: false,
     can_manage_users: false,
@@ -97,6 +98,7 @@ watch(
                 form.name = props.user.name;
                 form.email = props.user.email;
                 form.student_number = props.user.student_number ?? '';
+                form.phone = props.user.phone ?? '';
                 photo.value = props.user.official_photo ?? null;
                 form.password = '';
                 form.role = props.user.role;
@@ -178,6 +180,11 @@ function submit() {
                             <TextInput dir="ltr" v-model="form.student_number" class="mt-1 block w-full" />
                             <p class="mt-1 text-xs text-gray-500">{{ t('auth.student_number_hint', 'يدخل به الطالب بدل البريد. بلا بريد؟ اترك البريد فارغاً واكتب الرقم.') }}</p>
                             <InputError :message="form.errors.student_number" class="mt-1" />
+                        </div>
+                        <div>
+                            <InputLabel :value="t('auth.phone', 'الهاتف (للرسائل، اختياري)')" />
+                            <TextInput dir="ltr" v-model="form.phone" inputmode="tel" class="mt-1 block w-full" />
+                            <InputError :message="form.errors.phone" class="mt-1" />
                         </div>
                         <div v-if="user" class="flex items-center gap-3 sm:col-span-2">
                             <img v-if="photo" :src="photo" alt="" class="h-16 w-12 rounded object-cover" />

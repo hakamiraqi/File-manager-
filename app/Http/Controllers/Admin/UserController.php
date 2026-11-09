@@ -53,6 +53,7 @@ class UserController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required_without:student_number', 'nullable', 'email', 'unique:users,email'],
             'student_number' => ['nullable', 'string', 'max:50', 'regex:/^[^@\s]+$/', 'unique:users,student_number'],
+            'phone' => ['nullable', 'string', 'max:30'],
             'password' => ['required', Password::defaults()],
             'role' => ['required', 'in:admin,user'],
             'is_active' => ['sometimes', 'boolean'],
@@ -86,6 +87,7 @@ class UserController extends Controller
             // A student with only a number gets an address that can never receive mail.
             'email' => $data['email'] ?: 'student-'.\Illuminate\Support\Str::slug($data['student_number']).'-'.\Illuminate\Support\Str::lower(\Illuminate\Support\Str::random(4)).'@students.invalid',
             'student_number' => filled($data['student_number'] ?? null) ? trim($data['student_number']) : null,
+            'phone' => $data['phone'] ?? null,
             'password' => Hash::make($data['password']),
             'role' => $data['role'],
             'is_examiner' => (bool) ($data['is_examiner'] ?? false),
@@ -109,6 +111,7 @@ class UserController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'email', 'unique:users,email,'.$user->id],
             'student_number' => ['sometimes', 'nullable', 'string', 'max:50', 'regex:/^[^@\s]+$/', 'unique:users,student_number,'.$user->id],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'role' => ['sometimes', 'in:admin,user'],
             'is_active' => ['sometimes', 'boolean'],
             'password' => ['nullable', Password::defaults()],

@@ -28,6 +28,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/resources', [ManageController::class, 'uploadResource'])->whereNumber('exam')->name('resources.store');
         Route::get('/{exam}/resources/{file}', [ManageController::class, 'resource'])->whereNumber('exam')->where('file', '[a-f0-9]{40}\.pdf')->name('resources.show');
         Route::get('/schedule', [ManageController::class, 'schedule'])->name('schedule');
+        Route::get('/dashboard', [ResultController::class, 'dashboard'])->name('dashboard');
+        Route::post('/{exam}/notify', [ResultController::class, 'notify'])->whereNumber('exam')->middleware('throttle:10,1')->name('notify');
         Route::get('/students/{student}/report', [ResultController::class, 'studentReport'])->name('students.report');
         Route::delete('/templates/{template}', [ManageController::class, 'destroyTemplate'])->name('templates.destroy');
         Route::post('/images', [ManageController::class, 'image'])->middleware('throttle:60,1')->name('images.store');
@@ -52,6 +54,8 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::delete('/bank/categories/{category}', [$bank, 'destroy'])->name('bank.categories.destroy');
         Route::post('/bank/categories/{category}/import', [$bank, 'import'])->name('bank.categories.import');
         Route::get('/bank/categories/{category}/matrix', [$bank, 'matrix'])->name('bank.categories.matrix');
+        Route::post('/bank/categories/{category}/generate', [$bank, 'generate'])->middleware('throttle:10,1')->name('bank.categories.generate');
+        Route::post('/bank/categories/{category}/generated', [$bank, 'saveGenerated'])->name('bank.categories.generated');
         Route::delete('/bank/questions/{question}', [$bank, 'destroyQuestion'])->name('bank.questions.destroy');
         Route::post('/questions/{question}/to-bank', [$bank, 'fromExam'])->name('bank.from-exam');
         Route::post('/{exam}/from-bank', [$bank, 'toExam'])->whereNumber('exam')->name('bank.to-exam');
@@ -122,6 +126,10 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/computers', [$pcs, 'index'])->name('computers');
     Route::get('/photos/{user}', [$m, 'photo'])->name('photo');
     Route::get('/health', [$m, 'health'])->name('health');
+    Route::get('/central', [\App\Http\Controllers\Exams\CentralController::class, 'show'])->name('central');
+    Route::post('/central/key', [\App\Http\Controllers\Exams\CentralController::class, 'key'])->name('central.key');
+    Route::post('/central/messages', [\App\Http\Controllers\Exams\CentralController::class, 'messages'])->name('central.messages');
+    Route::post('/central/hall', [\App\Http\Controllers\Exams\CentralController::class, 'hallSettings'])->name('central.hall');
     Route::get('/mirror', [\App\Http\Controllers\Exams\MirrorController::class, 'show'])->name('mirror');
     Route::post('/mirror/key', [\App\Http\Controllers\Exams\MirrorController::class, 'key'])->name('mirror.key');
     Route::post('/mirror/standby', [\App\Http\Controllers\Exams\MirrorController::class, 'standby'])->name('mirror.standby');
