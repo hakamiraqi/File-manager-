@@ -7,9 +7,9 @@ export const MARKS = [[15, 15], [195, 15], [15, 282], [195, 282]];
 export const TOP = 62; // first row of bubbles
 export const ROW = 7;
 export const ROWS = 30; // per column
-export const COLS = [16, 79, 142]; // left edge of each column of questions
+export const COLS = [14, 59, 104, 149]; // left edge of each column of questions (4 × 30 = 120)
 export const BUBBLE_R = 2.4;
-export const BUBBLE_GAP = 8;
+export const BUBBLE_GAP = 7;
 export const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 
 /** Where question k (0-based) sits: its number's position and each option's bubble centre. */

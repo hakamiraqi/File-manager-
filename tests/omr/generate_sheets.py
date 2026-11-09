@@ -5,7 +5,7 @@ import numpy as np, cv2
 from PIL import Image, ImageDraw, ImageFont
 
 MARK=10; MARKS=[(15,15),(195,15),(15,282),(195,282)]
-TOP=62; ROW=7; ROWS=30; COLS=[16,79,142]; R=2.4; GAP=8
+TOP=62; ROW=7; ROWS=30; COLS=[14,59,104,149]; R=2.4; GAP=7
 def slot(k, n):
     col=k//ROWS; row=k%ROWS; y=TOP+row*ROW; x0=COLS[col]
     return [(x0+10+i*GAP, y) for i in range(n)]
@@ -79,7 +79,7 @@ def main():
     n=0
     for case,mark,dpi,scale in cases:
         for rep in range(12):
-            nq=rng.choice([30,45,60,90])
+            nq=rng.choice([30,60,90,100,120])
             qs=[{'id':1000+k,'type':'multiple' if rng.random()<0.12 else 'single','options':rng.choice([4,4,4,5,2])} for k in range(nq)]
             truth={}; marks={}; expect_doubt=set()
             for k,q in enumerate(qs):

@@ -18,3 +18,6 @@ matters: it must stay 0).
 
 2026-11-09, 308 sheets / 17,247 questions over two runs: 0 wrong without a flag; 1 sheet refused
 (a shadow over a corner); everything doubtful (two answers, ticks, light marks) was flagged.
+
+2026-11-09, after widening the sheet to 4 columns (120 questions): 168 sheets / 12,604 questions,
+0 wrong without a flag, no sheet refused.
