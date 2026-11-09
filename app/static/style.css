@@ -1,6 +1,7 @@
 /* The colours of the Excel form: navy headings with white text, light orange item cells, white cells to fill. */
 :root { --navy: #17375E; --navy-2: #1F497D; --orange: #FCD5B5; --orange-2: #F79646; --line: #000; --muted: #5b6573; --bg: #eef1f5; }
 * { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body { margin: 0; font: 15px/1.5 Arial, "Segoe UI", Tahoma, sans-serif; color: #111; background: var(--bg); }
 a { color: var(--navy-2); }
 .bar { position: sticky; top: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
