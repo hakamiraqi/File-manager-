@@ -91,6 +91,9 @@ class HallMap
      *
      * @return array{computers: array<int, array>, counts: array<string, int>, now: string}
      */
+    /** How long a report from the browser keeps a computer marked «اشتباه». */
+    public const SUSPECT_MINUTES = 10;
+
     public function live(?int $examId = null): array
     {
         $pcs = Computer::all();
@@ -107,6 +110,13 @@ class HallMap
             ->orderBy('started_at')->get()
             ->groupBy('ip')->map(fn ($list) => $list->sortBy(fn (Attempt $a) => [$a->submitted_at ? 1 : 0, -($a->last_seen_at ?? $a->started_at)->getTimestamp()])->first());
 
+        // «اشتباه غش» (2026-11-09, by request): what the browser reported in the last minutes on
+        // an attempt going on (the tab hidden, the window left, a copy or paste, full screen left…).
+        $live = $attempts->filter(fn (Attempt $a) => ! $a->submitted_at)->pluck('id');
+        $suspicion = $live->isEmpty() ? collect() : \App\Models\Exams\Event::whereIn('exam_attempt_id', $live)
+            ->where('created_at', '>=', now()->subMinutes(self::SUSPECT_MINUTES))->where('type', '!=', 'offline_file')
+            ->orderBy('created_at')->get(['exam_attempt_id', 'type', 'created_at'])->groupBy('exam_attempt_id');
+
         // Who should sit where: the computers students are bound to, for exams going on now.
         $activeExams = $examId ? collect([$examId]) : Attempt::whereNull('submitted_at')->where('started_at', '>=', now()->subHours(12))->distinct()->pluck('exam_id');
         $bound = DB::table('exam_attendance')->whereIn('exam_id', $activeExams)->whereNotNull('computer_id')
@@ -118,6 +128,7 @@ class HallMap
         $out = [];
         $counts = [];
         foreach ($pcs as $pc) {
+            $suspect = null;
             $a = $attempts[$pc->ip] ?? null;
             $on = $pc->last_seen_at && $pc->last_seen_at->gte($quiet);
             $seen = collect([$pc->last_seen_at, $a?->last_seen_at])->filter()->max();
@@ -127,9 +138,11 @@ class HallMap
             if ($a && ! $a->submitted_at) {
                 $mySeat = $seatOf[$a->exam_id][$a->user_id] ?? null;
                 $wrong = $mySeat && (int) $mySeat->computer_id !== $pc->id;
+                $events = $suspicion[$a->id] ?? collect();
                 $state = match (true) {
                     (bool) $a->help_requested_at => 'help',
                     (bool) $a->locked_at => 'locked',
+                    $events->isNotEmpty() => 'suspect',
                     $wrong => 'wrong_pc',
                     ($a->last_seen_at ?? $a->started_at)->lt(now()->subSeconds(90)) => 'disconnected',
                     $a->isExpired(Attempt::GRACE_SECONDS) => 'time_up',
@@ -137,6 +150,11 @@ class HallMap
                 };
                 if ($wrong) {
                     $problems[] = 'wrong_pc';
+                }
+                if ($events->isNotEmpty()) {
+                    $problems[] = 'suspect';
+                    $suspect = ['count' => $events->count(), 'kinds' => $events->pluck('type')->unique()->values()->all(),
+                        'last' => $events->last()->created_at->toIso8601String()];
                 }
             } elseif ($a) {
                 $state = 'submitted';
@@ -159,11 +177,15 @@ class HallMap
                 }
             }
             $problems = array_values(array_unique($problems));
+            // The clock: within a few seconds of the server's, a little off, or wrong (over a minute).
+            $sync = $clock === null ? null : (abs($clock) <= 5 ? 'ok' : (abs($clock) <= 60 ? 'drift' : 'wrong'));
             $counts[$state] = ($counts[$state] ?? 0) + 1;
             $out[$pc->id] = [
                 'id' => $pc->id, 'label' => $pc->label, 'room' => $pc->room, 'ip' => $pc->ip,
                 'state' => $state, 'problems' => $problems,
-                'seen' => $seen?->toIso8601String(), 'clock' => $clock, 'agent' => $pc->last_agent,
+                'seen' => $seen?->toIso8601String(), 'clock' => $clock, 'sync' => $sync, 'agent' => $pc->last_agent,
+                'linked' => $on || ($a && ! $a->submitted_at && ($a->last_seen_at ?? $a->started_at)->gte(now()->subSeconds(90))),
+                'suspect' => $suspect ?? null,
                 'student' => $a?->user ? ['id' => $a->user->id, 'name' => $a->user->name, 'number' => $a->user->student_number] : null,
                 'expected' => $expected ? ['id' => (int) $expected->user_id, 'name' => $expected->name, 'number' => $expected->student_number] : null,
                 'exam' => $a?->exam ? ['id' => $a->exam->id, 'title' => $a->exam->text('title')] : null,
@@ -180,13 +202,13 @@ class HallMap
     }
 
     /** A sign of life from a hall computer: any page of the site, every half minute. */
-    public static function heard(string $ip, ?int $clientMs, ?string $agent, ?int $userId): ?Computer
+    public static function heard(string $ip, ?int $clientMs, ?string $agent, ?int $userId, ?int $offsetMs = null): ?Computer
     {
         $pc = Computer::where('ip', $ip)->first();
         if (! $pc) {
             return null;
         }
-        $offset = $clientMs ? (int) round(($clientMs - now()->getTimestampMs()) / 1000) : null;
+        $offset = $offsetMs !== null ? (int) round($offsetMs / 1000) : ($clientMs ? (int) round(($clientMs - now()->getTimestampMs()) / 1000) : null);
         $pc->forceFill([
             'last_seen_at' => now(),
             'last_clock_offset' => $offset !== null && abs($offset) < 86400 * 400 ? $offset : $pc->last_clock_offset,

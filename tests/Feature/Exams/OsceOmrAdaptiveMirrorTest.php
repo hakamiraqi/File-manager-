@@ -58,7 +58,17 @@ class OsceOmrAdaptiveMirrorTest extends TestCase
         // The assessor sees only their station; marks are capped at each item's points.
         $this->actingAs($assessor)->get(route('exams.monitor.osce'))->assertInertia(fn (AssertableInertia $p) => $p->has('stations', 1));
         $this->actingAs($assessor)->get(route('exams.monitor.osce.station', $s2))->assertNotFound();
+        // The candidate comes in: the station's time for them starts; the route shows where they are.
+        $this->actingAs($assessor)->postJson(route('exams.monitor.osce.start', [$s1, $student]))->assertOk()->assertJsonStructure(['started_at']);
+        $this->actingAs($assessor)->get(route('exams.monitor.osce.station', $s1))->assertInertia(fn (AssertableInertia $p) => $p
+            ->where('candidates.0.journey.0.state', 'now')->where('candidates.0.journey.0.station_id', $s1->id)->where('candidates.0.journey.1.state', 'next'));
+        $this->travel(7)->minutes();
         $this->actingAs($assessor)->postJson(route('exams.monitor.osce.mark', [$s1, $student]), ['scores' => [2, 9], 'global_rating' => 4])->assertJson(['total' => 5]);
+        $journey = $this->actingAs($this->teacher)->get(route('exams.manage.osce', $exam))->viewData('page')['props']['candidates'][0]['journey'];
+        $this->assertSame('done', $journey[0]['state']);
+        $this->assertEqualsWithDelta(420, $journey[0]['seconds'], 2);
+        $this->assertEquals(5, $journey[0]['total']);
+        $this->assertSame('next', $journey[1]['state']);
         $attempt = Attempt::where('exam_id', $exam->id)->where('user_id', $student->id)->firstOrFail();
         $this->assertEquals(5, $attempt->score);
         $this->assertTrue($attempt->needs_grading);

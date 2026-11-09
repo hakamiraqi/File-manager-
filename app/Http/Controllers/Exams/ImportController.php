@@ -25,8 +25,8 @@ class ImportController extends Controller
     public function questions(Request $request, Exam $exam, SpreadsheetReader $reader, QuestionImporter $importer): RedirectResponse
     {
         abort_unless($exam->isManageableBy($request->user()), 404);
-        $request->validate(['file' => ['required', 'file', 'max:10240', 'extensions:'.implode(',', QuestionImporter::EXTENSIONS)]],
-            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift، أو Word .docx) أو Moodle XML (.xml).']);
+        $request->validate(['file' => ['required', 'file', 'max:204800', 'extensions:'.implode(',', QuestionImporter::EXTENSIONS)]],
+            ['file.extensions' => 'الملف يجب أن يكون Excel (.xlsx) أو CSV أو نص Aiken/GIFT (.txt، .gift، أو Word .docx) أو Moodle XML (.xml)، أو ZIP فيه ملف Excel مع صوره.']);
 
         $file = $request->file('file');
         $ext = strtolower($file->getClientOriginalExtension());
@@ -51,10 +51,10 @@ class ImportController extends Controller
             foreach ($good as $q) {
                 $question = Question::create([
                     'exam_id' => $exam->id, 'type' => $q['type'], 'body' => $q['body'], 'feedback' => $q['feedback'] ?: null,
-                    'points' => $q['type'] === Question::DESCRIPTION ? 0 : $q['points'], 'settings' => $q['settings'] ?: null, 'position' => $position++,
+                    'points' => $q['type'] === Question::DESCRIPTION ? 0 : $q['points'], 'settings' => $q['settings'] ?: null, 'position' => $position++, 'image' => $q['image'] ?? null,
                 ]);
                 foreach ($q['choices'] as $j => $c) {
-                    Choice::create(['exam_question_id' => $question->id, 'body' => $c['body'], 'match' => $c['match'] ?: null, 'is_correct' => $c['is_correct'], 'position' => $j]);
+                    Choice::create(['exam_question_id' => $question->id, 'body' => $c['body'], 'match' => $c['match'] ?: null, 'is_correct' => $c['is_correct'], 'position' => $j, 'image' => $c['image'] ?? null]);
                 }
             }
         });
@@ -73,16 +73,84 @@ class ImportController extends Controller
         return response()->streamDownload(function () {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['النوع', 'السؤال', 'الخيار 1', 'الخيار 2', 'الخيار 3', 'الخيار 4', 'الإجابة', 'الدرجة', 'التغذية الراجعة']);
-            fputcsv($out, ['اختيار', 'ما رمز الماء الكيميائي؟', 'H2O', 'CO2', 'O2', 'NaCl', 'أ', '2', '']);
-            fputcsv($out, ['متعدد', 'أيّها غازات نبيلة؟', 'هيليوم', 'نيون', 'حديد', 'أرغون', 'أ، ب، د', '2', 'الحديد فلز']);
-            fputcsv($out, ['صح وخطأ', 'يغلي الماء عند 100 درجة مئوية عند سطح البحر', '', '', '', '', 'صح', '1', '']);
-            fputcsv($out, ['قصيرة', 'ما عاصمة العراق؟', '', '', '', '', 'بغداد|بغدادُ', '1', '']);
-            fputcsv($out, ['رقمي', 'قيمة π لرقمين عشريين', '', '', '', '', '3.14±0.01', '1', '']);
-            fputcsv($out, ['فراغ', 'عاصمة العراق [[بغداد]] وأكبر مدن الجنوب [[*البصرة|الموصل|أربيل]]', '', '', '', '', '', '2', '']);
-            fputcsv($out, ['مقالي', 'اشرح عملية التأكسد', '', '', '', '', '', '5', '']);
+            // «الصورة» and «صورة الخيار N»: a picture's file name; send the sheet and the pictures in one ZIP.
+            fputcsv($out, ['النوع', 'السؤال', 'الخيار 1', 'الخيار 2', 'الخيار 3', 'الخيار 4', 'الإجابة', 'الدرجة', 'التغذية الراجعة', 'الصورة', 'صورة الخيار 1', 'صورة الخيار 2', 'صورة الخيار 3', 'صورة الخيار 4']);
+            fputcsv($out, ['اختيار', 'ما رمز الماء الكيميائي؟', 'H2O', 'CO2', 'O2', 'NaCl', 'أ', '2', '', '', '', '', '', '']);
+            fputcsv($out, ['متعدد', 'أيّها غازات نبيلة؟', 'هيليوم', 'نيون', 'حديد', 'أرغون', 'أ، ب، د', '2', 'الحديد فلز', '', '', '', '', '']);
+            fputcsv($out, ['اختيار', 'أيّ هذه الصور لخلية نباتية؟', '', '', '', '', '2', '1', '', 'cells.png', 'a.png', 'b.png', 'c.png', '']);
+            fputcsv($out, ['صح وخطأ', 'يغلي الماء عند 100 درجة مئوية عند سطح البحر', '', '', '', '', 'صح', '1', '', '', '', '', '', '']);
+            fputcsv($out, ['قصيرة', 'ما عاصمة العراق؟', '', '', '', '', 'بغداد|بغدادُ', '1', '', '', '', '', '', '']);
+            fputcsv($out, ['رقمي', 'قيمة π لرقمين عشريين', '', '', '', '', '3.14±0.01', '1', '', '', '', '', '', '']);
+            fputcsv($out, ['فراغ', 'عاصمة العراق [[بغداد]] وأكبر مدن الجنوب [[*البصرة|الموصل|أربيل]]', '', '', '', '', '', '2', '', '', '', '', '', '']);
+            fputcsv($out, ['مقالي', 'اشرح عملية التأكسد', '', '', '', '', '', '5', '', '', '', '', '', '']);
             fclose($out);
         }, 'exam-questions-template.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * The exam's questions as a ZIP: «questions.csv» (the same columns the import reads, pictures by
+     * file name) and the pictures, so it can be edited in Excel and imported here or into another exam.
+     * Kinds the sheet cannot hold (matching, hotspot…) are listed in «not-included.txt».
+     */
+    public function questionsExport(Request $request, Exam $exam): \Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        abort_unless($exam->isManageableBy($request->user()), 404);
+        $lang = $exam->languages[0] ?? 'ar';
+        $words = ['single' => 'اختيار', 'multiple' => 'متعدد', 'true_false' => 'صح وخطأ', 'short' => 'قصيرة', 'numeric' => 'رقمي', 'cloze' => 'فراغ', 'essay' => 'مقالي', 'description' => 'نص توضيحي'];
+        $questions = $exam->questions()->with('choices')->get();
+        $most = max(4, (int) $questions->map(fn ($q) => $q->choices->count())->max());
+        $path = tempnam(sys_get_temp_dir(), 'qx').'.zip';
+        $zip = new \ZipArchive;
+        $zip->open($path, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+        $pictures = [];
+        $picture = function (?string $name) use (&$pictures, $zip) {
+            if (! $name || ! ManageController::picture($name)) {
+                return '';
+            }
+            if (! isset($pictures[$name])) {
+                $file = 'pictures/'.(count($pictures) + 1).'.'.pathinfo($name, PATHINFO_EXTENSION);
+                $zip->addFromString($file, \Illuminate\Support\Facades\Storage::disk('local')->get(ManageController::IMAGES.'/'.$name));
+                $pictures[$name] = basename($file);
+            }
+
+            return $pictures[$name];
+        };
+        $out = fopen('php://temp', 'w+');
+        fwrite($out, "\xEF\xBB\xBF");
+        $choiceCols = array_map(fn ($k) => 'الخيار '.$k, range(1, $most));
+        $pictureCols = array_map(fn ($k) => 'صورة الخيار '.$k, range(1, $most));
+        fputcsv($out, ['النوع', 'السؤال', ...$choiceCols, 'الإجابة', 'الدرجة', 'التغذية الراجعة', 'الصورة', ...$pictureCols]);
+        $left = [];
+        foreach ($questions as $n => $q) {
+            if (! isset($words[$q->type])) {
+                $left[] = ($n + 1).'. '.$q->type.': '.mb_substr(\App\Services\Exams\HtmlCleaner::text(Question::pick($q->body, $lang, $exam->languages ?? [])), 0, 80);
+
+                continue;
+            }
+            $text = fn ($v) => \App\Services\Exams\HtmlCleaner::text(Question::pick($v, $lang, $exam->languages ?? []));
+            $choices = $q->choices->values();
+            $answer = match ($q->type) {
+                'single', 'multiple', 'true_false' => $choices->keys()->filter(fn ($k) => $choices[$k]->is_correct)->map(fn ($k) => $k + 1)->implode('، '),
+                'short' => implode('|', (array) ($q->settings['answers'] ?? [])),
+                'numeric' => ($q->settings['answer'] ?? '').(filled($q->settings['tolerance'] ?? null) && ($q->settings['tolerance'] ?? '0') !== '0' ? '±'.$q->settings['tolerance'] : ''),
+                default => '',
+            };
+            fputcsv($out, [
+                $words[$q->type], $text($q->body),
+                ...array_map(fn ($k) => isset($choices[$k]) ? $text($choices[$k]->body) : '', range(0, $most - 1)),
+                $answer, $q->type === 'description' ? '' : (string) (float) $q->points, $text($q->feedback), $picture($q->image),
+                ...array_map(fn ($k) => isset($choices[$k]) ? $picture($choices[$k]->image) : '', range(0, $most - 1)),
+            ]);
+        }
+        rewind($out);
+        $zip->addFromString('questions.csv', stream_get_contents($out));
+        fclose($out);
+        if ($left) {
+            $zip->addFromString('not-included.txt', "أسئلة لا يحملها جدول Excel (انقلها بملف الامتحان .examnest.json):\n".implode("\n", $left)."\n");
+        }
+        $zip->close();
+
+        return response()->download($path, 'exam-'.$exam->id.'-questions.zip')->deleteFileAfterSend();
     }
 
     /**

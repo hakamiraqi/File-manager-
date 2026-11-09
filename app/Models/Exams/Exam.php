@@ -107,7 +107,8 @@ class Exam extends Model
     {
         return sha1(json_encode($this->questions()->with('choices')->orderBy('position')->get()->map(fn ($q) => [
             $q->type, $q->body, (float) $q->points, $q->settings, $q->format,
-            $q->choices->map(fn ($c) => [$c->body, (bool) $c->is_correct, $c->match ?? null])->all(),
+            $q->choices->map(fn ($c) => [$c->body, (bool) $c->is_correct, $c->match ?? null, ...($c->image ? [$c->image] : [])])->all(),
+            ...($q->image ? [$q->image] : []),
         ])->all()));
     }
 

@@ -9,6 +9,8 @@ use App\Models\Exams\Question;
  * (texts in the exam's first language). The editor's own checks run on the result.
  *
  * Sheet columns (Arabic or English headers): النوع | السؤال | الخيار 1..8 | الإجابة | الدرجة | التغذية الراجعة
+ *   and, for pictures (2026-11-09): الصورة | صورة الخيار 1..8 — a picture's file name, the sheet and
+ *   the pictures uploaded together in one ZIP file.
  *   الإجابة: the letter(s) or number(s) of the right choice(s) «أ» «A» «2» «1،3»,
  *            or the accepted answers for a short question «بغداد|بغدادُ», or the number for a numeric one «3.14±0.01».
  */
@@ -27,11 +29,17 @@ class QuestionImporter
         'description' => ['description', 'نص', 'نص توضيحي'],
     ];
 
-    public const EXTENSIONS = ['xlsx', 'csv', 'txt', 'gift', 'xml', 'docx'];
+    public const EXTENSIONS = ['xlsx', 'csv', 'txt', 'gift', 'xml', 'docx', 'zip'];
+
+    /** Picture file name (as written in the sheet) → stored picture name, while a ZIP is read. */
+    private array $pictures = [];
 
     /** Any of the accepted files: .txt is GIFT when it looks like it, Aiken otherwise. */
     public function fromFile(string $path, string $ext, string $lang, \App\Services\SpreadsheetReader $reader): array
     {
+        if ($ext === 'zip') {
+            return $this->fromZip($path, $lang, $reader);
+        }
         if (in_array($ext, ['xlsx', 'csv'], true)) {
             return $this->fromRows($reader->read($path, $ext), $lang);
         }
@@ -42,6 +50,59 @@ class QuestionImporter
         }
 
         return $ext === 'gift' || self::looksLikeGift($text) ? $this->fromGift($text, $lang) : $this->fromAiken($text, $lang);
+    }
+
+    /** A ZIP with one sheet (Excel or CSV) and the pictures its «الصورة» columns name. */
+    private function fromZip(string $path, string $lang, \App\Services\SpreadsheetReader $reader): array
+    {
+        $zip = new \ZipArchive;
+        if ($zip->open($path) !== true) {
+            return ['questions' => [], 'skipped' => [1 => 'ليس ملف ZIP صالحاً.']];
+        }
+        $sheet = null;
+        $this->pictures = [];
+        for ($i = 0; $i < min($zip->numFiles, 3000); $i++) {
+            $name = (string) $zip->getNameIndex($i);
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            if (str_starts_with(basename($name), '.') || str_contains($name, '__MACOSX')) {
+                continue;
+            }
+            if (in_array($ext, ['xlsx', 'csv'], true) && ! $sheet) {
+                $sheet = [$ext, (string) $zip->getFromIndex($i)];
+            } elseif (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) && ($zip->statIndex($i)['size'] ?? 0) <= 8 * 1024 * 1024) {
+                $stored = \App\Http\Controllers\Exams\ManageController::storePicture((string) $zip->getFromIndex($i), $name);
+                if ($stored) {
+                    $this->pictures[mb_strtolower(basename($name))] = $stored;
+                }
+            }
+        }
+        $zip->close();
+        if (! $sheet) {
+            return ['questions' => [], 'skipped' => [1 => 'لم أجد في الملف المضغوط ملف Excel أو CSV للأسئلة.']];
+        }
+        $tmp = tempnam(sys_get_temp_dir(), 'qs').'.'.$sheet[0];
+        file_put_contents($tmp, $sheet[1]);
+        try {
+            return $this->fromRows($reader->read($tmp, $sheet[0]), $lang);
+        } finally {
+            @unlink($tmp);
+            $this->pictures = [];
+        }
+    }
+
+    /** A picture named in a cell: its stored name, or null (and a note) when it is not in the ZIP. */
+    private function picture(string $cell, array &$missing): ?string
+    {
+        $cell = trim($cell);
+        if ($cell === '') {
+            return null;
+        }
+        $found = $this->pictures[mb_strtolower(basename(str_replace('\\', '/', $cell)))] ?? null;
+        if (! $found) {
+            $missing[] = $cell;
+        }
+
+        return $found;
     }
 
     /** A Word file's text: each paragraph on its own line, tabs and line breaks kept. */
@@ -80,15 +141,28 @@ class QuestionImporter
             $line = $i + 2;
             $cell = fn (string $key) => isset($map[$key]) ? trim((string) ($row[$map[$key]] ?? '')) : '';
             $body = $cell('body');
-            if ($body === '') {
+            $missing = [];
+            $image = $this->picture($cell('image'), $missing);
+            if ($body === '' && ! $image) {
                 continue;
             }
+            // A choice is its text, its picture, or both (choice N and «صورة الخيار N» go together).
             $choices = [];
-            foreach ($map['choices'] ?? [] as $col) {
-                $v = trim((string) ($row[$col] ?? ''));
-                if ($v !== '') {
+            $choicePictures = [];
+            $count = max(count($map['choices'] ?? []), $map['choice_images'] ? max(array_keys($map['choice_images'])) : 0);
+            for ($k = 0; $k < $count; $k++) {
+                $col = $map['choices'][$k] ?? null;
+                $v = $col === null ? '' : trim((string) ($row[$col] ?? ''));
+                $pic = isset($map['choice_images'][$k + 1]) ? $this->picture((string) ($row[$map['choice_images'][$k + 1]] ?? ''), $missing) : null;
+                if ($v !== '' || $pic) {
                     $choices[] = $v;
+                    $choicePictures[] = $pic;
                 }
+            }
+            if ($missing) {
+                $skipped[$line] = 'صورة غير موجودة في الملف المضغوط: '.implode('، ', $missing);
+
+                continue;
             }
             $answer = $cell('answer');
             $type = $this->type($cell('type'), $choices, $answer);
@@ -99,8 +173,8 @@ class QuestionImporter
             }
             $points = $cell('points') === '' ? 1 : (Grader::toNumber($cell('points')) ?? 1);
 
-            $q = ['id' => null, 'type' => $type, 'body' => [$lang => $body], 'points' => $points, 'settings' => [], 'choices' => [],
-                'feedback' => $cell('feedback') === '' ? [] : [$lang => $cell('feedback')]];
+            $q = ['id' => null, 'type' => $type, 'body' => $body === '' ? [] : [$lang => $body], 'points' => $points, 'settings' => [], 'choices' => [],
+                'feedback' => $cell('feedback') === '' ? [] : [$lang => $cell('feedback')], 'image' => $image];
 
             if (in_array($type, ['single', 'multiple', 'true_false'], true)) {
                 if ($type === 'true_false' && $choices === []) {
@@ -113,7 +187,7 @@ class QuestionImporter
                     continue;
                 }
                 foreach ($choices as $k => $text) {
-                    $q['choices'][] = ['id' => null, 'body' => [$lang => $text], 'match' => [], 'is_correct' => in_array($k + 1, $right, true)];
+                    $q['choices'][] = ['id' => null, 'body' => $text === '' ? [] : [$lang => $text], 'match' => [], 'is_correct' => in_array($k + 1, $right, true), 'image' => $choicePictures[$k] ?? null];
                 }
             } elseif ($type === 'short') {
                 $q['settings'] = ['answers' => array_values(array_filter(array_map('trim', preg_split('/[|\n]/u', $answer)))), 'case_sensitive' => false];
@@ -251,10 +325,14 @@ class QuestionImporter
 
     private function mapHeader(array $header): array
     {
-        $map = [];
+        $map = ['choice_images' => []];
         foreach ($header as $col => $label) {
             $l = Grader::normalize((string) $label);
-            if (preg_match('/^(الخيار|خيار|choice|option)\s*(\d+|[a-z]|[ابجدهوزح])?$/u', $l)) {
+            if (preg_match('/^(صوره الخيار|صوره خيار|choice image|option image|image choice)\s*(\d+)$/u', $l, $m)) {
+                $map['choice_images'][(int) $m[2]] = $col;
+            } elseif (in_array($l, ['الصوره', 'صوره السوال', 'صوره', 'image', 'picture', 'question image'], true)) {
+                $map['image'] ??= $col;
+            } elseif (preg_match('/^(الخيار|خيار|choice|option)\s*(\d+|[a-z]|[ابجدهوزح])?$/u', $l)) {
                 $map['choices'][] = $col;
             } elseif (in_array($l, ['السوال', 'نص السوال', 'question', 'body', 'text'], true)) {
                 $map['body'] ??= $col;

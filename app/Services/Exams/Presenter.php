@@ -77,11 +77,12 @@ class Presenter
             'html' => $q->format === 'html',
             'points' => $q->points,
             'choices' => in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true) || ! in_array($q->type, Question::CHOICE_TYPES, true) ? [] : $choices
-                ->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body)])->all(),
+                ->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body), 'picture' => self::imageUrl($c->image)])->all(),
+            'picture' => self::imageUrl($q->image),
         ];
 
         if (in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true)) {
-            $data['items'] = $choices->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body)])->all();
+            $data['items'] = $choices->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body), 'picture' => self::imageUrl($c->image)])->all();
             $data['targets'] = $choices->sortBy(fn (Choice $c) => crc32($attempt->id.'-m-'.$c->id))
                 ->unique(fn (Choice $c) => Grader::normalize($text($c->match)))
                 ->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->match)])->values()->all();
@@ -98,7 +99,7 @@ class Presenter
         }
         if ($q->type === Question::DRAG_IMAGE) {
             $data['image'] = self::imageUrl($q->settings['image'] ?? null);
-            $data['labels'] = $choices->sortBy(fn (Choice $c) => crc32($attempt->id.'-l-'.$c->id))->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body)])->values()->all();
+            $data['labels'] = $choices->sortBy(fn (Choice $c) => crc32($attempt->id.'-l-'.$c->id))->map(fn (Choice $c) => ['id' => $c->id, 'body' => $text($c->body), 'picture' => self::imageUrl($c->image)])->values()->all();
             $data['choices'] = [];
         }
         if ($q->type === Question::AUDIO) {
@@ -172,7 +173,15 @@ class Presenter
             'correct' => $correct,
             'feedback' => $showAnswers ? $text($q->feedback) : '',
             'comment' => $answer?->comment,
-        ] + ($q->type === Question::DRAG_IMAGE ? [
+            'picture' => self::imageUrl($q->image),
+        ] + ($q->choices->contains(fn (Choice $c) => $c->image) && in_array($q->type, [Question::SINGLE, Question::MULTIPLE, Question::TRUE_FALSE, Question::ORDERING, Question::MATCHING, Question::CLASSIFY], true) ? [
+            // Choices with pictures: shown as they were, the student's ones marked (and the right ones, if allowed).
+            'choice_pictures' => $q->choices->sortBy('position')->values()->map(fn (Choice $c) => [
+                'body' => $text($c->body), 'picture' => self::imageUrl($c->image),
+                'chosen' => in_array($c->id, array_merge((array) ($answer?->response['choices'] ?? []), isset($answer?->response['choice']) ? [$answer->response['choice']] : []), true),
+                'right' => $showAnswers && in_array($q->type, [Question::SINGLE, Question::MULTIPLE, Question::TRUE_FALSE], true) ? (bool) $c->is_correct : null,
+            ])->all(),
+        ] : []) + ($q->type === Question::DRAG_IMAGE ? [
             'image' => self::imageUrl($q->settings['image'] ?? null),
             'marks' => $q->choices->sortBy('position')->values()->map(fn ($c, $i) => [
                 'label' => $text($c->body),
@@ -235,7 +244,8 @@ class Presenter
             'html' => $q->format === 'html',
             'points' => $q->type === Question::RANDOM ? $q->slotPoints() : $q->points,
             'choices' => in_array($q->type, [Question::SINGLE, Question::MULTIPLE, Question::TRUE_FALSE, Question::ORDERING, Question::DRAG_IMAGE], true)
-                ? $q->choices->map(fn (Choice $c) => ['body' => $text($c->body), 'is_correct' => $key && $c->is_correct])->values()->all() : [],
+                ? $q->choices->map(fn (Choice $c) => ['body' => $text($c->body), 'is_correct' => $key && $c->is_correct, 'picture' => self::imageUrl($c->image)])->values()->all() : [],
+            'picture' => self::imageUrl($q->image),
         ];
         if ($q->type === Question::ORDERING) {
             // On paper too the right order would give the answer away.
@@ -243,6 +253,7 @@ class Presenter
         }
         if (in_array($q->type, [Question::MATCHING, Question::CLASSIFY], true)) {
             $data['items'] = $q->choices->map(fn (Choice $c) => $text($c->body))->values()->all();
+            $data['item_pictures'] = $q->choices->map(fn (Choice $c) => self::imageUrl($c->image))->values()->all();
             $data['targets'] = $q->choices->map(fn (Choice $c) => $text($c->match))->unique(fn ($m) => Grader::normalize($m))
                 ->sortBy(fn ($m) => crc32($q->id.$m))->values()->all();
         }
@@ -331,8 +342,10 @@ class Presenter
             'feedback' => $q->feedback ?: (object) [],
             'points' => $q->points,
             'settings' => ($q->settings ?: []) + (in_array($q->type, [Question::HOTSPOT, Question::DRAG_IMAGE], true) ? ['image_url' => self::imageUrl($q->settings['image'] ?? null)] : []) ?: (object) [],
+            'image' => $q->image, 'image_url' => self::imageUrl($q->image),
             'choices' => $q->choices->map(fn (Choice $c) => [
                 'id' => $c->id, 'body' => $c->body ?: (object) [], 'match' => $c->match ?: (object) [], 'is_correct' => $c->is_correct,
+                'image' => $c->image, 'image_url' => self::imageUrl($c->image),
             ])->all(),
         ];
     }

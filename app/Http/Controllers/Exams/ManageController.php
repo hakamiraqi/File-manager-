@@ -181,6 +181,8 @@ class ManageController extends Controller
             'questions.*.choices.*.body' => ['nullable', 'array'],
             'questions.*.choices.*.match' => ['nullable', 'array'],
             'questions.*.choices.*.is_correct' => ['nullable', 'boolean'],
+            'questions.*.image' => ['nullable', 'string', 'max:80'],
+            'questions.*.choices.*.image' => ['nullable', 'string', 'max:80'],
         ]);
 
         $langs = array_values(array_unique($data['languages']));
@@ -241,7 +243,7 @@ class ManageController extends Controller
                 $question->fill([
                     'type' => $q['type'], 'format' => $q['format'] ?? 'text', 'tags' => $q['tags'] ?: null, 'difficulty' => $q['difficulty'] ?? null, 'body' => $q['body'], 'feedback' => $q['feedback'] ?: null,
                     'points' => $q['type'] === Question::DESCRIPTION ? 0 : $q['points'],
-                    'settings' => $q['settings'] ?: null, 'position' => $i,
+                    'settings' => $q['settings'] ?: null, 'position' => $i, 'image' => $q['image'] ?? null,
                 ])->save();
                 $keep[] = $question->id;
 
@@ -249,7 +251,7 @@ class ManageController extends Controller
                 $keepChoices = [];
                 foreach ($q['choices'] as $j => $c) {
                     $choice = isset($c['id'], $old[$c['id']]) ? $old[$c['id']] : new Choice(['exam_question_id' => $question->id]);
-                    $choice->fill(['body' => $c['body'], 'match' => $c['match'] ?: null, 'is_correct' => $c['is_correct'], 'position' => $j])->save();
+                    $choice->fill(['body' => $c['body'], 'match' => $c['match'] ?: null, 'is_correct' => $c['is_correct'], 'position' => $j, 'image' => $c['image'] ?? null])->save();
                     $keepChoices[] = $choice->id;
                 }
                 $question->choices()->whereNotIn('id', $keepChoices)->delete();
@@ -456,7 +458,10 @@ class ManageController extends Controller
 
                 continue;
             }
-            if ($body === []) {
+            // A picture for any question and any choice (2026-11-09, by request): a picture alone
+            // is enough for a question or a choice.
+            $image = self::picture($q['image'] ?? null);
+            if ($body === [] && ! $image) {
                 $errors["questions.$i.body"] = "السؤال $n: اكتب نص السؤال.";
             }
             $choices = collect($q['choices'] ?? [])->values()->map(fn ($c) => [
@@ -464,7 +469,8 @@ class ManageController extends Controller
                 'body' => Choice::cleanTexts($c['body'] ?? [], $langs),
                 'match' => Choice::cleanTexts($c['match'] ?? [], $langs),
                 'is_correct' => (bool) ($c['is_correct'] ?? false),
-            ])->filter(fn ($c) => $c['body'] !== [])->values();
+                'image' => self::picture($c['image'] ?? null),
+            ])->filter(fn ($c) => $c['body'] !== [] || $c['image'])->values();
             $settings = (array) ($q['settings'] ?? []);
 
             if (in_array($type, Question::CHOICE_TYPES, true)) {
@@ -588,6 +594,7 @@ class ManageController extends Controller
                 'points' => (float) ($q['points'] ?? 1),
                 'settings' => $settings,
                 'choices' => $choices->all(),
+                'image' => $image,
             ];
         }
         if ($errors) {
@@ -714,6 +721,30 @@ class ManageController extends Controller
     }
 
     public const IMAGES = 'exam-images';
+
+    /** A picture's stored name, when it is one (not a sound or video) and is there; null otherwise. */
+    public static function picture(mixed $name): ?string
+    {
+        $name = is_string($name) ? $name : '';
+
+        return preg_match('/\.(jpg|jpeg|png|gif|webp)$/', $name) && self::imageExists($name) ? $name : null;
+    }
+
+    /** Stores a picture's bytes (from an imported file) and gives its name; null when it is not a picture. */
+    public static function storePicture(string $bytes, string $filename): ?string
+    {
+        $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+        $ext = $ext === 'jpeg' ? 'jpg' : $ext;
+        if (! in_array($ext, ['jpg', 'png', 'gif', 'webp'], true) || strlen($bytes) > 8 * 1024 * 1024 || @getimagesizefromstring($bytes) === false) {
+            return null;
+        }
+        $name = hash('sha256', $bytes).'.'.$ext;
+        if (! Storage::disk('local')->exists(self::IMAGES.'/'.$name)) {
+            Storage::disk('local')->put(self::IMAGES.'/'.$name, $bytes);
+        }
+
+        return $name;
+    }
 
     public static function imageExists(string $name): bool
     {

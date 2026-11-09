@@ -79,6 +79,15 @@ const state = (r) => (r.earned === null ? 'pending' : r.earned >= r.points ? 'ri
                     <div class="min-w-0 flex-1">
                         <p class="text-xs text-gray-500">{{ t('exam.question', 'السؤال') }} {{ i + 1 }} · {{ r.earned ?? '—' }} / {{ r.points }}</p>
                         <RichText :text="r.body" :html="r.html" class="mt-1" />
+                        <img v-if="r.picture" :src="r.picture" alt="" class="mt-2 block max-h-72 max-w-full rounded-lg" />
+                        <div v-if="r.choice_pictures" class="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            <div v-for="(c, k) in r.choice_pictures" :key="k" class="rounded-lg border-2 p-1.5 text-center text-xs"
+                                :class="c.right ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' : c.chosen ? 'border-[var(--accent-600)]' : 'border-gray-200 dark:border-gray-600'">
+                                <img v-if="c.picture" :src="c.picture" alt="" class="mx-auto block max-h-24 max-w-full rounded" />
+                                <span dir="auto" class="mt-1 block">{{ c.body }}</span>
+                                <span v-if="c.chosen" class="mt-0.5 block font-semibold text-[var(--accent-700)]">{{ t('exam.your_choice', 'اختيارك') }}</span>
+                            </div>
+                        </div>
                         <div v-if="r.marks" class="relative mt-2 inline-block max-w-full">
                             <img :src="r.image" alt="" class="block max-h-80 max-w-full rounded-lg" />
                             <template v-for="(m, k) in r.marks" :key="k">

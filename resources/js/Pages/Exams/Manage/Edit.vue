@@ -5,6 +5,7 @@ import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import LangInput from '@/Components/Exams/LangInput.vue';
+import PicturePicker from '@/Components/Exams/PicturePicker.vue';
 import ToggleSwitch from '@/Components/ToggleSwitch.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ChartBarIcon, ArrowRightIcon, EyeIcon, PrinterIcon, StarIcon, Squares2X2Icon, XMarkIcon, CheckIcon, ClockIcon, TableCellsIcon, PaperClipIcon, DocumentTextIcon, ClipboardDocumentCheckIcon, DocumentCheckIcon, AdjustmentsHorizontalIcon, EllipsisVerticalIcon,
@@ -154,10 +155,10 @@ async function removeTemplate(tpl) {
 
 const blank = () => Object.fromEntries(form.languages.map((l) => [l, '']));
 function choice(body = null, correct = false) {
-    return { id: null, body: body ?? blank(), match: blank(), is_correct: correct };
+    return { id: null, body: body ?? blank(), match: blank(), is_correct: correct, image: null, image_url: null };
 }
 function addQuestion(type) {
-    const q = { id: null, type, body: blank(), feedback: {}, points: type === 'description' ? 0 : 1, settings: {}, choices: [], answersText: '' };
+    const q = { id: null, type, body: blank(), feedback: {}, points: type === 'description' ? 0 : 1, settings: {}, choices: [], answersText: '', image: null, image_url: null };
     if (type === 'single' || type === 'multiple') q.choices = [choice(), choice(), choice(), choice()];
     if (type === 'true_false') q.choices = [choice({ ar: 'صح', en: 'True', ku: 'ڕاست' }, true), choice({ ar: 'خطأ', en: 'False', ku: 'هەڵە' })];
     if (type === 'matching' || type === 'ordering') q.choices = [choice(), choice(), choice()];
@@ -732,6 +733,7 @@ function save() {
                         <Link v-if="!categories.length" :href="route('exams.manage.bank')" class="text-[var(--accent-600)] underline">{{ t('exam.bank_create_first', 'أنشئ فئة في بنك الأسئلة أولاً') }}</Link></p>
                 </div>
                 <LangInput v-else v-model="q.body" :languages="form.languages" multiline :rows="2" :rich="q.format === 'html'" :placeholder="q.type === 'description' ? t('exam.description_ph', 'نص أو قطعة تعود إليها الأسئلة التالية') : t('exam.question_ph', 'نص السؤال')" />
+                <PicturePicker v-if="q.type !== 'random'" :image="q.image" :url="q.image_url" @change="(p) => { q.image = p.image; q.image_url = p.url; }" />
 
                 <!-- Choices: one / several / true-false -->
                 <div v-if="['single', 'multiple', 'true_false'].includes(q.type)" class="space-y-2">
@@ -739,6 +741,7 @@ function save() {
                         <input v-if="q.type === 'multiple'" type="checkbox" v-model="c.is_correct" class="mt-2.5 rounded text-emerald-600" :title="t('exam.correct', 'صحيحة')" />
                         <input v-else type="radio" :name="'correct' + i" :checked="c.is_correct" @change="setOnlyCorrect(q, c)" class="mt-2.5 text-emerald-600" :title="t('exam.correct', 'صحيحة')" />
                         <div class="flex-1"><LangInput v-model="c.body" :languages="form.languages" :placeholder="t('exam.choice', 'خيار') + ' ' + (j + 1)" /></div>
+                        <PicturePicker compact :image="c.image" :url="c.image_url" @change="(p) => { c.image = p.image; c.image_url = p.url; }" />
                         <button v-if="q.type !== 'true_false'" @click="q.choices.splice(j, 1)" class="mt-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
                     </div>
                     <button v-if="q.type !== 'true_false'" @click="q.choices.push(choice())" class="flex items-center gap-1 text-sm text-[var(--accent-600)]"><PlusIcon class="h-4 w-4" /> {{ t('exam.add_choice', 'خيار') }}</button>
@@ -758,7 +761,8 @@ function save() {
 
                 <div v-else-if="q.type === 'matching' || q.type === 'classify'" class="space-y-2">
                     <p v-if="q.type === 'classify'" class="text-xs text-gray-500">{{ t('exam.classify_edit_hint', 'لكل عنصر اكتب فئته؛ اكتب اسم الفئة نفسه للعناصر التي تنتمي إليها. فئتان على الأقل، والدرجة جزئية.') }}</p>
-                    <div v-for="(c, j) in q.choices" :key="c.id ?? 'm' + j" class="grid items-start gap-2 sm:grid-cols-[1fr_1fr_auto]">
+                    <div v-for="(c, j) in q.choices" :key="c.id ?? 'm' + j" class="grid items-start gap-2 sm:grid-cols-[auto_1fr_1fr_auto]">
+                        <PicturePicker compact :image="c.image" :url="c.image_url" @change="(p) => { c.image = p.image; c.image_url = p.url; }" />
                         <LangInput v-model="c.body" :languages="form.languages" :placeholder="t('exam.item', 'العنصر')" />
                         <LangInput v-model="c.match" :languages="form.languages" :placeholder="q.type === 'classify' ? t('exam.category', 'الفئة') : t('exam.match', 'ما يقابله')" />
                         <button @click="q.choices.splice(j, 1)" class="mt-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
@@ -805,6 +809,7 @@ function save() {
                     <div v-for="(c, j) in q.choices" :key="c.id ?? 'l' + j" class="flex items-start gap-2">
                         <span class="mt-2 w-6 text-center text-xs text-gray-400">{{ j + 1 }}</span>
                         <div class="flex-1"><LangInput v-model="c.body" :languages="form.languages" :placeholder="t('exam.label', 'العلامة')" /></div>
+                        <PicturePicker compact :image="c.image" :url="c.image_url" @change="(p) => { c.image = p.image; c.image_url = p.url; }" />
                         <button type="button" @click="labelSlot[i] = j" class="mt-1 rounded-lg border px-2 py-1 text-xs" :class="labelSlot[i] === j ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : q.settings.zones?.[j] ? 'border-emerald-400 text-emerald-700' : 'border-amber-400 text-amber-700'">
                             {{ q.settings.zones?.[j] ? t('exam.place_set', 'تم تحديد مكانها') : t('exam.place_set_now', 'حدّد مكانها') }}</button>
                         <button @click="q.choices.splice(j, 1); q.settings.zones?.splice(j, 1)" class="mt-1.5 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
@@ -853,6 +858,7 @@ function save() {
                     <div v-for="(c, j) in q.choices" :key="c.id ?? 'o' + j" class="flex items-start gap-2">
                         <span class="mt-2 w-6 text-center text-xs text-gray-400">{{ j + 1 }}</span>
                         <div class="flex-1"><LangInput v-model="c.body" :languages="form.languages" /></div>
+                        <PicturePicker compact :image="c.image" :url="c.image_url" @change="(p) => { c.image = p.image; c.image_url = p.url; }" />
                         <button @click="moveChoice(q, j, -1)" :disabled="j === 0" class="mt-1 rounded p-1 disabled:opacity-30"><ArrowUpIcon class="h-4 w-4" /></button>
                         <button @click="moveChoice(q, j, 1)" :disabled="j === q.choices.length - 1" class="mt-1 rounded p-1 disabled:opacity-30"><ArrowDownIcon class="h-4 w-4" /></button>
                         <button @click="q.choices.splice(j, 1)" class="mt-1 rounded p-1 text-gray-400 hover:text-red-500"><TrashIcon class="h-4 w-4" /></button>
@@ -925,10 +931,12 @@ function save() {
                 <p class="text-sm font-medium">{{ t('exam.import_title', 'استيراد أسئلة') }}</p>
                 <p class="text-xs text-gray-500">
                     {{ t('exam.import_hint', 'ملف Excel أو CSV بأعمدة: النوع، السؤال، الخيار 1…، الإجابة، الدرجة — أو ملف Word (.docx) أو نص بصيغة Aiken أو GIFT، أو Moodle XML (.xml). تُضاف الأسئلة في آخر الامتحان. احفظ تعديلاتك أولاً.') }}
+                    {{ t('exam.import_pictures_hint', 'مع الصور: اكتب اسم ملف الصورة في عمود «الصورة» أو «صورة الخيار 1…»، وارفع ملف Excel والصور معاً في ملف ZIP واحد.') }}
                     <a :href="route('exams.manage.import.template')" class="text-[var(--accent-600)] underline">{{ t('exam.import_template', 'تنزيل النموذج') }}</a>
+                    · <a v-if="exam.id" :href="route('exams.manage.questions.export', exam.id)" class="text-[var(--accent-600)] underline">{{ t('exam.export_questions', 'تصدير الأسئلة (Excel مع الصور، ZIP)') }}</a>
                 </p>
                 <form @submit.prevent="importQuestions" class="flex flex-wrap items-center gap-2">
-                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt,.gift,.xml,.docx" @input="importForm.file = $event.target.files[0]" class="text-sm" />
+                    <input ref="fileInput" type="file" accept=".xlsx,.csv,.txt,.gift,.xml,.docx,.zip" @input="importForm.file = $event.target.files[0]" class="text-sm" />
                     <button :disabled="!importForm.file || importForm.processing || form.isDirty" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('exam.import', 'استيراد') }}</button>
                     <span v-if="form.isDirty" class="text-xs text-amber-600">{{ t('exam.save_first', 'احفظ التعديلات قبل الاستيراد.') }}</span>
                 </form>

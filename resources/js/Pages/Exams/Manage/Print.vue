@@ -62,16 +62,17 @@ const lines = (q) => ({ essay: 10, short: 1, numeric: 1, upload: 0 }[q.type] ?? 
                         </span>
                         <span class="text-xs whitespace-nowrap">({{ q.points }} {{ t('exam.points', 'درجة') }})</span>
                     </p>
+                    <img v-if="q.picture" :src="q.picture" alt="" class="mt-2 block max-h-[70mm] max-w-full" />
 
                     <ol v-if="q.choices.length" class="mt-2 space-y-1 ps-6">
                         <li v-for="(c, i) in q.choices" :key="i" class="flex gap-2" :class="c.is_correct ? 'font-bold' : ''">
                             <span class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-black text-xs" :class="c.is_correct ? 'bg-black text-white' : ''">{{ q.type === 'ordering' ? '' : letter(i) }}</span>
-                            <RichText :text="c.body" tag="span" />
+                            <span class="flex flex-wrap items-center gap-2"><img v-if="c.picture" :src="c.picture" alt="" class="max-h-[25mm] max-w-[45mm]" /><RichText :text="c.body" tag="span" /></span>
                         </li>
                     </ol>
 
                     <div v-if="q.items" class="mt-2 grid grid-cols-2 gap-x-8 gap-y-1 ps-6 text-sm">
-                        <ol class="space-y-1"><li v-for="(item, i) in q.items" :key="i" dir="auto">{{ i + 1 }}. {{ item }} <span class="inline-block w-10 border-b border-dotted border-black" /></li></ol>
+                        <ol class="space-y-1"><li v-for="(item, i) in q.items" :key="i" dir="auto">{{ i + 1 }}. <img v-if="q.item_pictures?.[i]" :src="q.item_pictures[i]" alt="" class="inline-block max-h-[18mm] max-w-[30mm] align-middle" /> {{ item }} <span class="inline-block w-10 border-b border-dotted border-black" /></li></ol>
                         <ol class="space-y-1"><li v-for="(target, i) in q.targets" :key="i" dir="auto">{{ letter(i) }}. {{ target }}</li></ol>
                     </div>
 

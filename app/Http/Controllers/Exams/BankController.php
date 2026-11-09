@@ -255,9 +255,9 @@ class BankController extends Controller
                 continue;
             }
             $question = Question::create(['exam_id' => null, 'bank_category_id' => $category->id, 'type' => $q['type'], 'body' => $q['body'],
-                'feedback' => $q['feedback'] ?: null, 'points' => $q['points'], 'settings' => $q['settings'] ?: null]);
+                'feedback' => $q['feedback'] ?: null, 'points' => $q['points'], 'settings' => $q['settings'] ?: null, 'image' => $q['image'] ?? null]);
             foreach ($q['choices'] as $j => $c) {
-                Choice::create(['exam_question_id' => $question->id, 'body' => $c['body'], 'match' => $c['match'] ?: null, 'is_correct' => $c['is_correct'], 'position' => $j]);
+                Choice::create(['exam_question_id' => $question->id, 'body' => $c['body'], 'match' => $c['match'] ?: null, 'is_correct' => $c['is_correct'], 'position' => $j, 'image' => $c['image'] ?? null]);
             }
             $added++;
         }

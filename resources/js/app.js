@@ -64,7 +64,19 @@ window.addEventListener('beforeinstallprompt', (e) => {
 // map shows which computers are on, which are off and which have a wrong time (only hall
 // computers, known by their address, are recorded).
 (() => {
-    const ping = () => { if (navigator.onLine !== false) fetch('/hall/ping?t=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' }).catch(() => {}); };
+    // The clock is measured like NTP (2026-11-09): the server's time against the middle of the
+    // round trip; the result goes with the next ping, and pages can use window.__serverOffset.
+    let offset = null;
+    const ping = async () => {
+        if (navigator.onLine === false) return;
+        const t0 = Date.now();
+        try {
+            const r = await fetch('/hall/ping?t=' + t0 + (offset !== null ? '&o=' + Math.round(offset) : ''), { credentials: 'same-origin', cache: 'no-store' });
+            const t1 = Date.now();
+            const j = await r.json();
+            if (j?.server && t1 - t0 < 5000) { offset = (t0 + t1) / 2 - j.server; window.__serverOffset = offset; }
+        } catch {}
+    };
     setTimeout(ping, 1500);
     setInterval(ping, 30000);
 })();

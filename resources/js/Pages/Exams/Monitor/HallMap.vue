@@ -86,6 +86,7 @@ const hallName = (shelfId) => {
 const STATES = {
     help: { color: '#f59e0b', label: () => t('hallmap.st.help', 'يطلب مساعدة'), alert: true },
     locked: { color: '#dc2626', label: () => t('hallmap.st.locked', 'محاولة مقفلة'), alert: true },
+    suspect: { color: '#9333ea', label: () => t('hallmap.st.suspect', 'اشتباه غش'), alert: true },
     wrong_pc: { color: '#db2777', label: () => t('hallmap.st.wrong_pc', 'طالب على حاسبة غير حاسبته'), alert: true },
     disconnected: { color: '#ef4444', label: () => t('hallmap.st.disconnected', 'انقطع الاتصال'), alert: true },
     time_up: { color: '#f97316', label: () => t('hallmap.st.time_up', 'انتهى الوقت ولم يُسلَّم'), alert: true },
@@ -105,6 +106,22 @@ const PROBLEMS = {
     time_up: () => t('hallmap.pr.time_up', 'انتهى الوقت والمحاولة لم تُسلَّم'),
     off_expected: () => t('hallmap.pr.off_expected', 'الحاسبة مطفأة أو بلا شبكة وعليها طالب مخصّص'),
     clock: () => t('hallmap.pr.clock', 'ساعة الحاسبة غير مضبوطة'),
+    suspect: () => t('hallmap.pr.suspect', 'اشتباه غش: المتصفح أبلغ عن تصرف مريب في آخر 10 دقائق'),
+};
+// What the browser reported, in words (the «اشتباه غش» list).
+const SUSPECT_KINDS = {
+    hidden: () => t('hallmap.sk.hidden', 'أخفى صفحة الامتحان'),
+    blur: () => t('hallmap.sk.blur', 'انتقل لنافذة أخرى'),
+    paste: () => t('hallmap.sk.paste', 'لصق نصاً'),
+    copy: () => t('hallmap.sk.copy', 'نسخ نصاً'),
+    fullscreen_exit: () => t('hallmap.sk.fullscreen_exit', 'خرج من ملء الشاشة'),
+    ip_changed: () => t('hallmap.sk.ip_changed', 'تغيّر عنوان الجهاز'),
+};
+const suspectText = (c) => (c?.suspect ? (c.suspect.kinds ?? []).map((k) => SUSPECT_KINDS[k]?.() ?? k).join('، ') + ' · ' + t('hallmap.sk.times', ':n مرة', { n: c.suspect.count }) : '');
+const SYNC = {
+    ok: { color: 'text-emerald-600', label: () => t('hallmap.sync_ok', 'متزامنة مع السيرفر') },
+    drift: { color: 'text-amber-600', label: () => t('hallmap.sync_drift', 'فرق بسيط عن السيرفر') },
+    wrong: { color: 'text-red-600', label: () => t('hallmap.sync_wrong', 'غير مضبوطة') },
 };
 const liveData = ref(props.live ?? { computers: {}, counts: {} });
 const examFilter = ref(props.examId ?? '');
@@ -116,8 +133,37 @@ const statuses = computed(() => {
         const pc = pcOf(s);
         if (!s.computer_id) { out[s.id] = { color: '#e2e8f0', alert: false }; continue; }
         const st = STATES[pc?.state] ?? STATES.off;
-        out[s.id] = { color: st.color, alert: !!(pc?.problems?.length) };
+        out[s.id] = { color: st.color, alert: !!(pc?.problems?.length), link: pc ? !!pc.linked : null, suspect: !!pc?.suspect || pc?.state === 'locked' };
     }
+    return out;
+});
+/**
+ * «من المكتب إلى الحاسبة» (2026-11-09, by request): for every computer under suspicion (or whose
+ * attempt locked itself), the way from the invigilator's desk nearest to it — the desk in its hall
+ * if there is one. Drawn in red on the map, a light running along it.
+ */
+const alertPaths = computed(() => {
+    const desks = props.shelves.filter((s) => s.kind === 'desk');
+    if (!desks.length) return [];
+    const out = [];
+    for (const s of props.shelves) {
+        if (s.kind !== 'pc' || storeyOf(s) !== viewStorey.value) continue;
+        const pc = pcOf(s);
+        if (!pc || !(pc.suspect || pc.state === 'locked')) continue;
+        const mine = desks.filter((d) => storeyOf(d) === storeyOf(s));
+        const hall = hallOf(s);
+        const desk = mine.find((d) => hall && hallOf(d)?.id === hall.id) ?? mine.sort((a, b) => Math.hypot(a.x - s.x, a.y - s.y) - Math.hypot(b.x - s.x, b.y - s.y))[0];
+        if (!desk) continue;
+        const from = { ...(standingPoints(desk)[0] ?? { x: desk.x, y: desk.y }), storey: storeyOf(desk) };
+        const r = findRoute(props.floor, props.shelves, from, s);
+        out.push({ id: s.id, points: r?.points?.length >= 2 ? r.points.map((p) => ({ x: p.x, y: p.y })) : [from, { x: s.x, y: s.y }] });
+    }
+    return out;
+});
+const suspectList = computed(() => Object.values(liveData.value.computers ?? {}).filter((c) => c.suspect || c.state === 'locked').map((c) => ({ ...c, item: itemOfPc.value[c.id] ?? null })));
+const syncCounts = computed(() => {
+    const out = { ok: 0, drift: 0, wrong: 0 };
+    for (const c of Object.values(liveData.value.computers ?? {})) if (c.sync) out[c.sync]++;
     return out;
 });
 const itemOfPc = computed(() => Object.fromEntries(props.shelves.filter((s) => s.kind === 'pc' && s.computer_id).map((s) => [s.computer_id, s])));
@@ -535,6 +581,14 @@ const viewStorey = ref(storeyOf(here.value ?? targetShelf.value ?? null));
 const viewHall = ref(null); // hall id, or null for the whole floor
 const hallMenu = ref(false);
 const separate = computed(() => !!props.floor.separate_halls && halls.value.length > 1);
+/** «كبّر القاعة» (2026-11-09, by request): choosing a hall brings it to fill the map. */
+function zoomHall(h) {
+    setTimeout(() => {
+        if (!h) { map.value?.overview(); return; }
+        const q = outline(h);
+        map.value?.focusBox?.({ x0: Math.min(...q.map((p) => p.x)), y0: Math.min(...q.map((p) => p.y)), x1: Math.max(...q.map((p) => p.x)), y1: Math.max(...q.map((p) => p.y)) });
+    }, 120);
+}
 const storeyHalls = computed(() => halls.value.filter((h) => storeyOf(h) === viewStorey.value && h.kind === 'hall'));
 function showPlace(p) {
     if (!p) return;
@@ -595,7 +649,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
             </div>
         </template>
 
-        <div :class="embedded ? '' : 'space-y-4 p-4 sm:p-6'">
+        <div :class="embedded ? '' : 'space-y-3 p-2 sm:p-3'">
 
             <div v-if="!bookcases.length" class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center dark:border-gray-600 dark:bg-gray-800">
                 <MapIcon class="mx-auto h-12 w-12 text-gray-300" />
@@ -607,9 +661,9 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
             </div>
 
             <Teleport v-else to="body" :disabled="!full">
-            <div class="overflow-hidden bg-gray-100 dark:bg-gray-900" :class="full ? 'fixed inset-0 z-40 h-dvh' : embedded ? 'relative h-dvh' : 'relative h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
-                <HallMap2D v-if="flat" ref="map" :floor="floor" :shelves="viewShelves" :statuses="statuses" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
-                <HallMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :statuses="statuses" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
+            <div class="overflow-hidden bg-gray-100 dark:bg-gray-900" :class="full ? 'fixed inset-0 z-40 h-dvh' : embedded ? 'relative h-dvh' : 'relative h-[calc(100dvh-7.5rem)] min-h-[460px] sm:h-[calc(100dvh-8.5rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
+                <HallMap2D v-if="flat" ref="map" :floor="floor" :shelves="viewShelves" :statuses="statuses" :alerts="alertPaths" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
+                <HallMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :statuses="statuses" :alerts="alertPaths" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
 
                 <!-- Search, or the Waze-style instruction banner while walking. -->
                 <div class="pointer-events-none absolute inset-x-0 top-0 p-3">
@@ -655,6 +709,20 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                             <MapPinIcon class="h-4 w-4" /> {{ atText(shelfById[here.shelfId] ?? { code: here.code }) }}
                             <button @click="resetHere" class="-me-1 rounded-full p-0.5 hover:bg-white/20" :aria-label="t('library.map.from_entrance', 'من المدخل')"><XMarkIcon class="h-4 w-4" /></button>
                         </div>
+                        <!-- «اشتباه غش»: the computers to go to now; the red way on the map starts at the invigilator's desk. -->
+                        <div v-if="suspectList.length && !showProblems && !(showResults && q.trim().length >= 1)" class="mt-2 space-y-1.5">
+                            <button v-for="c in suspectList.slice(0, 3)" :key="'su' + c.id" @click="choosePc(c)" class="flex w-full items-center gap-2.5 rounded-2xl bg-purple-700 px-3 py-2 text-start text-white shadow-lg ring-2 ring-purple-300/60">
+                                <span class="relative flex h-8 w-8 shrink-0 items-center justify-center">
+                                    <span class="absolute inset-0 animate-ping rounded-full bg-white/40" />
+                                    <ExclamationTriangleIcon class="relative h-6 w-6" />
+                                </span>
+                                <span class="min-w-0 flex-1">
+                                    <span class="block truncate text-sm font-bold">{{ c.state === 'locked' && !c.suspect ? t('hallmap.st.locked', 'محاولة مقفلة') : t('hallmap.st.suspect', 'اشتباه غش') }} · {{ c.label }}<template v-if="c.student"> · {{ c.student.name }}</template></span>
+                                    <span class="block truncate text-xs opacity-90">{{ c.suspect ? suspectText(c) : PROBLEMS.locked() }} — {{ t('hallmap.from_desk', 'الطريق الأحمر من مكتب المراقب') }}</span>
+                                </span>
+                            </button>
+                            <p v-if="suspectList.length > 3" class="text-center text-xs font-semibold text-purple-800 dark:text-purple-200">{{ t('hallmap.more_suspects', 'و:n حاسبة أخرى في قائمة المشاكل', { n: suspectList.length - 3 }) }}</p>
+                        </div>
                         <div v-if="showResults && q.trim().length >= 1" class="absolute inset-x-0 top-full z-20 mt-2 max-h-[50vh] overflow-y-auto rounded-2xl bg-white shadow-xl ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/10">
                             <p v-if="!results.length" class="p-4 text-center text-sm text-gray-500">{{ t('library.no_results', 'لا توجد نتائج') }}</p>
                             <button v-for="c in results" :key="c.id" @click="choosePc(c)" class="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-2.5 text-start last:border-0 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/60">
@@ -673,7 +741,7 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                                 <span class="mt-1 h-3 w-3 shrink-0 rounded-full" :style="{ background: (STATES[c.state] ?? STATES.off).color }" />
                                 <span class="min-w-0 flex-1">
                                     <span class="block text-sm font-semibold">{{ c.label }}<span v-if="c.room" class="font-normal text-gray-500"> · {{ c.room }}</span><span v-if="c.student || c.expected" class="font-normal text-gray-500"> · {{ (c.student ?? c.expected).name }}</span></span>
-                                    <span v-for="p in c.problems" :key="p" class="block text-xs text-red-700 dark:text-red-300">{{ PROBLEMS[p]?.() ?? p }}<template v-if="p === 'clock'"> ({{ clockText(c.clock) }})</template></span>
+                                    <span v-for="p in c.problems" :key="p" class="block text-xs text-red-700 dark:text-red-300">{{ PROBLEMS[p]?.() ?? p }}<template v-if="p === 'clock'"> ({{ clockText(c.clock) }})</template><template v-if="p === 'suspect'"> ({{ suspectText(c) }})</template></span>
                                     <span v-if="!c.item" class="text-[11px] text-amber-600">{{ t('hallmap.not_on_map', 'غير موضوعة على الخريطة') }}</span>
                                 </span>
                             </button>
@@ -703,20 +771,20 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                 </div>
 
                 <!-- Floor of the building and, with «كل قاعة مستقلة», the hall shown. -->
-                <div v-if="(multiStorey || separate) && !walking" class="absolute start-3 top-24 flex max-w-[45%] flex-col items-start gap-1.5">
+                <div v-if="(multiStorey || storeyHalls.length > 1) && !walking" class="absolute start-3 top-24 flex max-w-[45%] flex-col items-start gap-1.5">
                     <div v-if="multiStorey" class="flex flex-col overflow-hidden rounded-xl bg-white/95 shadow ring-1 ring-black/5 dark:bg-gray-800/95 dark:ring-white/10">
                         <button v-for="(n, i) in storeys" :key="i" @click="viewStorey = storeys.length - 1 - i; viewHall = null"
                             class="px-3 py-1.5 text-start text-xs font-semibold" :class="viewStorey === storeys.length - 1 - i ? 'bg-[#1f2a44] text-white' : 'hover:bg-gray-100 dark:hover:bg-gray-700'">
                             {{ storeyName(storeys.length - 1 - i) }}
                         </button>
                     </div>
-                    <div v-if="separate && storeyHalls.length > 1" class="relative">
+                    <div v-if="storeyHalls.length > 1" class="relative">
                         <button @click="hallMenu = !hallMenu" class="flex max-w-full items-center gap-1 truncate rounded-xl bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white shadow" dir="auto">
                             {{ viewHall ? shelfById[viewHall]?.code : t('library.map.all_halls', 'كل القاعات') }} <span class="opacity-80">▾</span>
                         </button>
                         <div v-if="hallMenu" class="mt-1 flex max-h-56 flex-col overflow-y-auto rounded-xl bg-white/95 shadow ring-1 ring-black/5 dark:bg-gray-800/95 dark:ring-white/10">
-                            <button @click="viewHall = null; hallMenu = false" class="px-3 py-1.5 text-start text-xs" :class="!viewHall ? 'font-semibold text-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700'">{{ t('library.map.all_halls', 'كل القاعات') }}</button>
-                            <button v-for="h in storeyHalls" :key="h.id" @click="viewHall = h.id; hallMenu = false" class="truncate px-3 py-1.5 text-start text-xs" :class="viewHall === h.id ? 'font-semibold text-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700'" dir="auto">{{ h.code }}</button>
+                            <button @click="viewHall = null; hallMenu = false; zoomHall(null)" class="px-3 py-1.5 text-start text-xs" :class="!viewHall ? 'font-semibold text-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700'">{{ t('library.map.all_halls', 'كل القاعات') }}</button>
+                            <button v-for="h in storeyHalls" :key="h.id" @click="viewHall = h.id; hallMenu = false; zoomHall(h)" class="truncate px-3 py-1.5 text-start text-xs" :class="viewHall === h.id ? 'font-semibold text-blue-600' : 'hover:bg-gray-100 dark:hover:bg-gray-700'" dir="auto">{{ h.code }}</button>
                         </div>
                     </div>
                 </div>
@@ -759,7 +827,9 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                                             <template v-if="pickedPc.attempt?.seconds_left !== null && pickedPc.attempt?.seconds_left !== undefined"><dt class="text-gray-500">{{ t('hallmap.left', 'الوقت المتبقي') }}</dt><dd class="font-mono" dir="ltr">{{ fmtLeft(pickedPc.attempt.seconds_left) }}</dd></template>
                                             <template v-if="pickedPc.attempt"><dt class="text-gray-500">{{ t('hallmap.answered', 'أجاب عن') }}</dt><dd>{{ pickedPc.attempt.answered }}</dd></template>
                                             <dt class="text-gray-500">{{ t('hallmap.last_seen', 'آخر اتصال') }}</dt><dd>{{ ago(pickedPc.seen) }}</dd>
-                                            <template v-if="pickedPc.clock !== null && pickedPc.clock !== undefined"><dt class="text-gray-500"><ClockIcon class="inline h-3.5 w-3.5" /> {{ t('hallmap.clock', 'ساعة الحاسبة') }}</dt><dd :class="Math.abs(pickedPc.clock) > 60 ? 'font-semibold text-red-600' : ''">{{ Math.abs(pickedPc.clock) <= 60 ? t('hallmap.clock_ok', 'مضبوطة') : clockText(pickedPc.clock) }}</dd></template>
+                                            <template v-if="pickedPc.clock !== null && pickedPc.clock !== undefined"><dt class="text-gray-500"><ClockIcon class="inline h-3.5 w-3.5" /> {{ t('hallmap.clock', 'ساعة الحاسبة') }}</dt><dd class="font-medium" :class="SYNC[pickedPc.sync]?.color">{{ SYNC[pickedPc.sync]?.label() ?? '' }}<template v-if="pickedPc.clock"> ({{ clockText(pickedPc.clock) }})</template></dd></template>
+                                            <dt class="text-gray-500">{{ t('hallmap.link', 'الاتصال بالسيرفر') }}</dt><dd class="flex items-center gap-1.5 font-medium" :class="pickedPc.linked ? 'text-emerald-600' : 'text-gray-500'"><span class="relative flex h-2.5 w-2.5"><span v-if="pickedPc.linked" class="absolute inset-0 animate-ping rounded-full bg-emerald-400" /><span class="relative h-2.5 w-2.5 rounded-full" :class="pickedPc.linked ? 'bg-emerald-500' : 'bg-gray-400'" /></span>{{ pickedPc.linked ? t('hallmap.linked', 'متصلة الآن') : t('hallmap.not_linked_now', 'غير متصلة') }}</dd>
+                                            <template v-if="pickedPc.suspect"><dt class="text-gray-500">{{ t('hallmap.st.suspect', 'اشتباه غش') }}</dt><dd class="font-semibold text-purple-700 dark:text-purple-300">{{ suspectText(pickedPc) }}</dd></template>
                                             <template v-if="pickedPc.attempt?.locked?.code"><dt class="text-gray-500">{{ t('exam.resume_code', 'رمز المتابعة') }}</dt><dd class="font-mono font-bold" dir="ltr">{{ pickedPc.attempt.locked.code }}</dd></template>
                                         </dl>
                                         <div class="mt-2 flex flex-wrap gap-1.5">
@@ -828,6 +898,12 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                 <div v-else class="pointer-events-none absolute inset-x-0 bottom-0 p-3">
                     <div class="pointer-events-auto mx-auto flex max-w-3xl flex-wrap justify-center gap-1.5 rounded-2xl bg-white/90 px-3 py-2 text-xs shadow dark:bg-gray-800/90">
                         <span v-for="l in legend" :key="l.key" class="inline-flex items-center gap-1"><span class="h-2.5 w-2.5 rounded-full" :style="{ background: l.color }" /> {{ l.label() }} <b>{{ l.n }}</b></span>
+                        <span v-if="syncCounts.ok + syncCounts.drift + syncCounts.wrong" class="inline-flex items-center gap-1.5 border-s border-gray-300 ps-2 dark:border-gray-600">
+                            <ClockIcon class="h-3.5 w-3.5" /> {{ t('hallmap.clocks', 'الساعات:') }}
+                            <span class="text-emerald-600">{{ t('hallmap.sync_ok_n', ':n متزامنة', { n: syncCounts.ok }) }}</span>
+                            <span v-if="syncCounts.drift" class="text-amber-600">· {{ t('hallmap.sync_drift_n', ':n بفرق بسيط', { n: syncCounts.drift }) }}</span>
+                            <span v-if="syncCounts.wrong" class="font-semibold text-red-600">· {{ t('hallmap.sync_wrong_n', ':n غير مضبوطة', { n: syncCounts.wrong }) }}</span>
+                        </span>
                         <span v-if="!legend.length" class="text-gray-500">{{ t('hallmap.no_computers', 'لا توجد حاسبات مسجّلة بعد') }}</span>
                         <span v-if="unplaced" class="text-amber-600">· {{ t('hallmap.unplaced', ':n حاسبة غير موضوعة على الخريطة', { n: unplaced }) }}</span>
                     </div>

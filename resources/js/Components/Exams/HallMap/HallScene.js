@@ -204,6 +204,9 @@ export class HallScene {
         this.beacons = new THREE.Group();
         this.scene.add(this.beacons);
         this.beaconIds = null;
+        // «اشتباه غش» (2026-11-09): the ways from the invigilator's desk to the computers to look at.
+        this.alertGroup = new THREE.Group();
+        this.scene.add(this.alertGroup);
 
         const hemi = new THREE.HemisphereLight(0xffffff, 0x8a7f70, 1.6);
         this.scene.add(hemi);
@@ -303,10 +306,19 @@ export class HallScene {
         const { width: W, depth: D } = floor;
 
         const halls = items.filter((i) => (i.kind === 'hall' || i.kind === 'corridor') && i.points?.length >= 3);
-        // The overview frames what is drawn: the halls when there are any, else the room.
+        // The overview frames what is drawn: the halls when there are any, else the room. Since
+        // 2026-11-09 (by request: «more of the hall on the screen») only the halls with computers
+        // in them, not the corridors round them.
         this.planFrame = { x0: 0, y0: 0, x1: W, y1: D };
         if (halls.length) {
-            const pts = halls.flatMap((h) => {
+            const pcs = items.filter((i) => i.kind === 'pc');
+            const box = (h) => {
+                const a = ((h.rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+                const q = h.points.map(([px, py]) => ({ x: h.x + px * c - py * sn, y: h.y + px * sn + py * c }));
+                return { x0: Math.min(...q.map((p) => p.x)), y0: Math.min(...q.map((p) => p.y)), x1: Math.max(...q.map((p) => p.x)), y1: Math.max(...q.map((p) => p.y)) };
+            };
+            const busy = halls.filter((h) => h.kind === 'hall' && pcs.some((p) => { const b = box(h); return p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1; }));
+            const pts = (busy.length ? busy : halls).flatMap((h) => {
                 const a = ((h.rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
                 return h.points.map(([px, py]) => ({ x: h.x + px * c - py * sn, y: h.y + px * sn + py * c }));
             });
@@ -699,6 +711,32 @@ export class HallScene {
         it.screenMat.emissive.set(color);
         it.screenMat.emissiveIntensity = st ? 0.55 : 0.2;
         it.accentMat.color.set(color);
+        const s0 = it.data;
+        // «متصلة بالسيرفر» (2026-11-09): a green light on top of the screen that beats while the
+        // computer talks to the server; grey when it does not.
+        if (this.statusFx && st && st.link !== undefined && st.link !== null) {
+            const a = ((s0.rotation || 0) * Math.PI) / 180;
+            const back = s0.double_sided ? 0 : -s0.depth * 0.2;
+            const led = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), new THREE.MeshBasicMaterial({ color: st.link ? '#22c55e' : '#9ca3af', transparent: true }));
+            led.position.copy(this.world(s0.x - Math.sin(a) * back, s0.y + Math.cos(a) * back, 1.32));
+            if (st.link) {
+                led.userData.beat = { speed: 1.6 };
+                const wave = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.11, 24), new THREE.MeshBasicMaterial({ color: '#22c55e', transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+                wave.position.copy(led.position);
+                wave.rotation.x = -Math.PI / 2;
+                wave.userData.pulse = { base: 1, speed: 1.6, grow: 2.8 };
+                this.statusFx.add(wave);
+            }
+            this.statusFx.add(led);
+        }
+        if (st?.suspect && this.statusFx) {
+            // A purple marker bouncing over a computer under suspicion.
+            const mark = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.45, 24), new THREE.MeshStandardMaterial({ color: '#9333ea', emissive: '#7e22ce', emissiveIntensity: 0.6 }));
+            mark.rotation.x = Math.PI;
+            mark.position.copy(this.world(s0.x, s0.y, 2.1));
+            mark.userData.bob = 2.1;
+            this.statusFx.add(mark);
+        }
         if (st?.alert && this.statusFx) {
             const s = it.data;
             const ring = new THREE.Mesh(new THREE.RingGeometry(0.45, 0.62, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
@@ -945,6 +983,41 @@ export class HallScene {
         ribbonMat.dispose();
     }
 
+    /** «اشتباه غش»: [{ id, points }] red ways from the invigilator's desk to the computers, with a light running along each. */
+    setAlerts(list) {
+        this.clearGroup(this.alertGroup);
+        for (const [n, a] of (list ?? []).entries()) {
+            if (!a.points || a.points.length < 2) continue;
+            const pts = a.points.map((p) => this.world(p.x, p.y, 0.04));
+            const tex = chevronTexture();
+            let length = 0;
+            for (let i = 1; i < pts.length; i++) {
+                const p0 = pts[i - 1], p1 = pts[i];
+                const len = p0.distanceTo(p1);
+                length += len;
+                if (len < 0.01) continue;
+                const t = tex.clone();
+                t.needsUpdate = true;
+                t.repeat.set(1, len / 0.4);
+                const m = new THREE.Mesh(new THREE.PlaneGeometry(0.4, len), new THREE.MeshBasicMaterial({ map: t, color: '#ef4444', transparent: true, depthWrite: false }));
+                m.rotation.x = -Math.PI / 2;
+                m.rotation.z = Math.atan2(p1.x - p0.x, -(p1.z - p0.z)) * -1;
+                m.position.copy(p0.clone().add(p1).multiplyScalar(0.5));
+                m.renderOrder = 6;
+                m.userData.scroll = t;
+                this.alertGroup.add(m);
+            }
+            for (const k of [0, 1]) {
+                const ball = new THREE.Mesh(new THREE.SphereGeometry(0.16, 16, 12), new THREE.MeshBasicMaterial({ color: '#dc2626' }));
+                ball.userData.travel = { pts, length, phase: k * (length + 1.5) / 2 + n * 0.7 };
+                this.alertGroup.add(ball);
+            }
+            const desk = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.05, 24), new THREE.MeshBasicMaterial({ color: '#0f766e' }));
+            desk.position.copy(pts[0]).setY(0.05);
+            this.alertGroup.add(desk);
+        }
+    }
+
     makeAvatar() {
         // A Waze-like puck: white ring, blue arrow pointing where you walk.
         const g = new THREE.Group();
@@ -980,9 +1053,13 @@ export class HallScene {
 
     /** Camera modes: the whole room from above, or chasing the walker. */
     overview(animate = true) {
+        this.focusBox(this.planFrame ?? { x0: 0, y0: 0, x1: this.floorData?.width ?? 20, y1: this.floorData?.depth ?? 14 }, animate);
+    }
+
+    /** The camera framing a part of the plan (a hall), as close as it fits. */
+    focusBox(f, animate = true) {
         this.mode = 'overview';
         this.controls.enabled = true;
-        const f = this.planFrame ?? { x0: 0, y0: 0, x1: this.floorData?.width ?? 20, y1: this.floorData?.depth ?? 14 };
         const W = Math.max(2, f.x1 - f.x0), D = Math.max(2, f.y1 - f.y0);
         const centre = this.floorData ? this.world((f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2) : new THREE.Vector3();
         // Far enough back for the whole room to fit, on a wide screen or a tall phone.
@@ -993,8 +1070,8 @@ export class HallScene {
         const turn = this.camera.aspect < 0.9 && W > D * 1.2;
         const across = turn ? D : W, along = turn ? W : D;
         // Steeper on phones: the plan reads better from above.
-        const steep = this.camera.aspect < 0.9 ? 0.92 : 0.8;
-        const dist = Math.max((along * 1.05 * (turn ? 0.8 : 1)) / 2 / Math.tan(vf / 2), (across * 1.08) / 2 / Math.tan(hf / 2)) + 2;
+        const steep = this.camera.aspect < 0.9 ? 0.93 : 0.86;
+        const dist = Math.max((along * 0.98 * (turn ? 0.8 : 1)) / 2 / Math.tan(vf / 2), (across * 1.02) / 2 / Math.tan(hf / 2)) + 0.8;
         const flat = Math.sqrt(1 - steep * steep);
         const dir = turn ? new THREE.Vector3(-flat, steep, 0) : new THREE.Vector3(0, steep, flat);
         const target = centre.clone().add(turn ? new THREE.Vector3(-along * 0.06, 0, 0) : new THREE.Vector3(0, 0, along * 0.12));
@@ -1073,9 +1150,26 @@ export class HallScene {
         if (this.levelGlow) this.levelGlow.material.opacity = 0.22 + Math.sin(time * 4) * 0.12;
         for (const m of this.statusFx?.children ?? []) {
             const pl = m.userData.pulse;
-            const p = (time % pl.speed) / pl.speed;
-            m.scale.setScalar(pl.base * (1 + p * 0.9));
-            m.material.opacity = 0.85 * (1 - p);
+            if (pl) {
+                const p = (time % pl.speed) / pl.speed;
+                m.scale.setScalar(pl.base * (1 + p * (pl.grow ?? 0.9)));
+                m.material.opacity = 0.85 * (1 - p);
+            }
+            if (m.userData.beat) m.material.opacity = 0.55 + 0.45 * Math.abs(Math.sin((time * Math.PI) / m.userData.beat.speed));
+            if (m.userData.bob !== undefined) { m.position.y = m.userData.bob + Math.abs(Math.sin(time * 3.5)) * 0.25; m.rotation.y = time * 2; }
+        }
+        for (const m of this.alertGroup.children) {
+            if (m.userData.scroll) m.userData.scroll.offset.y -= dt * 2.4;
+            const tr = m.userData.travel;
+            if (tr) {
+                // A red light running from the desk to the computer, again and again.
+                let d = ((time * 2.2 + tr.phase) % (tr.length + 1.5));
+                for (let i = 1; i < tr.pts.length; i++) {
+                    const seg = tr.pts[i - 1].distanceTo(tr.pts[i]);
+                    if (d <= seg || i === tr.pts.length - 1) { m.position.lerpVectors(tr.pts[i - 1], tr.pts[i], Math.min(1, d / (seg || 1))).setY(0.25); break; }
+                    d -= seg;
+                }
+            }
         }
         for (const g of this.beacons.children) {
             for (const m of g.children) {

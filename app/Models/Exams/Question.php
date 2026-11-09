@@ -50,7 +50,7 @@ class Question extends Model
 
     protected $table = 'exam_questions';
 
-    protected $fillable = ['exam_id', 'bank_category_id', 'type', 'format', 'tags', 'difficulty', 'body', 'feedback', 'points', 'settings', 'position'];
+    protected $fillable = ['exam_id', 'bank_category_id', 'type', 'format', 'tags', 'difficulty', 'body', 'feedback', 'points', 'settings', 'position', 'image'];
 
     protected function casts(): array
     {

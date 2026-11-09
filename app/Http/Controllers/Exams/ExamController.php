@@ -312,7 +312,12 @@ class ExamController extends Controller
         }
         // The computer's clock against the server's (only a wrong clock is a problem for the
         // invigilator to know; the timer itself counts from the server).
-        $offset = $request->filled('client_time') ? (int) round(((int) $request->input('client_time') - now()->getTimestampMs()) / 1000) : $attempt->clock_offset;
+        $offset = match (true) {
+            // Measured by the page over the last round trip (the most exact).
+            $request->filled('clock_offset_ms') => (int) round((int) $request->input('clock_offset_ms') / 1000),
+            $request->filled('client_time') => (int) round(((int) $request->input('client_time') - now()->getTimestampMs()) / 1000),
+            default => $attempt->clock_offset,
+        };
         $attempt->forceFill(['last_seen_at' => now(), 'clock_offset' => abs((int) $offset) > 86400 * 400 ? null : $offset])->saveQuietly();
 
         return response()->json([

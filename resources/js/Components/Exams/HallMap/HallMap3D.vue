@@ -15,6 +15,7 @@ const props = defineProps({
     follow: { type: Boolean, default: false },
     beacons: { type: Object, default: null }, // { ids: [], nearest } stickers to make pulse
     statuses: { type: Object, default: null }, // computer id → { color, alert }: the hall's live state
+    alerts: { type: Array, default: () => [] }, // «اشتباه غش»: [{ id, points }] ways from the desk
     // Map editor: drag furniture on the floor (canDrag(id) says if it may move) and right click.
     editable: { type: Boolean, default: false },
     canDrag: { type: Function, default: null },
@@ -48,6 +49,7 @@ onMounted(async () => {
         scene.stock = props.stock ? plain(props.stock) : null;
         scene.setLayout(plain(props.floor), plain(props.shelves));
         scene.setStatuses(props.statuses ? plain(props.statuses) : null);
+        scene.setAlerts(plain(props.alerts ?? []));
         apply();
         themeObserver = new MutationObserver(() => scene?.dark !== isDark() && scene?.applyTheme(isDark()));
         themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
@@ -70,6 +72,7 @@ function apply() {
 
 watch(() => [props.floor, props.shelves], () => { scene?.setLayout(plain(props.floor), plain(props.shelves)); scene?.setStatuses(props.statuses ? plain(props.statuses) : null); }, { deep: true });
 watch(() => props.statuses, (s) => scene?.setStatuses(s ? plain(s) : null), { deep: true });
+watch(() => props.alerts, (a) => scene?.setAlerts(plain(a ?? [])), { deep: true });
 watch(() => [props.highlight, props.route], () => {
     if (!scene) return;
     scene.highlight(props.highlight?.id ?? null, props.highlight?.level ?? null, props.highlight?.cover ?? null);
@@ -81,6 +84,7 @@ watch(() => props.follow, (f) => (f ? scene?.follow() : scene?.overview()));
 
 const api = {
     overview: () => scene?.overview(),
+    focusBox: (b) => scene?.focusBox(b),
     focusShelf: (id) => scene?.focusShelf(id),
 };
 defineExpose(api);

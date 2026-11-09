@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue';
 import { Head, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
+import OsceJourney from '@/Components/Exams/OsceJourney.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, CheckIcon, MinusIcon, XMarkIcon, UserIcon, ClockIcon, PlayIcon, StopIcon } from '@heroicons/vue/24/outline';
 
@@ -31,6 +32,12 @@ async function save() {
     try {
         const r = (await window.axios.post(route('exams.monitor.osce.mark', [props.station.id, current.value.id]), { scores: scores.value, global_rating: globalRating.value, note: note.value })).data;
         current.value.mark = { scores: [...scores.value], global: globalRating.value, note: note.value, total: r.total };
+        // This station done on the candidate's route, with the time spent here.
+        const step = current.value.journey?.find((x) => x.station_id === props.station.id);
+        if (step) {
+            if (step.state === 'now' && step.started_at) step.seconds = Math.round((Date.now() - new Date(step.started_at).getTime()) / 1000);
+            Object.assign(step, { state: 'done', total: r.total });
+        }
         saved.value = true;
     } finally {
         saving.value = false;
@@ -41,6 +48,12 @@ const left = ref(null);
 let timer = null;
 function startClock() {
     clearInterval(timer);
+    // The candidate in front of the assessor came in now: their time at this station starts.
+    if (current.value) {
+        const step = current.value.journey?.find((x) => x.station_id === props.station.id);
+        if (step && step.state !== 'done') Object.assign(step, { state: 'now', started_at: new Date().toISOString(), seconds: 0 });
+        window.axios.post(route('exams.monitor.osce.start', [props.station.id, current.value.id])).catch(() => {});
+    }
     left.value = props.station.minutes * 60;
     timer = setInterval(() => { left.value--; if (left.value <= 0) { clearInterval(timer); try { navigator.vibrate?.(500); } catch {} } }, 1000);
 }
@@ -79,6 +92,8 @@ const clock = computed(() => (left.value === null ? null : Math.floor(Math.max(0
                     <div class="min-w-0 flex-1"><p class="text-lg font-semibold">{{ current.name }}</p><p v-if="current.number" class="font-mono text-sm text-gray-500">{{ current.number }}</p></div>
                     <p class="text-2xl font-bold">{{ total }}<span class="text-sm text-gray-400"> / {{ station.max }}</span></p>
                 </div>
+                <OsceJourney v-if="current.journey?.length" :journey="current.journey" :here="station.id" class="rounded-lg bg-gray-50 p-2 dark:bg-gray-900/40" />
+                <p v-if="left === null && current.mark === null" class="text-xs text-blue-700 dark:text-blue-300">{{ t('exam.osce_start_hint', 'اضغط زر الوقت عند دخول المرشّح لتُحسب مدة بقائه في المحطة على مساره.') }}</p>
                 <div v-for="(c, i) in station.checklist" :key="i" class="flex flex-wrap items-center gap-2 border-t border-gray-100 pt-2 text-sm dark:border-gray-700">
                     <span class="min-w-0 flex-1">{{ c.item }} <span class="text-xs text-gray-400">({{ c.points }})</span></span>
                     <button type="button" @click="scores[i] = c.points" class="flex items-center gap-1 rounded-lg px-3 py-2" :class="scores[i] === c.points ? 'bg-emerald-600 text-white' : 'border border-gray-300 dark:border-gray-600'"><CheckIcon class="h-4 w-4" /> {{ t('exam.osce_done', 'أدّاه') }}</button>

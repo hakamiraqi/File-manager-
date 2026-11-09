@@ -18,6 +18,7 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
         Route::post('/{exam}/duplicate', [ManageController::class, 'duplicate'])->whereNumber('exam')->name('duplicate');
         Route::post('/{exam}/import', [\App\Http\Controllers\Exams\ImportController::class, 'questions'])->whereNumber('exam')->name('import');
         Route::get('/import/template', [\App\Http\Controllers\Exams\ImportController::class, 'questionsTemplate'])->name('import.template');
+        Route::get('/{exam}/questions-export', [\App\Http\Controllers\Exams\ImportController::class, 'questionsExport'])->whereNumber('exam')->name('questions.export');
         Route::post('/templates', [ManageController::class, 'storeTemplate'])->name('templates.store');
         Route::post('/{exam}/review', [ManageController::class, 'review'])->whereNumber('exam')->name('review');
         Route::get('/{exam}/osce', [\App\Http\Controllers\Exams\OsceController::class, 'manage'])->whereNumber('exam')->name('osce');
@@ -157,6 +158,7 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/osce', [$osce, 'mine'])->name('osce');
     Route::get('/osce/{station}', [$osce, 'station'])->name('osce.station');
     Route::post('/osce/{station}/marks/{user}', [$osce, 'mark'])->name('osce.mark');
+    Route::post('/osce/{station}/start/{user}', [$osce, 'start'])->name('osce.start');
     Route::post('/computers', [$pcs, 'store'])->name('computers.store');
     Route::post('/computers/arrange', [$pcs, 'arrange'])->name('computers.arrange');
     Route::get('/computers/kiosk', [$pcs, 'kiosk'])->name('computers.kiosk');

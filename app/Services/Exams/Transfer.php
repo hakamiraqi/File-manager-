@@ -30,7 +30,7 @@ class Transfer
         'is_practice', 'navigation', 'calculator', 'resume_code_required', 'anonymous_marking', 'appeals_open',
     ];
 
-    private const QUESTION_FIELDS = ['type', 'format', 'body', 'feedback', 'points', 'settings', 'tags', 'difficulty'];
+    private const QUESTION_FIELDS = ['type', 'format', 'body', 'feedback', 'points', 'settings', 'tags', 'difficulty', 'image'];
 
     public function exportExam(Exam $exam): array
     {
@@ -245,11 +245,13 @@ class Transfer
         if (! empty($q->settings['image'])) {
             $media[] = $q->settings['image'];
         }
+        // The question's picture and its choices' pictures travel in the package too.
+        array_push($media, ...array_filter([$q->image, ...$q->choices->pluck('image')->all()]));
         foreach ((array) $q->body + (array) $q->feedback as $text) {
             preg_match_all('#/exams/images/([a-f0-9]{64}\.[a-z0-9]{2,4})#', (string) $text, $m);
             array_push($media, ...$m[1]);
         }
-        $row['choices'] = $q->choices->map(fn (Choice $c) => ['body' => $c->body, 'match' => $c->match, 'is_correct' => $c->is_correct])->values()->all();
+        $row['choices'] = $q->choices->map(fn (Choice $c) => ['body' => $c->body, 'match' => $c->match, 'is_correct' => $c->is_correct] + ($c->image ? ['image' => $c->image] : []))->values()->all();
 
         return $row;
     }
@@ -259,11 +261,15 @@ class Transfer
         $type = in_array($row['type'] ?? null, Question::TYPES, true) ? $row['type'] : Question::DESCRIPTION;
         $q = Question::create(['type' => $type, 'exam_id' => $examId, 'bank_category_id' => $categoryId, 'position' => $position]
             + array_intersect_key($row, array_flip(self::QUESTION_FIELDS)));
+        if ($q->image && ! ManageController::picture($q->image)) {
+            $q->update(['image' => null]);
+        }
         if ($q->format === 'html') {
             $q->update(['body' => array_map(fn ($t) => HtmlCleaner::clean((string) $t), (array) $q->body)]);
         }
         foreach ((array) ($row['choices'] ?? []) as $j => $c) {
-            Choice::create(['exam_question_id' => $q->id, 'body' => $c['body'] ?? [], 'match' => $c['match'] ?? null, 'is_correct' => (bool) ($c['is_correct'] ?? false), 'position' => $j]);
+            Choice::create(['exam_question_id' => $q->id, 'body' => $c['body'] ?? [], 'match' => $c['match'] ?? null, 'is_correct' => (bool) ($c['is_correct'] ?? false), 'position' => $j,
+                'image' => ManageController::picture($c['image'] ?? null)]);
         }
 
         return $q;

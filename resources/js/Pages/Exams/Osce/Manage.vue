@@ -1,6 +1,7 @@
 <script setup>
-import { computed } from 'vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import OsceJourney from '@/Components/Exams/OsceJourney.vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, PlusIcon, TrashIcon, ArrowUpIcon, ArrowDownIcon, ClipboardDocumentCheckIcon } from '@heroicons/vue/24/outline';
@@ -21,6 +22,13 @@ const at = (i, r) => props.stations[(i + r) % props.stations.length]?.name;
 const total = (c) => Object.values(c.marks).reduce((n, m) => n + (m ? Number(m.total) : 0), 0);
 const done = (c) => Object.values(c.marks).filter(Boolean).length;
 const input = 'rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700';
+// «مسار المرشّح»: tap a candidate to see the route; refreshed while someone is at a station.
+const openRoute = ref(null);
+let refresh = null;
+onMounted(() => (refresh = setInterval(() => {
+    if (props.candidates.some((c) => c.journey?.some((s) => s.state === 'now'))) router.reload({ only: ['candidates'], preserveScroll: true, preserveState: true });
+}, 15000)));
+onBeforeUnmount(() => clearInterval(refresh));
 </script>
 
 <template>
@@ -68,15 +76,22 @@ const input = 'rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-g
                         <tr><th class="px-3 py-2 text-start">{{ t('exam.candidate', 'المرشّح') }}</th>
                             <th v-for="r in rounds" :key="'r' + r" class="px-2 py-2">{{ t('exam.round', 'الدور :n', { n: r }) }}</th>
                             <th v-for="s in stations" :key="s.id" class="px-2 py-2">{{ s.name }}<span class="block font-normal">/ {{ s.max }}</span></th>
-                            <th class="px-3 py-2">{{ t('exam.total', 'المجموع') }} / {{ max }}</th></tr>
+                            <th class="px-3 py-2">{{ t('exam.total', 'المجموع') }} / {{ max }}</th>
+                            <th class="px-3 py-2">{{ t('exam.osce_route', 'مسار المرشّح') }}</th></tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(c, i) in candidates" :key="c.id" class="border-t border-gray-100 dark:border-gray-700">
+                        <template v-for="(c, i) in candidates" :key="c.id">
+                        <tr class="cursor-pointer border-t border-gray-100 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/40" @click="openRoute = openRoute === c.id ? null : c.id">
                             <td class="px-3 py-1.5"><p class="font-medium">{{ c.name }}</p><p v-if="c.number" class="font-mono text-xs text-gray-500">{{ c.number }}</p></td>
                             <td v-for="r in rounds" :key="'r' + r" class="px-2 py-1.5 text-center text-xs text-gray-500">{{ at(i, r - 1) }}</td>
                             <td v-for="s in stations" :key="s.id" class="px-2 py-1.5 text-center">{{ c.marks[s.id]?.total ?? '—' }}</td>
                             <td class="px-3 py-1.5 text-center font-semibold">{{ total(c) }}<span v-if="done(c) < stations.length" class="block text-[10px] font-normal text-amber-600">{{ t('exam.stations_left', 'بقيت :n محطة', { n: stations.length - done(c) }) }}</span></td>
+                            <td class="px-3 py-1.5"><OsceJourney :journey="c.journey ?? []" compact /></td>
                         </tr>
+                        <tr v-if="openRoute === c.id" class="bg-gray-50/60 dark:bg-gray-900/30">
+                            <td :colspan="3 + rounds + stations.length" class="px-3 py-3"><OsceJourney :journey="c.journey ?? []" /></td>
+                        </tr>
+                        </template>
                     </tbody>
                 </table>
             </section>

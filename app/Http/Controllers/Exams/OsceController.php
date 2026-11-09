@@ -8,6 +8,7 @@ use App\Models\Exams\Attempt;
 use App\Models\Exams\Exam;
 use App\Models\Exams\OsceMark;
 use App\Models\Exams\OsceStation;
+use App\Models\Exams\OsceVisit;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -32,11 +33,14 @@ class OsceController extends Controller
         $candidates = $exam->roster()->values();
         $marks = OsceMark::whereIn('exam_osce_station_id', $stations->pluck('id'))->get()->groupBy('user_id');
 
+        $journeys = self::journeys($exam, $candidates, $stations);
+
         return Inertia::render('Exams/Osce/Manage', [
             'exam' => ['id' => $exam->id, 'title' => $exam->text('title')],
             'stations' => $stations->map(fn (OsceStation $s) => ['id' => $s->id, 'name' => $s->name, 'minutes' => $s->minutes, 'checklist' => $s->checklist,
                 'assessor_email' => $s->assessor?->email, 'assessor' => $s->assessor?->name, 'max' => $s->maxScore()]),
             'candidates' => $candidates->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'number' => $u->student_number,
+                'journey' => $journeys[$u->id] ?? [],
                 'marks' => $stations->mapWithKeys(fn ($s) => [$s->id => ($m = ($marks[$u->id] ?? collect())->firstWhere('exam_osce_station_id', $s->id))
                     ? ['total' => $m->total, 'global' => $m->global_rating] : null])]),
             'max' => $stations->sum(fn ($s) => $s->maxScore()),
@@ -97,11 +101,13 @@ class OsceController extends Controller
         abort_unless($station->isMarkableBy($request->user()), 404);
         $exam = $station->exam;
         $marks = $station->marks()->get()->keyBy('user_id');
+        $roster = $exam->roster()->values();
+        $journeys = self::journeys($exam, $roster, $exam->osceStations()->get());
 
         return Inertia::render('Exams/Osce/Station', [
             'station' => ['id' => $station->id, 'name' => $station->name, 'minutes' => $station->minutes, 'checklist' => $station->checklist, 'max' => $station->maxScore(),
                 'exam' => $exam->text('title')],
-            'candidates' => $exam->roster()->values()->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'number' => $u->student_number, 'photo' => $u->photoUrl(),
+            'candidates' => $roster->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'number' => $u->student_number, 'photo' => $u->photoUrl(), 'journey' => $journeys[$u->id] ?? [],
                 'mark' => ($m = $marks[$u->id] ?? null) ? ['scores' => $m->scores, 'global' => $m->global_rating, 'note' => $m->note, 'total' => $m->total] : null]),
         ]);
     }
@@ -119,10 +125,63 @@ class OsceController extends Controller
             'assessor_id' => $request->user()->id, 'scores' => $scores->all(), 'global_rating' => $data['global_rating'] ?? null,
             'note' => $data['note'] ?? null, 'total' => round($scores->sum(), 2),
         ]);
+        // The visit ends when the assessor first saves the checklist.
+        $visit = OsceVisit::firstOrNew(['exam_osce_station_id' => $station->id, 'user_id' => $user->id]);
+        $visit->finished_at ??= now();
+        $visit->save();
         $attempt = self::syncAttempt($station->exam, $user->id);
         ActivityLog::record('exam.osce_mark', "قيّم {$user->name} في محطة \"{$station->name}\"", $station->exam);
 
         return response()->json(['total' => round($scores->sum(), 2), 'exam_total' => $attempt->score]);
+    }
+
+    /** The candidate came into the station: the assessor started the station's clock for them. */
+    public function start(Request $request, OsceStation $station, User $user): JsonResponse
+    {
+        abort_unless($station->isMarkableBy($request->user()), 404);
+        abort_unless($station->exam->roster()->contains('id', $user->id), 422, 'ليس من مرشّحي هذا الامتحان.');
+        $visit = OsceVisit::updateOrCreate(['exam_osce_station_id' => $station->id, 'user_id' => $user->id], ['started_at' => now(), 'finished_at' => null]);
+
+        return response()->json(['started_at' => $visit->started_at->toIso8601String()]);
+    }
+
+    /**
+     * «مسار المرشّح» (2026-11-09, by request): each candidate's stations in the order of the
+     * rotation (in round r, candidate i is at station (i + r) mod n), with the time spent and the
+     * mark at each; where they are now, and what is next.
+     *
+     * @return array<int, array<int, array>> user id → the stations in order
+     */
+    public static function journeys(Exam $exam, \Illuminate\Support\Collection $candidates, \Illuminate\Support\Collection $stations): array
+    {
+        $stations = $stations->values();
+        $n = $stations->count();
+        if (! $n) {
+            return [];
+        }
+        $ids = $stations->pluck('id');
+        $marks = OsceMark::whereIn('exam_osce_station_id', $ids)->get()->groupBy('user_id');
+        $visits = OsceVisit::whereIn('exam_osce_station_id', $ids)->get()->groupBy('user_id');
+        $out = [];
+        foreach ($candidates->values() as $i => $u) {
+            $mine = $marks[$u->id] ?? collect();
+            $been = $visits[$u->id] ?? collect();
+            $path = [];
+            for ($r = 0; $r < $n; $r++) {
+                $s = $stations[($i + $r) % $n];
+                $m = $mine->firstWhere('exam_osce_station_id', $s->id);
+                $v = $been->firstWhere('exam_osce_station_id', $s->id);
+                $path[] = [
+                    'station_id' => $s->id, 'name' => $s->name, 'minutes' => $s->minutes, 'max' => $s->maxScore(),
+                    'total' => $m?->total, 'global' => $m?->global_rating,
+                    'seconds' => $v?->seconds(), 'started_at' => $v?->started_at?->toIso8601String(),
+                    'state' => $m ? 'done' : ($v?->started_at && ! $v->finished_at ? 'now' : 'next'),
+                ];
+            }
+            $out[$u->id] = $path;
+        }
+
+        return $out;
     }
 
     /** The candidate's total over all stations, kept as their attempt (unfinished until every station marked). */

@@ -189,8 +189,11 @@ class HallMapController extends Controller
     /** A hall computer saying it is on: every page of the site sends this every half minute. */
     public function ping(Request $request): JsonResponse
     {
-        $pc = HallMap::heard((string) $request->ip(), $request->integer('t') ?: null, $request->userAgent(), $request->user()?->id);
+        // «o»: how far the computer's clock is ahead of the server's, in ms, measured by the page
+        // over the last round trip (half the trip taken off), sent with the next ping.
+        $pc = HallMap::heard((string) $request->ip(), $request->integer('t') ?: null, $request->userAgent(), $request->user()?->id,
+            $request->filled('o') ? (int) $request->input('o') : null);
 
-        return response()->json(['computer' => $pc?->label]);
+        return response()->json(['computer' => $pc?->label, 'server' => now()->getTimestampMs()]);
     }
 }

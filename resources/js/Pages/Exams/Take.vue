@@ -1,5 +1,6 @@
 <script setup>
 import RichText from '@/Components/Exams/RichText.vue';
+import Picture from '@/Components/Exams/Picture.vue';
 import DragText from '@/Components/Exams/DragText.vue';
 import DragImage from '@/Components/Exams/DragImage.vue';
 import AudioRecorder from '@/Components/Exams/AudioRecorder.vue';
@@ -239,6 +240,7 @@ async function check(q) {
     }
 }
 const choiceText = (q, id) => q.choices.find((c) => c.id === id)?.body ?? '';
+const choicePicture = (q, id) => q.choices.find((c) => c.id === id)?.picture ?? null;
 const words = (text) => (text.trim() ? text.trim().split(/\s+/).length : 0);
 
 // ---- Navigation: one question at a time ----
@@ -373,7 +375,11 @@ const announcements = ref([]);
 const seenNotes = new Set();
 async function ping() {
     try {
-        const res = await window.axios.post(route('exams.attempts.ping', props.attempt.id), { client_time: Date.now() });
+        const t0 = Date.now();
+        const res = await window.axios.post(route('exams.attempts.ping', props.attempt.id), { client_time: t0, ...(clockOffset !== null ? { clock_offset_ms: Math.round(clockOffset) } : {}) });
+        const t1 = Date.now();
+        // The computer's clock against the server's, over the round trip (sent with the next ping).
+        if (res.data.server_time && t1 - t0 < 5000) clockOffset = (t0 + t1) / 2 - res.data.server_time;
         if (res.data.closed) return finish(true);
         locked.value = !!res.data.locked;
         help.value = !!res.data.help;
@@ -384,6 +390,7 @@ async function ping() {
     } catch (e) { /* the next ping, or the autosave, will tell */ }
 }
 let heartbeat;
+let clockOffset = null;
 
 // ---- What the browser reports (shown to the examiner) ----
 function report(type, meta = null) {
@@ -561,6 +568,7 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
                     <RichText v-if="current.type !== 'cloze' && current.type !== 'drag_text'" :text="current.body" :html="current.html" class="text-base leading-relaxed" />
+                    <Picture v-if="current.picture" :src="current.picture" class="mt-3" />
                     <!-- Fill in the blanks: the text with its boxes and lists in place -->
                     <p v-else class="whitespace-pre-line text-base leading-loose" dir="auto">
                         <template v-for="(part, k) in current.parts" :key="k">
@@ -583,7 +591,7 @@ onBeforeUnmount(() => {
                             <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--accent-500)]"
                                 :class="state[current.id].choice === c.id ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700'">
                                 <input type="radio" :name="'q' + current.id" :value="c.id" v-model="state[current.id].choice" @change="save(current)" class="text-[var(--accent-600)]" />
-                                <RichText :text="c.body" tag="span" />
+                                <span class="flex flex-1 flex-wrap items-center gap-3"><Picture v-if="c.picture" :src="c.picture" small /><RichText :text="c.body" tag="span" /></span>
                             </label>
                         </fieldset>
 
@@ -593,7 +601,7 @@ onBeforeUnmount(() => {
                             <label v-for="c in current.choices" :key="c.id" class="flex cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--accent-500)]"
                                 :class="state[current.id].choices.includes(c.id) ? 'border-[var(--accent-600)] bg-[var(--accent-50)] dark:bg-gray-700' : 'border-gray-200 hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700'">
                                 <input type="checkbox" :checked="state[current.id].choices.includes(c.id)" @change="toggleMultiple(current, c.id)" class="rounded text-[var(--accent-600)]" />
-                                <RichText :text="c.body" tag="span" />
+                                <span class="flex flex-1 flex-wrap items-center gap-3"><Picture v-if="c.picture" :src="c.picture" small /><RichText :text="c.body" tag="span" /></span>
                             </label>
                         </fieldset>
 
@@ -616,7 +624,7 @@ onBeforeUnmount(() => {
                         <div v-else-if="current.type === 'matching' || current.type === 'classify'" class="space-y-2">
                             <p v-if="current.type === 'classify'" class="text-xs text-gray-500">{{ t('exam.classify_hint', 'ضع كل عنصر في فئته.') }}</p>
                             <div v-for="item in current.items" :key="item.id" class="grid items-center gap-2 rounded-lg border border-gray-200 p-3 sm:grid-cols-2 dark:border-gray-600">
-                                <RichText :text="item.body" tag="span" class="text-sm" />
+                                <span class="flex flex-wrap items-center gap-2"><Picture v-if="item.picture" :src="item.picture" small /><RichText :text="item.body" tag="span" class="text-sm" /></span>
                                 <select :value="state[current.id].pairs[item.id] ?? ''" @change="pair(current, item.id, $event.target.value)"
                                     class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
                                     <option value="">{{ t('exam.choose', '— اختر —') }}</option>
@@ -674,7 +682,7 @@ onBeforeUnmount(() => {
                         <ol v-else-if="current.type === 'ordering'" class="space-y-2">
                             <li v-for="(id, i) in state[current.id].order" :key="id" class="flex items-center gap-2 rounded-lg border border-gray-200 p-2.5 text-sm dark:border-gray-600">
                                 <span class="w-6 text-center text-xs text-gray-400">{{ i + 1 }}</span>
-                                <RichText :text="choiceText(current, id)" tag="span" class="flex-1" />
+                                <span class="flex flex-1 flex-wrap items-center gap-2"><Picture v-if="choicePicture(current, id)" :src="choicePicture(current, id)" small /><RichText :text="choiceText(current, id)" tag="span" /></span>
                                 <button @click="move(current, i, -1)" :disabled="i === 0" class="rounded p-1 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700" :aria-label="t('exam.move_up', 'إلى الأعلى')"><ArrowUpIcon class="h-4 w-4" /></button>
                                 <button @click="move(current, i, 1)" :disabled="i === state[current.id].order.length - 1" class="rounded p-1 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700" :aria-label="t('exam.move_down', 'إلى الأسفل')"><ArrowDownIcon class="h-4 w-4" /></button>
                             </li>

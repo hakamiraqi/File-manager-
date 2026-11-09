@@ -80,6 +80,23 @@ class HallMapTest extends TestCase
         $this->actingAs($this->teacher)->postJson(route('exams.monitor.help-done', $aliAttempt))->assertOk();
         $this->assertSame('working', $this->actingAs($this->teacher)->getJson(route('exams.monitor.halls.live', ['exam' => $exam->id]))->json("computers.{$pc1->id}.state"));
 
+        // Ali leaves the exam's window: the map marks his computer «اشتباه غش» for ten minutes.
+        \App\Models\Exams\Event::create(['exam_attempt_id' => $aliAttempt->id, 'type' => 'blur']);
+        $live = $this->actingAs($this->teacher)->getJson(route('exams.monitor.halls.live'))->json('computers');
+        $this->assertSame('suspect', $live[$pc1->id]['state']);
+        $this->assertSame(['blur'], $live[$pc1->id]['suspect']['kinds']);
+        $this->assertContains('suspect', $live[$pc1->id]['problems']);
+        $this->assertTrue($live[$pc1->id]['linked']);
+        $this->assertSame('wrong', $live[$pc3->id]['sync']);
+        $this->travel(11)->minutes();
+        $this->assertNull($this->actingAs($this->teacher)->getJson(route('exams.monitor.halls.live'))->json("computers.{$pc1->id}.suspect"));
+        $this->travelBack();
+
+        // The clock measured by the page over the round trip (ms ahead of the server) wins.
+        $this->withServerVariables(['REMOTE_ADDR' => $pc3->ip])->getJson('/hall/ping?t='.(now()->getTimestampMs() - 600000).'&o=1400')->assertJsonStructure(['computer', 'server']);
+        $this->assertSame(1, $pc3->fresh()->last_clock_offset);
+        $this->assertSame('ok', $this->actingAs($this->teacher)->getJson(route('exams.monitor.halls.live'))->json("computers.{$pc3->id}.sync"));
+
         $this->actingAs($this->teacher)->get(route('exams.monitor.halls', ['pc' => $pc1->id]))->assertOk()
             ->assertInertia(fn (AssertableInertia $p) => $p->component('Exams/Monitor/HallMap')->has('shelves', 6)->where('target', $pc1->id)
                 ->where('exams.0.title', 'امتحان الخريطة')->where("live.computers.{$pc2->id}.state", 'wrong_pc'));

@@ -11,7 +11,7 @@ class Choice extends Model
 
     protected $table = 'exam_choices';
 
-    protected $fillable = ['exam_question_id', 'body', 'match', 'is_correct', 'position'];
+    protected $fillable = ['exam_question_id', 'body', 'match', 'is_correct', 'position', 'image'];
 
     protected function casts(): array
     {

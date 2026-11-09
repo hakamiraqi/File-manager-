@@ -2,11 +2,13 @@
 
 namespace App\Services\Exams;
 
+use App\Http\Controllers\Exams\ManageController;
 use App\Models\Exams\Choice;
 use App\Models\Exams\Exam;
 use App\Models\Exams\Question;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
 use SimpleXMLElement;
 use ZipArchive;
@@ -30,13 +32,20 @@ class QtiPackage
         $lang = $exam->languages[0] ?? 'ar';
         $resources = '';
         foreach ($exam->questions()->with('choices')->get() as $i => $q) {
+            // Pictures (2026-11-09): the question's and its choices' go in «media/», named in the item.
+            $this->media = [];
             $xml = $this->item($q, 'q'.($i + 1), $lang, $exam->languages ?? []);
             if ($xml === null) {
                 continue;
             }
             $href = 'items/q'.($i + 1).'.xml';
             $zip->addFromString($href, $xml);
-            $resources .= '<resource identifier="q'.($i + 1).'" type="imsqti_item_xmlv3p0" href="'.$href.'"><file href="'.$href.'"/></resource>';
+            $files = '<file href="'.$href.'"/>';
+            foreach ($this->media as $stored => $file) {
+                $zip->addFromString($file, Storage::disk('local')->get(ManageController::IMAGES.'/'.$stored));
+                $files .= '<file href="'.$file.'"/>';
+            }
+            $resources .= '<resource identifier="q'.($i + 1).'" type="imsqti_item_xmlv3p0" href="'.$href.'">'.$files.'</resource>';
         }
         $title = $this->e($exam->text('title'));
         $zip->addFromString('imsmanifest.xml', '<?xml version="1.0" encoding="UTF-8"?>'
@@ -59,6 +68,7 @@ class QtiPackage
             $title = trim(html_entity_decode(strip_tags($m[1]))) ?: $title;
         }
         $items = [];
+        $this->zip = $zip;
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = (string) $zip->getNameIndex($i);
             if (str_ends_with(strtolower($name), '.xml') && basename($name) !== 'imsmanifest.xml') {
@@ -68,9 +78,10 @@ class QtiPackage
                 }
             }
         }
-        $zip->close();
         ksort($items, SORT_NATURAL);
-        $parsed = collect($items)->map(fn ($xml) => $this->parse($xml))->filter()->values();
+        $parsed = collect($items)->map(fn ($xml, $name) => $this->parse($xml, $name))->filter()->values();
+        $zip->close();
+        $this->zip = null;
         if ($parsed->isEmpty()) {
             throw new InvalidArgumentException('لم أجد في الملف أسئلة QTI 3.0 مدعومة.');
         }
@@ -79,9 +90,9 @@ class QtiPackage
         return DB::transaction(function () use ($parsed, $owner, $title, $lang) {
             $exam = Exam::create(['user_id' => $owner->id, 'title' => [$lang => $title], 'languages' => [$lang], 'is_published' => false]);
             foreach ($parsed as $i => $q) {
-                $question = Question::create(['exam_id' => $exam->id, 'type' => $q['type'], 'body' => [$lang => $q['body']], 'points' => $q['points'], 'settings' => $q['settings'] ?: null, 'position' => $i]);
+                $question = Question::create(['exam_id' => $exam->id, 'type' => $q['type'], 'body' => [$lang => $q['body']], 'points' => $q['points'], 'settings' => $q['settings'] ?: null, 'position' => $i, 'image' => $q['image'] ?? null]);
                 foreach ($q['choices'] as $j => [$text, $right]) {
-                    Choice::create(['exam_question_id' => $question->id, 'body' => [$lang => $text], 'is_correct' => $right, 'position' => $j]);
+                    Choice::create(['exam_question_id' => $question->id, 'body' => $text === '' ? [] : [$lang => $text], 'is_correct' => $right, 'position' => $j, 'image' => $q['choice_images'][$j] ?? null]);
                 }
             }
 
@@ -89,10 +100,50 @@ class QtiPackage
         });
     }
 
+    /** Pictures of the item being written: stored name → path in the package. */
+    private array $media = [];
+
+    /** The package being read, for the pictures its items name. */
+    private ?ZipArchive $zip = null;
+
+    private function img(?string $stored): string
+    {
+        if (! $stored || ! ManageController::picture($stored)) {
+            return '';
+        }
+        $this->media[$stored] ??= 'media/'.$stored;
+
+        return '<img src="../'.$this->media[$stored].'" alt=""/>';
+    }
+
+    /** A picture an item names (relative to the item), stored here; null when it is not in the package. */
+    private function readImg(?SimpleXMLElement $at, string $itemPath): ?string
+    {
+        if (! $at || ! $this->zip) {
+            return null;
+        }
+        $img = $at->xpath('.//*[local-name()="img"]')[0] ?? null;
+        $src = $img ? (string) $img['src'] : '';
+        if ($src === '' || str_contains($src, '://')) {
+            return null;
+        }
+        $parts = [];
+        foreach (explode('/', (dirname($itemPath) === '.' ? '' : dirname($itemPath).'/').$src) as $part) {
+            if ($part === '..') {
+                array_pop($parts);
+            } elseif ($part !== '.' && $part !== '') {
+                $parts[] = $part;
+            }
+        }
+        $bytes = $this->zip->getFromName(implode('/', $parts));
+
+        return $bytes === false ? null : ManageController::storePicture($bytes, $src);
+    }
+
     private function item(Question $q, string $id, string $lang, array $langs): ?string
     {
         $text = fn ($v) => Question::pick($v, $lang, $langs);
-        $body = $q->format === 'html' ? HtmlCleaner::clean($text($q->body)) : '<p>'.nl2br($this->e($text($q->body))).'</p>';
+        $body = ($q->format === 'html' ? HtmlCleaner::clean($text($q->body)) : '<p>'.nl2br($this->e($text($q->body))).'</p>').($q->image ? '<p>'.$this->img($q->image).'</p>' : '');
         $choices = $q->choices->values();
         $cid = fn ($k) => 'c'.($k + 1);
         [$declaration, $interaction, $rp] = match ($q->type) {
@@ -100,7 +151,7 @@ class QtiPackage
                 '<qti-response-declaration identifier="RESPONSE" cardinality="'.($q->type === Question::MULTIPLE ? 'multiple' : 'single').'" base-type="identifier"><qti-correct-response>'
                     .$choices->map(fn ($c, $k) => $c->is_correct ? '<qti-value>'.$cid($k).'</qti-value>' : '')->implode('').'</qti-correct-response></qti-response-declaration>',
                 '<qti-choice-interaction response-identifier="RESPONSE" max-choices="'.($q->type === Question::MULTIPLE ? 0 : 1).'">'
-                    .$choices->map(fn ($c, $k) => '<qti-simple-choice identifier="'.$cid($k).'">'.$this->e($text($c->body)).'</qti-simple-choice>')->implode('').'</qti-choice-interaction>',
+                    .$choices->map(fn ($c, $k) => '<qti-simple-choice identifier="'.$cid($k).'">'.$this->img($c->image).$this->e($text($c->body)).'</qti-simple-choice>')->implode('').'</qti-choice-interaction>',
                 'match_correct',
             ],
             Question::SHORT => [
@@ -136,7 +187,7 @@ class QtiPackage
     }
 
     /** One item: its kind, text, choices and answers; null for kinds this system has no match for. */
-    private function parse(string $xml): ?array
+    private function parse(string $xml, string $itemPath = ''): ?array
     {
         $previous = libxml_use_internal_errors(true);
         $doc = simplexml_load_string($xml, SimpleXMLElement::class, LIBXML_NONET);
@@ -156,25 +207,30 @@ class QtiPackage
             return null;
         }
         $bodyXml = $body->asXML();
+        // The question's picture: the first one in its text, outside the choices.
+        $bodyOnly = simplexml_load_string(preg_replace('#<qti-choice-interaction\b.*?</qti-choice-interaction>#s', '', $bodyXml) ?: '<x/>', SimpleXMLElement::class, LIBXML_NONET) ?: null;
+        $image = $this->readImg($bodyOnly, $itemPath);
         $bodyText = trim(QuestionImporter::plain(preg_replace('#<qti-(choice|text-entry|extended-text)-interaction\b.*?(/>|</qti-\1-interaction>)#s', '', $bodyXml)));
 
         if ($choice = $find($doc, 'qti-choice-interaction')[0] ?? null) {
-            $choices = array_map(fn ($c) => [trim(QuestionImporter::plain($c->asXML())), in_array((string) $c['identifier'], $correct, true)], $find($choice, 'qti-simple-choice'));
+            $simple = $find($choice, 'qti-simple-choice');
+            $choices = array_map(fn ($c) => [trim(QuestionImporter::plain($c->asXML())), in_array((string) $c['identifier'], $correct, true)], $simple);
             $multiple = (int) ($choice['max-choices'] ?? 1) !== 1;
 
-            return ['type' => $multiple ? 'multiple' : 'single', 'body' => $bodyText, 'choices' => $choices, 'settings' => [], 'points' => $points, 'lang' => $lang];
+            return ['type' => $multiple ? 'multiple' : 'single', 'body' => $bodyText, 'choices' => $choices, 'settings' => [], 'points' => $points, 'lang' => $lang,
+                'image' => $image, 'choice_images' => array_map(fn ($c) => $this->readImg($c, $itemPath), $simple)];
         }
         if ($find($doc, 'qti-text-entry-interaction')) {
             $declaration = $find($doc, 'qti-response-declaration')[0] ?? null;
             if (in_array((string) ($declaration['base-type'] ?? ''), ['float', 'integer'], true)) {
-                return ['type' => 'numeric', 'body' => $bodyText, 'choices' => [], 'settings' => ['answer' => $correct[0] ?? '', 'tolerance' => '0'], 'points' => $points, 'lang' => $lang];
+                return ['image' => $image, 'type' => 'numeric', 'body' => $bodyText, 'choices' => [], 'settings' => ['answer' => $correct[0] ?? '', 'tolerance' => '0'], 'points' => $points, 'lang' => $lang];
             }
             $answers = collect($correct)->merge(collect($find($doc, 'qti-map-entry'))->filter(fn ($e) => (float) $e['mapped-value'] > 0)->map(fn ($e) => (string) $e['map-key']))->filter()->unique()->values()->all();
 
-            return ['type' => 'short', 'body' => $bodyText, 'choices' => [], 'settings' => ['answers' => $answers, 'case_sensitive' => false], 'points' => $points, 'lang' => $lang];
+            return ['image' => $image, 'type' => 'short', 'body' => $bodyText, 'choices' => [], 'settings' => ['answers' => $answers, 'case_sensitive' => false], 'points' => $points, 'lang' => $lang];
         }
         if ($find($doc, 'qti-extended-text-interaction')) {
-            return ['type' => 'essay', 'body' => $bodyText, 'choices' => [], 'settings' => [], 'points' => $points, 'lang' => $lang];
+            return ['image' => $image, 'type' => 'essay', 'body' => $bodyText, 'choices' => [], 'settings' => [], 'points' => $points, 'lang' => $lang];
         }
 
         return null;

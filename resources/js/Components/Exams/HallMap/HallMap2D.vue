@@ -17,6 +17,8 @@ const props = defineProps({
     follow: { type: Boolean, default: false },
     beacons: { type: Object, default: null },
     statuses: { type: Object, default: null },
+    // «اشتباه غش» (2026-11-09): [{ id, points }] the way from the invigilator's desk to each computer to look at.
+    alerts: { type: Array, default: () => [] },
 });
 const emit = defineEmits(['pick', 'ready']);
 
@@ -41,7 +43,25 @@ function fit(x, y, w, h) {
     if (w / h > a) { const nh = w / a; y -= (nh - h) / 2; h = nh; } else { const nw = h * a; x -= (nw - w) / 2; w = nw; }
     Object.assign(vb, { x, y, w, h });
 }
-function overview() { fit(-M, -M, frame.value.w + 2 * M, frame.value.h + 2 * M); }
+/** The halls with computers in them (2026-11-09: more of the hall on the screen), else the whole plan. */
+const busyBox = computed(() => {
+    const halls = props.shelves.filter((h) => h.kind === 'hall' && h.points?.length >= 3);
+    const pcs = props.shelves.filter((i) => i.kind === 'pc');
+    const boxes = halls.map((h) => {
+        const a = ((h.rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+        const q = h.points.map(([px, py]) => ({ x: h.x + px * c - py * sn, y: h.y + px * sn + py * c }));
+        return { x0: Math.min(...q.map((p) => p.x)), y0: Math.min(...q.map((p) => p.y)), x1: Math.max(...q.map((p) => p.x)), y1: Math.max(...q.map((p) => p.y)) };
+    }).filter((b) => pcs.some((p) => p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1));
+    if (!boxes.length) return null;
+    return { x0: Math.min(...boxes.map((b) => b.x0)), y0: Math.min(...boxes.map((b) => b.y0)), x1: Math.max(...boxes.map((b) => b.x1)), y1: Math.max(...boxes.map((b) => b.y1)) };
+});
+/** A part of the plan (a hall) filling the view. */
+function focusBox(b) {
+    const pts = [vp({ x: b.x0, y: b.y0 }), vp({ x: b.x1, y: b.y1 })];
+    const x0 = Math.min(pts[0].x, pts[1].x), x1 = Math.max(pts[0].x, pts[1].x), y0 = Math.min(pts[0].y, pts[1].y), y1 = Math.max(pts[0].y, pts[1].y);
+    fit(x0 - 0.4, y0 - 0.4, x1 - x0 + 0.8, y1 - y0 + 0.8);
+}
+function overview() { busyBox.value ? focusBox(busyBox.value) : fit(-M, -M, frame.value.w + 2 * M, frame.value.h + 2 * M); }
 function centreOn(p, span) {
     const q = vp(p), w = Math.min(span, frame.value.w + 2 * M), h = Math.min(span, frame.value.h + 2 * M);
     fit(q.x - w / 2, q.y - h / 2, w, h);
@@ -125,6 +145,10 @@ const poly = (pts) => pts.map((p) => `${p.x},${p.y}`).join(' ');
 const fillOf = (s) => (s.kind === 'pc' ? props.statuses?.[s.id]?.color || '#64748b' : s.kind === 'shelf' ? s.color || sectionColor(s.section_id) : s.kind === 'stairs' ? '#7c3aed' : s.kind === 'door' ? '#10b981' : s.kind === 'gate' ? '#dc2626' : s.kind === 'desk' ? '#0f766e' : s.kind === 'qr' ? '#111827' : s.kind === 'obstacle' ? s.color || '#6b7280' : s.kind === 'wall' ? '#475569' : '#a16207');
 const font = computed(() => Math.max(0.28, Math.min(0.6, scale.value * 11)));
 const routePts = computed(() => (props.route?.points?.length >= 2 ? poly(props.route.points) : ''));
+const alertLines = computed(() => props.alerts.filter((a) => a.points?.length >= 2).map((a) => ({ ...a, pts: poly(a.points), d: 'M' + a.points.map((p) => `${p.x} ${p.y}`).join(' L') })));
+/** Computers linked to the server (a beat of green) and the ones that are not (grey, crossed). */
+const linkSpots = computed(() => things.value.filter((s) => s.kind === 'pc' && props.statuses?.[s.id]?.link !== undefined && props.statuses[s.id].link !== null));
+const suspects = computed(() => things.value.filter((s) => s.kind === 'pc' && props.statuses?.[s.id]?.suspect));
 const target = computed(() => props.shelves.find((s) => s.id === props.highlight?.id) ?? null);
 const beaconSpots = computed(() => (props.beacons?.ids ?? []).map((id) => props.shelves.find((s) => s.id === id)).filter(Boolean).map((s) => ({ id: s.id, ...stickerStand(s), near: s.id === props.beacons.nearest })));
 const heading = computed(() => ((props.avatar?.heading ?? 0) * 180) / Math.PI);
@@ -162,7 +186,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => ro?.disconnect());
 
-const api = { overview, focusShelf };
+const api = { overview, focusShelf, focusBox };
 defineExpose(api);
 </script>
 
@@ -200,6 +224,45 @@ defineExpose(api);
                         <animate attributeName="r" :values="`${Math.max(s.width, s.depth) * 0.6};${Math.max(s.width, s.depth) * 1.1};${Math.max(s.width, s.depth) * 0.6}`" dur="1.3s" repeatCount="indefinite" />
                         <animate attributeName="stroke-opacity" values="1;0.2;1" dur="1.3s" repeatCount="indefinite" />
                     </circle>
+                </g>
+                <!-- «متصلة بالسيرفر»: a green beat beside each linked computer; grey and crossed when not. -->
+                <g v-for="s in linkSpots" :key="'l' + s.id" :transform="`translate(${s.x} ${s.y}) rotate(${s.rotation || 0}) translate(${s.width / 2 - 0.12} ${-s.depth / 2 + 0.12})`" class="pointer-events-none">
+                    <template v-if="statuses[s.id].link">
+                        <circle r="0.1" fill="none" stroke="#22c55e" stroke-width="0.04">
+                            <animate attributeName="r" values="0.1;0.34" dur="1.8s" repeatCount="indefinite" />
+                            <animate attributeName="stroke-opacity" values="0.9;0" dur="1.8s" repeatCount="indefinite" />
+                        </circle>
+                        <circle r="0.1" fill="#22c55e" stroke="#fff" stroke-width="0.03" />
+                    </template>
+                    <g v-else>
+                        <circle r="0.1" fill="#9ca3af" stroke="#fff" stroke-width="0.03" />
+                        <path d="M-0.06 -0.06 L0.06 0.06 M0.06 -0.06 L-0.06 0.06" stroke="#fff" stroke-width="0.03" />
+                    </g>
+                </g>
+                <!-- «اشتباه غش»: the way from the invigilator's desk, moving towards the computer. -->
+                <g v-for="a in alertLines" :key="'al' + a.id" class="pointer-events-none">
+                    <polyline :points="a.pts" fill="none" stroke="#fff" stroke-width="0.36" stroke-linecap="round" stroke-linejoin="round" />
+                    <polyline :points="a.pts" fill="none" stroke="#dc2626" stroke-width="0.2" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.85" />
+                    <polyline :points="a.pts" fill="none" stroke="#fecaca" stroke-width="0.08" stroke-dasharray="0.25 0.45" stroke-linecap="round">
+                        <animate attributeName="stroke-dashoffset" from="0.7" to="0" dur="0.6s" repeatCount="indefinite" />
+                    </polyline>
+                    <circle r="0.18" fill="#dc2626" stroke="#fff" stroke-width="0.06">
+                        <animateMotion :path="a.d" dur="2.4s" repeatCount="indefinite" />
+                    </circle>
+                    <circle :cx="a.points[0].x" :cy="a.points[0].y" r="0.22" fill="#0f766e" stroke="#fff" stroke-width="0.06" />
+                </g>
+                <g v-for="s in suspects" :key="'sx' + s.id" :transform="`translate(${s.x} ${s.y})`" class="pointer-events-none">
+                    <circle r="0.6" fill="#9333ea" fill-opacity="0.18" stroke="#9333ea" stroke-width="0.1">
+                        <animate attributeName="r" values="0.55;1.4;0.55" dur="1s" repeatCount="indefinite" />
+                        <animate attributeName="stroke-opacity" values="1;0.1;1" dur="1s" repeatCount="indefinite" />
+                    </circle>
+                    <g :transform="`rotate(${upright(0)}) translate(0 ${-Math.max(s.width, s.depth) * 0.9})`">
+                        <g>
+                            <animateTransform attributeName="transform" type="translate" values="0 0;0 -0.15;0 0" dur="0.8s" repeatCount="indefinite" />
+                            <path d="M0 -0.42 L0.38 0.24 L-0.38 0.24 Z" fill="#9333ea" stroke="#fff" stroke-width="0.06" stroke-linejoin="round" />
+                            <text y="0.14" text-anchor="middle" font-size="0.36" font-weight="900" fill="#fff">!</text>
+                        </g>
+                    </g>
                 </g>
                 <!-- The bookcase looked for -->
                 <g v-if="target" :transform="`translate(${target.x} ${target.y}) rotate(${target.rotation || 0})`" class="pointer-events-none">
