@@ -33,7 +33,7 @@ class HandleInertiaRequests extends Middleware
     {
         $settings = Setting::all_settings();
         $user = $request->user();
-        $locale = $user->locale ?? $settings['default_locale'] ?? config('app.locale');
+        $locale = 'ar'; // Arabic only (2026-11-09, by request)
 
         return [
             ...parent::share($request),
