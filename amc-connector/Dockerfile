@@ -8,7 +8,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       auto-multiple-choice auto-multiple-choice-common \
       texlive-xetex texlive-latex-extra texlive-fonts-recommended texlive-lang-arabic texlive-lang-european \
-      fonts-arabeyes fonts-dejavu-core fonts-noto-core \
+      fonts-arabeyes fonts-linuxlibertine fonts-dejavu-core fonts-noto-core \
       poppler-utils ghostscript imagemagick python3 sqlite3 ca-certificates man-db \
  && rm -rf /var/lib/apt/lists/* \
  && useradd -m -u 1500 amc \

@@ -120,7 +120,7 @@ def process(p):
 
 def version():
     try:
-        out = subprocess.run(['auto-multiple-choice', 'version'], capture_output=True, text=True, timeout=20).stdout.strip()
+        out = subprocess.run(['dpkg-query', '-W', '-f', '${Version}', 'auto-multiple-choice'], capture_output=True, text=True, timeout=20).stdout.strip()
         return out or 'unknown'
     except Exception as e:
         return 'unavailable: ' + str(e)
