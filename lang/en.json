@@ -1974,5 +1974,8 @@
     "hallmap.duplicate_short": "Copy",
     "hallmap.multi_keys2": "Drag any selected computer to move them all · arrows for fine moves · Ctrl+G group · Ctrl+D copy · Delete to remove.",
     "hallmap.turn_group": "Turn",
-    "hallmap.multi_keys3": "Drag any selected computer to move them all, and the blue circle above to turn them · arrows for fine moves · R turns 15° · Ctrl+G group · Ctrl+D copy · Delete to remove."
+    "hallmap.multi_keys3": "Drag any selected computer to move them all, and the blue circle above to turn them · arrows for fine moves · R turns 15° · Ctrl+G group · Ctrl+D copy · Delete to remove.",
+    "hallmap.gen_skipped": ":m were left out because they do not fit inside the hall with their chairs.",
+    "hallmap.gen_in_hall": "Inside the hall:",
+    "hallmap.gen_whole_plan": "The whole plan (no hall)"
 }

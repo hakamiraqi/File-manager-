@@ -577,20 +577,28 @@ export class HallScene {
             for (const sx of [1, -1]) box(0.04, top - 0.04, D - 0.06, sx * (W / 2 - 0.04), (top - 0.04) / 2, 0);
             const frame = new THREE.MeshStandardMaterial({ color: this.dark ? '#1f2937' : '#111827', roughness: 0.4 });
             const sw = Math.min(0.56, W * 0.6);
-            box(0.06, 0.16, 0.06, 0, top + 0.08, -D * 0.2, frame);
-            box(sw + 0.04, 0.36, 0.04, 0, top + 0.34, -D * 0.2, frame);
             const screenMat = new THREE.MeshStandardMaterial({ color: '#64748b', emissive: new THREE.Color('#64748b'), emissiveIntensity: 0.25, roughness: 0.3 });
-            const screen = new THREE.Mesh(new THREE.PlaneGeometry(sw, 0.32), screenMat);
-            screen.position.set(0, top + 0.34, -D * 0.2 + 0.022);
-            screen.userData.itemId = item.id ?? item._key;
-            group.add(screen);
-            box(0.18, 0.4, 0.42, W / 2 - 0.16, 0.2, -D * 0.05, frame);
-            box(0.42, 0.02, 0.14, 0, top + 0.01, D * 0.18, frame);
-            // The student's chair, in front.
-            const seat = new THREE.MeshStandardMaterial({ color: this.dark ? '#334155' : '#475569', roughness: 0.7 });
-            box(0.42, 0.05, 0.42, 0, 0.45, D / 2 + 0.3, seat);
-            box(0.42, 0.4, 0.05, 0, 0.67, D / 2 + 0.5, seat);
-            box(0.05, 0.43, 0.05, 0, 0.22, D / 2 + 0.3, seat);
+            // A two-faced computer (2026-11-09, by request): a screen, keyboard and chair on each side.
+            const seat = new THREE.MeshStandardMaterial({ color: this.dark ? '#64748b' : '#3b82f6', roughness: 0.6 });
+            const leg = new THREE.MeshStandardMaterial({ color: this.dark ? '#94a3b8' : '#334155', roughness: 0.5 });
+            for (const f of item.double_sided ? [1, -1] : [1]) {
+                const back = item.double_sided ? -f * D * 0.08 : -D * 0.2; // the screen stands behind the keyboard
+                box(0.06, 0.16, 0.06, 0, top + 0.08, back, frame);
+                box(sw + 0.04, 0.36, 0.04, 0, top + 0.34, back, frame);
+                const screen = new THREE.Mesh(new THREE.PlaneGeometry(sw, 0.32), screenMat);
+                screen.position.set(0, top + 0.34, back + f * 0.022);
+                if (f < 0) screen.rotation.y = Math.PI;
+                screen.userData.itemId = item.id ?? item._key;
+                group.add(screen);
+                box(0.42, 0.02, 0.14, 0, top + 0.01, f * D * (item.double_sided ? 0.32 : 0.18), frame);
+                // The student's chair, in front of this side: seat, back and stem.
+                box(0.46, 0.06, 0.44, 0, 0.46, f * (D / 2 + 0.32), seat);
+                box(0.46, 0.42, 0.06, 0, 0.7, f * (D / 2 + 0.53), seat);
+                box(0.06, 0.43, 0.06, 0, 0.22, f * (D / 2 + 0.32), leg);
+                box(0.4, 0.03, 0.06, 0, 0.02, f * (D / 2 + 0.32), leg);
+                box(0.06, 0.03, 0.4, 0, 0.02, f * (D / 2 + 0.32), leg);
+            }
+            box(0.18, 0.4, 0.42, W / 2 - 0.16, 0.2, item.double_sided ? 0 : -D * 0.05, frame);
             group.userData.screenMat = screenMat;
         } else if (kind === 'desk') {
             box(W, 0.05, D, 0, h - 0.025, 0, accentMat);

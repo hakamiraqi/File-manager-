@@ -1176,10 +1176,33 @@ const LAYOUTS = [
     { key: 'walls_center', label: t('hallmap.layout_walls_center', 'الجدران + صفّان متقابلان بالوسط') },
 ];
 const PC_DEPTH = 0.7, CHAIR = 0.8, WALL_GAP = 0.05;
+/** The hall to fill: its size from its real outline (in its own turned frame) and where that outline's middle is. */
 const genArea = () => {
     const hall = gen.hall && items.value.includes(gen.hall) ? gen.hall : null;
-    return hall ? { hall, W: hall.width, D: hall.depth } : { hall: null, W: floor.width, D: floor.depth };
+    if (!hall) return { hall: null, W: floor.width, D: floor.depth, ox: 0, oy: 0 };
+    const pts = hall.points?.length >= 3 ? hall.points : [[-hall.width / 2, -hall.depth / 2], [hall.width / 2, hall.depth / 2]];
+    const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    return { hall, W: x1 - x0, D: y1 - y0, ox: (x0 + x1) / 2, oy: (y0 + y1) / 2 };
 };
+const genHalls = computed(() => storeyHalls.value.filter((h) => h.kind === 'hall'));
+/** Whether a point is inside a list of corners. */
+function inPoly(p, poly) {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i], b = poly[j];
+        if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+    }
+    return hit;
+}
+/** A computer with its chair (both sides when two-faced), as corners on the plan. */
+function seatOutline(it) {
+    const a = ((it.rotation || 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    const hw = it.width / 2 - 0.02, back = it.double_sided ? it.depth / 2 + 0.55 : it.depth / 2, front = it.depth / 2 + 0.55;
+    const pts = [];
+    for (const ly of [-back + 0.02, 0, front]) for (const lx of [-hw, 0, hw]) pts.push({ x: it.x + lx * c - ly * sn, y: it.y + lx * sn + ly * c });
+    return pts;
+}
 /** Fills the hall with as many rows (or pairs of rows) as fit, a metre clear of its walls. */
 function fitGen() {
     const { hall, W, D } = genArea();
@@ -1188,15 +1211,17 @@ function fitGen() {
     const band = gen.layout === 'facing' ? 2 * PC_DEPTH + 2 * CHAIR : PC_DEPTH; // a pair with the chairs on both sides
     gen.rows = Math.max(1, Math.min(26, Math.floor((D - (gen.layout === 'facing' ? 1 : 2) + gen.aisle) / (band + gen.aisle))));
 }
-watch(() => [gen.layout, gen.width, gen.aisle], () => { if (gen.open) fitGen(); });
+watch(() => [gen.layout, gen.width, gen.aisle, gen.hall], () => { if (gen.open) fitGen(); });
 function openGenerate() {
     const s = selected.value;
-    gen.hall = s && s.kind === 'hall' ? s : null;
+    // The selected hall, or the hall the selected computers are in, or the first one on this floor.
+    const pick = s && s.kind === 'hall' ? s : s ? genHalls.value.find((h) => inOutline(s, h)) : null;
+    gen.hall = pick ?? genHalls.value.find((h) => multiItems.value.some((i) => inOutline(i, h))) ?? genHalls.value[0] ?? null;
     if (gen.hall) fitGen();
     gen.open = true;
 }
 /** The places for the chosen layout, round the hall's middle: x, y (metres), r (the turn; 0 = the student on the +y side) and the run (row) each is in. */
-function layoutSeats(W, D) {
+function layoutSeats(W, D, inHall = true) {
     const w = gen.width, d = PC_DEPTH, out = [];
     let run = 0;
     const along = (from, to, at, r, vertical, group = null) => {
@@ -1209,6 +1234,12 @@ function layoutSeats(W, D) {
     if (gen.layout === 'rows' || gen.layout === 'facing') {
         const pairs = gen.layout === 'facing';
         const band = pairs ? 2 * d + 2 * CHAIR : d;
+        if (inHall) {
+            // No more rows (or pairs) than the hall holds with their chairs, so none is cut in half.
+            const fits = pairs ? Math.floor((D - 0.2 + gen.aisle) / (band + gen.aisle)) : Math.floor((D - 0.85 + gen.aisle) / (d + gen.aisle));
+            gen.rows = Math.max(1, Math.min(gen.rows, fits));
+            gen.perRow = Math.max(1, Math.min(gen.perRow, Math.floor((W - 0.2) / w)));
+        }
         const total = gen.rows * band + (gen.rows - 1) * gen.aisle;
         const len = gen.perRow * w;
         for (let r = 0; r < gen.rows; r++) {
@@ -1253,7 +1284,7 @@ function layoutSeats(W, D) {
 }
 function generate() {
     const d = PC_DEPTH;
-    const { hall, W, D } = genArea();
+    const { hall, W, D, ox, oy } = genArea();
     const rowsLike = gen.layout === 'rows' || gen.layout === 'facing';
     const band = gen.layout === 'facing' ? 2 * d + 2 * CHAIR : d;
     const runLength = gen.perRow * gen.width;
@@ -1263,15 +1294,29 @@ function generate() {
     const cy = hall ? hall.y : rowsLike ? Math.max(1 + total / 2, floor.depth / 2 - 0.75) : floor.depth / 2;
     const turn = hall?.rotation ?? 0;
     const a = (turn * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
-    const place = (lx, ly) => ({ x: +(cx + lx * c - ly * sn).toFixed(2), y: +(cy + lx * sn + ly * c).toFixed(2) });
+    const place = (lx, ly) => { lx += ox; ly += oy; return { x: +(cx + lx * c - ly * sn).toFixed(2), y: +(cy + lx * sn + ly * c).toFixed(2) }; };
     if (gen.replace) {
         const gone = new Set(items.value.filter((i) => i.kind === 'pc' && storeyOf(i) === storey.value && (!hall || inOutline(i, hall))));
         items.value = items.value.filter((i) => !gone.has(i));
     }
-    // No computer in front of a door.
+    // No computer in front of a door; every computer and its chair inside the hall (an L hall too),
+    // clear of the desks, tables, walls and obstacles there, and of each other.
     const doors = onStorey.value.filter((i) => i.kind === 'door');
-    const seats = layoutSeats(W, D).map((s) => ({ ...s, at: place(s.x, s.y) }))
-        .filter((s) => !doors.some((o) => Math.hypot(o.x - s.at.x, o.y - s.at.y) < gen.width / 2 + Math.max(o.width ?? 0.9, 0.9) / 2 + 0.3));
+    const hallPoly = hall ? outline(hall) : [{ x: 0, y: 0 }, { x: floor.width, y: 0 }, { x: floor.width, y: floor.depth }, { x: 0, y: floor.depth }];
+    const solid = onStorey.value.filter((i) => ['desk', 'table', 'wall', 'gate', 'obstacle', 'stairs'].includes(i.kind) || (i.kind === 'pc' && !gen.replace))
+        .map((i) => (i.points?.length >= 3 ? outline(i) : footprint(i)));
+    const kept = [];
+    let skipped = 0;
+    const seats = layoutSeats(W, D, !!hall).map((s) => ({ ...s, at: place(s.x, s.y) })).filter((s) => {
+        const it = { x: s.at.x, y: s.at.y, rotation: turn + s.r, width: gen.width, depth: d };
+        const pts = seatOutline(it);
+        const ok = !doors.some((o) => Math.hypot(o.x - s.at.x, o.y - s.at.y) < gen.width / 2 + Math.max(o.width ?? 0.9, 0.9) / 2 + 0.3)
+            && pts.every((q) => inPoly(q, hallPoly))
+            && !solid.some((poly) => pts.some((q) => inPoly(q, poly)))
+            && !kept.some((k) => pts.some((q) => inPoly(q, footprint(k, -0.03))) || footprint(k, -0.03).some((q) => inPoly(q, footprint(it, -0.03))));
+        if (ok) kept.push(it); else skipped++;
+        return ok;
+    });
     // The room's registered computers, PC-01 first, go onto the new places row by row.
     const used = new Set(items.value.filter((i) => i.kind === 'pc' && i.computer_id).map((i) => i.computer_id));
     const pool = gen.link ? props.computers.filter((cm) => (cm.room ?? '') === gen.room && !used.has(cm.id)).sort(natural) : [];
@@ -1298,7 +1343,8 @@ function generate() {
     gen.open = false;
     selectedKey.value = null;
     multi.value = new Set();
-    genNote.value = t('hallmap.gen_done', 'وُضعت :n حاسبة.', { n: fresh.length }) + (fresh.some((f) => f.group_key) ? ' ' + t('hallmap.gen_group_hint', 'حاسبات الوسط مجمّعة: اضغط على أي واحدة منها لتحريكها كلها.') : '');
+    genNote.value = t('hallmap.gen_done', 'وُضعت :n حاسبة.', { n: fresh.length })
+        + (skipped ? ' ' + t('hallmap.gen_skipped', 'تُركت :m لأنها لا تتسع داخل القاعة مع كراسيها.', { m: skipped }) : '') + (fresh.some((f) => f.group_key) ? ' ' + t('hallmap.gen_group_hint', 'حاسبات الوسط مجمّعة: اضغط على أي واحدة منها لتحريكها كلها.') : '');
     clearTimeout(genNoteTimer);
     genNoteTimer = setTimeout(() => (genNote.value = ''), 6000);
 }
@@ -2037,7 +2083,13 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
             <div class="space-y-4 p-6">
                 <div>
                     <h3 class="flex items-center gap-2 text-lg font-semibold"><SparklesIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</h3>
-                    <p v-if="gen.hall" class="mt-1 rounded-lg bg-[var(--accent-50)] px-2 py-1 text-sm text-[var(--accent-700)]">{{ t('library.map.generate_in_hall', 'تُبنى داخل «:hall» وبنفس اتجاهها.', { hall: gen.hall.code }) }}</p>
+                    <label class="mt-2 flex items-center gap-2 rounded-lg bg-[var(--accent-50)] px-2 py-1.5 text-sm text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-100">
+                        <span class="shrink-0">{{ t('hallmap.gen_in_hall', 'داخل القاعة:') }}</span>
+                        <select v-model="gen.hall" class="min-w-0 flex-1 rounded-md border-gray-300 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
+                            <option v-for="h in genHalls" :key="h._key" :value="h">{{ h.code }}</option>
+                            <option :value="null">{{ t('hallmap.gen_whole_plan', 'المخطط كله (بلا قاعة)') }}</option>
+                        </select>
+                    </label>
                     <p class="mt-1 text-sm text-gray-500">{{ t('hallmap.generate_text', 'اختر شكل التوزيع، وتُربط الحاسبات بحاسبات القاعة المسجّلة بالترتيب (PC-01 أولاً). بعدها تقدر تسحب أي حاسبة لمكانها.') }}</p>
                 </div>
                 <div class="grid grid-cols-2 gap-2 sm:grid-cols-5">
@@ -2054,7 +2106,7 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                         {{ l.label }}
                     </button>
                 </div>
-                <p v-if="gen.layout !== 'rows'" class="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600 dark:bg-gray-900/40 dark:text-gray-300">{{ gen.layout === 'facing' ? t('hallmap.layout_facing_hint', 'كل صفّين ظهراً لظهر: الشاشات بالوسط والطلاب متقابلون. يُحسب مكان الكراسي على الجهتين.') : t('hallmap.layout_walls_hint', 'حاسبات الجدران شاشتها على الجدار والطالب مقابلها. لا توضع حاسبة أمام باب، وتُترك ممرات بعرض «الممر» بين الكراسي.') }}<template v-if="!gen.hall && gen.layout !== 'facing'"> {{ t('hallmap.layout_select_hall', 'للدقة: حدّد القاعة أولاً ثم افتح هذه النافذة، وإلا تُعدّ حدود المخطط كله جدراناً.') }}</template></p>
+                <p v-if="gen.layout !== 'rows'" class="rounded-lg bg-gray-50 px-3 py-2 text-xs leading-5 text-gray-600 dark:bg-gray-900/40 dark:text-gray-300">{{ gen.layout === 'facing' ? t('hallmap.layout_facing_hint', 'كل صفّين ظهراً لظهر: الشاشات بالوسط والطلاب متقابلون. يُحسب مكان الكراسي على الجهتين.') : t('hallmap.layout_walls_hint', 'حاسبات الجدران شاشتها على الجدار والطالب مقابلها. لا توضع حاسبة أمام باب، وتُترك ممرات بعرض «الممر» بين الكراسي.') }}</p>
                 <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
                     <label v-if="gen.layout === 'rows' || gen.layout === 'facing'"><span class="text-gray-600 dark:text-gray-300">{{ gen.layout === 'facing' ? t('hallmap.gen_pairs', 'عدد الأزواج (كل زوج صفّان)') : t('library.map.gen_rows', 'عدد الصفوف') }}</span><input v-model.number="gen.rows" type="number" min="1" max="26" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label v-if="gen.layout === 'rows' || gen.layout === 'facing'"><span class="text-gray-600 dark:text-gray-300">{{ t('hallmap.gen_per_row', 'حاسبات في كل صف') }}</span><input v-model.number="gen.perRow" type="number" min="1" max="30" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
