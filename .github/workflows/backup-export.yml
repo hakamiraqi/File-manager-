@@ -24,11 +24,6 @@ jobs:
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           S="ssh -o ServerAliveInterval=30 -i $HOME/.ssh/vps_key $VPS_USER@$VPS_HOST"
           scp -i ~/.ssh/vps_key ops/pack.py ops/register.php "$VPS_USER@$VPS_HOST:/tmp/"
-          $S 'sudo docker exec -u www-data filenest-app php artisan backup:run --force'
-          $S 'APP=$(sudo docker inspect filenest-app --format "{{range .Mounts}}{{if eq .Destination \"/var/www/html/storage\"}}{{.Source}}{{end}}{{end}}")/app; echo "storage: $APP"; sudo test -d "$APP/filemanager" || { echo "no storage found"; exit 1; }
-            NAME="FileNest-backup-$(date +%Y%m%d-%H%M).zip"; ADMIN=$(sudo docker exec -u www-data -w /var/www/html filenest-app php -r "require \"vendor/autoload.php\"; \$a = require \"bootstrap/app.php\"; \$a->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo App\\Models\\User::where(\"email\", \"admin@filenest.test\")->value(\"id\");")
-            REL="$ADMIN/backup-exports/$NAME"; sudo mkdir -p "$APP/filemanager/$ADMIN/backup-exports"
-            sudo python3 /tmp/pack.py "$APP" "$APP/filemanager/$REL" && sudo chown -R 82:82 "$APP/filemanager/$ADMIN/backup-exports" 2>/dev/null; sudo chown -R --reference="$APP/filemanager/$ADMIN" "$APP/filemanager/$ADMIN/backup-exports"
-            sudo docker cp /tmp/register.php filenest-app:/tmp/register.php
-            sudo docker exec -u www-data -e PACK_REL="$REL" -e PACK_NAME="$NAME" -w /var/www/html filenest-app php -r "require \"vendor/autoload.php\"; \$a = require \"bootstrap/app.php\"; \$a->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); require \"/tmp/register.php\";"
-            df -h / | tail -1'
+          # The disk filled up while packing: take the half-made archive away at once, then show where the space is.
+          $S 'APP=/var/lib/docker/volumes/filenest_filenest_storage/_data/app; sudo find "$APP/filemanager" -path "*/backup-exports/*" -type f -print -delete; sudo rm -f /tmp/pack.py; df -h / | tail -1;
+            sudo du -sh "$APP/filemanager" "$APP/private/backups" "$APP/private/backups/uploads" "$APP/public" 2>/dev/null; sudo ls -la "$APP/private/backups" | head -20; sudo du -sh /var/lib/docker/volumes/* 2>/dev/null | sort -h | tail -8; sudo du -sh /home/ubuntu/* 2>/dev/null | sort -h | tail -6'
