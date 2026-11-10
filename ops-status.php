@@ -1,4 +1,10 @@
 <?php
+\Illuminate\Support\Facades\Artisan::call('schedule:clear-cache');
+echo 'RESET PROCESSING: '.\App\Models\File::where('ocr_status', 'processing')->update(['ocr_status' => 'pending'])."\n";
+echo 'NO THUMB BEFORE: '.json_encode(\App\Models\File::whereNull('thumbnail_path')->selectRaw('extension, count(*) c')->groupBy('extension')->pluck('c', 'extension'))."\n";
+\Illuminate\Support\Facades\Artisan::call('filenest:make-thumbnails');
+echo 'THUMBS: '.trim(\Illuminate\Support\Facades\Artisan::output())."\n";
+
 // Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
 // Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
