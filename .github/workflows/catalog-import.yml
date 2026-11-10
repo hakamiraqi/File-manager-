@@ -1,0 +1,25 @@
+name: Import the library catalogues into FileNest
+# One-off, temporary. Step 1: make a key pair on the server and print its PUBLIC key, so the
+# catalogue files can be committed encrypted (the repository is public). The private key never leaves the server.
+on:
+  push:
+    branches: [ops/catalog-import]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Key pair on the server
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          if [ "$(grep -c . ~/.ssh/vps_key)" -le 2 ] && grep -q -- '-----BEGIN' ~/.ssh/vps_key; then
+            python3 -c "import os,re;p=os.path.expanduser('~/.ssh/vps_key');t=open(p).read().strip();m=re.match(r'(-----BEGIN [A-Z ]+-----)(.*?)(-----END [A-Z ]+-----)',t,re.S);b=''.join(m.group(2).split());open(p,'w').write(m.group(1)+'\n'+'\n'.join(b[i:i+64] for i in range(0,len(b),64))+'\n'+m.group(3)+'\n')"
+          fi
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "umask 077; [ -f ~/.ops-import-key.pem ] || openssl genrsa -out ~/.ops-import-key.pem 3072 2>/dev/null; openssl rsa -in ~/.ops-import-key.pem -pubout 2>/dev/null"
