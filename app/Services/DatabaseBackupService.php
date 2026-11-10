@@ -69,7 +69,9 @@ class DatabaseBackupService
         File::ensureDirectoryExists($dir);
         $name = $connection['database'].'_'.now()->format('Ymd_His').'_offline';
         $sql = $dir.DIRECTORY_SEPARATOR.$name.'.sql';
-        if (! $this->dumpWithMysqldump($connection, $sql)) {
+        if (($connection['driver'] ?? '') === 'sqlite') {
+            file_put_contents($sql, "-- SQLite (tests): no MySQL dump.\n");
+        } elseif (! $this->dumpWithMysqldump($connection, $sql)) {
             $this->dumpWithPhp($sql);
         }
         $zip = new ZipArchive();
