@@ -1,7 +1,5 @@
 <?php
-// After the page-by-page change: the stuck file back in the queue, 30 minutes a file.
-App\Models\Setting::set('ocr_timeout_minutes', '30');
-App\Models\File::where('ocr_status', 'processing')->update(['ocr_status' => 'pending']);
+Illuminate\Support\Facades\Artisan::call('schedule:clear-cache');
 // Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
 // Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
