@@ -3,6 +3,9 @@ import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue';
 import { useForm, router, usePage } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import SaveButton from '@/Components/SaveButton.vue';
+import { defineAsyncComponent } from 'vue';
+// Loaded only when a PDF is opened on a phone (pdf.js is large).
+const PdfViewer = defineAsyncComponent(() => import('@/Components/PdfViewer.vue'));
 import {
     XMarkIcon,
     ArrowDownTrayIcon,
@@ -27,6 +30,9 @@ import 'plyr/dist/plyr.css';
 // (cdn.plyr.io) at runtime, which may be unreachable behind a firewall.
 import plyrIconUrl from '@/vendor/plyr-icons.svg?url';
 import WaveSurfer from 'wavesurfer.js';
+
+// Phones show a PDF in an <iframe> as its first page only, so touch screens get PdfViewer.
+const touchScreen = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
 import { useTrans } from '@/Composables/useTrans';
 
 const { t } = useTrans();
@@ -715,6 +721,8 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
 
+                        <PdfViewer v-else-if="kind(file) === 'pdf' && touchScreen" :src="route('files.preview', file.id)" />
+                        <PdfViewer v-else-if="kind(file) === 'document' && touchScreen" :src="route('files.document-preview', file.id)" />
                         <iframe v-else-if="kind(file) === 'pdf'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
                         <iframe v-else-if="kind(file) === 'document'" :src="route('files.document-preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
                         <iframe v-else-if="kind(file) === 'text'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
