@@ -24,6 +24,6 @@ jobs:
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           S="ssh -o ServerAliveInterval=30 -i $HOME/.ssh/vps_key $VPS_USER@$VPS_HOST"
           scp -i ~/.ssh/vps_key ops/pack.py ops/register.php "$VPS_USER@$VPS_HOST:/tmp/"
-          # Where the space is, per owner (sizes only), and whether the sites answer.
-          $S 'APP=/var/lib/docker/volumes/filenest_filenest_storage/_data/app; df -h / | tail -1; sudo du -sh "$APP"/filemanager/* 2>/dev/null | sort -h | tail -8; sudo docker ps --format "{{.Names}} {{.Status}}" | head -20'
-          for u in https://files.azoclinic.duckdns.org/login https://exams.azoclinic.duckdns.org/login; do echo "$u $(curl -s -o /dev/null -w '%{http_code}' $u)"; done
+          # The mirror of every uploaded file that backup:run made (60 GB, daily backups are off on the
+          # hosting, so nothing uses it): removed to give the disk its room back.
+          $S 'APP=/var/lib/docker/volumes/filenest_filenest_storage/_data/app; sudo rm -rf "$APP/private/backups/uploads"; df -h / | tail -1'
