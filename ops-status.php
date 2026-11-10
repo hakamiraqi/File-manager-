@@ -16,4 +16,12 @@ echo 'OCR: '.json_encode($q()->selectRaw('coalesce(ocr_status, "none") s, count(
 echo 'JOBS WAITING: '.DB::table('jobs')->count().'  FAILED: '.DB::table('failed_jobs')->count()."\n";
 echo 'APP TIME: '.now()->toDateTimeString().' '.config('app.timezone')."\n";
 $s = app(App\Services\Ocr\OcrSettings::class)->all();
-echo 'OCR LAST: '.json_encode(DB::table('ocr_samples')->latest('id')->limit(3)->get(['state','reason','processed','created_at']))."\n";
+echo 'OCR LAST: '.json_encode(DB::table('ocr_load_samples')->latest('id')->limit(4)->get(['state','reason','processed','cpu','created_at']))."
+";
+$p = $q()->where('ocr_status', 'processing')->first(['id','extension','size','updated_at','ocr_attempts']);
+echo 'PROCESSING: '.json_encode($p)."
+";
+echo 'PENDING SIZE MB: '.round($q()->where('ocr_status', 'pending')->sum('size') / 1e6).'  BY TYPE: '.json_encode($q()->where('ocr_status', 'pending')->selectRaw('extension, count(*) n')->groupBy('extension')->pluck('n', 'extension'))."
+";
+echo 'DONE ALL: '.$q()->where('ocr_status', 'done')->count().' FAILED: '.$q()->where('ocr_status', 'failed')->count()."
+";
