@@ -1,0 +1,44 @@
+name: Look at the library pages
+# One-off: builds FileNest on the runner with sample library data and takes screenshots.
+on:
+  push:
+    branches: [ops/ui-check]
+jobs:
+  look:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, zip, gd, bcmath, pdo_sqlite, sodium, fileinfo
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install and build
+        run: |
+          cp .env.example .env
+          sed -i -e 's/^DB_CONNECTION=.*/DB_CONNECTION=sqlite/' -e '/^DB_DATABASE=/d' -e 's|^APP_URL=.*|APP_URL=http://127.0.0.1:8000|' .env
+          echo "QUEUE_CONNECTION=sync" >> .env
+          touch database/database.sqlite
+          composer install --no-interaction --no-progress --prefer-dist
+          npm ci --no-audit --no-fund
+          npm run build
+          php artisan key:generate
+          php artisan migrate --force --seed
+          php -r "require 'vendor/autoload.php'; \$app = require 'bootstrap/app.php'; \$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); require 'ops/ui-seed.php';"
+      - name: Screenshots
+        run: |
+          php artisan serve --port 8000 > serve.log 2>&1 &
+          sleep 3
+          pip install playwright >/dev/null && python -m playwright install --with-deps chromium >/dev/null
+          mkdir -p shots
+          python ops/ui-shots.py
+          tail -40 storage/logs/laravel.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ui-shots
+          path: shots/
