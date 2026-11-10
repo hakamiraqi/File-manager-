@@ -1,6 +1,4 @@
 <?php
-echo 'PDF NO THUMB: '.\App\Models\File::where('extension','pdf')->whereNull('thumbnail_path')->count().' / JOBS: '.\Illuminate\Support\Facades\DB::table('jobs')->count().' / FAILED JOBS: '.\Illuminate\Support\Facades\DB::table('failed_jobs')->where('failed_at','>',now()->subHour())->count()."\n";
-
 // Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
 // Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
