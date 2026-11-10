@@ -1,0 +1,34 @@
+name: Backup for the offline server
+# One-off, temporary: a full backup of the hosted FileNest packed as one zip in the admin's files,
+# to restore on a new offline server. Counts and sizes only in the log.
+on:
+  push:
+    branches: [ops/backup-export]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make and pack the backup
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          if [ "$(grep -c . ~/.ssh/vps_key)" -le 2 ] && grep -q -- '-----BEGIN' ~/.ssh/vps_key; then
+            python3 -c "import os,re;p=os.path.expanduser('~/.ssh/vps_key');t=open(p).read().strip();m=re.match(r'(-----BEGIN [A-Z ]+-----)(.*?)(-----END [A-Z ]+-----)',t,re.S);b=''.join(m.group(2).split());open(p,'w').write(m.group(1)+'\n'+'\n'.join(b[i:i+64] for i in range(0,len(b),64))+'\n'+m.group(3)+'\n')"
+          fi
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          S="ssh -o ServerAliveInterval=30 -i $HOME/.ssh/vps_key $VPS_USER@$VPS_HOST"
+          scp -i ~/.ssh/vps_key ops/pack.py ops/register.php "$VPS_USER@$VPS_HOST:/tmp/"
+          $S 'sudo docker exec -u www-data filenest-app php artisan backup:run --force'
+          $S 'APP=$(sudo docker inspect filenest-app --format "{{range .Mounts}}{{if eq .Destination \"/var/www/html/storage\"}}{{.Source}}{{end}}{{end}}")/app; echo "storage: $APP"; sudo test -d "$APP/filemanager" || { echo "no storage found"; exit 1; }
+            NAME="FileNest-backup-$(date +%Y%m%d-%H%M).zip"; ADMIN=$(sudo docker exec -u www-data -w /var/www/html filenest-app php -r "require \"vendor/autoload.php\"; \$a = require \"bootstrap/app.php\"; \$a->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); echo App\\Models\\User::where(\"email\", \"admin@filenest.test\")->value(\"id\");")
+            REL="$ADMIN/backup-exports/$NAME"; sudo mkdir -p "$APP/filemanager/$ADMIN/backup-exports"
+            sudo python3 /tmp/pack.py "$APP" "$APP/filemanager/$REL" && sudo chown -R 82:82 "$APP/filemanager/$ADMIN/backup-exports" 2>/dev/null; sudo chown -R --reference="$APP/filemanager/$ADMIN" "$APP/filemanager/$ADMIN/backup-exports"
+            sudo docker cp /tmp/register.php filenest-app:/tmp/register.php
+            sudo docker exec -u www-data -e PACK_REL="$REL" -e PACK_NAME="$NAME" -w /var/www/html filenest-app php -r "require \"vendor/autoload.php\"; \$a = require \"bootstrap/app.php\"; \$a->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); require \"/tmp/register.php\";"
+            df -h / | tail -1'
