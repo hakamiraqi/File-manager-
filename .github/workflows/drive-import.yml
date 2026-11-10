@@ -1,16 +1,16 @@
 name: Import the Drive library into FileNest
-# One-off, temporary: lists the public Drive folder; the import step is added after the survey.
+# One-off, temporary: downloads the public Drive folder on the server and imports it into FileNest,
+# keeping every section (subfolder) with its files. Re-runnable: what is already there is skipped.
 on:
   push:
     branches: [ops/drive-import]
 jobs:
-  survey:
+  import:
     runs-on: ubuntu-latest
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
-      - name: List the Drive folder
-        run: python3 ops/drive.py 1lzsxTpS_sulXHtJTd0ecng1i5oCbWxHr
-      - name: Server disk
+      - name: Download on the server and import
         env:
           KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
@@ -23,4 +23,10 @@ jobs:
           fi
           chmod 600 ~/.ssh/vps_key
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "df -h / /var/lib/docker 2>/dev/null; which python3; sudo docker exec filenest-app php -r 'echo disk_free_space(\"/var/www/html/storage\")/1e9, \" GB free in storage\n\";'"
+          S="ssh -o ServerAliveInterval=30 -i $HOME/.ssh/vps_key $VPS_USER@$VPS_HOST"
+          $S "mkdir -p ~/drive-import"
+          scp -i ~/.ssh/vps_key ops/drive.py ops/import.php "$VPS_USER@$VPS_HOST:drive-import/"
+          $S "cd ~/drive-import && python3 drive.py 1lzsxTpS_sulXHtJTd0ecng1i5oCbWxHr --download files && du -sh files && df -h / | tail -1"
+          $S "sudo docker exec filenest-app rm -rf /tmp/drive-import && sudo docker cp ~/drive-import/files filenest-app:/tmp/drive-import && sudo docker cp ~/drive-import/import.php filenest-app:/tmp/import.php && sudo docker exec filenest-app chown -R www-data:www-data /tmp/drive-import"
+          $S "sudo docker exec -u www-data -e IMPORT_DIR=/tmp/drive-import -e IMPORT_ROOT_NAME='المكتبة الإلكترونية (الرقمية) — مكتبة كلية طب الأسنان' -w /var/www/html filenest-app php -d memory_limit=1G -r \"require 'vendor/autoload.php'; \\\$app = require 'bootstrap/app.php'; \\\$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); require '/tmp/import.php';\""
+          $S "sudo docker exec filenest-app rm -rf /tmp/drive-import /tmp/import.php; cat ~/drive-import/failed.json | python3 -c 'import json,sys; f=json.load(sys.stdin); print(\"FAILED DOWNLOADS:\", len(f))'; rm -rf ~/drive-import; df -h / | tail -1"
