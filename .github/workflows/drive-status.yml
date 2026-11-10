@@ -1,0 +1,24 @@
+name: Drive import progress
+# One-off: shows how far the Drive download has got (counts and sizes only).
+on:
+  push:
+    branches: [ops/drive-status]
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Progress
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          if [ "$(grep -c . ~/.ssh/vps_key)" -le 2 ] && grep -q -- '-----BEGIN' ~/.ssh/vps_key; then
+            python3 -c "import os,re;p=os.path.expanduser('~/.ssh/vps_key');t=open(p).read().strip();m=re.match(r'(-----BEGIN [A-Z ]+-----)(.*?)(-----END [A-Z ]+-----)',t,re.S);b=''.join(m.group(2).split());open(p,'w').write(m.group(1)+'\n'+'\n'.join(b[i:i+64] for i in range(0,len(b),64))+'\n'+m.group(3)+'\n')"
+          fi
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "cd ~/drive-import 2>/dev/null && { echo FILES: \$(find files -type f ! -name \"*.part\" | wc -l); du -sh files; ls -la files/*/ 2>/dev/null | head -0; find files -name \"*.part\" -exec ls -la {} \; ; } ; df -h / | tail -1; uptime"
