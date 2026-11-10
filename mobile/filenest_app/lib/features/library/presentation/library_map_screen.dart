@@ -20,10 +20,15 @@ import '../../../core/widgets/ui_kit.dart';
 /// same user (visitors get the public map), shown full screen without the site's menus.
 /// Android and iPhone show it in the system web view, Windows in WebView2.
 class LibraryMapScreen extends StatefulWidget {
-  const LibraryMapScreen({super.key, this.bookId});
+  const LibraryMapScreen({super.key, this.bookId, this.title, this.link});
 
   /// Open straight on this book's bookcase and the walk to it.
   final int? bookId;
+
+  /// Another website page in the same full-screen web view (2026-11-10): the map editor
+  /// and the RFID station. [link] returns the page's signed path.
+  final String? title;
+  final Future<String> Function()? link;
 
   @override
   State<LibraryMapScreen> createState() => _LibraryMapScreenState();
@@ -51,6 +56,9 @@ class _LibraryMapScreenState extends State<LibraryMapScreen> {
   }
 
   Future<String> _link() async {
+    if (widget.link != null) {
+      return '${ApiConfig.stripApiSuffix(ApiClient.instance.baseUrl)}${await widget.link!()}';
+    }
     final r = await ApiClient.instance.dio.get(
       '/public/library/map-link',
       queryParameters: {if (widget.bookId != null) 'book': widget.bookId},
@@ -169,7 +177,7 @@ class _LibraryMapScreenState extends State<LibraryMapScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(context.l('خريطة المكتبة', 'Library map')),
+          title: Text(widget.title ?? context.l('خريطة المكتبة', 'Library map')),
           actions: [
             IconButton(
               tooltip: context.l('إعادة التحميل', 'Reload'),

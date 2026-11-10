@@ -6,7 +6,7 @@ import '../../../core/widgets/ui_kit.dart';
 import '../../auth/state/auth_provider.dart';
 import '../../site/site_api.dart';
 import 'book_screen.dart';
-import 'library_desk_screen.dart';
+import 'manage/library_manage_screen.dart';
 import 'library_map_screen.dart';
 import 'library_widgets.dart';
 import 'my_loans_screen.dart';
@@ -110,9 +110,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
           if (staff)
             IconButton(
-              tooltip: context.l('مكتب الإعارة', 'Lending desk'),
-              icon: const Icon(Icons.qr_code_scanner_rounded),
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryDeskScreen())),
+              tooltip: context.l('إدارة المكتبة', 'Library management'),
+              icon: const Icon(Icons.admin_panel_settings_outlined),
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryManageScreen())),
             ),
         ],
       ),

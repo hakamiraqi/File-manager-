@@ -28,6 +28,8 @@ dependencies:
   webview_flutter_android: ^4.14.1
   webview_flutter_wkwebview: ^3.27.2
   webview_windows: ^0.4.0
+  # Printing pages (book labels, reader cards) open in the device's browser, which can print.
+  url_launcher: ^6.3.1
   # 12+ needs an Android SDK newer than the CI Flutter ships with.
   permission_handler: ">=11.3.1 <12.0.0"
 

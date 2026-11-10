@@ -13,6 +13,7 @@ import '../../contact/presentation/contact_screen.dart';
 import '../../contact/presentation/inbox_screen.dart';
 import '../../downloads/presentation/downloads_screen.dart';
 import '../../library/presentation/library_desk_screen.dart';
+import '../../library/presentation/manage/library_manage_screen.dart';
 import '../../library/presentation/my_loans_screen.dart';
 import '../../playlists/presentation/playlists_screen.dart';
 import '../../saved/presentation/saved_screen.dart';
@@ -163,6 +164,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           NavRow(icon: Icons.bookmark_added_rounded, color: const Color(0xFF7E57C2), label: context.l('استعاراتي', 'My loans'), onTap: () => _push(const MyLoansScreen())),
           if (user.manageLibrary)
             NavRow(icon: Icons.qr_code_scanner_rounded, color: const Color(0xFF5C6BC0), label: context.l('مكتب الإعارة', 'Lending desk'), onTap: () => _push(const LibraryDeskScreen())),
+          if (user.manageLibrary)
+            NavRow(icon: Icons.admin_panel_settings_rounded, color: const Color(0xFF3949AB), label: context.l('إدارة المكتبة', 'Library management'), onTap: () => _push(const LibraryManageScreen())),
           NavRow(icon: Icons.forum_rounded, color: const Color(0xFF26A69A), label: context.l('تواصل معنا', 'Contact us'), onTap: () => _push(const ContactScreen())),
           if (user.manageContact)
             NavRow(

@@ -730,15 +730,6 @@ class _BrowseScreenState extends State<BrowseScreen> {
                   .toList(),
             ),
           ),
-        if (widget.folder != null) _buildFolderInfoPanel(),
-        if (!_isLoading && _error == null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-            child: Text(
-              context.tr('browse.item_count', {'folders': _folders.length, 'files': _files.length}),
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ),
         Expanded(child: _buildBody()),
       ],
     );
@@ -854,16 +845,36 @@ class _BrowseScreenState extends State<BrowseScreen> {
   }
 
   Widget _buildBody() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) return Center(child: Text(_error!));
-    if (_folders.isEmpty && _files.isEmpty) {
-      return EmptyState(icon: Icons.folder_open_outlined, message: context.tr('empty.no_files'));
+    // The folder's info panel scrolls with the list (2026-11-10): opened on a phone it is
+    // taller than the screen, and fixed above the list it left nothing to scroll.
+    final header = <Widget>[
+      if (widget.folder != null) _buildFolderInfoPanel(),
+      if (!_isLoading && _error == null)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          child: Text(
+            context.tr('browse.item_count', {'folders': _folders.length, 'files': _files.length}),
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+        ),
+    ];
+    Widget? state;
+    if (_isLoading) {
+      state = const Center(child: CircularProgressIndicator());
+    } else if (_error != null) {
+      state = Center(child: Text(_error!));
+    } else if (_folders.isEmpty && _files.isEmpty) {
+      state = EmptyState(icon: Icons.folder_open_outlined, message: context.tr('empty.no_files'));
     }
 
     return RefreshIndicator(
       onRefresh: () => _load(query: _searchController.text.trim()),
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 96),
         children: [
+          ...header,
+          if (state != null) SizedBox(height: 320, child: state),
           ..._folders.map((folder) => FolderTile(
                 folder: folder,
                 selectionMode: _isSelecting,

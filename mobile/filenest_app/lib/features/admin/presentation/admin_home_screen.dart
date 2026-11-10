@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/i18n/app_strings.dart';
+import '../../../core/widgets/ui_kit.dart';
 import '../../auth/state/auth_provider.dart';
 import 'activity_log_screen.dart';
 import 'analytics_screen.dart';
 import 'dashboard_screen.dart';
 import 'mail_screen.dart';
+import 'ocr_screen.dart';
 import 'permissions_screen.dart';
 import 'security_screen.dart';
 import 'settings_screen.dart';
@@ -69,6 +71,12 @@ class AdminHomeScreen extends StatelessWidget {
         icon: Icons.mail_outline_rounded,
         label: context.tr('admin.nav.mail'),
         builder: (_) => const MailScreen(),
+        enabled: admin.settings,
+      ),
+      _AdminSection(
+        icon: Icons.document_scanner_outlined,
+        label: context.l('التعرف على النصوص', 'Text recognition'),
+        builder: (_) => const OcrScreen(),
         enabled: admin.settings,
       ),
       _AdminSection(
