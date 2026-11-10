@@ -1,10 +1,4 @@
 <?php
-// Today only (user, 11 Nov 02:26): no load checks, so the text reading finishes. Disk check stays.
-$keys = ['ocr_max_cpu', 'ocr_min_ram_mb', 'ocr_max_users', 'ocr_min_disk_gb'];
-echo 'LOAD BEFORE: '.json_encode(array_combine($keys, array_map(fn ($k) => \App\Services\Ocr\OcrSettings::get($k), $keys)))."\n";
-\App\Models\Setting::setMany(['ocr_max_cpu' => '0', 'ocr_min_ram_mb' => '0', 'ocr_max_users' => '0']);
-echo 'LOAD AFTER: '.json_encode(array_combine($keys, array_map(fn ($k) => \App\Models\Setting::get($k), $keys)))."\n";
-
 // Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
 // Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
