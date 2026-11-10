@@ -59,6 +59,28 @@ class DatabaseBackupService
         return ['filename' => basename($file), 'size' => filesize($file)];
     }
 
+    /**
+     * The database alone, zipped into `$dir` (2026-11-10): for the offline server's export,
+     * which streams the uploaded files straight from storage instead of mirroring them here.
+     */
+    public function createDatabaseZip(string $dir): string
+    {
+        $connection = config('database.connections.'.config('database.default'));
+        File::ensureDirectoryExists($dir);
+        $name = $connection['database'].'_'.now()->format('Ymd_His').'_offline';
+        $sql = $dir.DIRECTORY_SEPARATOR.$name.'.sql';
+        if (! $this->dumpWithMysqldump($connection, $sql)) {
+            $this->dumpWithPhp($sql);
+        }
+        $zip = new ZipArchive();
+        $zip->open($dir.DIRECTORY_SEPARATOR.$name.'.zip', ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFile($sql, 'database.sql');
+        $zip->close();
+        @unlink($sql);
+
+        return $dir.DIRECTORY_SEPARATOR.$name.'.zip';
+    }
+
     /** Tables that belong to one server only: never merged from a backup. */
     public const HOSTED_ONLY_TABLES = [
         'cache', 'cache_locks', 'sessions', 'jobs', 'job_batches', 'failed_jobs',

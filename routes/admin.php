@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\ActivityLogController;
 use App\Http\Controllers\Admin\AnalyticsController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\OfflineExportController;
 use App\Http\Controllers\Admin\MailController;
 use App\Http\Controllers\Admin\OcrController;
 use App\Http\Controllers\Admin\PermissionController;
@@ -13,6 +14,9 @@ use App\Http\Controllers\Admin\UserController;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    // «نسخة للسيرفر بدون إنترنت» (2026-11-10): the whole site as .tar parts, main admin only.
+    Route::get('/offline-export', [OfflineExportController::class, 'index'])->name('offline-export');
+    Route::get('/offline-export/part/{n}', [OfflineExportController::class, 'part'])->whereNumber('n')->name('offline-export.part');
     Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::middleware('can:manage-users')->group(function () {
