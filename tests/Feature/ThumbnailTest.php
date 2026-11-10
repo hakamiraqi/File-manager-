@@ -148,8 +148,46 @@ class ThumbnailTest extends TestCase
         // can't actually produce, and never throws either way.
         $generator = app(ThumbnailGenerator::class);
 
-        $this->assertSame($generator->imagickAvailable(), $generator->supports('pdf'));
+        $this->assertSame($generator->pdftoppmAvailable() || $generator->imagickAvailable(), $generator->supports('pdf'));
         $this->assertSame($generator->ffmpegAvailable(), $generator->supports('mp4'));
         $this->assertNull($generator->generate('/nonexistent/path.pdf', 'pdf'));
+    }
+
+    public function test_a_pdf_gets_its_first_page_as_a_preview_and_old_files_can_be_filled_in(): void
+    {
+        $generator = app(ThumbnailGenerator::class);
+        if (! $generator->pdftoppmAvailable()) {
+            $this->markTestSkipped('pdftoppm is not installed here.');
+        }
+
+        Storage::fake('local');
+        $user = User::factory()->create();
+        $pdf = "%PDF-1.4\n";
+        $objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [4 0 R] /Count 1 >>', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+            '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>',
+            "<< /Length 33 >>\nstream\nBT /F1 40 Tf 60 650 Td (Hi) Tj ET\nendstream"];
+        $offsets = [];
+        foreach ($objs as $k => $o) {
+            $offsets[] = strlen($pdf);
+            $pdf .= ($k + 1)." 0 obj\n$o\nendobj\n";
+        }
+        $xref = strlen($pdf);
+        $pdf .= "xref\n0 6\n0000000000 65535 f \n".implode('', array_map(fn ($o) => sprintf("%010d 00000 n \n", $o), $offsets));
+        $pdf .= "trailer << /Size 6 /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n";
+
+        Storage::disk('local')->put("filemanager/{$user->id}/book.pdf", $pdf);
+        $file = File::factory()->create([
+            'user_id' => $user->id, 'disk' => 'local', 'path' => "filemanager/{$user->id}/book.pdf",
+            'extension' => 'pdf', 'mime_type' => 'application/pdf', 'thumbnail_path' => null,
+        ]);
+
+        // Files without a preview are queued (the queue runs at once in tests).
+        $this->artisan('filenest:make-thumbnails', ['--ext' => 'pdf'])->expectsOutput('Queued 1 files.')->assertSuccessful();
+
+        $thumb = $file->fresh()->thumbnail_path;
+        $this->assertNotNull($thumb);
+        $info = getimagesizefromstring(Storage::disk('local')->get($thumb));
+        $this->assertSame(IMAGETYPE_JPEG, $info[2]);
+        $this->assertGreaterThan($info[0], $info[1]); // a portrait page
     }
 }

@@ -16,8 +16,8 @@ use Throwable;
  *
  * - Images: GD (bundled with virtually every PHP install).
  * - Video (first frame): the `ffmpeg` binary, if present on PATH.
- * - PDF (first page): the `imagick` PHP extension with its Ghostscript
- *   delegate, if installed.
+ * - PDF (first page): Poppler's `pdftoppm` (on the server for OCR), else the
+ *   `imagick` PHP extension with its Ghostscript delegate.
  *
  * Whichever tool is missing simply means no thumbnail for that type — the
  * upload itself is never affected, exactly like DocumentTextExtractor.
@@ -44,7 +44,7 @@ class ThumbnailGenerator
 
         return in_array($extension, self::IMAGE_EXTENSIONS, true)
             || (in_array($extension, self::VIDEO_EXTENSIONS, true) && $this->ffmpegAvailable())
-            || ($extension === 'pdf' && $this->imagickAvailable());
+            || ($extension === 'pdf' && ($this->pdftoppmAvailable() || $this->imagickAvailable()));
     }
 
     /**
@@ -58,6 +58,7 @@ class ThumbnailGenerator
             return match (true) {
                 in_array($extension, self::IMAGE_EXTENSIONS, true) => $this->fromImage($absolutePath),
                 in_array($extension, self::VIDEO_EXTENSIONS, true) && $this->ffmpegAvailable() => $this->fromVideo($absolutePath),
+                $extension === 'pdf' && $this->pdftoppmAvailable() => $this->fromPdfWithPoppler($absolutePath),
                 $extension === 'pdf' && $this->imagickAvailable() => $this->fromPdf($absolutePath),
                 default => null,
             };
@@ -110,6 +111,37 @@ class ThumbnailGenerator
 
         $source = @imagecreatefromjpeg($tmpFrame);
         @unlink($tmpFrame);
+
+        if ($source === false) {
+            return null;
+        }
+
+        $jpeg = $this->resizeAndEncode($source);
+        imagedestroy($source);
+
+        return $jpeg;
+    }
+
+    /** The first page with pdftoppm (2026-11-11: the server has Poppler, not Imagick). */
+    private function fromPdfWithPoppler(string $path): ?string
+    {
+        $base = tempnam(sys_get_temp_dir(), 'pthumb');
+        @unlink($base);
+
+        $result = Process::timeout(60)->run([
+            'pdftoppm', '-jpeg', '-jpegopt', 'quality=85', '-f', '1', '-l', '1',
+            '-scale-to', (string) max(200, $this->maxDimension() * 2), '-singlefile', $path, $base,
+        ]);
+        $jpg = "{$base}.jpg";
+
+        if (! $result->successful() || ! is_file($jpg)) {
+            @unlink($jpg);
+
+            return null;
+        }
+
+        $source = @imagecreatefromjpeg($jpg);
+        @unlink($jpg);
 
         if ($source === false) {
             return null;
@@ -174,6 +206,13 @@ class ThumbnailGenerator
         static $cached = null;
 
         return $cached ??= Process::run(['which', 'ffmpeg'])->successful();
+    }
+
+    public function pdftoppmAvailable(): bool
+    {
+        static $cached = null;
+
+        return $cached ??= Process::run(['which', 'pdftoppm'])->successful();
     }
 
     public function imagickAvailable(): bool
