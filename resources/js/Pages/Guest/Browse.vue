@@ -31,7 +31,7 @@ defineProps({ currentFolder: Object, breadcrumbs: Array, folders: Array, files: 
                     <li v-for="folder in folders" :key="'f' + folder.id">
                         <Link :href="route('guest.show', folder.id)" class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                             <FolderIcon class="h-6 w-6 shrink-0 text-amber-400" />
-                            <span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200">{{ folder.name }}</span>
+                            <span class="min-w-0 flex-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200"><span dir="auto" class="inline-block max-w-full truncate align-bottom">{{ folder.name }}</span></span>
                             <ChevronLeftIcon class="h-4 w-4 text-gray-300 ltr:rotate-180" />
                         </Link>
                     </li>
@@ -39,7 +39,7 @@ defineProps({ currentFolder: Object, breadcrumbs: Array, folders: Array, files: 
                         <div class="flex h-8 w-8 shrink-0 items-center justify-center">
                             <FileThumbnail :file="file" :src="route('guest.thumbnail', file.id)" icon-class="h-6 w-6" />
                         </div>
-                        <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300" dir="auto">{{ file.name }}</span>
+                        <span class="min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300"><span dir="auto" class="inline-block max-w-full truncate align-bottom">{{ file.name }}</span></span>
                         <span class="hidden text-xs text-gray-400 sm:inline dark:text-gray-500">{{ file.human_size }}</span>
                         <a
                             v-if="canDownload"

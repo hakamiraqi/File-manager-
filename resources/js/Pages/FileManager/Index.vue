@@ -786,7 +786,8 @@ function uploadFromUrl() {
                         <CheckIcon v-if="selected.folders.has(folder.id)" class="h-3.5 w-3.5" />
                     </button>
                     <FolderIcon class="shrink-0 text-amber-400" :class="isList ? 'h-7 w-7' : 'h-12 w-12'" />
-                    <p class="truncate text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? 'min-w-0 flex-1 text-start' : 'mt-2 w-full'">{{ folder.name }}</p>
+                    <!-- dir="auto" (2026-11-10, by request): an English name is cut at its end, so its start shows. -->
+                    <p class="truncate text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? 'min-w-0 flex-1 text-start' : 'mt-2 w-full'"><span dir="auto" class="inline-block max-w-full truncate align-bottom">{{ folder.name }}</span></p>
                     <span v-if="isList" class="hidden shrink-0 text-xs text-gray-400 sm:inline">{{ formatDate(folder.created_at) }}</span>
                     <span
                         v-if="folder.folder_type === 'thesis'"
@@ -864,7 +865,7 @@ function uploadFromUrl() {
                     <div :class="isList ? 'min-w-0 flex-1 text-start' : 'w-full'">
                         <p class="flex items-center gap-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? '' : 'mt-2 w-full justify-center'">
                             <DocumentMagnifyingGlassIcon v-if="file.is_indexed" class="h-3.5 w-3.5 shrink-0 text-gray-400" :title="t('file.indexed', 'مفهرس للبحث داخل المحتوى')" />
-                            <span class="truncate">{{ file.name }}</span>
+                            <span dir="auto" class="truncate">{{ file.name }}</span>
                         </p>
                         <p v-if="!isList" class="text-xs text-gray-400">{{ file.human_size ?? '' }}</p>
                         <p v-if="file.content_snippet" class="mt-1 line-clamp-2 w-full text-start text-xs text-gray-500 dark:text-gray-400" dir="auto">

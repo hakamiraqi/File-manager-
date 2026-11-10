@@ -55,7 +55,7 @@ function emptyTrash() {
             <ul v-else class="divide-y divide-gray-200 rounded-xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800">
                 <li v-for="folder in folders" :key="`folder-${folder.id}`" class="flex items-center gap-3 p-4">
                     <FolderIcon class="h-6 w-6 shrink-0 text-amber-400" />
-                    <span class="flex-1 truncate dark:text-gray-200">{{ folder.name }}</span>
+                    <span class="min-w-0 flex-1 truncate dark:text-gray-200"><span dir="auto" class="inline-block max-w-full truncate align-bottom">{{ folder.name }}</span></span>
                     <button @click="restore('folder', folder.id)" class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.restore', 'استعادة')">
                         <ArrowUturnLeftIcon class="h-5 w-5" />
                     </button>
@@ -65,7 +65,7 @@ function emptyTrash() {
                 </li>
                 <li v-for="file in files" :key="`file-${file.id}`" class="flex items-center gap-3 p-4">
                     <FileIcon :extension="file.extension" class="h-6 w-6 shrink-0" />
-                    <span class="flex-1 truncate dark:text-gray-200">{{ file.name }}</span>
+                    <span class="min-w-0 flex-1 truncate dark:text-gray-200"><span dir="auto" class="inline-block max-w-full truncate align-bottom">{{ file.name }}</span></span>
                     <button @click="restore('file', file.id)" class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.restore', 'استعادة')">
                         <ArrowUturnLeftIcon class="h-5 w-5" />
                     </button>

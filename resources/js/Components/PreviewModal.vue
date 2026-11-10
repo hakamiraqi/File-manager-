@@ -577,7 +577,7 @@ onBeforeUnmount(() => {
         <div v-if="file" class="flex max-h-[85vh] flex-col dark:bg-gray-800">
             <div class="flex items-center justify-between border-b border-gray-200 p-4 dark:border-gray-700">
                 <div class="min-w-0">
-                    <h3 class="truncate font-medium text-gray-900 dark:text-gray-100">{{ file.name }}</h3>
+                    <h3 class="truncate font-medium text-gray-900 dark:text-gray-100"><span dir="auto" class="inline-block max-w-full truncate align-bottom">{{ file.name }}</span></h3>
                     <p v-if="playlist.length > 1" class="text-xs text-gray-500 dark:text-gray-400">
                         {{ t('preview.playlist_position', ':index من :total في قائمة التشغيل', { index: currentIndex + 1, total: playlist.length }) }}
                     </p>
