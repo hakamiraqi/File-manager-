@@ -31,6 +31,8 @@ const page = usePage();
 const user = computed(() => page.props.auth.user);
 const quota = computed(() => page.props.quota);
 const mobileOpen = ref(false);
+// Opened from the FileNest apps (signed link): the page alone, without the site's menus.
+const inApp = computed(() => !!page.props.inApp);
 const saved = useSaved();
 watch(() => page.props.savedIds, (ids) => saved.load(ids), { immediate: true });
 
@@ -58,6 +60,7 @@ function logout() {
     <div class="flex h-screen overflow-hidden bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
         <!-- Sidebar -->
         <aside
+            v-if="!inApp"
             class="fixed inset-y-0 z-30 w-64 shrink-0 border-e border-gray-200 bg-white transition-transform lg:static lg:translate-x-0 dark:border-gray-700 dark:bg-gray-800"
             :class="mobileOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full lg:rtl:translate-x-0'"
         >
@@ -102,14 +105,14 @@ function logout() {
         </aside>
 
         <div
-            v-if="mobileOpen"
+            v-if="mobileOpen && !inApp"
             class="fixed inset-0 z-20 bg-black/30 lg:hidden"
             @click="mobileOpen = false"
         />
 
         <!-- Main -->
         <div class="flex min-w-0 flex-1 flex-col">
-            <header class="flex min-h-16 items-center gap-3 border-b py-2 sm:gap-4 border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-800">
+            <header v-if="!inApp" class="flex min-h-16 items-center gap-3 border-b py-2 sm:gap-4 border-gray-200 bg-white px-4 dark:border-gray-700 dark:bg-gray-800">
                 <button class="shrink-0 lg:hidden" @click="mobileOpen = true">
                     <Bars3Icon class="h-6 w-6" />
                 </button>

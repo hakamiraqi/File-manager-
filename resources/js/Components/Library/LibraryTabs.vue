@@ -39,7 +39,7 @@ onMounted(() => nextTick(() => strip.value?.querySelector('[aria-current="page"]
 </script>
 
 <template>
-    <nav ref="strip" class="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden" :aria-label="t('library.tabs', 'أقسام المكتبة')">
+    <nav v-if="!$page.props.inApp" ref="strip" class="-mx-4 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden" :aria-label="t('library.tabs', 'أقسام المكتبة')">
         <div class="flex w-max items-center gap-2 rounded-2xl border border-gray-200 bg-white p-1.5 shadow-sm sm:w-full sm:flex-wrap dark:border-gray-700 dark:bg-gray-800">
             <template v-for="(group, gi) in [readerTabs, staffTabs]" :key="gi">
                 <span v-if="gi === 1 && group.length" class="mx-0.5 h-7 w-px shrink-0 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />

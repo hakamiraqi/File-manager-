@@ -14,6 +14,9 @@ use App\Http\Controllers\VideoQuestionController;
 use Illuminate\Support\Facades\Route;
 
 // The apps and the offline server for download (public, no login).
+// The apps open some website pages through a short-lived signed link (see AppPageController).
+Route::get('/app/open', [\App\Http\Controllers\AppPageController::class, 'open'])->middleware('throttle:30,1')->name('app.open');
+
 Route::get('/download', fn () => view('downloads', ['releases' => \App\Support\AppReleases::all()]))->name('downloads');
 
 Route::get('/', function () {

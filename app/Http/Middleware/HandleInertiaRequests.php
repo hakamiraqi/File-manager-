@@ -37,6 +37,8 @@ class HandleInertiaRequests extends Middleware
 
         return [
             ...parent::share($request),
+            // A page opened from the FileNest apps shows without the site's menus.
+            'inApp' => $request->hasSession() && (bool) $request->session()->get('in_app'),
             'auth' => [
                 'user' => $user,
                 'twoFactorEnabled' => $user?->hasEnabledTwoFactorAuthentication() ?? false,

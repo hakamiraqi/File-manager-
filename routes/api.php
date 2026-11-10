@@ -143,6 +143,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::post('/shares/{share}/email', [ShareController::class, 'sendEmail'])->name('shares.email');
 
         // Website features in the app (2026-11-06): library, notifications, saved, inbox, picture.
+        Route::get('/web-link', [\App\Http\Controllers\AppPageController::class, 'link'])->name('web-link');
         Route::get('/me/badges', [\App\Http\Controllers\Api\V1\MobileController::class, 'badges'])->name('me.badges');
         Route::post('/profile/avatar', [\App\Http\Controllers\Api\V1\MobileController::class, 'avatar'])->name('profile.avatar');
         Route::delete('/profile/avatar', [\App\Http\Controllers\Api\V1\MobileController::class, 'deleteAvatar'])->name('profile.avatar.destroy');
@@ -167,6 +168,43 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::post('/counter/scan', [\App\Http\Controllers\Library\CounterController::class, 'scan'])->name('counter.scan');
             Route::get('/counter/members', [\App\Http\Controllers\Library\CounterController::class, 'members'])->name('counter.members');
             Route::post('/counter/member', [\App\Http\Controllers\Library\CounterController::class, 'member'])->name('counter.member');
+
+            // The rest of the website's library management, for the apps (2026-11-10): the same
+            // controllers as the web pages, their replies turned into JSON by "web-json".
+            Route::middleware('web-json')->group(function () {
+                $books = \App\Http\Controllers\Library\BookController::class;
+                Route::get('/books', [$books, 'index'])->name('books');
+                Route::post('/books', [$books, 'store'])->name('books.store');
+                Route::put('/books/{book}', [$books, 'update'])->name('books.update');
+                Route::delete('/books/{book}', [$books, 'destroy'])->name('books.destroy');
+                Route::get('/isbn/{isbn}', [$books, 'isbn'])->name('isbn');
+                Route::post('/books/{book}/copies', [$books, 'addCopies'])->name('copies.store');
+                Route::put('/copies/{copy}', [$books, 'updateCopy'])->name('copies.update');
+                Route::delete('/copies/{copy}', [$books, 'destroyCopy'])->name('copies.destroy');
+                Route::get('/import/template', [\App\Http\Controllers\Library\ImportController::class, 'template'])->name('import.template');
+                Route::post('/import', [\App\Http\Controllers\Library\ImportController::class, 'store'])->name('import');
+
+                $sections = \App\Http\Controllers\Library\SectionController::class;
+                Route::get('/sections', [$sections, 'index'])->name('sections');
+                Route::post('/sections', [$sections, 'store'])->name('sections.store');
+                Route::put('/sections/{section}', [$sections, 'update'])->name('sections.update');
+                Route::delete('/sections/{section}', [$sections, 'destroy'])->name('sections.destroy');
+
+                $members = \App\Http\Controllers\Library\MemberController::class;
+                Route::get('/members', [$members, 'index'])->name('members');
+                Route::post('/members', [$members, 'store'])->name('members.store');
+                Route::put('/members/{member}', [$members, 'update'])->name('members.update');
+                Route::delete('/members/{member}', [$members, 'destroy'])->name('members.destroy');
+                Route::post('/members/import', [$members, 'import'])->name('members.import');
+
+                $settings = \App\Http\Controllers\Library\SettingsController::class;
+                Route::get('/settings', [$settings, 'index'])->name('settings');
+                Route::post('/settings', [$settings, 'update'])->name('settings.update');
+                Route::post('/holidays', [$settings, 'addHoliday'])->name('holidays.store');
+                Route::delete('/holidays/{holiday}', [$settings, 'removeHoliday'])->name('holidays.destroy');
+
+                Route::get('/reports', [\App\Http\Controllers\Library\ReportController::class, 'index'])->name('reports');
+            });
         });
         Route::middleware('can:manage-contact')->group(function () {
             Route::get('/inbox', [\App\Http\Controllers\Api\V1\MobileController::class, 'inbox'])->name('inbox.index');
@@ -213,6 +251,17 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 Route::get('/mail', [AdminMailController::class, 'index'])->name('mail.index');
                 Route::post('/mail', [AdminMailController::class, 'update'])->name('mail.update');
                 Route::post('/mail/test', [AdminMailController::class, 'sendTest'])->name('mail.test');
+
+                // «التعرف على النصوص»: the website page's controller, as JSON (2026-11-10).
+                Route::middleware('web-json')->group(function () {
+                    $ocr = \App\Http\Controllers\Admin\OcrController::class;
+                    Route::get('/ocr', [$ocr, 'index'])->name('ocr.index');
+                    Route::post('/ocr', [$ocr, 'update'])->name('ocr.update');
+                    Route::post('/ocr/queue', [$ocr, 'queue'])->name('ocr.queue');
+                    Route::post('/ocr/run', [$ocr, 'runNow'])->name('ocr.run');
+                    Route::post('/ocr/retry-failed', [$ocr, 'retryFailed'])->name('ocr.retry-failed');
+                    Route::post('/ocr/files/{file}/{action}', [$ocr, 'file'])->whereIn('action', ['retry', 'skip', 'prioritize'])->name('ocr.file');
+                });
             });
 
             Route::middleware('can:manage-translations')->group(function () {
