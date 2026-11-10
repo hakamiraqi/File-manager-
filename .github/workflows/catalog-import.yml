@@ -1,6 +1,6 @@
 name: Import the library catalogues into FileNest
-# One-off, temporary. Step 1: make a key pair on the server and print its PUBLIC key, so the
-# catalogue files can be committed encrypted (the repository is public). The private key never leaves the server.
+# One-off, temporary. The catalogues are committed encrypted for a key pair made on the server
+# (the repository is public); only the server can open them. Prints counts only, no names.
 on:
   push:
     branches: [ops/catalog-import]
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Key pair on the server
+      - name: Import on the server
         env:
           KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
@@ -22,4 +22,10 @@ jobs:
           fi
           chmod 600 ~/.ssh/vps_key
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "umask 077; [ -f ~/.ops-import-key.pem ] || openssl genrsa -out ~/.ops-import-key.pem 3072 2>/dev/null; openssl rsa -in ~/.ops-import-key.pem -pubout 2>/dev/null"
+          S="ssh -i $HOME/.ssh/vps_key $VPS_USER@$VPS_HOST"
+          $S "rm -rf ~/catalog-import && mkdir -m 700 ~/catalog-import"
+          scp -i ~/.ssh/vps_key ops/data.enc ops/key.enc ops/catalog-import.php "$VPS_USER@$VPS_HOST:catalog-import/"
+          $S "cd ~/catalog-import && umask 077 && openssl pkeyutl -decrypt -inkey ~/.ops-import-key.pem -pkeyopt rsa_padding_mode:oaep -in key.enc -out k.txt && openssl enc -d -aes-256-cbc -pbkdf2 -in data.enc -pass file:k.txt | tar xzf - && ls"
+          $S "sudo docker exec filenest-app rm -rf /tmp/catalog && sudo docker cp ~/catalog-import filenest-app:/tmp/catalog && sudo docker exec filenest-app chown -R www-data:www-data /tmp/catalog"
+          $S "sudo docker exec -u www-data -e IMPORT_DIR=/tmp/catalog -w /var/www/html filenest-app php -r \"require 'vendor/autoload.php'; \\\$app = require 'bootstrap/app.php'; \\\$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); require '/tmp/catalog/catalog-import.php';\""
+          $S "sudo docker exec filenest-app rm -rf /tmp/catalog; rm -rf ~/catalog-import ~/.ops-import-key.pem"
