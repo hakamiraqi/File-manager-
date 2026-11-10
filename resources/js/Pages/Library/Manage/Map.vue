@@ -178,6 +178,88 @@ function bulkRotate(deg) {
     }
 }
 
+// «مجموعة» (2026-11-10, by request, as on the exam hall map): bookcases grouped together are chosen
+// with one tap and moved, turned, copied or deleted together; the group is saved with the map.
+// Alt + click picks one of them alone.
+const newGroupKey = () => `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+const groupOf = (it) => (it?.group_key ? onStorey.value.filter((o) => o.group_key === it.group_key) : []);
+const multiGroupKeys = computed(() => new Set(multiItems.value.map((i) => i.group_key ?? null)));
+const multiIsOneGroup = computed(() => multiItems.value.length > 1 && multiGroupKeys.value.size === 1 && !multiGroupKeys.value.has(null));
+const multiHasGroup = computed(() => multiItems.value.some((i) => i.group_key));
+function selectGroup(it) {
+    multi.value = new Set(groupOf(it).map((i) => i._key));
+    selectedKey.value = null;
+}
+function groupSelected() {
+    if (multiItems.value.length < 2) return;
+    const key = newGroupKey();
+    multiItems.value.forEach((i) => (i.group_key = key));
+}
+function ungroupSelected() {
+    multiItems.value.forEach((i) => (i.group_key = null));
+}
+// «تدوير المجموعة»: a round handle above the selection turns all of it round its middle, 15° at a
+// time (Shift: 1°).
+const multiBox = computed(() => {
+    const list = multiItems.value;
+    if (list.length < 2 || tool.value || drawing.value || calib.value) return null;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const i of list) {
+        const a = ((i.rotation || 0) * Math.PI) / 180, c = Math.abs(Math.cos(a)), sn = Math.abs(Math.sin(a));
+        const hw = (i.width * c + i.depth * sn) / 2, hd = (i.width * sn + i.depth * c) / 2;
+        x0 = Math.min(x0, i.x - hw); x1 = Math.max(x1, i.x + hw); y0 = Math.min(y0, i.y - hd); y1 = Math.max(y1, i.y + hd);
+    }
+    const pad = 0.3;
+    return { x0: x0 - pad, x1: x1 + pad, y0: y0 - pad, y1: y1 + pad, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, locked: list.some((i) => !canMove(i)) };
+});
+const multiTurn = ref(null); // the angle shown while turning
+function startMultiRotate(e) {
+    const b = multiBox.value;
+    if (!b || b.locked) return;
+    const p = toPlan(e);
+    drag = { multiRotate: true, cx: b.cx, cy: b.cy, from: Math.atan2(p.y - b.cy, p.x - b.cx), base: multiItems.value.map((i) => ({ i, x: i.x, y: i.y, r: i.rotation || 0 })) };
+    multiTurn.value = 0;
+    e.target.setPointerCapture?.(e.pointerId);
+}
+function multiRotateTo(p, fine) {
+    const step = fine ? 1 : 15;
+    let deg = ((Math.atan2(p.y - drag.cy, p.x - drag.cx) - drag.from) * 180) / Math.PI;
+    deg = Math.round(deg / step) * step;
+    deg = ((deg % 360) + 540) % 360 - 180;
+    const a = (deg * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    for (const { i, x, y, r } of drag.base) {
+        const dx = x - drag.cx, dy = y - drag.cy;
+        i.x = +clamp(drag.cx + dx * c - dy * sn, 0, floor.width).toFixed(2);
+        i.y = +clamp(drag.cy + dx * sn + dy * c, 0, floor.depth).toFixed(2);
+        i.rotation = (((r + deg) % 360) + 360) % 360;
+    }
+    multiTurn.value = deg;
+}
+/** Each selected bookcase turned round where it stands: its books to the other side. */
+function bulkFlip() {
+    for (const i of multiItems.value.filter(canMove)) i.rotation = ((((i.rotation || 0) + 180) % 360) + 360) % 360;
+}
+/** A copy of the selection beside it (or below it), with new codes. */
+function bulkDuplicate() {
+    const list = multiItems.value;
+    if (!list.length) return;
+    const xs = list.map((i) => i.x), ys = list.map((i) => i.y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const w = x1 - x0 + 1.6, d = y1 - y0 + 1.6;
+    const [dx, dy] = x1 + w <= floor.width ? [w, 0] : y1 + d <= floor.depth ? [0, d] : y0 - d >= 0 ? [0, -d] : [-w, 0];
+    const keys = new Map();
+    const copies = list.map((i) => {
+        const { _key, section, ...rest } = i;
+        const g = i.group_key ? (keys.get(i.group_key) ?? keys.set(i.group_key, newGroupKey()).get(i.group_key)) : null;
+        const copy = { ...JSON.parse(JSON.stringify(rest)), id: null, _key: `n${++keySeq}`, locked: false, group_key: g,
+            x: clamp(+(i.x + dx).toFixed(2), 0, floor.width), y: clamp(+(i.y + dy).toFixed(2), 0, floor.depth) };
+        copy.code = uniqueCode(`${String(i.code).replace(/\d+$/, '')}`, 1);
+        items.value.push(copy);
+        return copy;
+    });
+    multi.value = new Set(copies.map((c) => c._key));
+}
+
 // «مثل كانفا» (2026-11-07, by request): handles round the selected hall, bookcase or wall to make it
 // bigger or smaller (corners and sides) and a round handle above it to turn it. «قفل» stops a
 // hall, bookcase or the whole plan from being moved by mistake.
@@ -332,7 +414,10 @@ const ctxMulti = computed(() => !!ctxItem.value && multi.value.size > 1 && multi
 function openCtx(e, item) {
     e.preventDefault?.();
     if (!item) return;
-    if (!(multi.value.size && multi.value.has(item._key))) { multi.value = new Set(); selectedKey.value = item._key; }
+    if (!(multi.value.size && multi.value.has(item._key))) {
+        if (item.group_key) selectGroup(item);
+        else { multi.value = new Set(); selectedKey.value = item._key; }
+    }
     const W = window.innerWidth, H = window.innerHeight;
     ctx.value = { x: Math.min(e.clientX, W - 236), y: Math.min(e.clientY, H - 340), key: item._key };
 }
@@ -370,7 +455,12 @@ const ctxActions = computed(() => {
     if (!it) return [];
     if (ctxMulti.value) {
         return [
+            multiIsOneGroup.value
+                ? { label: t('library.map.ungroup', 'فك التجميع'), icon: RectangleGroupIcon, run: () => ungroupSelected() }
+                : { label: t('library.map.group', 'جمّعها (تتحرك معاً دائماً)'), icon: RectangleGroupIcon, run: () => groupSelected() },
             { label: t('library.map.ctx_rotate_all', 'تدوير المحدد 90°'), icon: ArrowPathRoundedSquareIcon, run: () => bulkRotate(90) },
+            { label: t('library.map.flip', 'اقلب اتجاهها (الكتب للجهة الثانية)'), icon: ArrowsRightLeftIcon, run: () => bulkFlip() },
+            { label: t('library.map.duplicate_sel', 'تكرار المحدد بجانبه'), icon: DocumentDuplicateIcon, run: () => bulkDuplicate() },
             { label: multiItems.value.every((x) => x.locked) ? t('library.map.unlock_all', 'فتح قفل المحدد') : t('library.map.lock_all_sel', 'قفل المحدد'), icon: LockClosedIcon, run: () => { const v = !multiItems.value.every((x) => x.locked); multiItems.value.forEach((x) => (x.locked = v)); } },
             { label: t('library.map.unselect', 'إلغاء التحديد'), icon: XMarkIcon, run: () => (multi.value = new Set()) },
             { label: t('library.map.ctx_delete_all', 'حذف المحدد (:n)', { n: multi.value.size }), icon: TrashIcon, danger: true, run: () => bulkRemove() },
@@ -772,6 +862,8 @@ function toPlan(e) {
 function startDrag(e, item) {
     if (tool.value === 'hall' || tool.value === 'corridor') return onPlanDown(e);
     if (tool.value === 'door' || tool.value === 'qr') return;
+    if (e.altKey && multi.value.size) multi.value = new Set();
+    else if (item.group_key && !multiMode.value && !e.shiftKey && !multi.value.has(item._key)) selectGroup(item);
     if ((multiMode.value || e.shiftKey) && multiKind(item)) {
         // Tap to add to (or take out of) the selection; a selected one can still be dragged
         // and the others move with it.
@@ -804,6 +896,7 @@ function onMove(e) {
     pressEnd();
     if (drag.resize) { resizeTo(p, e.shiftKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${m2(drag.item.width)} × ${m2(drag.item.depth)} م` }; return; }
     if (drag.rotate) { rotateTo(p, e.shiftKey || e.altKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${drag.item.rotation}°` }; return; }
+    if (drag.multiRotate) { multiRotateTo(p, e.shiftKey || e.altKey); tip.value = { cx: e.clientX, cy: e.clientY, text: `${multiTurn.value}°` }; return; }
     if (drag.vertex !== undefined) {
         // Plan point → the obstacle's own (unrotated) coordinates.
         const it = drag.item, a = (-(it.rotation || 0) * Math.PI) / 180;
@@ -850,8 +943,9 @@ function onMove(e) {
 function endDrag() {
     if (rect.value) finishRect();
     if (drag?.vertex !== undefined) recentre(drag.item);
-    if (drag?.resize || drag?.rotate) { skipClick = true; setTimeout(() => (skipClick = false), 50); }
+    if (drag?.resize || drag?.rotate || drag?.multiRotate) { skipClick = true; setTimeout(() => (skipClick = false), 50); }
     rotating.value = false;
+    multiTurn.value = null;
     tip.value = null;
     pressEnd();
     drag = null;
@@ -970,6 +1064,7 @@ function onKey(e) {
         const k = e.key.toLowerCase();
         if ((k === 'z' || k === 'ئ') && !e.shiftKey) { e.preventDefault(); undo(); return; }
         if (k === 'y' || k === 'غ' || ((k === 'z' || k === 'ئ') && e.shiftKey)) { e.preventDefault(); redo(); return; }
+        if ((k === 'd' || k === 'ي') && multi.value.size) { e.preventDefault(); bulkDuplicate(); return; }
     }
     if (calib.value && e.key === 'Escape') { calib.value = null; return; }
     if (tool.value && e.key === 'Escape') { tool.value = null; rect.value = null; return; }
@@ -985,6 +1080,8 @@ function onKey(e) {
         if (moves[e.key]) { e.preventDefault(); for (const i of multiItems.value.filter(canMove)) { i.x = clamp(+(i.x + moves[e.key][0]).toFixed(2), 0, floor.width); i.y = clamp(+(i.y + moves[e.key][1]).toFixed(2), 0, floor.depth); } }
         else if (e.key === 'Delete') bulkRemove();
         else if (e.key === 'Escape') multi.value = new Set();
+        else if (e.key === 'g' || e.key === 'G' || e.key === 'ل') e.shiftKey ? ungroupSelected() : groupSelected();
+        else if (e.key === 'r' || e.key === 'R' || e.key === 'ر') bulkRotate(e.shiftKey ? -15 : 15);
         return;
     }
     if (!selected.value || ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
@@ -1012,56 +1109,155 @@ const fontSize = computed(() => Math.max(0.28, Math.min(0.5, Math.max(floor.widt
 
 // «صفوف تلقائية»: rows of bookcases in the room, or (since 2026-11-06) in the selected hall,
 // turned the way the hall is turned. -----------------------------------------------------------
-const gen = reactive({ open: false, rows: 3, perRow: 4, width: 2, aisle: 1.5, double: true, levels: 5, startLetter: 'A', sectionsByRow: true, replace: true, hall: null });
+const gen = reactive({ open: false, layout: 'rows', rows: 3, perRow: 4, width: 2, aisle: 1.5, double: true, levels: 5, startLetter: 'A', sectionsByRow: true, replace: true, hall: null,
+    walls: { top: true, right: true, bottom: true, left: true }, groupCenter: true });
+// «أشكال التوزيع» (2026-11-10, by request, as on the exam hall map): besides parallel rows, a
+// library is mostly bookcases along the walls (one face, the books facing the room) with rows of
+// two-faced bookcases in the middle. The middle rows are made a group, moved as one. Every
+// bookcase stays inside the hall (an L hall too), off the doors, desks, tables and walls there.
+const LAYOUTS = [
+    { key: 'rows', label: t('library.map.layout_rows', 'صفوف متوازية') },
+    { key: 'walls', label: t('library.map.layout_walls', 'على الجدران') },
+    { key: 'walls_rows', label: t('library.map.layout_walls_rows', 'الجدران + صفوف بالوسط') },
+];
+const SINGLE = 0.5, DOUBLE = 0.9, WALL_GAP = 0.05;
+const genNote = ref('');
+let genNoteTimer = null;
+/** The hall to fill: its size from its real outline (in its own turned frame) and where that outline's middle is. */
+const genArea = () => {
+    const hall = gen.hall && items.value.includes(gen.hall) ? gen.hall : null;
+    if (!hall) return { hall: null, W: floor.width, D: floor.depth, ox: 0, oy: 0 };
+    const pts = hall.points?.length >= 3 ? hall.points : [[-hall.width / 2, -hall.depth / 2], [hall.width / 2, hall.depth / 2]];
+    const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    return { hall, W: x1 - x0, D: y1 - y0, ox: (x0 + x1) / 2, oy: (y0 + y1) / 2 };
+};
+const genHalls = computed(() => storeyHalls.value.filter((h) => h.kind === 'hall'));
+function inPoly(p, poly) {
+    let hit = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const a = poly[i], b = poly[j];
+        if ((a.y > p.y) !== (b.y > p.y) && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) hit = !hit;
+    }
+    return hit;
+}
+/** Fills the hall with as many rows as fit, a metre clear of its walls. */
+function fitGen() {
+    const { hall, W, D } = genArea();
+    if (!hall) return;
+    const depth = gen.double ? DOUBLE : SINGLE;
+    gen.perRow = Math.max(1, Math.floor((W - 2) / gen.width));
+    gen.rows = Math.max(1, Math.min(26, Math.floor((D - 2 + gen.aisle) / (depth + gen.aisle))));
+}
+watch(() => [gen.layout, gen.width, gen.aisle, gen.hall, gen.double], () => { if (gen.open) fitGen(); });
 function openGenerate() {
     const s = selected.value;
-    gen.hall = s && s.kind === 'hall' ? s : null;
-    if (gen.hall) {
-        // Fill the hall: as many bookcases as fit, a metre clear of its walls.
-        const depth = gen.double ? 0.9 : 0.5;
-        gen.perRow = Math.max(1, Math.floor((gen.hall.width - 2) / gen.width));
-        gen.rows = Math.max(1, Math.min(26, Math.floor((gen.hall.depth - 2 + gen.aisle) / (depth + gen.aisle))));
-    }
+    // The selected hall, or the hall the selected bookcases are in, or the first one on this floor.
+    const pick = s && s.kind === 'hall' ? s : s ? genHalls.value.find((h) => inOutline(s, h)) : null;
+    gen.hall = pick ?? genHalls.value.find((h) => multiItems.value.some((i) => inOutline(i, h))) ?? genHalls.value[0] ?? null;
+    if (gen.hall) fitGen();
     gen.open = true;
 }
+/** The places for the chosen layout, round the hall's middle: x, y (metres), r (the turn; 0 = books facing +y), depth, two faces, and the run (row) each is in. */
+function layoutSpots(W, D, inHall = true) {
+    const w = gen.width, out = [];
+    let run = 0;
+    const along = (from, to, at, r, vertical, depth, double, group = null) => {
+        const n = Math.floor((to - from + 1e-6) / w);
+        if (n < 1) return;
+        const start = (from + to) / 2 - (n * w) / 2 + w / 2;
+        for (let k = 0; k < n; k++) out.push({ ...(vertical ? { x: at, y: start + k * w } : { x: start + k * w, y: at }), r, run, k, depth, double, group });
+        run++;
+    };
+    if (gen.layout === 'rows') {
+        const depth = gen.double ? DOUBLE : SINGLE;
+        if (inHall) {
+            gen.rows = Math.max(1, Math.min(gen.rows, Math.floor((D - 0.2 + gen.aisle) / (depth + gen.aisle))));
+            gen.perRow = Math.max(1, Math.min(gen.perRow, Math.floor((W - 0.2) / w)));
+        }
+        const total = gen.rows * depth + (gen.rows - 1) * gen.aisle;
+        const len = gen.perRow * w;
+        for (let r = 0; r < gen.rows; r++) along(-len / 2, len / 2, -total / 2 + depth / 2 + r * (depth + gen.aisle), 0, false, depth, gen.double);
+        return out;
+    }
+    // Along the walls: one face, the back to the wall and the books facing the room.
+    const wl = gen.walls, band = WALL_GAP + SINGLE;
+    if (wl.top) along(-W / 2 + WALL_GAP, W / 2 - WALL_GAP, -D / 2 + band - SINGLE / 2, 0, false, SINGLE, false);
+    const yA = -D / 2 + (wl.top ? band + 0.05 : WALL_GAP), yB = D / 2 - (wl.bottom ? band + 0.05 : WALL_GAP);
+    if (wl.right) along(yA, yB, W / 2 - band + SINGLE / 2, 90, true, SINGLE, false);
+    if (wl.bottom) along(-W / 2 + WALL_GAP, W / 2 - WALL_GAP, D / 2 - band + SINGLE / 2, 180, false, SINGLE, false);
+    if (wl.left) along(yA, yB, -W / 2 + band - SINGLE / 2, 270, true, SINGLE, false);
+    if (gen.layout === 'walls_rows') {
+        // Two-faced rows in the middle, an aisle clear of the wall bookcases all round.
+        const endX = W / 2 - (wl.left || wl.right ? band + gen.aisle : 1), endY = D / 2 - (wl.top || wl.bottom ? band + gen.aisle : 1);
+        const g = gen.groupCenter ? newGroupKey() : null;
+        const rows = Math.max(0, Math.floor((2 * endY + gen.aisle) / (DOUBLE + gen.aisle)));
+        const total = rows * DOUBLE + Math.max(0, rows - 1) * gen.aisle;
+        for (let r = 0; r < rows; r++) along(-endX, endX, -total / 2 + DOUBLE / 2 + r * (DOUBLE + gen.aisle), 0, false, DOUBLE, true, g);
+    }
+    return out;
+}
 function generate() {
-    const depth = gen.double ? 0.9 : 0.5;
+    const { hall, W, D, ox, oy } = genArea();
+    const rowsLike = gen.layout === 'rows';
+    const depth = gen.double ? DOUBLE : SINGLE;
     const runLength = gen.perRow * gen.width;
     const total = gen.rows * depth + (gen.rows - 1) * gen.aisle;
-    const hall = gen.hall && items.value.includes(gen.hall) ? gen.hall : null;
     // Positions are worked out round the middle, then turned and moved into place.
-    const cx = hall ? hall.x : floor.width / 2, cy = hall ? hall.y : Math.max(1 + total / 2, floor.depth / 2 - 0.75);
-    const a = ((hall?.rotation ?? 0) * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
-    const place = (lx, ly) => ({ x: +(cx + lx * c - ly * sn).toFixed(2), y: +(cy + lx * sn + ly * c).toFixed(2) });
-    const roots = props.sections.filter((x) => !x.parent_id);
-    const pool = roots.length ? roots : props.sections;
-    const fresh = [];
+    const cx = hall ? hall.x : floor.width / 2;
+    const cy = hall ? hall.y : rowsLike ? Math.max(1 + total / 2, floor.depth / 2 - 0.75) : floor.depth / 2;
+    const turn = hall?.rotation ?? 0;
+    const a = (turn * Math.PI) / 180, c = Math.cos(a), sn = Math.sin(a);
+    const place = (lx, ly) => { lx += ox; ly += oy; return { x: +(cx + lx * c - ly * sn).toFixed(2), y: +(cy + lx * sn + ly * c).toFixed(2) }; };
     if (gen.replace) {
         const gone = new Set(items.value.filter((i) => i.kind === 'shelf' && storeyOf(i) === storey.value && (!hall || inOutline(i, hall))));
         items.value = items.value.filter((i) => !gone.has(i));
     }
-    for (let r = 0; r < gen.rows; r++) {
-        const letter = String.fromCharCode(gen.startLetter.toUpperCase().charCodeAt(0) + r);
-        for (let k = 0; k < gen.perRow; k++) {
-            const at = place(-runLength / 2 + gen.width / 2 + k * gen.width, -total / 2 + depth / 2 + r * (depth + gen.aisle));
-            fresh.push({
-                id: null, _key: `n${++keySeq}`, code: `${letter}${k + 1}`, name: '', kind: 'shelf', storey: storey.value,
-                section_id: gen.sectionsByRow && pool.length ? pool[r % pool.length].id : null,
-                x: at.x, y: at.y, rotation: hall?.rotation ?? 0,
-                width: gen.width, depth, levels: gen.levels, double_sided: gen.double, color: null,
-            });
-        }
-    }
+    const doors = onStorey.value.filter((i) => i.kind === 'door');
+    const hallPoly = hall ? outline(hall) : [{ x: 0, y: 0 }, { x: floor.width, y: 0 }, { x: floor.width, y: floor.depth }, { x: 0, y: floor.depth }];
+    const solid = onStorey.value.filter((i) => ['desk', 'table', 'wall', 'gate', 'obstacle', 'stairs'].includes(i.kind) || (i.kind === 'shelf' && !gen.replace))
+        .map((i) => (i.points?.length >= 3 ? outline(i) : footprint(i)));
+    const kept = [];
+    let skipped = 0;
+    const spots = layoutSpots(W, D, !!hall).map((p) => ({ ...p, at: place(p.x, p.y) })).filter((p) => {
+        const it = { x: p.at.x, y: p.at.y, rotation: turn + p.r, width: gen.width, depth: p.depth };
+        const pts = footprint(it, -0.02);
+        const ok = !doors.some((o) => Math.hypot(o.x - p.at.x, o.y - p.at.y) < gen.width / 2 + Math.max(o.width ?? 0.9, 0.9) / 2 + 0.3)
+            && pts.every((q) => inPoly(q, hallPoly))
+            && !solid.some((poly) => pts.some((q) => inPoly(q, poly)) || poly.some((q) => inPoly(q, pts)))
+            && !kept.some((k) => pts.some((q) => inPoly(q, footprint(k, -0.03))) || footprint(k, -0.03).some((q) => inPoly(q, pts)));
+        if (ok) kept.push(it); else skipped++;
+        return ok;
+    });
+    const roots = props.sections.filter((x) => !x.parent_id);
+    const pool = roots.length ? roots : props.sections;
+    const first = gen.startLetter.toUpperCase().charCodeAt(0) || 65;
+    const runs = [...new Set(spots.map((p) => p.run))];
+    const fresh = spots.map((p) => {
+        const r = runs.indexOf(p.run);
+        return {
+            id: null, _key: `n${++keySeq}`, code: `${String.fromCharCode(first + r)}${p.k + 1}`, name: '', kind: 'shelf', storey: storey.value,
+            section_id: gen.sectionsByRow && pool.length ? pool[r % pool.length].id : null, group_key: p.group ?? null,
+            x: p.at.x, y: p.at.y, rotation: (((turn + p.r) % 360) + 360) % 360,
+            width: gen.width, depth: p.depth, levels: gen.levels, double_sided: p.double, color: null,
+        };
+    });
     const taken = new Set(items.value.map((i) => i.code.toLowerCase()));
     for (const f of fresh) if (taken.has(f.code.toLowerCase())) f.code = uniqueCode(f.code + '-');
     items.value.push(...fresh);
     // Make the room big enough for what was built.
-    if (!hall) {
+    if (!hall && rowsLike) {
         floor.width = Math.max(floor.width, Math.ceil(runLength + 2));
         floor.depth = Math.max(floor.depth, Math.ceil(total + 4));
     }
     gen.open = false;
     selectedKey.value = null;
+    multi.value = new Set();
+    genNote.value = t('library.map.gen_done', 'وُضع :n رف.', { n: fresh.length })
+        + (skipped ? ' ' + t('library.map.gen_skipped', 'تُرك :m لأنها لا تتسع داخل القاعة.', { m: skipped }) : '')
+        + (fresh.some((f) => f.group_key) ? ' ' + t('library.map.gen_group_hint', 'رفوف الوسط مجمّعة: اضغط على أي واحد منها لتحريكها كلها.') : '');
+    clearTimeout(genNoteTimer);
+    genNoteTimer = setTimeout(() => (genNote.value = ''), 6000);
 }
 
 // «معالج البناء» (2026-11-06, by request): start from a room, or a building of one floor or
@@ -1585,6 +1781,18 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                                     <rect v-for="h in shownHandles" :key="`${h.hx}${h.hy}`" :x="h.x - hR" :y="h.y - hR" :width="hR * 2" :height="hR * 2" :rx="hR * 0.35" fill="#fff" stroke="#2563eb" :stroke-width="hR * 0.3" :style="{ cursor: h.cursor }" @pointerdown.stop="startResize($event, h)" />
                                 </template>
                             </g>
+                            <!-- «تدوير المجموعة»: the frame round the selection, and its turn handle. -->
+                            <g v-if="multiBox && view === 'plan'">
+                                <rect :x="multiBox.x0" :y="multiBox.y0" :width="multiBox.x1 - multiBox.x0" :height="multiBox.y1 - multiBox.y0" fill="none" :stroke="multiBox.locked ? '#64748b' : '#2563eb'" :stroke-width="hR * 0.3" :stroke-dasharray="`${hR} ${hR * 0.6}`" class="pointer-events-none" />
+                                <template v-if="!multiBox.locked">
+                                    <line :x1="multiBox.cx" :y1="multiBox.y0" :x2="multiBox.cx" :y2="multiBox.y0 - hR * 4" stroke="#2563eb" :stroke-width="hR * 0.3" class="pointer-events-none" />
+                                    <g :transform="`translate(${multiBox.cx} ${multiBox.y0 - hR * 4})`" class="cursor-grab" @pointerdown.stop="startMultiRotate">
+                                        <circle :r="hR * 1.3" fill="#2563eb" stroke="#fff" :stroke-width="hR * 0.3" />
+                                        <path :d="`M ${-hR * 0.6} 0 A ${hR * 0.6} ${hR * 0.6} 0 1 1 0 ${hR * 0.6}`" fill="none" stroke="#fff" :stroke-width="hR * 0.28" class="pointer-events-none" />
+                                    </g>
+                                    <text v-if="multiTurn !== null" :x="multiBox.cx" :y="multiBox.y0 - hR * 7" text-anchor="middle" dominant-baseline="central" :font-size="hR * 2.4" font-weight="800" fill="#2563eb" style="paint-order: stroke" stroke="#fff" :stroke-width="hR * 0.5" class="pointer-events-none">{{ multiTurn }}°</text>
+                                </template>
+                            </g>
                             <g v-if="storey === 0" :transform="`translate(${floor.entrance.x} ${floor.entrance.y})`" class="cursor-grab" @pointerdown.stop="startEntranceDrag">
                                 <circle r="0.45" fill="#10b981" stroke="#fff" stroke-width="0.08" />
                                 <text text-anchor="middle" dominant-baseline="central" font-size="0.32" font-weight="700" fill="#fff">{{ t('library.map.door', 'باب') }}</text>
@@ -1619,6 +1827,17 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
                             <button @click="bulkRotate(90)" class="rounded-lg p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.rotate', 'تدوير 90°')"><ArrowPathRoundedSquareIcon class="h-5 w-5" /></button>
                             <button @click="bulkRemove" class="rounded-lg p-1.5 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30" :title="t('common.delete', 'حذف')"><TrashIcon class="h-5 w-5" /></button>
                             <button @click="multi = new Set()" class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('library.map.unselect', 'إلغاء التحديد')"><XMarkIcon class="h-5 w-5" /></button>
+                        </div>
+                        <p v-if="multiIsOneGroup" class="flex items-center gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1.5 text-xs text-blue-900 dark:bg-blue-900/30 dark:text-blue-100"><RectangleGroupIcon class="h-4 w-4 shrink-0" /> {{ t('library.map.is_group', 'مجموعة: تتحرك معاً. Alt + نقر يختار رفاً منها وحده.') }}</p>
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button v-if="!multiIsOneGroup && multi.size > 1" @click="groupSelected" class="inline-flex items-center justify-center gap-1 rounded-lg bg-blue-600 px-2 py-1.5 text-xs font-medium text-white"><RectangleGroupIcon class="h-4 w-4" /> {{ t('library.map.group_short', 'جمّعها') }}</button>
+                            <button v-if="multiHasGroup" @click="ungroupSelected" class="inline-flex items-center justify-center gap-1 rounded-lg border border-blue-300 px-2 py-1.5 text-xs font-medium text-blue-700 dark:border-blue-700 dark:text-blue-200"><RectangleGroupIcon class="h-4 w-4" /> {{ t('library.map.ungroup', 'فك التجميع') }}</button>
+                            <div class="col-span-2 flex items-center gap-1 rounded-lg bg-gray-50 p-1 dark:bg-gray-900/40">
+                                <span class="px-1 text-xs text-gray-500">{{ t('library.map.turn_group', 'تدوير') }}</span>
+                                <button v-for="deg in [-90, -15, 15, 90, 180]" :key="deg" @click="bulkRotate(deg)" class="flex-1 whitespace-nowrap rounded-md border border-gray-300 bg-white px-0.5 py-1 text-[11px] tabular-nums hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700" dir="ltr">{{ deg > 0 && deg < 180 ? '↻' : deg < 0 ? '↺' : '⟲' }} {{ Math.abs(deg) }}°</button>
+                            </div>
+                            <button @click="bulkFlip" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><ArrowsRightLeftIcon class="h-4 w-4" /> {{ t('library.map.flip_short', 'اقلب الاتجاه') }}</button>
+                            <button @click="bulkDuplicate" class="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-2 py-1.5 text-xs dark:border-gray-600"><DocumentDuplicateIcon class="h-4 w-4" /> {{ t('library.map.duplicate_short', 'تكرار') }}</button>
                         </div>
                         <template v-if="multiShelves.length">
                             <label class="block">
@@ -1779,23 +1998,56 @@ const preview = computed(() => onStorey.value.map((i) => ({ ...i, id: i.id ?? i.
             </div>
         </div>
 
+        <p v-if="genNote" class="fixed inset-x-0 bottom-6 z-50 mx-auto w-fit max-w-[90vw] rounded-full bg-gray-900/90 px-4 py-2 text-center text-sm text-white shadow-lg">{{ genNote }}</p>
         <Modal :show="gen.open" @close="gen.open = false" max-width="lg">
             <div class="space-y-4 p-6">
                 <div>
                     <h3 class="flex items-center gap-2 text-lg font-semibold"><SparklesIcon class="h-5 w-5 text-[var(--accent-600)]" /> {{ t('library.map.generate', 'صفوف تلقائية') }}</h3>
-                    <p v-if="gen.hall" class="mt-1 rounded-lg bg-[var(--accent-50)] px-2 py-1 text-sm text-[var(--accent-700)]">{{ t('library.map.generate_in_hall', 'تُبنى داخل «:hall» وبنفس اتجاهها.', { hall: gen.hall.code }) }}</p>
-                    <p class="mt-1 text-sm text-gray-500">{{ t('library.map.generate_text', 'تُبنى صفوف رفوف متوازية بممرات بينها، وترقّم A1، A2… B1… وبعدها تقدر تسحب أي رف لمكانه.') }}</p>
+                    <p class="mt-1 text-sm text-gray-500">{{ t('library.map.generate_text2', 'اختر شكل التوزيع والقاعة؛ كل الرفوف تبقى داخل القاعة وبعيدة عن الأبواب والمكاتب، وترقّم A1، A2… B1… وبعدها تقدر تسحب أي رف لمكانه.') }}</p>
                 </div>
+                <div class="grid grid-cols-3 gap-2">
+                    <button v-for="l in LAYOUTS" :key="l.key" type="button" @click="gen.layout = l.key" class="flex flex-col items-center gap-1 rounded-xl border-2 p-2 text-center text-xs leading-4 transition" :class="gen.layout === l.key ? 'border-[var(--accent-600)] bg-[var(--accent-50)] text-[var(--accent-700)] dark:bg-gray-700 dark:text-gray-100' : 'border-gray-200 hover:border-gray-300 dark:border-gray-600'">
+                        <svg viewBox="0 0 60 40" class="h-10 w-16">
+                            <rect x="1" y="1" width="58" height="38" rx="3" fill="none" stroke="currentColor" stroke-opacity=".4" />
+                            <template v-if="l.key === 'rows'"><rect v-for="r in 4" :key="r" x="8" :y="4 + r * 7" width="44" height="3.2" rx="1" fill="currentColor" /></template>
+                            <template v-else>
+                                <rect x="4" y="3" width="52" height="2.4" rx="1" fill="currentColor" /><rect x="4" y="34.6" width="52" height="2.4" rx="1" fill="currentColor" />
+                                <rect x="3" y="8" width="2.4" height="24" rx="1" fill="currentColor" /><rect x="54.6" y="8" width="2.4" height="24" rx="1" fill="currentColor" />
+                                <template v-if="l.key === 'walls_rows'"><rect v-for="r in 3" :key="r" x="14" :y="7 + r * 6.5" width="32" height="3.6" rx="1" fill="currentColor" fill-opacity=".7" /></template>
+                            </template>
+                        </svg>
+                        {{ l.label }}
+                    </button>
+                </div>
+                <label v-if="genHalls.length" class="block text-sm">
+                    <span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_hall', 'القاعة') }}</span>
+                    <select v-model="gen.hall" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700">
+                        <option :value="null">{{ t('library.map.gen_whole', 'كل المساحة') }}</option>
+                        <option v-for="h in genHalls" :key="h._key" :value="h">{{ h.code }}</option>
+                    </select>
+                </label>
                 <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-                    <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_rows', 'عدد الصفوف') }}</span><input v-model.number="gen.rows" type="number" min="1" max="26" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
-                    <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_per_row', 'رفوف في كل صف') }}</span><input v-model.number="gen.perRow" type="number" min="1" max="30" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                    <template v-if="gen.layout === 'rows'">
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_rows', 'عدد الصفوف') }}</span><input v-model.number="gen.rows" type="number" min="1" max="26" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                        <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_per_row', 'رفوف في كل صف') }}</span><input v-model.number="gen.perRow" type="number" min="1" max="30" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
+                    </template>
                     <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_width', 'طول الرف (م)') }}</span><input v-model.number="gen.width" type="number" step="0.1" min="0.5" max="5" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_aisle', 'عرض الممر (م)') }}</span><input v-model.number="gen.aisle" type="number" step="0.1" min="0.8" max="5" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.levels', 'عدد الطبقات') }}</span><input v-model.number="gen.levels" type="number" min="1" max="10" class="mt-1 w-full rounded-lg border-gray-300 dark:border-gray-600 dark:bg-gray-700" /></label>
                     <label><span class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_letter', 'أول حرف') }}</span><input v-model="gen.startLetter" maxlength="1" dir="ltr" class="mt-1 w-full rounded-lg border-gray-300 uppercase dark:border-gray-600 dark:bg-gray-700" /></label>
                 </div>
+                <div v-if="gen.layout !== 'rows'" class="rounded-xl bg-gray-50 p-3 text-sm dark:bg-gray-900/40">
+                    <p class="text-gray-600 dark:text-gray-300">{{ t('library.map.gen_walls', 'الجدران التي عليها رفوف') }}</p>
+                    <div class="mt-1.5 flex flex-wrap gap-3">
+                        <label class="flex items-center gap-1.5"><input v-model="gen.walls.top" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.wall_top', 'الأعلى') }}</label>
+                        <label class="flex items-center gap-1.5"><input v-model="gen.walls.bottom" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.wall_bottom', 'الأسفل') }}</label>
+                        <label class="flex items-center gap-1.5"><input v-model="gen.walls.right" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.wall_right', 'اليمين') }}</label>
+                        <label class="flex items-center gap-1.5"><input v-model="gen.walls.left" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.wall_left', 'اليسار') }}</label>
+                    </div>
+                    <label v-if="gen.layout === 'walls_rows'" class="mt-2 flex items-center gap-2"><input v-model="gen.groupCenter" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.gen_group_center', 'اجعل رفوف الوسط مجموعة تتحرك معاً') }}</label>
+                </div>
                 <div class="space-y-2 text-sm">
-                    <label class="flex items-center gap-2"><input v-model="gen.double" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.gen_double', 'رفوف بوجهين (كتب من الجهتين)') }}</label>
+                    <label v-if="gen.layout === 'rows'" class="flex items-center gap-2"><input v-model="gen.double" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.gen_double', 'رفوف بوجهين (كتب من الجهتين)') }}</label>
                     <label class="flex items-center gap-2"><input v-model="gen.sectionsByRow" type="checkbox" class="rounded border-gray-300" :disabled="!sections.length" /> {{ t('library.map.gen_sections', 'خصص كل صف لقسم بالترتيب') }}</label>
                     <label class="flex items-center gap-2"><input v-model="gen.replace" type="checkbox" class="rounded border-gray-300" /> {{ t('library.map.gen_replace', 'استبدل الرفوف الحالية (المكاتب والجدران تبقى)') }}</label>
                 </div>

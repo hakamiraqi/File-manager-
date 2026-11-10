@@ -22,11 +22,11 @@ import { useTrans } from '@/Composables/useTrans';
 import {
     MagnifyingGlassIcon, XMarkIcon, PlayIcon, PauseIcon, ArrowPathIcon, MapIcon, PencilSquareIcon,
     ViewfinderCircleIcon, ChevronLeftIcon, ChevronRightIcon, BookOpenIcon, CheckCircleIcon, QrCodeIcon, MapPinIcon, ExclamationTriangleIcon, MinusIcon, PlusIcon,
-    Squares2X2Icon, CubeIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon,
+    Squares2X2Icon, CubeIcon, ArrowsPointingOutIcon, ArrowsPointingInIcon, ClipboardDocumentListIcon, FireIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ floor: Object, shelves: Array, stock: { type: Object, default: () => ({}) }, target: Object, canEdit: Boolean, startAt: { type: Number, default: null }, embedded: Boolean });
+const props = defineProps({ floor: Object, shelves: Array, stock: { type: Object, default: () => ({}) }, target: Object, canEdit: Boolean, startAt: { type: Number, default: null }, embedded: Boolean, status: { type: Object, default: null } });
 const page = usePage();
 const signedIn = computed(() => !!page.props.auth?.user);
 // Inside the FileNest apps (2026-11-06, by request) the map fills the app's screen on its own.
@@ -431,6 +431,40 @@ const qrFrom = computed(() => {
     return { x: props.floor.width / 2, y: props.floor.depth / 2 };
 });
 const qrNearby = computed(() => (findQr.value ? nearestStickers(viewShelves.value.filter(isSticker), qrFrom.value).slice(0, 6) : []));
+// «حالة الرفوف» (2026-11-10, by request, from the exam hall map's ideas): for staff, a pulsing
+// mark on each bookcase that needs a walk (copies marked lost to look for, damaged copies to take
+// for repair), the busiest bookcases glowing orange, and the way there drawn from the loan desk.
+const STATUS_KEY = 'library.map.status';
+const statusOn = ref(!!props.status && store.get(STATUS_KEY) === '1');
+watch(statusOn, (v) => store.set(STATUS_KEY, v ? '1' : '0'));
+const statusAlerts = computed(() => props.status?.alerts ?? []);
+const busyTop = computed(() => Object.entries(props.status?.busy ?? {}).map(([id, n]) => ({ id: +id, n })).filter((b) => shelfById.value[b.id]).sort((a, b) => b.n - a.n));
+const mapAlerts = computed(() => {
+    if (!statusOn.value) return null;
+    const max = busyTop.value[0]?.n || 1;
+    return [
+        ...busyTop.value.slice(0, 12).map((b) => ({ id: b.id, kind: 'busy', n: b.n, k: b.n / max })),
+        ...statusAlerts.value.map((a) => ({ id: a.shelf_id, kind: a.kind, n: a.n })),
+    ];
+});
+const statusCount = computed(() => statusAlerts.value.reduce((t, a) => t + a.n, 0));
+/** The loan desk: a desk named for loans, or the first desk on the plan. */
+const desk = computed(() => {
+    const desks = props.shelves.filter((s) => s.kind === 'desk');
+    return desks.find((s) => /إعار|استعار|loan|counter|circulation/i.test(`${s.name ?? ''} ${s.code ?? ''}`)) ?? desks[0] ?? null;
+});
+function goFromDesk(shelfId) {
+    const s = shelfById.value[shelfId];
+    if (!s) return;
+    stop();
+    if (desk.value) { placeAt(desk.value); here.value.desk = true; }
+    book.value = null;
+    pickedShelf.value = s;
+    setTimeout(() => map.value?.focusShelf(s.id), 60);
+}
+watch(statusOn, (v) => { if (!v && here.value?.desk) resetHere(); });
+const statusTitles = (shelfId) => statusAlerts.value.filter((a) => a.shelf_id === shelfId);
+
 const beacons = computed(() => (qrNearby.value.length ? { ids: qrNearby.value.map((n) => n.s.id), nearest: qrNearby.value[0].s.id } : null));
 function showStickers() {
     scanning.value = false;
@@ -478,7 +512,7 @@ function availability(b) {
         ? { text: t('library.available_n', 'متاح :n من :m', { n: b.available_count, m: b.copies_count }), cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' }
         : { text: t('library.all_loaned', 'كل النسخ مُعارة'), cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' };
 }
-const fromText = computed(() => (here.value ? t('library.map.from_here', ':d م من موقعك', { d: metres(walkRoute.value?.length ?? 0) }) : t('library.map.distance', ':d م مشياً من المدخل', { d: metres(walkRoute.value?.length ?? 0) })));
+const fromText = computed(() => (here.value?.desk ? t('library.map.from_desk', ':d م من مكتب الإعارة', { d: metres(walkRoute.value?.length ?? 0) }) : here.value ? t('library.map.from_here', ':d م من موقعك', { d: metres(walkRoute.value?.length ?? 0) }) : t('library.map.distance', ':d م مشياً من المدخل', { d: metres(walkRoute.value?.length ?? 0) })));
 const spotLabel = (s) => [t('library.shelf', 'الرف') + ' ' + s.code, hallName(s.shelf_id), levelText(s.level)].filter(Boolean).join(' · ');
 const highlight = computed(() => {
     if (!targetShelf.value) return null;
@@ -557,8 +591,8 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
 
             <Teleport v-else to="body" :disabled="!full">
             <div class="overflow-hidden bg-gray-100 dark:bg-gray-900" :class="full ? 'fixed inset-0 z-40 h-dvh' : embedded ? 'relative h-dvh' : 'relative h-[calc(100dvh-10rem)] min-h-[460px] sm:h-[calc(100dvh-13rem)] rounded-2xl border border-gray-200 shadow-sm dark:border-gray-700'">
-                <LibraryMap2D v-if="flat" ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
-                <LibraryMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :stock="stock" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
+                <LibraryMap2D v-if="flat" ref="map" :floor="floor" :shelves="viewShelves" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :alerts="mapAlerts" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" />
+                <LibraryMap3D v-else ref="map" :floor="floor" :shelves="viewShelves" :stock="stock" :highlight="viewHighlight" :route="viewRoute" :avatar="viewAvatar" :beacons="beacons" :alerts="mapAlerts" :follow="walking && !!viewAvatar" @pick="onPick" @ready="onReady" @failed="setFlat(true)" />
 
                 <!-- Search, or the Waze-style instruction banner while walking. -->
                 <div class="pointer-events-none absolute inset-x-0 top-0 p-3">
@@ -672,6 +706,10 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                         <component :is="flat ? CubeIcon : Squares2X2Icon" class="h-5 w-5" />
                     </button>
                     <button @click="map?.overview()" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="t('library.map.overview', 'عرض المكتبة كاملة')"><MapIcon class="h-5 w-5" /></button>
+                    <button v-if="status" @click="statusOn = !statusOn" class="relative rounded-xl p-2.5 shadow ring-1" :class="statusOn ? 'bg-red-600 text-white ring-red-700' : 'bg-white/95 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10'" :title="t('library.map.status', 'حالة الرفوف (للموظفين)')" :aria-pressed="statusOn">
+                        <ClipboardDocumentListIcon class="h-5 w-5" />
+                        <span v-if="statusCount && !statusOn" class="absolute -end-1.5 -top-1.5 min-w-5 rounded-full bg-red-600 px-1 text-[10px] font-bold leading-5 text-white">{{ statusCount > 99 ? '99+' : statusCount }}</span>
+                    </button>
                     <button v-if="targetShelf" @click="map?.focusShelf(targetShelf.id)" class="rounded-xl bg-white/95 p-2.5 shadow ring-1 ring-black/5 hover:bg-white dark:bg-gray-800/95 dark:ring-white/10" :title="t('library.map.show_shelf', 'اعرض الرف')"><ViewfinderCircleIcon class="h-5 w-5" /></button>
                 </div>
 
@@ -703,6 +741,12 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                                 <p class="font-bold">{{ pickedShelf.kind === 'shelf' ? t('library.shelf', 'الرف') + ' ' + pickedShelf.code : pickedShelf.name || pickedShelf.code }}</p>
                                 <p class="truncate text-sm text-gray-500">{{ [pickedShelf.section || pickedShelf.name, hallName(pickedShelf.id)].filter(Boolean).join(' · ') }}</p>
                                 <Link v-if="pickedShelf.section_id && !embedded" :href="route('library.index', { section: pickedShelf.section_id })" class="mt-1 inline-flex items-center gap-1 text-sm text-[var(--accent-600)] hover:underline"><BookOpenIcon class="h-4 w-4" /> {{ t('library.map.section_books', 'كتب هذا القسم') }}</Link>
+                                <div v-if="statusOn && statusTitles(pickedShelf.id).length" class="mt-2 space-y-1">
+                                    <p v-for="a in statusTitles(pickedShelf.id)" :key="a.kind" class="rounded-lg px-2 py-1 text-xs" :class="a.kind === 'lost' ? 'bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200' : 'bg-violet-50 text-violet-800 dark:bg-violet-900/30 dark:text-violet-200'">
+                                        <b>{{ a.kind === 'lost' ? t('library.map.status_lost', 'نسخ مفقودة: ابحث عنها هنا') : t('library.map.status_damaged', 'نسخ تالفة: خذها للصيانة') }} ({{ a.n }})</b><br />
+                                        <span v-for="b in a.titles" :key="b.barcode" class="block truncate">{{ b.title }} · <span dir="ltr">{{ b.barcode }}</span><template v-if="b.level"> · {{ t('library.map.level_short', 'ط :n', { n: b.level }) }}</template></span>
+                                    </p>
+                                </div>
                                 <template v-if="pickedShelf.kind === 'shelf'">
                                     <p class="mt-2 text-xs font-semibold text-gray-500">{{ stockOf(pickedShelf.id) ? t('library.map.shelf_stock', 'على هذا الرف :n نسخة', { n: stockOf(pickedShelf.id) }) : t('library.map.shelf_empty', 'لا توجد كتب مسجّلة على هذا الرف') }}</p>
                                     <div v-if="shelfBooks.length || shelfBooksLoading" class="-mx-1 mt-1.5 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
@@ -767,6 +811,36 @@ watch([viewStorey, viewHall], () => setTimeout(() => {
                                 <CheckCircleIcon v-if="arrived" class="h-4 w-4 text-emerald-500" />
                             </li>
                         </ol>
+                    </div>
+                </div>
+
+                <!-- «حالة الرفوف»: what needs a walk from the loan desk. -->
+                <div v-else-if="statusOn" class="absolute inset-x-0 bottom-0 p-3">
+                    <div class="mx-auto max-h-[45vh] max-w-xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl ring-1 ring-black/5 dark:bg-gray-800 dark:ring-white/10">
+                        <div class="flex items-center gap-2">
+                            <ClipboardDocumentListIcon class="h-5 w-5 text-red-600" />
+                            <h3 class="flex-1 font-semibold">{{ t('library.map.status', 'حالة الرفوف (للموظفين)') }}</h3>
+                            <button @click="statusOn = false" class="rounded-full p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"><XMarkIcon class="h-5 w-5" /></button>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">{{ desk ? t('library.map.status_hint', 'اضغط على أي رف فيرسم الطريق إليه من :desk.', { desk: desk.name || desk.code }) : t('library.map.status_no_desk', 'ارسم «مكتب الإعارة» على الخريطة ليُرسم الطريق منه.') }}</p>
+                        <ul v-if="statusAlerts.length" class="mt-3 space-y-1.5">
+                            <li v-for="a in statusAlerts" :key="a.kind + a.shelf_id">
+                                <button @click="goFromDesk(a.shelf_id)" class="flex w-full items-start gap-3 rounded-xl border px-3 py-2 text-start text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50" :class="a.kind === 'lost' ? 'border-red-200 dark:border-red-900' : 'border-violet-200 dark:border-violet-900'">
+                                    <span class="mt-0.5 flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-bold text-white" :class="a.kind === 'lost' ? 'bg-red-600' : 'bg-violet-600'">{{ a.n }}</span>
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block font-semibold">{{ t('library.shelf', 'الرف') }} {{ a.code }} · {{ a.kind === 'lost' ? t('library.map.status_lost', 'نسخ مفقودة: ابحث عنها هنا') : t('library.map.status_damaged', 'نسخ تالفة: خذها للصيانة') }}</span>
+                                        <span class="block truncate text-xs text-gray-500">{{ a.titles.map((b) => b.title + (b.level ? ` (${t('library.map.level_short', 'ط :n', { n: b.level })})` : '')).join(' · ') }}</span>
+                                    </span>
+                                </button>
+                            </li>
+                        </ul>
+                        <p v-else class="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"><CheckCircleIcon class="h-5 w-5" /> {{ t('library.map.status_clear', 'لا توجد نسخ مفقودة أو تالفة.') }}</p>
+                        <div v-if="busyTop.length" class="mt-3">
+                            <p class="flex items-center gap-1.5 text-xs font-semibold text-orange-700 dark:text-orange-300"><FireIcon class="h-4 w-4" /> {{ t('library.map.status_busy', 'الأكثر استعارة في آخر 30 يوماً (متوهجة بالبرتقالي)') }}</p>
+                            <div class="mt-1.5 flex flex-wrap gap-1.5">
+                                <button v-for="b in busyTop.slice(0, 8)" :key="b.id" @click="goFromDesk(b.id)" class="rounded-full bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-800 ring-1 ring-orange-200 hover:bg-orange-100 dark:bg-orange-900/30 dark:text-orange-200 dark:ring-orange-800">{{ shelfById[b.id]?.code }} · {{ t('library.map.loans_n', ':n إعارة', { n: b.n }) }}</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

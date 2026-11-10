@@ -15,6 +15,7 @@ const props = defineProps({
     avatar: { type: Object, default: null },
     follow: { type: Boolean, default: false },
     beacons: { type: Object, default: null },
+    alerts: { type: Array, default: null }, // «حالة الرفوف»: [{ id, kind: lost|damaged|busy, n, k }]
 });
 const emit = defineEmits(['pick', 'ready']);
 
@@ -124,6 +125,17 @@ const fillOf = (s) => (s.kind === 'shelf' ? s.color || sectionColor(s.section_id
 const font = computed(() => Math.max(0.28, Math.min(0.6, scale.value * 11)));
 const routePts = computed(() => (props.route?.points?.length >= 2 ? poly(props.route.points) : ''));
 const target = computed(() => props.shelves.find((s) => s.id === props.highlight?.id) ?? null);
+const ALERT_COLORS = { lost: '#dc2626', damaged: '#7c3aed', busy: '#f97316' };
+const alertSpots = computed(() => {
+    const seen = new Set();
+    return (props.alerts ?? []).map((a) => {
+        const s = props.shelves.find((x) => x.id === a.id);
+        if (!s) return null;
+        const side = a.kind !== 'busy' && seen.has(a.id) ? 0.7 : 0;
+        if (a.kind !== 'busy') seen.add(a.id);
+        return { ...a, s, color: ALERT_COLORS[a.kind] ?? '#dc2626', side };
+    }).filter(Boolean);
+});
 const beaconSpots = computed(() => (props.beacons?.ids ?? []).map((id) => props.shelves.find((s) => s.id === id)).filter(Boolean).map((s) => ({ id: s.id, ...stickerStand(s), near: s.id === props.beacons.nearest })));
 const heading = computed(() => ((props.avatar?.heading ?? 0) * 180) / Math.PI);
 // Heading up while walking (when the reader lets the map turn): the way you face is the top of
@@ -199,6 +211,11 @@ defineExpose(api);
                     </rect>
                 </g>
 
+                <!-- «حالة الرفوف»: the busiest bookcases glow orange underneath. -->
+                <g v-for="a in alertSpots.filter((x) => x.kind === 'busy')" :key="'h' + a.id" :transform="`translate(${a.s.x} ${a.s.y}) rotate(${a.s.rotation || 0})`" class="pointer-events-none">
+                    <rect :x="-a.s.width / 2 - 0.35" :y="-a.s.depth / 2 - 0.45" :width="a.s.width + 0.7" :height="a.s.depth + 0.9" rx="0.25" fill="#f97316" :fill-opacity="0.1 + 0.4 * (a.k ?? 0.5)" />
+                </g>
+
                 <!-- Route -->
                 <template v-if="routePts">
                     <polyline :points="routePts" fill="none" stroke="#fff" stroke-width="0.42" stroke-linecap="round" stroke-linejoin="round" />
@@ -207,6 +224,16 @@ defineExpose(api);
                         <animate attributeName="stroke-dashoffset" from="0.8" to="0" dur="0.8s" repeatCount="indefinite" />
                     </polyline>
                 </template>
+
+                <!-- «حالة الرفوف»: a pulsing mark with the count on each bookcase that needs a walk. -->
+                <g v-for="(a, n) in alertSpots.filter((x) => x.kind !== 'busy')" :key="'a' + n" :transform="`translate(${a.s.x + a.side} ${a.s.y})`" class="pointer-events-none">
+                    <circle r="0.6" :fill="a.color" fill-opacity="0.2" :stroke="a.color" stroke-width="0.07">
+                        <animate attributeName="r" values="0.45;1;0.45" dur="1.5s" repeatCount="indefinite" />
+                        <animate attributeName="stroke-opacity" values="1;0.2;1" dur="1.5s" repeatCount="indefinite" />
+                    </circle>
+                    <circle r="0.32" :fill="a.color" stroke="#fff" stroke-width="0.06" />
+                    <text :transform="`rotate(${upright(0)})`" text-anchor="middle" dominant-baseline="central" :font-size="font * 0.9" font-weight="800" fill="#fff">{{ a.n }}</text>
+                </g>
 
                 <!-- Nearest stickers -->
                 <g v-for="b in beaconSpots" :key="'b' + b.id" :transform="`translate(${b.x} ${b.y})`" class="pointer-events-none">

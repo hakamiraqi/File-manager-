@@ -14,6 +14,7 @@ const props = defineProps({
     avatar: { type: Object, default: null }, // { x, y, heading }
     follow: { type: Boolean, default: false },
     beacons: { type: Object, default: null }, // { ids: [], nearest } stickers to make pulse
+    alerts: { type: Array, default: null }, // «حالة الرفوف»: [{ id, kind: lost|damaged|busy, n, k }]
     // Map editor: drag furniture on the floor (canDrag(id) says if it may move) and right click.
     editable: { type: Boolean, default: false },
     canDrag: { type: Function, default: null },
@@ -63,6 +64,7 @@ function apply() {
     scene.setAvatar(props.avatar);
     props.follow ? scene.follow() : scene.mode === 'follow' && scene.overview();
     scene.setBeacons(props.beacons?.ids ?? null, props.beacons?.nearest ?? null);
+    scene.setAlerts(props.alerts ? plain(props.alerts) : null);
 }
 
 watch(() => [props.floor, props.shelves], () => scene?.setLayout(plain(props.floor), plain(props.shelves)), { deep: true });
@@ -73,6 +75,7 @@ watch(() => [props.highlight, props.route], () => {
 }, { deep: true });
 watch(() => props.avatar, (a) => scene?.setAvatar(a));
 watch(() => props.beacons, (b) => scene?.setBeacons(b?.ids ?? null, b?.nearest ?? null), { deep: true });
+watch(() => props.alerts, (a) => scene?.setAlerts(a ? plain(a) : null), { deep: true });
 watch(() => props.follow, (f) => (f ? scene?.follow() : scene?.overview()));
 
 const api = {

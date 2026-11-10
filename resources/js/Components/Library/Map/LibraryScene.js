@@ -203,6 +203,10 @@ export class LibraryScene {
         this.beacons = new THREE.Group();
         this.scene.add(this.beacons);
         this.beaconIds = null;
+        // «حالة الرفوف» (staff): marks on the bookcases that need a walk, and how busy each one is.
+        this.alerts = new THREE.Group();
+        this.scene.add(this.alerts);
+        this.alertList = null;
 
         const hemi = new THREE.HemisphereLight(0xffffff, 0x8a7f70, 1.6);
         this.scene.add(hemi);
@@ -531,6 +535,7 @@ export class LibraryScene {
 
         if (!this.framed) { this.overview(false); this.framed = true; }
         if (this.highlighted) this.highlight(this.highlighted.id, this.highlighted.level);
+        if (this.alertList) this.setAlerts(this.alertList);
     }
 
     addItem(item) {
@@ -689,6 +694,53 @@ export class LibraryScene {
                 g.add(label);
             }
             this.beacons.add(g);
+        }
+    }
+
+    /**
+     * «حالة الرفوف» (2026-11-10, by request, as on the exam hall map): a pulsing ring and a bobbing
+     * pin with a count over each bookcase that needs a walk (red: copies lost, purple: damaged),
+     * and an orange glow on the floor under the busiest bookcases (k from 0 to 1).
+     * @param {{id:number, kind:'lost'|'damaged'|'busy', n?:number, k?:number}[]|null} list
+     */
+    setAlerts(list) {
+        this.clearGroup(this.alerts);
+        this.alertList = list;
+        if (!list?.length || !this.floorData) return;
+        const COLORS = { lost: '#dc2626', damaged: '#7c3aed', busy: '#f97316' };
+        const marked = new Set();
+        for (const a of list) {
+            const it = this.items.get(a.id);
+            if (!it) continue;
+            const s = it.data, color = COLORS[a.kind] ?? '#dc2626';
+            if (a.kind === 'busy') {
+                const glow = new THREE.Mesh(new THREE.PlaneGeometry(s.width + 0.7, s.depth + 0.9), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12 + 0.43 * (a.k ?? 0.5), depthWrite: false, side: THREE.DoubleSide }));
+                glow.rotation.x = -Math.PI / 2;
+                glow.rotation.z = -((s.rotation || 0) * Math.PI) / 180;
+                glow.position.copy(this.world(s.x, s.y, 0.012));
+                this.alerts.add(glow);
+                continue;
+            }
+            const g = new THREE.Group();
+            const ring = new THREE.Mesh(new THREE.RingGeometry(0.5, 0.66, 48), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.copy(this.world(s.x, s.y, 0.02));
+            ring.userData.pulse = { base: Math.max(s.width, s.depth) * 0.75, speed: 1.5, floor: true };
+            g.add(ring);
+            // Two kinds on one bookcase: the second pin stands a little to the side.
+            const side = marked.has(a.id) ? 0.45 : 0;
+            marked.add(a.id);
+            const head = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.4, 24), new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.5 }));
+            head.rotation.x = Math.PI;
+            const top = it.height + 0.55;
+            head.position.copy(this.world(s.x + side, s.y, top));
+            head.userData.bob = top;
+            g.add(head);
+            const label = labelSprite(String(a.n ?? ''), null, color, { scale: 0.55 });
+            label.position.copy(this.world(s.x + side, s.y, top + 0.5));
+            label.userData.bob = top + 0.5;
+            g.add(label);
+            this.alerts.add(g);
         }
     }
 
@@ -1004,7 +1056,7 @@ export class LibraryScene {
         if (this.pin) { this.pin.position.y = (this.items.get(this.highlighted?.id)?.height ?? 2) + 0.85 + Math.sin(time * 3) * 0.12; this.pin.rotation.y = time * 1.5; }
         if (this.ring) { const p = (time % 1.6) / 1.6; this.ring.material.opacity = 0.65 * (1 - p); this.ring.scale.setScalar((Math.max(this.items.get(this.highlighted?.id)?.data.width ?? 1, 1) * 0.6) * (0.8 + p * 0.9)); }
         if (this.levelGlow) this.levelGlow.material.opacity = 0.22 + Math.sin(time * 4) * 0.12;
-        for (const g of this.beacons.children) {
+        for (const g of [...this.beacons.children, ...this.alerts.children]) {
             for (const m of g.children) {
                 const pl = m.userData.pulse;
                 if (pl) {

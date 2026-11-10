@@ -321,4 +321,38 @@ class LibraryMapTest extends TestCase
         $this->actingAs($librarian)->getJson(route('library.manage.map.unplaced'))->assertOk()
             ->assertJsonPath('count', 1)->assertJsonPath('books.0.title', 'Lost');
     }
+
+    public function test_bookcases_keep_their_group_when_saved(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $this->actingAs($librarian)->put(route('library.manage.map.update'), $this->layout([
+            ['code' => 'C1', 'group_key' => 'gmiddle1'], ['code' => 'C2', 'x' => 8, 'group_key' => 'gmiddle1'], ['code' => 'C3', 'x' => 11],
+        ]))->assertSessionHasNoErrors();
+
+        $this->assertSame(['gmiddle1', 'gmiddle1', null], LibraryShelf::orderBy('code')->pluck('group_key')->all());
+        $this->assertSame('gmiddle1', collect(app(LibraryMap::class)->shelves())->firstWhere('code', 'C1')['group_key']);
+    }
+
+    public function test_staff_see_the_shelves_that_need_a_walk_and_readers_do_not(): void
+    {
+        $librarian = User::factory()->create(['is_librarian' => true]);
+        $reader = User::factory()->create();
+        LibraryShelf::create(['code' => 'A1', 'kind' => 'shelf', 'x' => 5, 'y' => 5, 'rotation' => 0, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        LibraryShelf::create(['code' => 'D1', 'name' => 'مكتب الإعارة', 'kind' => 'desk', 'x' => 15, 'y' => 12, 'rotation' => 0, 'width' => 2, 'depth' => 0.8, 'levels' => 1]);
+        $book = Book::create(['title' => 'Oral Pathology']);
+        $lost = $book->copies()->create(['barcode' => 'B1', 'shelf' => 'A1-2', 'status' => \App\Models\Library\BookCopy::LOST]);
+        $book->copies()->create(['barcode' => 'B2', 'shelf' => 'A1', 'status' => \App\Models\Library\BookCopy::DAMAGED]);
+        $out = $book->copies()->create(['barcode' => 'B3', 'shelf' => 'A1']);
+        $member = \App\Models\Library\LibraryMember::create(['name' => 'a', 'card_number' => 'M1', 'type' => 'student']);
+        \App\Models\Library\Loan::create(['copy_id' => $out->id, 'member_id' => $member->id, 'issued_at' => now()->subDays(3), 'due_at' => now()->addDays(11)]);
+
+        $this->actingAs($librarian)->get(route('library.map'))->assertInertia(fn (Assert $page) => $page
+            ->where('status.alerts.0.kind', 'lost')
+            ->where('status.alerts.0.code', 'A1')
+            ->where('status.alerts.0.titles.0.level', 2)
+            ->where('status.alerts.1.kind', 'damaged')
+            ->where('status.busy.'.LibraryShelf::where('code', 'A1')->value('id'), 1));
+
+        $this->actingAs($reader)->get(route('library.map'))->assertInertia(fn (Assert $page) => $page->where('status', null));
+    }
 }

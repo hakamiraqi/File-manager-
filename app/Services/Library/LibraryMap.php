@@ -6,6 +6,7 @@ use App\Models\Library\Book;
 use App\Models\Library\BookCopy;
 use App\Models\Library\LibrarySection;
 use App\Models\Library\LibraryShelf;
+use App\Models\Library\Loan;
 use App\Models\Setting;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -127,7 +128,7 @@ class LibraryMap
             'section_id' => $s->section_id, 'section' => $s->section_id ? ($paths[$s->section_id] ?? null) : null,
             'x' => $s->x, 'y' => $s->y, 'rotation' => $s->rotation, 'width' => $s->width, 'depth' => $s->depth,
             'levels' => $s->levels, 'double_sided' => $s->double_sided, 'color' => $s->color,
-            'points' => $s->points, 'height' => $s->height, 'locked' => (bool) $s->locked,
+            'points' => $s->points, 'height' => $s->height, 'locked' => (bool) $s->locked, 'group_key' => $s->group_key,
         ]);
     }
 
@@ -204,6 +205,59 @@ class LibraryMap
                 yield [$spot[0], $spot[1], (int) $row->n, $row];
             }
         }
+    }
+
+    /**
+     * «حالة الرفوف» (2026-11-10, by request, from the exam hall map's ideas): for staff, the
+     * bookcases someone has to walk to (copies marked lost to look for there, damaged copies to
+     * take for repair) and how many loans each bookcase gave in the last 30 days.
+     *
+     * @return array{alerts: list<array{kind:string, shelf_id:int, code:string, n:int, titles:list<array{title:string, barcode:string, level:?int}>}>, busy: object}
+     */
+    public function status(): array
+    {
+        $shelves = LibraryShelf::where('kind', 'shelf')->get();
+        if ($shelves->isEmpty()) {
+            return ['alerts' => [], 'busy' => (object) []];
+        }
+        $alerts = [];
+        $copies = BookCopy::whereIn('status', [BookCopy::LOST, BookCopy::DAMAGED])->with('book:id,section_id,title')->limit(2000)->get();
+        foreach ($copies as $copy) {
+            $spot = $this->spotOf($copy, $copy->book?->section_id, $shelves);
+            if (! $spot) {
+                continue;
+            }
+            $kind = $copy->status === BookCopy::LOST ? 'lost' : 'damaged';
+            $key = $kind.'|'.$spot[0]->id;
+            $alerts[$key] ??= ['kind' => $kind, 'shelf_id' => $spot[0]->id, 'code' => $spot[0]->code, 'n' => 0, 'titles' => []];
+            $alerts[$key]['n']++;
+            if (count($alerts[$key]['titles']) < 4 && $copy->book) {
+                $alerts[$key]['titles'][] = ['title' => $copy->book->title, 'barcode' => (string) $copy->barcode, 'level' => $spot[1]];
+            }
+        }
+
+        $loans = (new Loan)->getTable();
+        $copiesT = (new BookCopy)->getTable();
+        $books = (new Book)->getTable();
+        $rows = Loan::query()
+            ->join($copiesT, "$copiesT.id", '=', "$loans.copy_id")
+            ->join($books, "$books.id", '=', "$copiesT.book_id")
+            ->where("$loans.issued_at", '>=', now()->subDays(30))
+            ->groupBy("$copiesT.shelf", "$books.section_id")
+            ->selectRaw("$copiesT.shelf as shelf_text, $books.section_id as section_id, count(*) as n")
+            ->toBase()->get();
+        $busy = [];
+        foreach ($rows as $row) {
+            $spot = $this->spotOf(new BookCopy(['shelf' => $row->shelf_text]), $row->section_id ? (int) $row->section_id : null, $shelves);
+            if ($spot) {
+                $busy[$spot[0]->id] = ($busy[$spot[0]->id] ?? 0) + (int) $row->n;
+            }
+        }
+
+        return [
+            'alerts' => collect($alerts)->sortBy(fn ($a) => [$a['kind'] === 'lost' ? 0 : 1, -$a['n']])->values()->all(),
+            'busy' => (object) $busy,
+        ];
     }
 
     /** "A3-2" → [shelf A3, 2]; "A3" → [shelf A3, null]; unknown → null. */

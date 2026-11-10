@@ -43,6 +43,8 @@ class MapController extends Controller
             'stock' => (object) $this->map->stock(),
             'target' => $book ? $this->bookPayload($book) : null,
             'canEdit' => (bool) $request->user()?->canManageLibrary(),
+            // «حالة الرفوف» for staff: what needs a walk from the loan desk.
+            'status' => $request->user()?->canManageLibrary() ? $this->map->status() : null,
             // ?at=12 comes from the QR sticker on bookcase 12: «أنت هنا».
             'startAt' => $request->integer('at') ?: null,
             // Inside the apps: the map alone, full screen, without the site's menus.
@@ -185,6 +187,7 @@ class MapController extends Controller
             'shelves.*.levels' => ['required', 'integer', 'min:1', 'max:10'],
             'shelves.*.double_sided' => ['boolean'],
             'shelves.*.locked' => ['boolean'],
+            'shelves.*.group_key' => ['nullable', 'string', 'max:40'],
             'shelves.*.color' => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             // An obstacle's or a hall's outline: 3 to 64 corners, metres from its centre.
             'shelves.*.points' => ['nullable', 'required_if:shelves.*.kind,obstacle,hall', 'array', 'min:3', 'max:64'],
