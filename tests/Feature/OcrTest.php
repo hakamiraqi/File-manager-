@@ -176,4 +176,55 @@ class OcrTest extends TestCase
         $this->artisan('ocr:report')->assertSuccessful();
         $this->assertTrue(UserNotification::where('user_id', $admin->id)->where('kind', 'ocr_report')->exists());
     }
+
+    /** A small PDF with a line of text on each page (Helvetica), built by hand. */
+    private function pdf(array $lines): string
+    {
+        $n = count($lines);
+        $objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids ['.implode(' ', array_map(fn ($i) => (4 + 2 * $i).' 0 R', range(0, $n - 1)))."] /Count $n >>", '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+        foreach ($lines as $i => $line) {
+            $stream = "BT /F1 40 Tf 60 650 Td ($line) Tj ET";
+            $objs[] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents '.(5 + 2 * $i).' 0 R >>';
+            $objs[] = '<< /Length '.strlen($stream)." >>\nstream\n$stream\nendstream";
+        }
+        $out = "%PDF-1.4\n";
+        $offsets = [];
+        foreach ($objs as $k => $o) {
+            $offsets[] = strlen($out);
+            $out .= ($k + 1)." 0 obj\n$o\nendobj\n";
+        }
+        $xref = strlen($out);
+        $out .= 'xref'."\n0 ".(count($objs) + 1)."\n0000000000 65535 f \n";
+        foreach ($offsets as $o) {
+            $out .= sprintf("%010d 00000 n \n", $o);
+        }
+
+        return $out.'trailer << /Size '.(count($objs) + 1)." /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n";
+    }
+
+    public function test_a_scanned_pdf_is_read_a_few_pages_at_a_time_with_the_real_engine(): void
+    {
+        $engine = app(OcrEngine::class);
+        if (! $engine->available() || ! $engine->supports('pdf')) {
+            $this->markTestSkipped('Tesseract or pdftoppm is not installed here.');
+        }
+        $path = tempnam(sys_get_temp_dir(), 'ocr').'.pdf';
+        file_put_contents($path, $this->pdf(['FIRST PAGE HELLO', 'SECOND PAGE WORLD', 'THIRD PAGE DENTAL', 'FOURTH PAGE LIBRARY', 'FIFTH PAGE THESIS']));
+
+        $all = $engine->recognize($path, 'pdf', 'eng', 120);
+        $this->assertSame(5, $all['pages']);
+        $this->assertFalse($all['partial']);
+        foreach (['HELLO', 'WORLD', 'DENTAL', 'LIBRARY', 'THESIS'] as $word) {
+            $this->assertStringContainsString($word, $all['text']);
+        }
+        // In page order.
+        $this->assertLessThan(strpos($all['text'], 'THESIS'), strpos($all['text'], 'HELLO'));
+
+        // A page limit: what was read is kept and the file is marked as read in part.
+        $some = $engine->recognize($path, 'pdf', 'eng', 120, 2);
+        $this->assertSame(2, $some['pages']);
+        $this->assertTrue($some['partial']);
+        $this->assertStringNotContainsString('DENTAL', $some['text']);
+        @unlink($path);
+    }
 }

@@ -4,6 +4,8 @@ namespace App\Services\Ocr;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File as Fs;
+use Illuminate\Process\Exceptions\ProcessTimedOutException;
+use Illuminate\Process\Pool;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -87,24 +89,108 @@ class OcrEngine
         $pdftoppm = $this->pdftoppm() ?? throw new RuntimeException('برنامج تحويل صفحات PDF (pdftoppm) غير مثبت.');
         $work = storage_path('app/tmp/ocr-'.Str::random(16));
         Fs::ensureDirectoryExists($work);
+        // A few pages at a time (2026-11-10): all 300 pages turned into pictures before reading
+        // the first one took most of the time allowed, and a long scanned book then failed with
+        // nothing read, again and again. Now pages are turned and read a handful at a time, side
+        // by side on the spare processor cores, and when the time runs out the pages already read
+        // are kept («partial»), so a long book still becomes searchable.
+        $total = $this->pageCount($path);
+        $last = min(max(1, $maxPages), $total ?? max(1, $maxPages));
+        $step = $this->parallel();
+        $texts = [];
+        $read = 0;
+        $partial = false;
         try {
-            $r = Process::timeout($this->remaining($deadline))
-                ->run([...$this->nice(), $pdftoppm, '-r', '300', '-gray', '-png', '-l', (string) max(1, $maxPages), $path, $work.'/p']);
-            if (! $r->successful()) {
-                throw new RuntimeException('تعذر فتح ملف PDF: '.Str::limit(trim($r->errorOutput()), 200));
+            for ($first = 1; $first <= $last; $first += $step) {
+                $to = min($last, $first + $step - 1);
+                $r = Process::timeout($this->remaining($deadline))
+                    ->run([...$this->nice(), $pdftoppm, '-r', '200', '-gray', '-png', '-f', (string) $first, '-l', (string) $to, $path, $work.'/p']);
+                if (! $r->successful()) {
+                    if ($read === 0) {
+                        throw new RuntimeException('تعذر فتح ملف PDF: '.Str::limit(trim($r->errorOutput()), 200));
+                    }
+                    break;
+                }
+                $images = collect(Fs::files($work))->filter(fn ($f) => strtolower($f->getExtension()) === 'png')
+                    ->sortBy(fn ($f) => $f->getFilename(), SORT_NATURAL)->values();
+                if ($images->isEmpty()) {
+                    break; // past the last page (the count was unknown)
+                }
+                foreach ($this->tesseractMany($bin, $images->map(fn ($f) => $f->getPathname())->all(), $langs, $deadline) as $text) {
+                    $texts[] = $text;
+                }
+                $images->each(fn ($f) => @unlink($f->getPathname()));
+                $read += $images->count();
+                if ($total === null && $images->count() < $to - $first + 1) {
+                    break;
+                }
             }
-            $pages = collect(Fs::files($work))->filter(fn ($f) => strtolower($f->getExtension()) === 'png')
-                ->sortBy(fn ($f) => $f->getFilename(), SORT_NATURAL)->values();
-            $texts = [];
-            foreach ($pages as $page) {
-                $texts[] = $this->tesseractRun($bin, $page->getPathname(), $langs, $deadline);
-                @unlink($page->getPathname());
+        } catch (ProcessTimedOutException|RuntimeException $e) {
+            if ($read === 0 || ! $this->isTimeout($e)) {
+                throw $e;
             }
-
-            return ['text' => trim(implode("\n\n", array_filter($texts, fn ($t) => trim($t) !== ''))), 'pages' => $pages->count()];
+            $partial = true;
         } finally {
             Fs::deleteDirectory($work);
         }
+
+        return ['text' => trim(implode("\n\n", array_filter($texts, fn ($t) => trim($t) !== ''))), 'pages' => $read, 'total' => $total, 'partial' => $partial || ($total !== null && $read < $total)];
+    }
+
+    /** Several page images read side by side; their texts in page order. @return list<string> */
+    private function tesseractMany(string $bin, array $images, string $langs, float $deadline): array
+    {
+        if (count($images) === 1) {
+            return [$this->tesseractRun($bin, $images[0], $langs, $deadline)];
+        }
+        $timeout = $this->remaining($deadline);
+        $results = Process::pool(function (Pool $pool) use ($images, $bin, $langs, $timeout) {
+            foreach ($images as $i => $image) {
+                $pool->as((string) $i)->timeout($timeout)->env(['OMP_THREAD_LIMIT' => '1'])
+                    ->command([...$this->nice(), $bin, $image, 'stdout', '-l', $langs, '--psm', '3']);
+            }
+        })->start()->wait();
+        $out = [];
+        foreach (array_keys($images) as $i) {
+            $r = $results[(string) $i];
+            if (! $r->successful()) {
+                throw new RuntimeException('فشل التعرف: '.Str::limit(trim($r->errorOutput()), 200));
+            }
+            $out[] = $r->output();
+        }
+        if (microtime(true) >= $deadline) {
+            throw new RuntimeException('تجاوز الوقت المسموح لهذا الملف.');
+        }
+
+        return $out;
+    }
+
+    private function isTimeout(\Throwable $e): bool
+    {
+        return $e instanceof ProcessTimedOutException || str_contains($e->getMessage(), 'تجاوز الوقت');
+    }
+
+    /** Pages in a PDF (pdfinfo, beside pdftoppm), or null when it can't be told. */
+    public function pageCount(string $path): ?int
+    {
+        $bin = $this->locate('pdfinfo', config('services.ocr.pdfinfo'), [base_path('../poppler/pdfinfo.exe')]);
+        if ($bin === null) {
+            return null;
+        }
+        $r = Process::timeout(60)->run([$bin, $path]);
+
+        return $r->successful() && preg_match('/^Pages:\s+(\d+)/mi', $r->output(), $m) ? (int) $m[1] : null;
+    }
+
+    /** Pages read at once: the cores but one, at most 3 (Tesseract uses one core each here). */
+    private function parallel(): int
+    {
+        $cores = (int) (getenv('NUMBER_OF_PROCESSORS') ?: 0);
+        if ($cores < 1 && PHP_OS_FAMILY !== 'Windows') {
+            $cores = (int) trim((string) @shell_exec('nproc 2>/dev/null'));
+        }
+
+        return max(1, min(3, ($cores ?: 2) - 1));
     }
 
     private function tesseractRun(string $bin, string $image, string $langs, float $deadline): string

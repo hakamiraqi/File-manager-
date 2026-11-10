@@ -124,7 +124,8 @@ class OcrRunner
                 'content_text' => $merged === null ? null : mb_substr($merged, 0, 2_000_000),
                 'content_indexed_at' => now(),
                 'ocr_status' => 'done',
-                'ocr_error' => $text === '' ? 'لم يُعثر على نص مقروء.' : null,
+                'ocr_error' => $text === '' ? 'لم يُعثر على نص مقروء.'
+                    : (! empty($result['partial']) ? 'قُرئت '.$result['pages'].(isset($result['total']) ? ' صفحة من '.$result['total'] : ' صفحة').' ضمن الوقت المسموح.' : null),
                 'ocr_pages' => $result['pages'],
                 'ocr_seconds' => (int) round(microtime(true) - $started),
                 'ocr_done_at' => now(),
