@@ -56,14 +56,14 @@ const howLines = computed(() => wrap(t('exam.omr_how', 'املأ الدائرة 
 </script>
 
 <template>
-    <Head :title="t('exam.omr', 'ورق الفقاعات') + ' — ' + exam.title" />
+    <Head :title="t('exam.omr', 'الببل شيت') + ' — ' + exam.title" />
     <div class="min-h-screen bg-gray-100 print:bg-white dark:bg-gray-900">
         <!-- The top bar -->
         <header class="sticky top-0 z-20 border-b border-gray-200 bg-white/95 backdrop-blur print:hidden dark:border-gray-700 dark:bg-gray-800/95">
             <div class="mx-auto flex max-w-5xl items-center gap-2 px-3 py-2.5 sm:px-6">
                 <Link :href="route('exams.manage.edit', exam.id)" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" :aria-label="t('common.back', 'رجوع')"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
                 <div class="min-w-0 flex-1">
-                    <p class="truncate text-xs text-gray-500">{{ t('exam.omr', 'ورق الفقاعات') }}</p>
+                    <p class="truncate text-xs text-gray-500">{{ t('exam.omr', 'الببل شيت') }}</p>
                     <h1 class="truncate text-base font-bold">{{ exam.title }}</h1>
                 </div>
                 <button @click="printPage" class="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-[var(--accent-600)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:brightness-110"><PrinterIcon class="h-5 w-5" /> <span>{{ t('exam.print', 'طباعة') }}</span></button>
@@ -114,7 +114,7 @@ const howLines = computed(() => wrap(t('exam.omr_how', 'املأ الدائرة 
             <section class="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
                 <button type="button" @click="amcOpen = !amcOpen" class="flex w-full items-center gap-2 px-4 py-3 text-start">
                     <ComputerDesktopIcon class="h-5 w-5 text-gray-500" />
-                    <span class="min-w-0 flex-1"><span class="block font-semibold">{{ t('exam.amc_desktop', 'AMC على حاسبتك') }}</span><span class="block truncate text-xs text-gray-500">{{ t('exam.amc_hint', 'برنامج مجاني لطباعة أوراق الفقاعات وقراءتها؛ صدّر النتائج CSV مع «الخانات المؤشّرة» بالحروف.') }}</span></span>
+                    <span class="min-w-0 flex-1"><span class="block font-semibold">{{ t('exam.amc_desktop', 'AMC على حاسبتك') }}</span><span class="block truncate text-xs text-gray-500">{{ t('exam.amc_hint', 'برنامج مجاني لطباعة أوراق الببل شيت وقراءتها؛ صدّر النتائج CSV مع «الخانات المؤشّرة» بالحروف.') }}</span></span>
                     <ChevronDownIcon class="h-5 w-5 shrink-0 text-gray-400 transition" :class="amcOpen ? 'rotate-180' : ''" />
                 </button>
                 <div v-if="amcOpen" class="grid gap-2 border-t border-gray-100 p-4 sm:grid-cols-2 dark:border-gray-700">

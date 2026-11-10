@@ -76,7 +76,7 @@ class OmrController extends Controller
 
             return $attempt->fresh();
         });
-        ActivityLog::record('exam.omr', "صحّح ورقة فقاعات لـ {$user->name} في \"{$exam->text('title')}\"", $exam);
+        ActivityLog::record('exam.omr', "صحّح ورقة ببل شيت لـ {$user->name} في \"{$exam->text('title')}\"", $exam);
 
         return response()->json(['ok' => true, 'name' => $user->name, 'score' => $attempt->score, 'max' => $attempt->max_score]);
     }
@@ -101,7 +101,7 @@ class OmrController extends Controller
             '3. «تحضير» ثم اطبع الأوراق: تخرج ورقة باسم كل طالب (اسم الملف students.csv، المفتاح id).',
             '4. بعد الامتحان: امسح الأوراق، ثم «قراءة الأوراق» ثم «التصحيح»، و«ربط الطلاب» بالقائمة students.csv بالمفتاح id.',
             '5. «التقارير» ← تصدير CSV، وفعّل «الخانات المؤشّرة» (ticked) بصيغة الحروف AB.',
-            '6. ارفع ملف CSV في صفحة ورق الفقاعات في النظام: تُصحَّح الإجابات وتظهر في النتائج.',
+            '6. ارفع ملف CSV في صفحة الببل شيت في النظام: تُصحَّح الإجابات وتظهر في النتائج.',
             '',
             'أسئلة الاختيار من متعدد وصح/خطأ فقط تدخل في المشروع؛ الأنواع الأخرى تُصحَّح في النظام يدوياً.',
         ]));

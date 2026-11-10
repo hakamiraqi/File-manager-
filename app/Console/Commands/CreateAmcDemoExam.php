@@ -51,7 +51,7 @@ class CreateAmcDemoExam extends Command
         $exam = DB::transaction(function () use ($owner, $items) {
             $exam = Exam::create([
                 'user_id' => $owner->id, 'title' => ['ar' => self::TITLE], 'languages' => ['ar'], 'direction' => 'auto',
-                'description' => ['ar' => 'امتحان ورقي بأوراق الفقاعات: 70 سؤالاً بإجابة واحدة، و20 صح/خطأ، و10 بعدة إجابات. ظلّل الخانة كاملة بقلم غامق.'],
+                'description' => ['ar' => 'امتحان ورقي بأوراق الببل شيت: 70 سؤالاً بإجابة واحدة، و20 صح/خطأ، و10 بعدة إجابات. ظلّل الخانة كاملة بقلم غامق.'],
                 'subject' => 'ثقافة علمية عامة', 'max_attempts' => 1, 'grading_method' => 'highest', 'show_results' => 'after_submit',
                 'show_answers' => true, 'is_published' => true, 'pass_mark' => 50, 'shuffle_questions' => false, 'shuffle_choices' => false,
             ]);
