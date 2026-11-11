@@ -4,9 +4,6 @@
 use App\Models\File;
 use App\Models\Folder;
 use Illuminate\Support\Facades\DB;
-// One-off (2026-11-11 23:30 Baghdad, by request): OCR load checks back on after today's pause.
-App\Models\Setting::setMany(['ocr_max_cpu' => '70', 'ocr_min_ram_mb' => '1536', 'ocr_max_users' => '10']);
-echo 'LOAD CHECKS: '.json_encode(App\Models\Setting::whereIn('key', ['ocr_max_cpu', 'ocr_min_ram_mb', 'ocr_max_users', 'ocr_min_disk_gb'])->pluck('value', 'key'))."\n";
 $root = Folder::where('name', 'like', 'المكتبة الإلكترونية (الرقمية)%')->whereNull('parent_id')->first();
 $ids = [$root->id]; $frontier = [$root->id];
 while ($frontier) { $frontier = Folder::whereIn('parent_id', $frontier)->pluck('id')->all(); $ids = array_merge($ids, $frontier); }
