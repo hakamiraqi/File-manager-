@@ -38,7 +38,7 @@ class OcrTest extends TestCase
                 return ['available' => true, 'version' => '5.4.0', 'languages' => ['ara', 'eng'], 'pdf' => true];
             }
 
-            public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300): array
+            public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300, ?string $quality = null): array
             {
                 $this->seen[] = basename($path);
 
