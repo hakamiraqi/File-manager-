@@ -37,9 +37,9 @@ class QariTrialRun implements ShouldQueue
         foreach ($trial['engines'] as $engine) {
             $this->put($engine, ['state' => 'running']);
             try {
-                if ($engine === 'tesseract') {
+                if (str_starts_with($engine, 'tesseract')) {
                     $start = microtime(true);
-                    $r = $tesseract->recognize($image, 'png', 'ara+eng', 600);
+                    $r = $tesseract->recognize($image, 'png', 'ara+eng', 600, 300, $engine === 'tesseract-best' ? 'best' : 'fast');
                     $this->put($engine, ['state' => 'done', 'text' => trim($r['text']), 'seconds' => round(microtime(true) - $start, 1)]);
                 } else {
                     $this->put($engine, ['state' => 'done', ...$qari->read($engine, $image)]);

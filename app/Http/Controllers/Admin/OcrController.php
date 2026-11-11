@@ -110,6 +110,7 @@ class OcrController extends Controller
             'ocr_end' => $time,
             'ocr_batch' => ['required', 'integer', 'between:1,500'],
             'ocr_languages' => ['required', Rule::in(['ara+eng', 'ara', 'eng'])],
+            'ocr_quality' => ['nullable', Rule::in(['best', 'fast'])],
             'ocr_max_cpu' => ['required', 'integer', 'between:0,100'],
             'ocr_min_ram_mb' => ['required', 'integer', 'between:0,65536'],
             'ocr_min_disk_gb' => ['required', 'integer', 'between:0,10000'],
@@ -123,7 +124,7 @@ class OcrController extends Controller
         $data['ocr_days'] = implode(',', collect($data['ocr_days'] ?? [])->unique()->sort()->all());
         $data['ocr_all_day_days'] = implode(',', collect($data['ocr_all_day_days'] ?? [])->unique()->sort()->all());
 
-        Setting::setMany(collect($data)->map(fn ($v) => (string) $v)->all());
+        Setting::setMany(collect($data)->reject(fn ($v) => $v === null)->map(fn ($v) => (string) $v)->all());
         ActivityLog::record('settings.ocr', 'حدّث إعدادات التعرف على النصوص');
 
         return back()->with('success', 'تم حفظ إعدادات التعرف على النصوص.');

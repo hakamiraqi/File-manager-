@@ -22,6 +22,8 @@ class OcrSettings
         'ocr_all_day_days' => '5',       // Friday: any time
         'ocr_batch' => '20',
         'ocr_languages' => 'ara+eng',
+        // «best»: the accurate Arabic model and pages read at 300 dpi (slower, off-hours); «fast»: as before.
+        'ocr_quality' => 'best',
         'ocr_max_cpu' => '70',
         'ocr_min_ram_mb' => '1536',
         'ocr_min_disk_gb' => '5',

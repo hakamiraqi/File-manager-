@@ -46,7 +46,7 @@ class QariTrialController extends Controller
             'file' => ['required', 'file', 'max:51200', 'mimes:pdf,png,jpg,jpeg,webp,tif,tiff,bmp'],
             'page' => ['nullable', 'integer', 'min:1', 'max:2000'],
             'engines' => ['required', 'array', 'min:1'],
-            'engines.*' => ['in:tesseract,'.implode(',', array_keys(QariClient::MODELS))],
+            'engines.*' => ['in:tesseract,tesseract-best,'.implode(',', array_keys(QariClient::MODELS))],
         ]);
 
         $id = Str::lower(Str::random(12));

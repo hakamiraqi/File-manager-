@@ -15,6 +15,13 @@ RUN apk add --no-cache icu-libs libzip libpng libjpeg-turbo libwebp freetype mar
     && docker-php-ext-install -j"$(nproc)" pdo_mysql intl zip gd bcmath exif opcache pcntl \
     && apk del .build \
     && tesseract --list-langs 2>&1 | grep -qx ara
+# The more accurate («best») Arabic model, used for the off-hours reading (2026-11-11): slower
+# than the standard one, so it runs in the night window only. English stays the standard model.
+ADD https://github.com/tesseract-ocr/tessdata_best/raw/main/ara.traineddata /usr/share/tessdata-best/ara.traineddata
+RUN cp /usr/share/tessdata/eng.traineddata /usr/share/tessdata-best/ \
+    && (cp /usr/share/tessdata/osd.traineddata /usr/share/tessdata-best/ 2>/dev/null || true) \
+    && chmod 644 /usr/share/tessdata-best/* \
+    && tesseract --tessdata-dir /usr/share/tessdata-best --list-langs 2>&1 | grep -qx ara
 
 FROM base AS vendor
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer

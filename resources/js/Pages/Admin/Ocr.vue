@@ -36,6 +36,7 @@ const form = useForm({
     ocr_end: props.settings.ocr_end,
     ocr_batch: Number(props.settings.ocr_batch),
     ocr_languages: props.settings.ocr_languages,
+    ocr_quality: props.settings.ocr_quality || 'best',
     ocr_max_cpu: Number(props.settings.ocr_max_cpu),
     ocr_min_ram_mb: Number(props.settings.ocr_min_ram_mb),
     ocr_min_disk_gb: Number(props.settings.ocr_min_disk_gb),
@@ -314,6 +315,13 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
                                 <option value="ara">العربية فقط</option>
                                 <option value="eng">الإنكليزية فقط</option>
                             </select>
+                        </label>
+                        <label class="text-sm text-gray-700 dark:text-gray-200">الدقة
+                            <select v-model="form.ocr_quality" class="mt-1 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
+                                <option value="best">عالية — نموذج العربي الدقيق و300 نقطة (أبطأ)</option>
+                                <option value="fast">سريعة — النموذج العادي و200 نقطة</option>
+                            </select>
+                            <span v-if="form.ocr_quality === 'best' && !engine.best" class="mt-1 block text-xs text-amber-600">النموذج الدقيق غير مثبت هنا، فتُستخدم السريعة.</span>
                         </label>
                     </div>
                     <div class="mt-4"><SettingToggle v-model="form.ocr_report" description="إشعار للمدراء كل صباح الساعة 7:30 بعدد ما أُنجز وما تبقى.">تقرير الصباح</SettingToggle></div>

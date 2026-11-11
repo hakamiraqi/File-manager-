@@ -10,10 +10,11 @@ import { ArrowUpTrayIcon, BeakerIcon, ClockIcon, ExclamationTriangleIcon } from 
 const props = defineProps({ models: Array, trials: Array });
 
 const engines = computed(() => [
-    { key: 'tesseract', label: 'Tesseract (الحالي)', up: true },
+    { key: 'tesseract', label: 'Tesseract (السريع)', up: true },
+    { key: 'tesseract-best', label: 'Tesseract (الدقيق)', up: true },
     ...props.models,
 ]);
-const chosen = ref(['tesseract', ...props.models.filter((m) => m.up).map((m) => m.key)]);
+const chosen = ref(['tesseract', 'tesseract-best', ...props.models.filter((m) => m.up).map((m) => m.key)]);
 const file = ref(null);
 const page = ref(1);
 const busy = ref(false);

@@ -51,6 +51,7 @@ class OcrEngine
             'version' => $bin ? $this->version($bin) : null,
             'languages' => $bin ? $this->installedLanguages() : [],
             'pdf' => $this->pdftoppm() !== null,
+            'best' => $this->bestDir() !== null,
         ];
     }
 
@@ -76,9 +77,10 @@ class OcrEngine
      *
      * @return array{text: string, pages: int}
      */
-    public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300): array
+    public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300, ?string $quality = null): array
     {
         $bin = $this->tesseract() ?? throw new RuntimeException('برنامج التعرف على النصوص (Tesseract) غير مثبت.');
+        $this->best = ($quality ?? OcrSettings::get('ocr_quality')) === 'best' ? $this->bestDir() : null;
         $langs = $this->usableLanguages($languages);
         $deadline = microtime(true) + $timeoutSeconds;
 
@@ -104,7 +106,7 @@ class OcrEngine
             for ($first = 1; $first <= $last; $first += $step) {
                 $to = min($last, $first + $step - 1);
                 $r = Process::timeout($this->remaining($deadline))
-                    ->run([...$this->nice(), $pdftoppm, '-r', '200', '-gray', '-png', '-f', (string) $first, '-l', (string) $to, $path, $work.'/p']);
+                    ->run([...$this->nice(), $pdftoppm, '-r', $this->best ? '300' : '200', '-gray', '-png', '-f', (string) $first, '-l', (string) $to, $path, $work.'/p']);
                 if (! $r->successful()) {
                     if ($read === 0) {
                         throw new RuntimeException('تعذر فتح ملف PDF: '.Str::limit(trim($r->errorOutput()), 200));
@@ -147,7 +149,7 @@ class OcrEngine
         $results = Process::pool(function (Pool $pool) use ($images, $bin, $langs, $timeout) {
             foreach ($images as $i => $image) {
                 $pool->as((string) $i)->timeout($timeout)->env(['OMP_THREAD_LIMIT' => '1'])
-                    ->command([...$this->nice(), $bin, $image, 'stdout', '-l', $langs, '--psm', '3']);
+                    ->command([...$this->nice(), $bin, ...($this->best ? ['--tessdata-dir', $this->best] : []), $image, 'stdout', '-l', $langs, '--psm', '3']);
             }
         })->start()->wait();
         $out = [];
@@ -197,12 +199,23 @@ class OcrEngine
     {
         $r = Process::timeout($this->remaining($deadline))
             ->env(['OMP_THREAD_LIMIT' => '1'])
-            ->run([...$this->nice(), $bin, $image, 'stdout', '-l', $langs, '--psm', '3']);
+            ->run([...$this->nice(), $bin, ...($this->best ? ['--tessdata-dir', $this->best] : []), $image, 'stdout', '-l', $langs, '--psm', '3']);
         if (! $r->successful()) {
             throw new RuntimeException('فشل التعرف: '.Str::limit(trim($r->errorOutput()), 200));
         }
 
         return $r->output();
+    }
+
+    /** The «best» model folder for this reading, when chosen and installed. */
+    private ?string $best = null;
+
+    /** Folder with the accurate Arabic model, if it is installed here. */
+    public function bestDir(): ?string
+    {
+        $dir = rtrim((string) config('services.ocr.tessdata_best'), '/\\');
+
+        return $dir !== '' && is_file($dir.DIRECTORY_SEPARATOR.'ara.traineddata') ? $dir : null;
     }
 
     /** The requested languages that are installed (Arabic + English by default). */

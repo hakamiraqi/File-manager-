@@ -227,4 +227,45 @@ class OcrTest extends TestCase
         $this->assertStringNotContainsString('DENTAL', $some['text']);
         @unlink($path);
     }
+
+    public function test_the_accurate_model_folder_is_used_when_installed_and_skipped_when_not(): void
+    {
+        $engine = app(OcrEngine::class);
+        if (! $engine->available() || ! $engine->supports('pdf')) {
+            $this->markTestSkipped('Tesseract or pdftoppm is not installed here.');
+        }
+        $path = tempnam(sys_get_temp_dir(), 'ocr').'.pdf';
+        file_put_contents($path, $this->pdf(['ACCURATE MODEL PAGE']));
+
+        // Not installed: «best» quietly reads like «fast».
+        config(['services.ocr.tessdata_best' => sys_get_temp_dir().'/no-such-tessdata']);
+        $this->assertNull($engine->bestDir());
+        $this->assertStringContainsString('ACCURATE', $engine->recognize($path, 'pdf', 'eng', 120, 300, 'best')['text']);
+
+        // Installed: the folder is passed to Tesseract (here a copy of the English model).
+        preg_match('/"([^"]+)"/', (string) shell_exec('tesseract --list-langs 2>&1'), $m);
+        $system = rtrim($m[1] ?? '', '/');
+        if (! is_file("$system/eng.traineddata")) {
+            $this->markTestSkipped('English model not found.');
+        }
+        $dir = sys_get_temp_dir().'/tessdata-best-'.uniqid();
+        mkdir($dir);
+        copy("$system/eng.traineddata", "$dir/eng.traineddata");
+        copy("$system/eng.traineddata", "$dir/ara.traineddata");
+        config(['services.ocr.tessdata_best' => $dir]);
+        $this->assertSame($dir, $engine->bestDir());
+        $this->assertStringContainsString('ACCURATE', $engine->recognize($path, 'pdf', 'eng', 120, 300, 'best')['text']);
+
+        // A broken folder shows it really is the one read from.
+        unlink("$dir/eng.traineddata");
+        $this->expectException(\RuntimeException::class);
+        try {
+            $engine->recognize($path, 'pdf', 'eng', 120, 300, 'best');
+        } finally {
+            @unlink("$dir/ara.traineddata");
+            @rmdir($dir);
+            @unlink($path);
+        }
+    }
 }
+

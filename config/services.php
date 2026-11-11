@@ -18,6 +18,8 @@ return [
     'ocr' => [
         'tesseract' => env('OCR_TESSERACT_BIN'),
         'pdftoppm' => env('OCR_PDFTOPPM_BIN'),
+        // Folder with the more accurate («best») Arabic model; used when «الدقة» is «عالية».
+        'tessdata_best' => env('OCR_TESSDATA_BEST', '/usr/share/tessdata-best'),
     ],
 
     // Qari-OCR on trial: llama.cpp servers on FileNest's Docker network (deploy/vps/qari).
