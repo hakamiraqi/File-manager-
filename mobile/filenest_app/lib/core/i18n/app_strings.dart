@@ -432,7 +432,7 @@ class AppStrings {
     'action.upload_remote': {'ar': 'رفع من رابط', 'en': 'Upload from URL'},
     'action.download_zip': {'ar': 'تنزيل كملف مضغوط', 'en': 'Download as zip'},
 
-    'error.connection_failed': {'ar': 'تعذّر الاتصال بالخادم. تحقّق من الشبكة أو عنوان الخادم.', 'en': "Couldn't connect to the server. Check your network or the server address."},
+    'error.connection_failed': {'ar': 'لا يوجد اتصال بالإنترنت أو بالخادم. ما حُفظ على الجهاز (الملفات والمكتبة والخريطة) يبقى متاحاً.', 'en': "No connection to the internet or the server. What is saved on this device (files, library, map) stays available."},
     'error.unexpected': {'ar': 'حدث خطأ غير متوقع.', 'en': 'An unexpected error occurred.'},
 
     'empty.no_files': {'ar': 'لا توجد ملفات أو مجلدات هنا بعد.', 'en': 'No files or folders here yet.'},

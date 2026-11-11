@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/network/api_client.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/theme/app_colors.dart';
@@ -36,7 +38,7 @@ class _MyLoansScreenState extends State<MyLoansScreen> {
         context.read<BadgesProvider>().refresh();
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = ApiClient.messageFor(e));
     }
   }
 

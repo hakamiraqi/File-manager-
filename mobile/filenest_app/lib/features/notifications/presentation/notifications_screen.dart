@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/network/api_client.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/theme/app_colors.dart';
@@ -56,7 +58,7 @@ class NotificationsScreenState extends State<NotificationsScreen> {
       _unread = (r['unread'] as num?)?.toInt() ?? 0;
       if (mounted) context.read<BadgesProvider>().setNotifications(_unread);
     } catch (e) {
-      _paged.error = e.toString();
+      _paged.error = ApiClient.messageFor(e);
     } finally {
       if (mounted) setState(() => _paged.loading = false);
     }

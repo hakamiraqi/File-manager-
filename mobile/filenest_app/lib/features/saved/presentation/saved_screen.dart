@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/network/api_client.dart';
+
 import '../../../app/theme/app_colors.dart';
 import '../../../core/models/file_item.dart';
 import '../../../core/models/folder_item.dart';
@@ -36,7 +38,7 @@ class _SavedScreenState extends State<SavedScreen> {
       final d = await SiteApi.instance.saved();
       if (mounted) setState(() => _data = d);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = ApiClient.messageFor(e));
     }
   }
 

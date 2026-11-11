@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/network/api_client.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/theme/app_colors.dart';
@@ -55,7 +57,7 @@ class _InboxScreenState extends State<InboxScreen> {
       _kinds = Map<String, dynamic>.from(r['kinds'] as Map);
       _statuses = Map<String, dynamic>.from(r['statuses'] as Map);
     } catch (e) {
-      _paged.error = e.toString();
+      _paged.error = ApiClient.messageFor(e);
     } finally {
       if (mounted) setState(() => _paged.loading = false);
     }

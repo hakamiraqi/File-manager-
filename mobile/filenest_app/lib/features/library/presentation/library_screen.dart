@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/network/api_client.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/theme/app_colors.dart';
@@ -80,7 +82,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (reset && OfflineCache.isOffline(e) && await _fromCatalogue()) {
         _offline = true;
       } else {
-        _books.error = e.toString();
+        _books.error = ApiClient.messageFor(e);
         if (mounted) context.toastError(e);
       }
     } finally {

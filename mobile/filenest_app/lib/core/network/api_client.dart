@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 import '../config/api_config.dart';
@@ -54,7 +56,9 @@ class ApiClient {
         return data['message'] as String;
       }
       if (error.type == DioExceptionType.connectionTimeout ||
-          error.type == DioExceptionType.connectionError) {
+          error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.error is SocketException) {
         return AppStrings.of(LocaleProvider.currentLanguageCode, 'error.connection_failed');
       }
     }

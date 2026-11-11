@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/network/api_client.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/theme/app_colors.dart';
@@ -367,6 +369,6 @@ abstract class ApiErrorText {
       final data = (e as dynamic).response?.data;
       if (data is Map && data['message'] is String) return data['message'] as String;
     } catch (_) {}
-    return e.toString();
+    return ApiClient.messageFor(e);
   }
 }

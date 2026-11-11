@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/network/api_client.dart';
+
 import '../../../app/theme/app_colors.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/ui_kit.dart';
@@ -255,7 +257,7 @@ abstract class ApiClientMessage {
         return data['message'] as String;
       }
     } catch (_) {}
-    return e.toString();
+    return ApiClient.messageFor(e);
   }
 }
 

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/network/api_client.dart';
 import 'package:provider/provider.dart';
 
 import '../../../app/theme/app_colors.dart';
@@ -40,7 +42,7 @@ class _BookScreenState extends State<BookScreen> {
     } catch (e) {
       // Never opened before and no internet: built from the saved catalogue and map.
       final d = OfflineCache.isOffline(e) ? await _fromSaved() : null;
-      if (mounted) setState(() => d != null ? _data = d : _error = e.toString());
+      if (mounted) setState(() => d != null ? _data = d : _error = ApiClient.messageFor(e));
     }
   }
 
