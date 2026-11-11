@@ -417,10 +417,117 @@ function videoSources(file) {
 }
 
 function destroyPlyr() {
+    rememberPosition();
+    clearUpNext();
+    resumedFrom.value = null;
     if (player) {
         player.destroy();
         player = null;
     }
+}
+
+// Where each video was left off (this browser only), so reopening it carries on.
+const resumedFrom = ref(null);
+let resumeTimer = null;
+let lastSavedAt = 0;
+const positionKey = (id) => `filenest:video-position:${id}`;
+
+function rememberPosition(force = true) {
+    if (!player || !props.file) return;
+    const now = Date.now();
+    if (!force && now - lastSavedAt < 5000) return;
+    lastSavedAt = now;
+    const position = Math.floor(player.currentTime || 0);
+    const duration = Math.floor(player.duration || 0);
+    try {
+        if (position < 10 || (duration > 0 && position >= duration - 15)) {
+            window.localStorage.removeItem(positionKey(props.file.id));
+        } else {
+            window.localStorage.setItem(positionKey(props.file.id), String(position));
+        }
+    } catch {
+        // Private mode or storage switched off: nothing to remember with.
+    }
+}
+
+function offerResume() {
+    if (!player || !props.file) return;
+    let saved = null;
+    try {
+        saved = Number(window.localStorage.getItem(positionKey(props.file.id))) || null;
+    } catch {
+        saved = null;
+    }
+    if (!saved || (player.duration && saved >= player.duration - 15)) return;
+    player.currentTime = saved;
+    resumedFrom.value = saved;
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => (resumedFrom.value = null), 7000);
+}
+
+function startOver() {
+    if (player) player.currentTime = 0;
+    resumedFrom.value = null;
+}
+
+// Autoplay-next waits a few seconds on a card that can be cancelled.
+const upNextSeconds = ref(null);
+let upNextTimer = null;
+const nextItem = computed(() => (hasNext.value ? playlist.value[currentIndex.value + 1] : null));
+
+function clearUpNext() {
+    clearInterval(upNextTimer);
+    upNextTimer = null;
+    upNextSeconds.value = null;
+}
+
+function startUpNext() {
+    clearUpNext();
+    upNextSeconds.value = 5;
+    upNextTimer = setInterval(() => {
+        upNextSeconds.value -= 1;
+        if (upNextSeconds.value <= 0) {
+            clearUpNext();
+            playNext();
+        }
+    }, 1000);
+}
+
+function playNextNow() {
+    clearUpNext();
+    playNext();
+}
+
+function plyrLabels() {
+    return {
+        restart: t('player.restart', 'من البداية'),
+        rewind: t('player.rewind', 'رجوع {seektime} ث'),
+        play: t('player.play', 'تشغيل'),
+        pause: t('player.pause', 'إيقاف مؤقت'),
+        fastForward: t('player.fast_forward', 'تقديم {seektime} ث'),
+        seek: t('player.seek', 'انتقال'),
+        seekLabel: t('player.seek_label', '{currentTime} من {duration}'),
+        played: t('player.played', 'تم تشغيله'),
+        buffered: t('player.buffered', 'محمّل'),
+        currentTime: t('player.current_time', 'الوقت الحالي'),
+        duration: t('player.duration', 'المدة'),
+        volume: t('player.volume', 'الصوت'),
+        mute: t('player.mute', 'كتم الصوت'),
+        unmute: t('player.unmute', 'إلغاء الكتم'),
+        enableCaptions: t('player.enable_captions', 'إظهار الترجمة'),
+        disableCaptions: t('player.disable_captions', 'إخفاء الترجمة'),
+        enterFullscreen: t('player.enter_fullscreen', 'ملء الشاشة'),
+        exitFullscreen: t('player.exit_fullscreen', 'الخروج من ملء الشاشة'),
+        captions: t('preview.subtitles_title', 'الترجمة'),
+        settings: t('player.settings', 'الإعدادات'),
+        pip: t('player.pip', 'صورة داخل صورة'),
+        menuBack: t('player.menu_back', 'رجوع'),
+        speed: t('preview.speed', 'السرعة'),
+        normal: t('player.speed_normal', 'عادية'),
+        quality: t('player.quality', 'الجودة'),
+        disabled: t('player.off', 'إيقاف'),
+        enabled: t('player.on', 'تشغيل'),
+    };
 }
 
 function mountPlyr() {
@@ -437,6 +544,17 @@ function mountPlyr() {
             // Plyr's default points at its CDN; nothing must load from the
             // internet on the offline server.
             blankVideo: '',
+            controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'pip', 'fullscreen'],
+            seekTime: 10,
+            keyboard: { focused: true, global: false },
+            tooltips: { controls: true, seek: true },
+            speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
+            i18n: plyrLabels(),
+            // Interactive questions shown as marks on the timeline.
+            markers: {
+                enabled: questions.value.length > 0,
+                points: questions.value.map((q) => ({ time: q.timestamp_seconds, label: t('preview.interactive_question_label', 'سؤال تفاعلي') })),
+            },
             settings,
             captions: { active: subtitles.value.length > 0, update: true },
             ...(qualities.length > 1
@@ -445,8 +563,16 @@ function mountPlyr() {
         });
 
         player.on('ended', () => {
-            if (autoplayNext.value && hasNext.value) playNext();
+            try {
+                window.localStorage.removeItem(positionKey(props.file.id));
+            } catch {
+                // nothing remembered
+            }
+            if (autoplayNext.value && hasNext.value) startUpNext();
         });
+        player.once('loadedmetadata', offerResume);
+        player.on('timeupdate', () => rememberPosition(false));
+        player.on('play', clearUpNext);
 
         player.on('timeupdate', enforceQuestionGate);
         player.on('seeked', enforceQuestionGate);
@@ -573,6 +699,7 @@ function handleClose() {
 }
 
 onBeforeUnmount(() => {
+    clearTimeout(resumeTimer);
     destroyPlyr();
     destroyWavesurfer();
 });
@@ -611,12 +738,13 @@ onBeforeUnmount(() => {
                 </div>
             </div>
 
-            <div class="flex flex-1 overflow-hidden">
+            <div class="flex flex-1 flex-col overflow-hidden md:flex-row">
                 <div class="flex flex-1 flex-col overflow-auto bg-gray-50 dark:bg-gray-900">
                     <div class="flex flex-1 items-center justify-center p-4">
                         <img v-if="kind(file) === 'image'" :src="route('files.preview', file.id)" class="max-h-[65vh] rounded" />
 
-                        <div v-else-if="kind(file) === 'video'" class="relative w-full max-h-[65vh]">
+                        <!-- Media controls stay left-to-right in Arabic too, like every major player. -->
+                        <div v-else-if="kind(file) === 'video'" dir="ltr" class="fn-player relative w-full max-h-[65vh] overflow-hidden rounded-xl bg-black shadow-lg ring-1 ring-black/10">
                             <video
                                 ref="videoEl"
                                 :poster="file.thumbnail_path ? route('files.thumbnail', file.id) : undefined"
@@ -635,6 +763,42 @@ onBeforeUnmount(() => {
                                     :default="i === 0"
                                 />
                             </video>
+
+                            <button
+                                v-if="resumedFrom && !upNextSeconds"
+                                type="button"
+                                @click="startOver"
+                                class="absolute bottom-16 left-3 z-[5] flex items-center gap-2 rounded-full bg-black/80 px-3.5 py-2 text-xs text-white shadow-lg backdrop-blur transition hover:bg-black"
+                            >
+                                <span dir="auto">{{ t('player.resumed_from', 'أكملنا من :time', { time: formatTime(resumedFrom) }) }}</span>
+                                <span class="font-semibold text-[var(--accent-500)]">{{ t('player.start_over', 'من البداية') }}</span>
+                            </button>
+
+                            <div
+                                v-if="upNextSeconds && nextItem"
+                                class="absolute bottom-16 right-3 z-[5] w-64 rounded-2xl border border-white/10 bg-gray-900/95 p-3 text-white shadow-2xl backdrop-blur"
+                            >
+                                <div class="mb-2 flex items-center gap-2 text-xs text-gray-300">
+                                    <svg class="h-5 w-5 -rotate-90" viewBox="0 0 36 36">
+                                        <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="4" />
+                                        <circle
+                                            cx="18" cy="18" r="15" fill="none" stroke="var(--accent-500)" stroke-width="4" stroke-linecap="round"
+                                            :stroke-dasharray="94.2" :stroke-dashoffset="94.2 * (1 - upNextSeconds / 5)"
+                                            class="transition-all duration-1000 ease-linear"
+                                        />
+                                    </svg>
+                                    <span dir="auto">{{ t('player.up_next_in', 'التالي خلال :seconds ث', { seconds: upNextSeconds }) }}</span>
+                                </div>
+                                <p dir="auto" class="mb-3 line-clamp-2 text-sm font-semibold">{{ nextItem.name }}</p>
+                                <div class="flex gap-2">
+                                    <button type="button" @click="clearUpNext" class="flex-1 rounded-lg border border-white/20 px-3 py-1.5 text-xs hover:bg-white/10">
+                                        {{ t('action.cancel', 'إلغاء') }}
+                                    </button>
+                                    <button type="button" @click="playNextNow" class="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-xs font-semibold hover:bg-[var(--accent-500)]">
+                                        <PlayIcon class="h-3.5 w-3.5" /> {{ t('player.play_now', 'شغّل الآن') }}
+                                    </button>
+                                </div>
+                            </div>
 
                             <!-- Interactive question overlay: blocks the video until answered -->
                             <div v-if="activeQuestion" class="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
@@ -747,17 +911,38 @@ onBeforeUnmount(() => {
                         </div>
                     </div>
 
-                    <div v-if="playlist.length > 1 && (kind(file) === 'video' || kind(file) === 'audio')" class="flex items-center justify-center gap-4 border-t border-gray-200 bg-white p-2 dark:border-gray-700 dark:bg-gray-800">
-                        <button @click="playPrev" :disabled="!hasPrev" class="rounded-md p-2 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700 dark:text-gray-300" :title="t('preview.prev', 'السابق')">
-                            <BackwardIcon class="h-5 w-5" />
-                        </button>
-                        <label class="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                            <input type="checkbox" v-model="autoplayNext" class="rounded border-gray-300" />
+                    <div v-if="playlist.length > 1 && (kind(file) === 'video' || kind(file) === 'audio')" class="flex flex-wrap items-center gap-3 border-t border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+                        <div dir="ltr" class="flex items-center gap-1.5">
+                            <button
+                                @click="playPrev"
+                                :disabled="!hasPrev"
+                                class="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-700 transition hover:bg-gray-200 disabled:opacity-30 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+                                :title="t('preview.prev', 'السابق')"
+                            >
+                                <BackwardIcon class="h-4 w-4" />
+                            </button>
+                            <button
+                                @click="playNext"
+                                :disabled="!hasNext"
+                                class="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--accent-600)] text-white transition hover:bg-[var(--accent-500)] disabled:opacity-30"
+                                :title="t('preview.next', 'التالي')"
+                            >
+                                <ForwardIcon class="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div v-if="nextItem" class="min-w-0 flex-1">
+                            <p class="text-[11px] uppercase tracking-wide text-gray-400">{{ t('player.next', 'التالي') }}</p>
+                            <p dir="auto" class="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ nextItem.name }}</p>
+                        </div>
+                        <div v-else class="flex-1 text-sm text-gray-400">{{ t('player.end_of_list', 'آخر مقطع في القائمة') }}</div>
+                        <label class="flex cursor-pointer select-none items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
                             {{ t('preview.autoplay_next', 'تشغيل تلقائي للتالي') }}
+                            <span class="relative inline-flex h-5 w-9 items-center">
+                                <input type="checkbox" v-model="autoplayNext" class="peer sr-only" />
+                                <span class="absolute inset-0 rounded-full bg-gray-300 transition peer-checked:bg-[var(--accent-600)] dark:bg-gray-600"></span>
+                                <span class="absolute start-0.5 h-4 w-4 rounded-full bg-white shadow transition peer-checked:translate-x-4 rtl:peer-checked:-translate-x-4"></span>
+                            </span>
                         </label>
-                        <button @click="playNext" :disabled="!hasNext" class="rounded-md p-2 hover:bg-gray-100 disabled:opacity-30 dark:hover:bg-gray-700 dark:text-gray-300" :title="t('preview.next', 'التالي')">
-                            <ForwardIcon class="h-5 w-5" />
-                        </button>
                     </div>
 
                     <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
@@ -997,15 +1182,43 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div v-if="showPlaylist && playlist.length > 1" class="w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-                    <ul>
-                        <li v-for="item in playlist" :key="item.id">
+                <div
+                    v-if="showPlaylist && playlist.length > 1"
+                    class="max-h-72 w-full shrink-0 overflow-y-auto border-t border-gray-200 bg-white md:max-h-none md:w-80 md:border-s md:border-t-0 dark:border-gray-700 dark:bg-gray-800"
+                >
+                    <div class="sticky top-0 z-[1] flex items-center gap-2 border-b border-gray-100 bg-white/95 px-4 py-3 backdrop-blur dark:border-gray-700 dark:bg-gray-800/95">
+                        <QueueListIcon class="h-5 w-5 text-gray-500" />
+                        <span class="font-semibold text-gray-900 dark:text-gray-100">{{ t('preview.playlist_title', 'قائمة التشغيل') }}</span>
+                        <span dir="ltr" class="ms-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-300">{{ currentIndex + 1 }}/{{ playlist.length }}</span>
+                    </div>
+                    <ul class="space-y-1 p-2">
+                        <li v-for="(item, i) in playlist" :key="item.id">
                             <button
                                 @click="playFromList(item)"
-                                class="block w-full truncate px-3 py-2 text-right text-sm hover:bg-gray-50 dark:hover:bg-gray-700"
-                                :class="item.id === file.id ? 'bg-orange-50 font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'"
+                                class="group flex w-full items-center gap-3 rounded-xl p-2 text-start transition"
+                                :class="item.id === file.id ? 'bg-[var(--accent-50)] ring-1 ring-[var(--accent-500)] dark:bg-white/10 dark:ring-[var(--accent-500)]' : 'hover:bg-gray-50 dark:hover:bg-gray-700/60'"
                             >
-                                {{ item.name }}
+                                <span class="w-5 shrink-0 text-center text-xs text-gray-400">
+                                    <span v-if="item.id === file.id" class="fn-eq inline-flex h-3 items-end gap-[2px]"><i></i><i></i><i></i></span>
+                                    <template v-else>{{ i + 1 }}</template>
+                                </span>
+                                <span class="relative h-12 w-20 shrink-0 overflow-hidden rounded-lg bg-gray-200 dark:bg-gray-700">
+                                    <img v-if="item.thumbnail_path" :src="route('files.thumbnail', item.id)" loading="lazy" class="h-full w-full object-cover" alt="" />
+                                    <MusicalNoteIcon v-else-if="kind(item) === 'audio'" class="absolute inset-0 m-auto h-5 w-5 text-gray-400" />
+                                    <PlayIcon v-else class="absolute inset-0 m-auto h-5 w-5 text-gray-400" />
+                                    <span v-if="item.id !== file.id" class="absolute inset-0 hidden items-center justify-center bg-black/40 group-hover:flex">
+                                        <PlayIcon class="h-5 w-5 text-white" />
+                                    </span>
+                                </span>
+                                <span class="min-w-0 flex-1">
+                                    <span
+                                        dir="auto"
+                                        class="line-clamp-2 block text-sm"
+                                        :class="item.id === file.id ? 'font-semibold text-[var(--accent-700)] dark:text-[var(--accent-500)]' : 'text-gray-700 dark:text-gray-200'"
+                                    >{{ item.name }}</span>
+                                    <span v-if="item.id === file.id" class="text-[11px] font-medium text-[var(--accent-600)] dark:text-[var(--accent-500)]">{{ t('player.now_playing', 'يُعرض الآن') }}</span>
+                                    <span v-else-if="item.human_size" class="text-[11px] text-gray-400">{{ item.human_size }}</span>
+                                </span>
                             </button>
                         </li>
                     </ul>
@@ -1014,3 +1227,74 @@ onBeforeUnmount(() => {
         </div>
     </Modal>
 </template>
+
+<style>
+/* Player look: accent-coloured timeline, glassy big play button, rounded menus. */
+.fn-player .plyr {
+    --plyr-color-main: var(--accent-500, #3b82f6);
+    --plyr-video-control-color: #fff;
+    --plyr-video-controls-background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+    --plyr-range-track-height: 4px;
+    --plyr-range-thumb-height: 14px;
+    --plyr-control-radius: 10px;
+    --plyr-menu-radius: 12px;
+    --plyr-menu-background: rgba(24, 28, 35, 0.96);
+    --plyr-menu-color: #f3f4f6;
+    --plyr-menu-back-border-color: rgba(255, 255, 255, 0.1);
+    --plyr-tooltip-background: rgba(24, 28, 35, 0.96);
+    --plyr-tooltip-color: #fff;
+    --plyr-tooltip-radius: 8px;
+    --plyr-badge-background: var(--accent-600, #2563eb);
+    border-radius: 0.75rem;
+    font-family: inherit;
+}
+.fn-player .plyr__control--overlaid {
+    padding: 22px;
+    background: rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    transition: transform 0.2s ease, background 0.2s ease;
+}
+.fn-player .plyr__control--overlaid:hover {
+    background: var(--accent-600, #2563eb);
+    transform: translate(-50%, -50%) scale(1.06);
+}
+.fn-player .plyr__control--overlaid svg {
+    width: 26px;
+    height: 26px;
+}
+.fn-player .plyr--video .plyr__controls {
+    padding: 28px 12px 10px;
+    gap: 2px;
+}
+.fn-player .plyr__progress input[type='range'] {
+    transition: height 0.15s;
+}
+.fn-player .plyr__progress__marker {
+    background: #fbbf24;
+    width: 4px;
+}
+.fn-player .plyr__captions .plyr__caption {
+    border-radius: 6px;
+    padding: 0.2em 0.6em;
+    background: rgba(0, 0, 0, 0.75);
+}
+/* Little "now playing" bars in the queue. */
+.fn-eq i {
+    display: block;
+    width: 3px;
+    background: var(--accent-500, #3b82f6);
+    border-radius: 1px;
+    animation: fn-eq 0.9s ease-in-out infinite;
+}
+.fn-eq i:nth-child(2) {
+    animation-delay: 0.2s;
+}
+.fn-eq i:nth-child(3) {
+    animation-delay: 0.4s;
+}
+@keyframes fn-eq {
+    0%, 100% { height: 30%; }
+    50% { height: 100%; }
+}
+</style>
