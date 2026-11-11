@@ -56,4 +56,4 @@ jobs:
       - name: Text recognition tools (for the real-engine OCR test)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ara poppler-utils >/dev/null
       - name: Guest landing and smoke tests
-        run: php artisan test --filter='GuestLandingTest|Thesis|ExampleTest|AssignedFoldersTest|GoldenPathTest|Library|StaffAnalytics|OfflineActivation|ProfileAvatar|ProfileTest|SavedItems|ActivityLogPage|UserStatus|LanguagesTest|NotificationsTest|PublicSiteTest|MobileFeaturesApiTest|OcrTest|OfflineExportTest|ThumbnailTest'
+        run: php artisan test --filter='GuestLandingTest|Thesis|ExampleTest|AssignedFoldersTest|GoldenPathTest|Library|StaffAnalytics|OfflineActivation|ProfileAvatar|ProfileTest|SavedItems|ActivityLogPage|UserStatus|LanguagesTest|NotificationsTest|PublicSiteTest|MobileFeaturesApiTest|OcrTest|OfflineExportTest|ThumbnailTest|QariTrialTest'

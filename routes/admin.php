@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\OfflineExportController;
 use App\Http\Controllers\Admin\MailController;
 use App\Http\Controllers\Admin\OcrController;
 use App\Http\Controllers\Admin\PermissionController;
+use App\Http\Controllers\Admin\QariTrialController;
 use App\Http\Controllers\Admin\SecurityController;
 use App\Http\Controllers\Admin\SettingController;
 use App\Http\Controllers\Admin\TranslationController;
@@ -44,6 +45,12 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
         Route::get('/mail', [MailController::class, 'index'])->name('mail.index');
         Route::post('/mail', [MailController::class, 'update'])->name('mail.update');
         Route::post('/mail/test', [MailController::class, 'sendTest'])->name('mail.test');
+
+        // «تجربة Qari»: a separate page to try the Arabic model before using it (main admin only).
+        Route::get('/qari', [QariTrialController::class, 'index'])->name('qari.index');
+        Route::post('/qari', [QariTrialController::class, 'store'])->middleware('throttle:20,1')->name('qari.store');
+        Route::get('/qari/{id}', [QariTrialController::class, 'show'])->name('qari.show');
+        Route::get('/qari/{id}/image', [QariTrialController::class, 'image'])->name('qari.image');
 
         Route::get('/ocr', [OcrController::class, 'index'])->name('ocr.index');
         Route::post('/ocr', [OcrController::class, 'update'])->name('ocr.update');
