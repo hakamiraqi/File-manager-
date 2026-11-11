@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -106,6 +107,10 @@ class OfflineDownloadService {
     _manifest.removeWhere((r) => r.fileId == file.id);
     _manifest.add(record);
     await _writeManifest();
+    if (file.hasThumbnail) {
+      _thumbTried.remove(file.id);
+      unawaited(thumbnailFor(record));
+    }
 
     return record;
   }
@@ -205,8 +210,34 @@ class OfflineDownloadService {
     _activeCancelTokens[fileId]?.cancel('cancelled by user');
   }
 
+  // Small pictures for the downloads list (2026-11-11, by request), saved next to the files so
+  // they show without internet: the server's preview image, fetched once.
+  final Set<int> _thumbTried = {};
+
+  Future<File> _thumbFile(int fileId) async => File('${(await _filesDirectory()).path}/thumbs/$fileId.jpg');
+
+  Future<File?> thumbnailFor(OfflineFileRecord record) async {
+    final f = await _thumbFile(record.fileId);
+    if (await f.exists() && await f.length() > 0) return f;
+    if (_thumbTried.contains(record.fileId)) return null;
+    _thumbTried.add(record.fileId);
+    try {
+      await f.parent.create(recursive: true);
+      await ApiClient.instance.dio.download('/files/${record.fileId}/thumbnail', f.path);
+      if (await f.exists() && await f.length() > 0) return f;
+    } catch (_) {}
+    try {
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> delete(int fileId) async {
     await ensureLoaded();
+    try {
+      final thumb = await _thumbFile(fileId);
+      if (await thumb.exists()) await thumb.delete();
+    } catch (_) {}
 
     final record = recordFor(fileId);
     if (record == null) return;

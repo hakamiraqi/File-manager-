@@ -43,22 +43,50 @@ class LibraryController extends Controller
     }
 
     /**
-     * The map's plan for the apps to keep and draw without internet (2026-11-11, by request):
-     * the floor, every bookcase and how many copies are on it. «version» changes whenever any
+     * The map for the apps to keep and open without internet (2026-11-11, by request): the
+     * floor, every bookcase, the copies on each, and every book with its place (for search). «version» changes whenever any
      * of it does, so the app replaces its saved copy only when the map was edited.
      */
     public function mapData(Request $request): JsonResponse
     {
         $this->allowGuest($request);
         $floor = $this->map->floor();
-        unset($floor['backgrounds']);
+        $floor['backgrounds'] = [];
+        // Every book with where it stands, so the map's search works without internet too.
+        $shelves = \App\Models\Library\LibraryShelf::where('kind', 'shelf')->get();
+        $books = Book::withAvailability()->with('copies')->orderBy('title')->get()->map(fn (Book $b) => [
+            'id' => $b->id, 'title' => $b->title, 'authors' => $b->authors, 'cover_url' => null,
+            'available_count' => (int) ($b->available_count ?? 0), 'copies_count' => (int) ($b->copies_count ?? 0),
+            'reference_only' => (bool) $b->reference_only,
+            'spots' => $this->map->locate($b, $shelves),
+        ])->values();
         $data = [
             'floor' => $floor,
             'shelves' => $this->map->shelves()->values(),
-            'stock' => (object) collect($this->map->stock())->map(fn ($s) => $s['n'])->all(),
+            'stock' => (object) $this->map->stock(),
+            'books' => $books,
         ];
 
         return response()->json(['version' => md5(json_encode($data)), ...$data]);
+    }
+
+    /**
+     * The map page itself (3D and flat), built as one script and one stylesheet for the apps to
+     * keep (resources/js/offline-map). «version» changes with every new build of it.
+     */
+    public function mapBundle(Request $request): JsonResponse
+    {
+        $this->allowGuest($request);
+        $js = public_path('build/offline-map/map.js');
+        $css = public_path('build/offline-map/map.css');
+        abort_unless(is_file($js) && is_file($css), 404, 'الخريطة غير متاحة للتنزيل بعد.');
+
+        return response()->json([
+            'version' => substr(md5(md5_file($js).md5_file($css)), 0, 16),
+            'js' => '/build/offline-map/map.js',
+            'css' => '/build/offline-map/map.css',
+            'size' => filesize($js) + filesize($css),
+        ]);
     }
 
     public function index(Request $request): JsonResponse

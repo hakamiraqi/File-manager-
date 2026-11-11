@@ -234,14 +234,42 @@ class LibraryMapTest extends TestCase
         $token = User::factory()->create()->createToken('phone')->plainTextToken;
         $first = $this->withToken($token)->getJson('/api/v1/public/library/map-data')->assertOk()
             ->assertJsonPath('shelves.0.code', 'C1')
-            ->assertJsonPath("stock.{$shelf->id}", 1)
-            ->assertJsonStructure(['version', 'floor' => ['width', 'depth', 'entrance', 'storeys'], 'shelves', 'stock'])
+            ->assertJsonPath("stock.{$shelf->id}.n", 1)
+            ->assertJsonPath('books.0.title', 'Endodontics')
+            ->assertJsonPath('books.0.spots.0.code', 'C1')
+            ->assertJsonStructure(['version', 'floor' => ['width', 'depth', 'entrance', 'storeys'], 'shelves', 'stock', 'books'])
             ->json('version');
         $this->assertSame($first, $this->withToken($token)->getJson('/api/v1/public/library/map-data')->json('version'));
 
         // Editing the map gives a new version, so the app replaces its saved copy.
         $shelf->update(['x' => 6]);
         $this->assertNotSame($first, $this->withToken($token)->getJson('/api/v1/public/library/map-data')->json('version'));
+    }
+
+    public function test_the_apps_download_the_map_page_and_see_a_new_build(): void
+    {
+        $dir = public_path('build/offline-map');
+        $made = ! is_dir($dir);
+        @mkdir($dir, 0777, true);
+        $js = "$dir/map.js";
+        $css = "$dir/map.css";
+        $old = [is_file($js) ? file_get_contents($js) : null, is_file($css) ? file_get_contents($css) : null];
+        try {
+            file_put_contents($js, 'console.log(1)');
+            file_put_contents($css, 'body{}');
+            $token = User::factory()->create()->createToken('phone')->plainTextToken;
+            $first = $this->withToken($token)->getJson('/api/v1/public/library/map-bundle')->assertOk()
+                ->assertJsonPath('js', '/build/offline-map/map.js')->assertJsonPath('css', '/build/offline-map/map.css')
+                ->json('version');
+            file_put_contents($js, 'console.log(2)');
+            $this->assertNotSame($first, $this->withToken($token)->getJson('/api/v1/public/library/map-bundle')->json('version'));
+        } finally {
+            $old[0] === null ? @unlink($js) : file_put_contents($js, $old[0]);
+            $old[1] === null ? @unlink($css) : file_put_contents($css, $old[1]);
+            if ($made) {
+                @rmdir($dir);
+            }
+        }
     }
 
     public function test_the_apps_open_the_map_signed_in_as_the_same_user(): void

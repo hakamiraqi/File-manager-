@@ -89,8 +89,20 @@ class _LibraryPlanScreenState extends State<LibraryPlanScreen> {
   List<Map<String, dynamic>> _shelves(Map<String, dynamic> d) =>
       ((d['shelves'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
 
+  /// The book's bookcase: given, or found in the saved books.
+  String? _spotCode(Map<String, dynamic> d) {
+    if (widget.spotCode != null) return widget.spotCode;
+    for (final b in (d['books'] as List? ?? [])) {
+      if (b is Map && b['id'] == widget.bookId) {
+        final spots = b['spots'] as List? ?? [];
+        if (spots.isNotEmpty) return '${(spots.first as Map)['code']}';
+      }
+    }
+    return null;
+  }
+
   Map<String, dynamic>? _target(Map<String, dynamic> d) {
-    final code = widget.spotCode?.trim().toLowerCase();
+    final code = _spotCode(d)?.trim().toLowerCase();
     if (code == null || code.isEmpty) return null;
     for (final s in _shelves(d)) {
       if ('${s['code']}'.toLowerCase() == code) return s;
@@ -99,7 +111,8 @@ class _LibraryPlanScreenState extends State<LibraryPlanScreen> {
   }
 
   void _tapShelf(Map<String, dynamic> s, Map<String, dynamic> stock) {
-    final n = stock['${s['id']}'];
+    final raw = stock['${s['id']}'];
+    final n = raw is Map ? raw['n'] : raw;
     showModalBottomSheet<void>(
       context: context,
       useRootNavigator: true,
@@ -162,14 +175,12 @@ class _LibraryPlanScreenState extends State<LibraryPlanScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   child: Text(context.l('بدون إنترنت: الخريطة المحفوظة على الجهاز.', 'Offline: the map saved on this device.'), style: const TextStyle(fontSize: 12.5)),
                 ),
-              if (target != null || widget.spotCode != null)
+              if (target != null)
                 ListTile(
                   dense: true,
                   leading: const Icon(Icons.place_rounded, color: Color(0xFFF59E0B)),
-                  title: Text(target != null
-                      ? context.l('الرف ${widget.spotCode}${widget.spotLevel != null ? ' — الطبقة ${widget.spotLevel}' : ''}',
-                          'Bookcase ${widget.spotCode}${widget.spotLevel != null ? ' — level ${widget.spotLevel}' : ''}')
-                      : context.l('الرف ${widget.spotCode} غير موجود على الخريطة.', 'Bookcase ${widget.spotCode} is not on the map.')),
+                  title: Text(context.l('الرف ${target['code']}${widget.spotLevel != null ? ' — الطبقة ${widget.spotLevel}' : ''}',
+                      'Bookcase ${target['code']}${widget.spotLevel != null ? ' — level ${widget.spotLevel}' : ''}')),
                 ),
               if (storeys.length > 1)
                 SizedBox(

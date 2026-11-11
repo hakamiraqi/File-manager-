@@ -11,6 +11,8 @@ import 'package:webview_windows/webview_windows.dart' as win;
 import '../../../core/config/api_config.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/widgets/ui_kit.dart';
+import '../data/library_map_cache.dart';
+import 'library_plan_screen.dart';
 
 /// «خريطة المكتبة» in the app (2026-11-06, by request): the same 3D map as the website
 /// (three.js) with everything it does: search, the walk to the bookcase, floors and halls,
@@ -74,6 +76,9 @@ class _LibraryMapScreenState extends State<LibraryMapScreen> {
       _progress = 0;
     });
     try {
+      // The library map opens from the copy kept on the device (2026-11-11, by request): it
+      // works without internet, and is brought up to date first whenever there is internet.
+      if (widget.link == null && await _openSaved()) return;
       final url = await _link();
       if (_windows) {
         final c = _winWeb ?? win.WebviewController();
@@ -93,6 +98,47 @@ class _LibraryMapScreenState extends State<LibraryMapScreen> {
     } catch (e) {
       if (mounted) setState(() => _error = ApiClient.messageFor(e));
     }
+  }
+
+  bool _offline = false;
+
+  Future<bool> _openSaved() async {
+    final cache = LibraryMapCache.instance;
+    final changed = await cache.refreshAll();
+    final dark = WidgetsBinding.instance.platformDispatcher.platformBrightness == Brightness.dark;
+    if (_windows) {
+      final path = await cache.writeHtml(bookId: widget.bookId, dark: dark);
+      if (path == null) return _fallback(changed == null);
+      final c = _winWeb ?? win.WebviewController();
+      if (_winWeb == null) {
+        await c.initialize();
+        _winWeb = c;
+      }
+      await c.loadUrl(Uri.file(path).toString());
+    } else {
+      final html = await cache.buildHtml(bookId: widget.bookId, dark: dark);
+      if (html == null) return _fallback(changed == null);
+      _web ??= _createMobile();
+      await _web!.loadHtmlString(html, baseUrl: 'https://library-map.filenest.local/');
+    }
+    if (!mounted) return true;
+    setState(() {
+      _ready = true;
+      _progress = 1;
+      _offline = changed == null;
+    });
+    if (changed == true) context.toast(context.l('حُدّثت خريطة المكتبة.', 'The library map was updated.'));
+    return true;
+  }
+
+  /// No saved map page: online, the website's map; offline, the app's own plan if saved.
+  Future<bool> _fallback(bool offline) async {
+    if (!offline) return false;
+    if (await LibraryMapCache.instance.saved() != null && mounted) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => LibraryPlanScreen(bookId: widget.bookId)));
+      return true;
+    }
+    throw Exception(context.l('تحتاج الخريطة اتصالاً بالإنترنت أول مرة، ثم تعمل بدونه.', 'The map needs the internet the first time, then works without it.'));
   }
 
   WebViewController _createMobile() {
@@ -189,6 +235,18 @@ class _LibraryMapScreenState extends State<LibraryMapScreen> {
         body: Stack(children: [
           Positioned.fill(child: body),
           if (_ready && _progress < 1) LinearProgressIndicator(value: _progress == 0 ? null : _progress),
+          if (_ready && _offline)
+            PositionedDirectional(
+              bottom: 8,
+              start: 8,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(12)),
+                  child: Text(context.l('بدون إنترنت — الخريطة المحفوظة', 'Offline — saved map'), style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+                ),
+              ),
+            ),
         ]),
       ),
     );

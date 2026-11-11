@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/update/app_updater.dart';
+
 import '../../../core/widgets/ui_kit.dart';
 import '../../contact/presentation/contact_screen.dart';
 import '../../library/presentation/library_screen.dart';
@@ -26,6 +28,14 @@ class _GuestShellState extends State<GuestShell> {
   ];
   late int _index = _tabs.indexOf(widget.initial).clamp(0, _tabs.isEmpty ? 0 : _tabs.length - 1);
   late final Set<int> _visited = {_index};
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppUpdater.instance.start(context);
+    });
+  }
 
   Widget _screen(String key) => switch (key) {
         'library' => const LibraryScreen(guest: true),

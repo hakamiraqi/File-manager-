@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/files/file_opener.dart';
@@ -9,6 +11,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/file_icons.dart';
 import '../../media_player/presentation/media_player_screen.dart';
+import '../data/offline_download_service.dart';
 import '../models/offline_file.dart';
 import '../state/downloads_provider.dart';
 
@@ -101,13 +104,32 @@ class _OfflineFileTile extends StatelessWidget {
     );
   }
 
+  Widget _icon(String? extension) => Container(
+        color: Colors.grey.withOpacity(0.12),
+        child: Icon(fileIconForExtension(extension), color: Colors.grey.shade700),
+      );
+
   @override
   Widget build(BuildContext context) {
     final downloads = context.read<DownloadsProvider>();
     final extension = record.name.contains('.') ? record.name.split('.').last : null;
 
     return ListTile(
-      leading: Icon(fileIconForExtension(extension), color: Colors.grey.shade700),
+      leading: SizedBox(
+        width: 48,
+        height: 48,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: (record.mimeType ?? '').startsWith('image/')
+              ? Image.file(File(record.localPath), fit: BoxFit.cover, cacheWidth: 144, errorBuilder: (_, __, ___) => _icon(extension))
+              : FutureBuilder<File?>(
+                  future: OfflineDownloadService.instance.thumbnailFor(record),
+                  builder: (_, snap) => snap.data == null
+                      ? _icon(extension)
+                      : Image.file(snap.data!, fit: BoxFit.cover, cacheWidth: 144, errorBuilder: (_, __, ___) => _icon(extension)),
+                ),
+        ),
+      ),
       title: Text(record.name),
       subtitle: Text(
         '${formatBytes(record.size)} · ${formatDate(record.downloadedAt)}'

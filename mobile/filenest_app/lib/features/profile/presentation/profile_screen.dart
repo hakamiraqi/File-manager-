@@ -15,6 +15,7 @@ import '../../downloads/presentation/downloads_screen.dart';
 import '../../library/presentation/library_desk_screen.dart';
 import '../../library/presentation/manage/library_manage_screen.dart';
 import '../../../core/storage/preferences_storage.dart';
+import '../../../core/update/app_updater.dart';
 import '../../library/presentation/my_loans_screen.dart';
 import '../../playlists/presentation/playlists_screen.dart';
 import '../../saved/presentation/saved_screen.dart';
@@ -194,6 +195,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           NavRow(icon: Icons.palette_rounded, color: const Color(0xFFAB47BC), label: context.tr('nav.app_settings'), onTap: () => _push(const AppSettingsScreen())),
           NavRow(icon: Icons.dns_rounded, color: const Color(0xFF78909C), label: context.tr('nav.server_settings'), onTap: () => _push(const ServerSettingsScreen())),
+          NavRow(
+            icon: Icons.system_update_rounded,
+            color: const Color(0xFF26A69A),
+            label: context.l('التحقق من التحديثات', 'Check for updates'),
+            subtitle: context.l('النسخة ${AppUpdater.current}', 'Version ${AppUpdater.current}'),
+            onTap: () => AppUpdater.instance.check(context, manual: true),
+          ),
         ]),
         GroupCard(children: [
           NavRow(icon: Icons.logout_rounded, color: AppColors.danger, label: context.tr('nav.logout'), destructive: true, onTap: _logout),

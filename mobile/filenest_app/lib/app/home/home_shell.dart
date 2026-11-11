@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../core/update/app_updater.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/i18n/app_strings.dart';
@@ -33,6 +35,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _badges = context.read<BadgesProvider>()..start();
+      AppUpdater.instance.start(context);
     });
   }
 
