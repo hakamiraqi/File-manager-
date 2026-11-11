@@ -224,6 +224,26 @@ class LibraryMapTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page->where('spots.0.code', 'B2'));
     }
 
+    public function test_the_apps_keep_the_map_plan_and_see_when_it_changes(): void
+    {
+        $shelf = LibraryShelf::create(['code' => 'C1', 'x' => 3, 'y' => 4, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);
+        Book::create(['title' => 'Endodontics'])->copies()->create(['barcode' => 'Q1', 'shelf' => 'C1-2']);
+
+        $this->getJson('/api/v1/public/library/map-data')->assertUnauthorized();
+
+        $token = User::factory()->create()->createToken('phone')->plainTextToken;
+        $first = $this->withToken($token)->getJson('/api/v1/public/library/map-data')->assertOk()
+            ->assertJsonPath('shelves.0.code', 'C1')
+            ->assertJsonPath("stock.{$shelf->id}", 1)
+            ->assertJsonStructure(['version', 'floor' => ['width', 'depth', 'entrance', 'storeys'], 'shelves', 'stock'])
+            ->json('version');
+        $this->assertSame($first, $this->withToken($token)->getJson('/api/v1/public/library/map-data')->json('version'));
+
+        // Editing the map gives a new version, so the app replaces its saved copy.
+        $shelf->update(['x' => 6]);
+        $this->assertNotSame($first, $this->withToken($token)->getJson('/api/v1/public/library/map-data')->json('version'));
+    }
+
     public function test_the_apps_open_the_map_signed_in_as_the_same_user(): void
     {
         $shelf = LibraryShelf::create(['code' => 'B2', 'x' => 5, 'y' => 5, 'width' => 2, 'depth' => 0.5, 'levels' => 5]);

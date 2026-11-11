@@ -7,7 +7,8 @@ import '../../auth/state/auth_provider.dart';
 import '../../site/site_api.dart';
 import 'book_screen.dart';
 import 'manage/library_manage_screen.dart';
-import 'library_map_screen.dart';
+import 'library_plan_screen.dart';
+import '../data/library_map_cache.dart';
 import 'library_widgets.dart';
 import 'my_loans_screen.dart';
 
@@ -35,6 +36,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   void initState() {
     super.initState();
+    // Keep the saved library map current while the internet is there.
+    LibraryMapCache.instance.refreshQuietly();
     _scroll.addListener(() {
       if (_scroll.position.pixels > _scroll.position.maxScrollExtent - 400) _load();
     });
@@ -100,7 +103,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           IconButton(
             tooltip: context.l('خريطة المكتبة', 'Library map'),
             icon: const Icon(Icons.map_outlined),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryMapScreen())),
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LibraryPlanScreen())),
           ),
           if (user != null)
             IconButton(

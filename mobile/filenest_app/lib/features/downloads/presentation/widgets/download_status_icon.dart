@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../../../core/files/file_opener.dart';
+import '../../data/offline_download_service.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../app/theme/app_colors.dart';
@@ -51,7 +54,10 @@ class DownloadStatusIcon extends StatelessWidget {
             color: isDownloaded ? AppColors.success : null,
           ),
           tooltip: isDownloaded ? context.tr('downloads.available_offline_tap') : context.tr('downloads.download_for_offline'),
-          onPressed: () => isDownloaded ? downloads.openOffline(file.id) : downloads.download(file),
+          onPressed: () {
+            final record = isDownloaded ? OfflineDownloadService.instance.recordFor(file.id) : null;
+            record != null ? openLocalFile(context, record.localPath, file.name) : downloads.download(file);
+          },
         );
       },
     );

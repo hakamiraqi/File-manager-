@@ -2,12 +2,17 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:open_filex/open_filex.dart';
+import 'package:dio/dio.dart';
+import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../app/home/more_destinations_sheet.dart';
+import '../../../core/files/file_opener.dart';
 import '../../../core/i18n/app_strings.dart';
+import '../../../core/storage/preferences_storage.dart';
+import '../../downloads/data/offline_download_service.dart';
+import '../../downloads/state/downloads_provider.dart';
 import '../../../core/models/file_item.dart';
 import '../../../core/models/folder_item.dart';
 import '../../../core/network/api_client.dart';
@@ -339,20 +344,74 @@ class _BrowseScreenState extends State<BrowseScreen> {
     }
   }
 
-  /// A quick, ephemeral preview: downloads to the OS temp directory (which
-  /// the system can reclaim any time) and opens it immediately. This is
-  /// distinct from — and doesn't interact with — the persistent "download
-  /// for offline use" feature on each file's trailing icon (see
-  /// DownloadStatusIcon), which keeps a permanent local copy instead.
+  /// Opening a file (2026-11-11, by request): a copy already on the phone opens at once, even
+  /// without internet. Otherwise it downloads with a progress bar; with «حفظ الملفات المفتوحة»
+  /// on (the default) the copy is kept like a download, so a thesis read once stays readable
+  /// offline (and shows in «التنزيلات»), else it goes to the temporary folder. A PDF opens in
+  /// the app's own reader.
   Future<void> _previewFile(FileItem file) async {
-    try {
-      final directory = await getTemporaryDirectory();
-      final destination = '${directory.path}/${file.name}';
-      await _fileRepository.downloadFile(file, destination);
-      await OpenFilex.open(destination);
-    } catch (e) {
-      _showError(e);
+    final offline = OfflineDownloadService.instance;
+    await offline.ensureLoaded();
+    final saved = offline.recordFor(file.id);
+    if (saved != null && await File(saved.localPath).exists() && await File(saved.localPath).length() > 0) {
+      if (mounted) await openLocalFile(context, saved.localPath, file.name);
+      return;
     }
+
+    final keep = await PreferencesStorage.instance.readKeepOpenedFiles();
+    final progress = ValueNotifier<double?>(null);
+    final cancelToken = CancelToken();
+    var cancelled = false;
+    if (!mounted) return;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    showDialog<void>(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (dialog) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          title: Text(file.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16)),
+          content: ValueListenableBuilder<double?>(
+            valueListenable: progress,
+            builder: (_, p, __) => Column(mainAxisSize: MainAxisSize.min, children: [
+              LinearProgressIndicator(value: p),
+              const SizedBox(height: 10),
+              Text(p == null ? context.l('جارٍ التنزيل…', 'Downloading…') : '${(p * 100).round()}%'),
+            ]),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                cancelled = true;
+                keep ? offline.cancel(file.id) : cancelToken.cancel();
+              },
+              child: Text(context.l('إلغاء', 'Cancel')),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    String? path;
+    try {
+      if (keep) {
+        final record = await offline.download(file, onProgress: (p) => progress.value = p);
+        path = record.localPath;
+        if (mounted) context.read<DownloadsProvider>().load();
+      } else {
+        final directory = await getTemporaryDirectory();
+        path = '${directory.path}/${file.id}_${file.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')}';
+        await _fileRepository.downloadFile(file, path, onProgress: (p) => progress.value = p, cancelToken: cancelToken);
+      }
+    } catch (e) {
+      path = null;
+      if (!cancelled) _showError(e);
+    } finally {
+      if (navigator.canPop()) navigator.pop();
+      progress.dispose();
+    }
+    if (path != null && mounted) await openLocalFile(context, path, file.name);
   }
 
   /// Shows the full text DocumentTextExtractor pulled from this document —
@@ -532,7 +591,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
         destinationPath: destination,
       );
       _clearSelection();
-      await OpenFilex.open(destination);
+      if (mounted) await openLocalFile(context, destination, 'archive.zip');
     } catch (e) {
       _showError(e);
     }

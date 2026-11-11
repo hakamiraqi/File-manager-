@@ -14,6 +14,7 @@ import '../../contact/presentation/inbox_screen.dart';
 import '../../downloads/presentation/downloads_screen.dart';
 import '../../library/presentation/library_desk_screen.dart';
 import '../../library/presentation/manage/library_manage_screen.dart';
+import '../../../core/storage/preferences_storage.dart';
 import '../../library/presentation/my_loans_screen.dart';
 import '../../playlists/presentation/playlists_screen.dart';
 import '../../saved/presentation/saved_screen.dart';
@@ -176,6 +177,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () => _push(const InboxScreen()),
             ),
         ]),
+        GroupCard(
+          title: context.l('القراءة بدون إنترنت', 'Reading offline'),
+          children: const [_OfflineToggles()],
+        ),
         GroupCard(title: context.l('الإعدادات', 'Settings'), children: [
           if (user.isAdmin)
             NavRow(icon: Icons.admin_panel_settings_rounded, color: const Color(0xFFE53935), label: context.tr('nav.admin'), onTap: () => _push(const AdminHomeScreen())),
@@ -195,5 +200,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ]),
       ]),
     );
+  }
+}
+
+/// «القراءة بدون إنترنت» (2026-11-11, by request): both on until the user turns them off.
+class _OfflineToggles extends StatefulWidget {
+  const _OfflineToggles();
+
+  @override
+  State<_OfflineToggles> createState() => _OfflineTogglesState();
+}
+
+class _OfflineTogglesState extends State<_OfflineToggles> {
+  final _prefs = PreferencesStorage.instance;
+  bool? _keep;
+  bool? _map;
+
+  @override
+  void initState() {
+    super.initState();
+    () async {
+      final keep = await _prefs.readKeepOpenedFiles();
+      final map = await _prefs.readOfflineMap();
+      if (mounted) setState(() {
+        _keep = keep;
+        _map = map;
+      });
+    }();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      SwitchListTile(
+        secondary: const Icon(Icons.offline_pin_rounded, color: Color(0xFF26A69A)),
+        value: _keep ?? true,
+        onChanged: _keep == null
+            ? null
+            : (v) {
+                setState(() => _keep = v);
+                _prefs.saveKeepOpenedFiles(v);
+              },
+        title: Text(context.l('حفظ الملفات والرسائل المفتوحة', 'Keep opened files and theses')),
+        subtitle: Text(context.l('ما تفتحه مرة يبقى للقراءة بدون إنترنت، ويظهر في «التنزيلات».', 'What you open once stays readable offline, under «Downloads».')),
+      ),
+      SwitchListTile(
+        secondary: const Icon(Icons.map_rounded, color: Color(0xFF5C6BC0)),
+        value: _map ?? true,
+        onChanged: _map == null
+            ? null
+            : (v) {
+                setState(() => _map = v);
+                _prefs.saveOfflineMap(v);
+              },
+        title: Text(context.l('خريطة المكتبة بدون إنترنت', 'Library map offline')),
+        subtitle: Text(context.l('تُحفظ على الجهاز وتتحدث تلقائياً عند رجوع الإنترنت.', 'Kept on the device and updated when the internet is back.')),
+      ),
+    ]);
   }
 }

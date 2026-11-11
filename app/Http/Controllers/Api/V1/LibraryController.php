@@ -42,6 +42,25 @@ class LibraryController extends Controller
         return response()->json(['path' => $path]);
     }
 
+    /**
+     * The map's plan for the apps to keep and draw without internet (2026-11-11, by request):
+     * the floor, every bookcase and how many copies are on it. «version» changes whenever any
+     * of it does, so the app replaces its saved copy only when the map was edited.
+     */
+    public function mapData(Request $request): JsonResponse
+    {
+        $this->allowGuest($request);
+        $floor = $this->map->floor();
+        unset($floor['backgrounds']);
+        $data = [
+            'floor' => $floor,
+            'shelves' => $this->map->shelves()->values(),
+            'stock' => (object) collect($this->map->stock())->map(fn ($s) => $s['n'])->all(),
+        ];
+
+        return response()->json(['version' => md5(json_encode($data)), ...$data]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $this->allowGuest($request);

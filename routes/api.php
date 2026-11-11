@@ -65,6 +65,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/library', [\App\Http\Controllers\Api\V1\LibraryController::class, 'index'])->name('library.index');
         Route::get('/library/books/{book}', [\App\Http\Controllers\Api\V1\LibraryController::class, 'show'])->name('library.show');
         Route::get('/library/map-link', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mapLink'])->name('library.map-link');
+        Route::get('/library/map-data', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mapData'])->name('library.map-data');
         Route::get('/theses', [\App\Http\Controllers\Api\V1\MobileController::class, 'theses'])->name('theses');
         Route::get('/contact', [\App\Http\Controllers\Api\V1\MobileController::class, 'contactInfo'])->name('contact.info');
         Route::post('/contact', [\App\Http\Controllers\Api\V1\MobileController::class, 'contactStore'])->middleware('throttle:6,1')->name('contact.store');

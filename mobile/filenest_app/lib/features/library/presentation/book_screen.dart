@@ -6,7 +6,7 @@ import '../../../core/widgets/ui_kit.dart';
 import '../../auth/state/auth_provider.dart';
 import '../../contact/presentation/contact_screen.dart';
 import '../../site/site_api.dart';
-import 'library_map_screen.dart';
+import 'library_plan_screen.dart';
 import 'library_widgets.dart';
 
 /// One book: is it on the shelf, hold it, its copies, ask for it.
@@ -141,7 +141,14 @@ class _BookScreenState extends State<BookScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
               child: FilledButton.tonalIcon(
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => LibraryMapScreen(bookId: widget.bookId))),
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => LibraryPlanScreen(
+                    bookId: widget.bookId,
+                    bookTitle: (d['book'] as Map?)?['title'] as String?,
+                    spotCode: '${(d['map_spot'] as Map)['code']}',
+                    spotLevel: ((d['map_spot'] as Map)['level'] as num?)?.toInt(),
+                  ),
+                )),
                 icon: const Icon(Icons.location_on_outlined),
                 label: Text(context.l(
                   'مكانه على الخريطة · الرف ${(d['map_spot'] as Map)['code']}${(d['map_spot'] as Map)['level'] != null ? ' · الطبقة ${(d['map_spot'] as Map)['level']}' : ''}',

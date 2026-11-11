@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/files/file_opener.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/i18n/app_strings.dart';
@@ -87,10 +89,8 @@ class _OfflineFileTile extends StatelessWidget {
   final OfflineFileRecord record;
 
   void _open(BuildContext context) {
-    final downloads = context.read<DownloadsProvider>();
-
     if (!record.isVideo) {
-      downloads.openOffline(record.fileId);
+      openLocalFile(context, record.localPath, record.name);
       return;
     }
 
