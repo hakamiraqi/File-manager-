@@ -20,7 +20,9 @@ import '../../../core/models/file_item.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/storage/token_storage.dart';
 import '../../../core/widgets/authenticated_thumbnail.dart';
+import '../../../core/models/user.dart';
 import '../../auth/state/auth_provider.dart';
+import '../../downloads/state/downloads_provider.dart';
 import '../../downloads/data/offline_download_service.dart';
 import '../../downloads/models/offline_file.dart';
 import '../data/media_repository.dart';
@@ -483,15 +485,6 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     });
   }
 
-  Color? _choiceColor(BuildContext context, VideoQuestionChoice choice) {
-    if (_answerFeedback == null) {
-      return _selectedChoiceId == choice.id ? Theme.of(context).colorScheme.primaryContainer : null;
-    }
-    if (choice.id == _answerFeedback!.correctChoiceId) return Colors.green.withOpacity(0.18);
-    if (choice.id == _selectedChoiceId) return Colors.red.withOpacity(0.18);
-    return null;
-  }
-
   Future<void> _submitAnswer() async {
     final question = _activeQuestion;
     final choiceId = _selectedChoiceId;
@@ -908,79 +901,235 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     return d.inHours > 0 ? '${d.inHours}:$minutes:$seconds' : '$minutes:$seconds';
   }
 
-  Widget _buildQuestionOverlay(VideoQuestion question) {
-    return Container(
-      color: Colors.black87,
-      padding: const EdgeInsets.all(20),
-      child: Center(
-        child: SingleChildScrollView(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  question.question,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 16),
-                ...question.choices.map((choice) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: _choiceColor(context, choice) ?? Colors.white10,
-                        borderRadius: BorderRadius.circular(10),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: _answerFeedback == null ? () => setState(() => _selectedChoiceId = choice.id) : null,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  _selectedChoiceId == choice.id ? Icons.radio_button_checked : Icons.radio_button_off,
-                                  color: Colors.white70,
-                                  size: 18,
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(child: Text(choice.label, style: const TextStyle(color: Colors.white))),
-                              ],
+  // ---- Interactive question: a card over the whole screen ----
+
+  static const _arabicLetters = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'];
+
+  Widget _buildQuestionOverlay(BuildContext context, VideoQuestion question) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final arabic = Localizations.localeOf(context).languageCode == 'ar';
+    final number = _questions.indexOf(question) + 1;
+    final feedback = _answerFeedback;
+
+    return Material(
+      color: Colors.black.withValues(alpha: 0.85),
+      child: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 480),
+              child: TweenAnimationBuilder<double>(
+                key: ValueKey(question.id),
+                tween: Tween(begin: 0.9, end: 1),
+                duration: const Duration(milliseconds: 320),
+                curve: Curves.easeOutBack,
+                builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF181C23),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.white10),
+                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 32, offset: Offset(0, 14))],
+                  ),
+                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                    Row(children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(color: accent.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(20)),
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.quiz_rounded, size: 16, color: accent),
+                          const SizedBox(width: 6),
+                          Text(
+                            context.tr('player.question_n_of', {'n': number, 'total': _questions.length}),
+                            style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 12.5),
+                          ),
+                        ]),
+                      ),
+                      const Spacer(),
+                      Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          const Icon(Icons.schedule_rounded, size: 14, color: Colors.white54),
+                          const SizedBox(width: 4),
+                          Text(_formatTimestamp(question.timestampSeconds), style: const TextStyle(color: Colors.white54, fontSize: 12.5)),
+                        ]),
+                      ),
+                    ]),
+                    // Progress through this video's questions.
+                    if (_questions.length > 1) ...[
+                      const SizedBox(height: 12),
+                      Row(children: [
+                        for (var i = 0; i < _questions.length; i++)
+                          Expanded(
+                            child: Container(
+                              height: 4,
+                              margin: const EdgeInsetsDirectional.only(end: 4),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(2),
+                                color: _questions[i].id == question.id
+                                    ? accent
+                                    : _questions[i].isAnswered
+                                        ? (_questions[i].answeredCorrectly == false ? Colors.redAccent : Colors.greenAccent)
+                                            .withValues(alpha: 0.7)
+                                        : Colors.white12,
+                              ),
                             ),
                           ),
-                        ),
-                      ),
-                    )),
-                const SizedBox(height: 8),
-                if (_answerFeedback == null)
-                  FilledButton(
-                    onPressed: _selectedChoiceId == null || _answering ? null : _submitAnswer,
-                    child: _answering
-                        ? const SizedBox(
-                            width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text(context.tr('preview.submit_answer')),
-                  )
-                else ...[
-                  Text(
-                    _answerFeedback!.correctChoiceId == null
-                        ? context.tr('player.answer_recorded_offline')
-                        : (_answerFeedback!.isCorrect ? context.tr('preview.correct_answer') : context.tr('preview.wrong_answer')),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: _answerFeedback!.correctChoiceId == null
-                          ? Colors.white
-                          : (_answerFeedback!.isCorrect ? Colors.greenAccent : Colors.redAccent),
-                      fontWeight: FontWeight.w600,
+                      ]),
+                    ],
+                    const SizedBox(height: 16),
+                    Text(
+                      question.question,
+                      textDirection: _directionOf(question.question),
+                      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700, height: 1.45),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  FilledButton(onPressed: _continueAfterQuestion, child: Text(context.tr('preview.continue_watching'))),
-                ],
-              ],
+                    const SizedBox(height: 18),
+                    for (var i = 0; i < question.choices.length; i++)
+                      _buildChoiceTile(
+                        context,
+                        question.choices[i],
+                        arabic ? _arabicLetters[i % _arabicLetters.length] : String.fromCharCode(65 + i),
+                      ),
+                    const SizedBox(height: 6),
+                    if (feedback == null)
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: _selectedChoiceId == null || _answering ? null : _submitAnswer,
+                        child: _answering
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2.4, color: Colors.white))
+                            : Text(context.tr('preview.submit_answer'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      )
+                    else ...[
+                      _buildAnswerBanner(context, feedback),
+                      const SizedBox(height: 12),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size.fromHeight(50),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        onPressed: _continueAfterQuestion,
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: Text(context.tr('preview.continue_watching'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ]),
+                ),
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildChoiceTile(BuildContext context, VideoQuestionChoice choice, String letter) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final feedback = _answerFeedback;
+    final selected = _selectedChoiceId == choice.id;
+    final isCorrect = feedback != null && feedback.correctChoiceId == choice.id;
+    final isWrongPick = feedback != null && feedback.correctChoiceId != null && selected && !isCorrect;
+
+    var border = Colors.white12;
+    var fill = Colors.white.withValues(alpha: 0.04);
+    var badge = Colors.white.withValues(alpha: 0.1);
+    Widget? trailing;
+    if (isCorrect) {
+      border = Colors.greenAccent;
+      fill = Colors.green.withValues(alpha: 0.16);
+      badge = Colors.green;
+      trailing = const Icon(Icons.check_circle_rounded, color: Colors.greenAccent);
+    } else if (isWrongPick) {
+      border = Colors.redAccent;
+      fill = Colors.red.withValues(alpha: 0.14);
+      badge = Colors.red;
+      trailing = const Icon(Icons.cancel_rounded, color: Colors.redAccent);
+    } else if (selected) {
+      border = accent;
+      fill = accent.withValues(alpha: 0.16);
+      badge = accent;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: fill,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: border, width: 1.5),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: feedback == null
+                ? () {
+                    HapticFeedback.selectionClick();
+                    setState(() => _selectedChoiceId = choice.id);
+                  }
+                : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Row(children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 32,
+                  height: 32,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(color: badge, shape: BoxShape.circle),
+                  child: Text(letter, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    choice.label,
+                    textDirection: _directionOf(choice.label),
+                    style: const TextStyle(color: Colors.white, fontSize: 15, height: 1.35),
+                  ),
+                ),
+                if (trailing != null) ...[const SizedBox(width: 8), trailing],
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAnswerBanner(BuildContext context, QuizAnswerResult feedback) {
+    final unknown = feedback.correctChoiceId == null;
+    final color = unknown ? Colors.white70 : (feedback.isCorrect ? Colors.greenAccent : Colors.redAccent);
+    final icon = unknown
+        ? Icons.cloud_upload_outlined
+        : (feedback.isCorrect ? Icons.celebration_rounded : Icons.lightbulb_outline_rounded);
+    final title = unknown
+        ? context.tr('player.answer_recorded_offline')
+        : (feedback.isCorrect ? context.tr('preview.correct_answer') : context.tr('preview.wrong_answer'));
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(14)),
+      child: Row(children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, style: TextStyle(color: color, fontWeight: FontWeight.w700, fontSize: 15)),
+            if (_score.total > 0) ...[
+              const SizedBox(height: 2),
+              Text(
+                context.tr('preview.your_score', {'correct': _score.correct, 'total': _score.total}),
+                style: const TextStyle(color: Colors.white70, fontSize: 12.5),
+              ),
+            ],
+          ]),
+        ),
+      ]),
     );
   }
 
@@ -1213,62 +1362,203 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     );
   }
 
-  Widget _buildCommentsPanel() {
-    return SizedBox(
-      height: 220,
-      child: Column(
-        children: [
-          Expanded(
-            child: _comments.isEmpty
-                ? Center(child: Text(context.tr('player.no_comments_yet'), style: const TextStyle(color: Colors.grey)))
-                : ListView.builder(
-                    itemCount: _comments.length,
-                    itemBuilder: (context, index) {
-                      final comment = _comments[index];
-                      return ListTile(
-                        dense: true,
-                        title: Text(comment.userName ?? ''),
-                        subtitle: Text(comment.body),
-                        leading: comment.timestampSeconds != null
-                            ? TextButton(
-                                onPressed: () => _seekTo(comment.timestampSeconds!),
-                                child: Text(_formatTimestamp(comment.timestampSeconds!)),
-                              )
-                            : null,
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline_rounded, size: 20),
-                          onPressed: () => _deleteComment(comment),
-                        ),
-                      );
-                    },
-                  ),
+  // ---- Comments: composer on top, then a thread of cards ----
+
+  Widget _buildCommentsPanel(BuildContext context) {
+    final me = context.read<AuthProvider>().user;
+    final comments = [..._comments]..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        if (_canComment) _buildCommentComposer(context),
+        if (comments.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 26),
+            child: Column(children: [
+              const Icon(Icons.forum_outlined, size: 38, color: Colors.white24),
+              const SizedBox(height: 8),
+              Text(context.tr('player.no_comments_yet'), style: const TextStyle(color: Colors.white54)),
+            ]),
+          )
+        else ...[
+          const SizedBox(height: 6),
+          for (final comment in comments) _buildCommentTile(context, comment, me),
+        ],
+      ]),
+    );
+  }
+
+  Widget _buildCommentComposer(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final position = _controller?.value.position ?? Duration.zero;
+    const noBorder = InputBorder.none;
+
+    return Container(
+      padding: const EdgeInsetsDirectional.fromSTEB(14, 4, 6, 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(children: [
+        TextField(
+          controller: _commentController,
+          minLines: 1,
+          maxLines: 4,
+          textInputAction: TextInputAction.send,
+          style: const TextStyle(color: Colors.white, fontSize: 14.5),
+          decoration: InputDecoration(
+            hintText: context.tr('preview.comment_placeholder'),
+            hintStyle: const TextStyle(color: Colors.white38),
+            filled: false,
+            isDense: true,
+            border: noBorder,
+            enabledBorder: noBorder,
+            focusedBorder: noBorder,
+            contentPadding: const EdgeInsets.symmetric(vertical: 10),
           ),
-          if (_canComment)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: Row(
-                children: [
-                  Checkbox(value: _anchorCommentToTime, onChanged: (v) => setState(() => _anchorCommentToTime = v ?? false)),
-                  Text(context.tr('player.anchor_current_time'), style: const TextStyle(fontSize: 12)),
-                  Expanded(
-                    child: TextField(
-                      controller: _commentController,
-                      decoration: InputDecoration(hintText: context.tr('preview.comment_placeholder')),
-                      onSubmitted: (_) => _postComment(),
-                    ),
+          onSubmitted: (_) => _postComment(),
+        ),
+        Row(children: [
+          Material(
+            color: _anchorCommentToTime ? accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.06),
+            shape: StadiumBorder(side: BorderSide(color: _anchorCommentToTime ? accent : Colors.transparent)),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: () => setState(() => _anchorCommentToTime = !_anchorCommentToTime),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.push_pin_outlined, size: 15, color: _anchorCommentToTime ? accent : Colors.white60),
+                  const SizedBox(width: 5),
+                  Text(
+                    _anchorCommentToTime
+                        ? context.tr('player.at_time', {'time': _formatDuration(position)})
+                        : context.tr('player.anchor_current_time'),
+                    style: TextStyle(fontSize: 12, color: _anchorCommentToTime ? accent : Colors.white70),
                   ),
-                  IconButton(
-                    icon: _postingComment
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.send_rounded),
-                    onPressed: _postingComment ? null : _postComment,
-                  ),
-                ],
+                ]),
               ),
             ),
+          ),
+          const Spacer(),
+          IconButton.filled(
+            tooltip: context.tr('player.send'),
+            onPressed: _postingComment ? null : _postComment,
+            icon: _postingComment
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.send_rounded, size: 20),
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _buildCommentTile(BuildContext context, VideoComment comment, FileNestUser? me) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final name = (comment.userName ?? '').trim();
+    final initial = name.isEmpty ? '?' : name.characters.first.toUpperCase();
+    final hue = (name.hashCode % 360).abs().toDouble();
+    final canDelete = me != null && (me.id == comment.userId || me.isAdmin);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: HSLColor.fromAHSL(1, hue, 0.45, 0.42).toColor(),
+          child: Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Flexible(
+                child: Text(name.isEmpty ? '—' : name,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13.5)),
+              ),
+              const SizedBox(width: 8),
+              Text(_relativeTime(context, comment.createdAt), style: const TextStyle(color: Colors.white38, fontSize: 11.5)),
+              const Spacer(),
+              if (canDelete)
+                SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    tooltip: context.tr('action.delete'),
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Colors.white38),
+                    onPressed: () => _confirmDeleteComment(comment),
+                  ),
+                ),
+            ]),
+            const SizedBox(height: 4),
+            if (comment.timestampSeconds != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 5),
+                child: Material(
+                  color: accent.withValues(alpha: 0.18),
+                  shape: const StadiumBorder(),
+                  child: InkWell(
+                    customBorder: const StadiumBorder(),
+                    onTap: () {
+                      _seekTo(comment.timestampSeconds!);
+                      _showControls();
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      child: Directionality(
+                        textDirection: TextDirection.ltr,
+                        child: Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.play_arrow_rounded, size: 15, color: accent),
+                          const SizedBox(width: 2),
+                          Text(_formatTimestamp(comment.timestampSeconds!),
+                              style: TextStyle(color: accent, fontWeight: FontWeight.w700, fontSize: 12)),
+                        ]),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            Text(
+              comment.body,
+              textDirection: _directionOf(comment.body),
+              style: const TextStyle(color: Colors.white, fontSize: 14, height: 1.45),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _confirmDeleteComment(VideoComment comment) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(context.tr('player.delete_comment_title')),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(dialog).pop(false), child: Text(context.tr('action.cancel'))),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.of(dialog).pop(true),
+            child: Text(context.tr('action.delete')),
+          ),
         ],
       ),
     );
+    if (ok == true) await _deleteComment(comment);
+  }
+
+  String _relativeTime(BuildContext context, DateTime time) {
+    final diff = DateTime.now().difference(time.toLocal());
+    if (diff.inMinutes < 1) return context.tr('player.just_now');
+    if (diff.inMinutes < 60) return context.tr('player.minutes_ago', {'n': diff.inMinutes});
+    if (diff.inHours < 24) return context.tr('player.hours_ago', {'n': diff.inHours});
+    if (diff.inDays < 30) return context.tr('player.days_ago', {'n': diff.inDays});
+    final t = time.toLocal();
+    return '${t.year}/${t.month}/${t.day}';
   }
 
   // ---------------------------------------------------------------------------
@@ -1313,7 +1603,14 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 if (_isFullscreen) _toggleFullscreen();
               },
             },
-            child: Focus(autofocus: true, child: page),
+            child: Focus(
+              autofocus: true,
+              // The question card covers the whole screen, not just the video, so it has room on phones.
+              child: Stack(fit: StackFit.expand, children: [
+                page,
+                if (_activeQuestion != null) Positioned.fill(child: _buildQuestionOverlay(context, _activeQuestion!)),
+              ]),
+            ),
           ),
         );
       }),
@@ -1393,9 +1690,12 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
               ),
             ),
           if (ready) _buildControlsOverlay(context) else Align(alignment: Alignment.topCenter, child: _buildTopBar(context)),
+          if (!_isOffline) ...[
+            Positioned(top: 0, left: 0, right: 0, child: _downloadProgressLine()),
+            PositionedDirectional(top: 12, start: 12, child: _downloadProgressPill()),
+          ],
           if (_resumedFrom != null && _upNextSeconds == null) _buildResumePill(context),
           if (_upNextSeconds != null && _hasPlaylist && _currentIndex < widget.playlist.length - 1) _buildUpNextCard(context),
-          if (_activeQuestion != null) Positioned.fill(child: _buildQuestionOverlay(_activeQuestion!)),
         ]);
       }),
     );
@@ -1510,6 +1810,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                   style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600))
               : const SizedBox.shrink(),
         ),
+        if (!_isOffline) _buildDownloadButton(context),
         if (_isReady)
           IconButton(
             icon: const Icon(Icons.tune_rounded, color: Colors.white),
@@ -1647,17 +1948,27 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 ),
               ),
               // Where the interactive questions sit on the timeline.
-              if (_questions.isNotEmpty && durationMs > 0)
+              if ((_questions.isNotEmpty || _comments.any((c) => c.timestampSeconds != null)) && durationMs > 0)
                 Positioned.fill(
                   child: IgnorePointer(
-                    child: LayoutBuilder(builder: (context, c) {
+                    child: LayoutBuilder(builder: (context, c2) {
                       const inset = 16.0;
-                      final track = c.maxWidth - inset * 2;
+                      final track = c2.maxWidth - inset * 2;
                       return Stack(children: [
+                        for (final c in _comments.where((c) => c.timestampSeconds != null))
+                          Positioned(
+                            left: inset + track * ((c.timestampSeconds! * 1000) / durationMs).clamp(0.0, 1.0).toDouble() - 2,
+                            top: c2.maxHeight / 2 - 2,
+                            child: Container(
+                              width: 4,
+                              height: 4,
+                              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.lightBlueAccent),
+                            ),
+                          ),
                         for (final q in _questions)
                           Positioned(
                             left: inset + track * ((q.timestampSeconds * 1000) / durationMs).clamp(0.0, 1.0).toDouble() - 3,
-                            top: c.maxHeight / 2 - 3,
+                            top: c2.maxHeight / 2 - 3,
                             child: Container(
                               width: 6,
                               height: 6,
@@ -2009,6 +2320,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                 }),
                 selected: _showQuestionManager,
               ),
+            if (!_isOffline) _buildDownloadChip(context),
             if (_isReady) _actionChip(context, Icons.tune_rounded, context.tr('player.settings'), _openSettingsSheet),
             if (_isReady && _currentFile.isVideo)
               _actionChip(context, Icons.fullscreen_rounded, context.tr('player.fullscreen'), _toggleFullscreen),
@@ -2016,7 +2328,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
         ),
         if (_showComments && _currentFile.isVideo && !_isOffline) ...[
           const SizedBox(height: 12),
-          _panelCard(_buildCommentsPanel()),
+          _panelCard(_buildCommentsPanel(context)),
         ],
         if (_showQuestionManager && _currentFile.isVideo && !_isOffline && _canManageQuestions) ...[
           const SizedBox(height: 12),
@@ -2213,6 +2525,121 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
       }
     }
     return null;
+  }
+
+  // ---- Saving the video for offline viewing, with progress shown in the player ----
+
+  Future<void> _downloadCurrent(DownloadsProvider downloads) async {
+    final file = _currentFile;
+    try {
+      await downloads.download(file);
+      if (mounted && downloads.isDownloaded(file.id)) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('player.saved_offline'))));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiClient.messageFor(e))));
+    }
+  }
+
+  Widget _buildDownloadButton(BuildContext context) {
+    return Consumer<DownloadsProvider>(builder: (context, downloads, _) {
+      final file = _currentFile;
+      final progress = downloads.progressFor(file.id);
+      if (progress != null) {
+        return Tooltip(
+          message: context.tr('downloads.cancel_download'),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: () => downloads.cancelDownload(file.id),
+            child: SizedBox(
+              width: 44,
+              height: 44,
+              child: Stack(alignment: Alignment.center, children: [
+                SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: CircularProgressIndicator(
+                    value: progress == 0 ? null : progress,
+                    strokeWidth: 2.6,
+                    color: Colors.white,
+                    backgroundColor: Colors.white24,
+                  ),
+                ),
+                if (progress > 0)
+                  Text('${(progress * 100).round()}',
+                      style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ),
+        );
+      }
+      final done = downloads.isDownloaded(file.id);
+      return IconButton(
+        icon: Icon(done ? Icons.offline_pin_rounded : Icons.download_for_offline_outlined,
+            color: done ? Colors.greenAccent : Colors.white),
+        tooltip: context.tr(done ? 'player.saved_offline' : 'downloads.download_for_offline'),
+        onPressed: done
+            ? () => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(context.tr('player.saved_offline'))))
+            : () => _downloadCurrent(downloads),
+      );
+    });
+  }
+
+  Widget _downloadProgressLine() {
+    return Consumer<DownloadsProvider>(builder: (context, downloads, _) {
+      final progress = downloads.progressFor(_currentFile.id);
+      if (progress == null) return const SizedBox.shrink();
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: LinearProgressIndicator(
+          value: progress == 0 ? null : progress,
+          minHeight: 3,
+          backgroundColor: Colors.white12,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+      );
+    });
+  }
+
+  Widget _downloadProgressPill() {
+    return Consumer<DownloadsProvider>(builder: (context, downloads, _) {
+      final progress = downloads.progressFor(_currentFile.id);
+      if (progress == null || _controlsVisible) return const SizedBox.shrink();
+      return IgnorePointer(
+        child: _pill(Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.download_rounded, color: Colors.white, size: 16),
+          const SizedBox(width: 6),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Text(progress == 0 ? '…' : '${(progress * 100).round()}%',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+          ),
+        ])),
+      );
+    });
+  }
+
+  Widget _buildDownloadChip(BuildContext context) {
+    return Consumer<DownloadsProvider>(builder: (context, downloads, _) {
+      final file = _currentFile;
+      final progress = downloads.progressFor(file.id);
+      if (progress != null) {
+        return _actionChip(
+          context,
+          Icons.downloading_rounded,
+          progress == 0
+              ? context.tr('player.downloading')
+              : context.tr('player.downloading_percent', {'percent': (progress * 100).round()}),
+          () => downloads.cancelDownload(file.id),
+          selected: true,
+        );
+      }
+      if (downloads.isDownloaded(file.id)) {
+        return _actionChip(context, Icons.offline_pin_rounded, context.tr('player.saved_offline'), () {});
+      }
+      return _actionChip(context, Icons.download_for_offline_outlined, context.tr('player.save_offline'),
+          () => _downloadCurrent(downloads));
+    });
   }
 
   String _speedLabel(double speed) => '${speed == speed.roundToDouble() ? speed.toInt() : speed}×';

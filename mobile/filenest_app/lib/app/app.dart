@@ -1,3 +1,4 @@
+import '../core/update/update_progress_banner.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -42,6 +43,11 @@ class FileNestApp extends StatelessWidget {
               GlobalCupertinoLocalizations.delegate,
             ],
             home: const AuthGate(),
+            // The app-update download card floats over every screen.
+            builder: (context, child) => Stack(fit: StackFit.expand, children: [
+              child ?? const SizedBox.shrink(),
+              const UpdateProgressBanner(),
+            ]),
           );
         },
       ),

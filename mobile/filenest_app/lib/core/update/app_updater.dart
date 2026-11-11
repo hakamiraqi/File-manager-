@@ -15,9 +15,26 @@ import '../widgets/ui_kit.dart';
 /// server's releases list when it starts and every few hours. A newer Android or Windows build
 /// is downloaded in the background, then the reader is asked once to install it. iPhone builds
 /// are installed from the download page.
+/// An update being downloaded: shown as a progress card (UpdateProgressBanner).
+class UpdateDownload {
+  const UpdateDownload({required this.version, required this.received, required this.total});
+  final String version;
+  final int received;
+  final int total; // -1 when the server doesn't say
+
+  double? get fraction => total > 0 ? (received / total).clamp(0.0, 1.0) : null;
+}
+
 class AppUpdater {
   AppUpdater._();
   static final AppUpdater instance = AppUpdater._();
+
+  /// The download in progress, or null.
+  final ValueNotifier<UpdateDownload?> download = ValueNotifier(null);
+  CancelToken? _cancel;
+
+  /// Stops the download in progress (it starts again at the next check).
+  void cancelDownload() => _cancel?.cancel();
 
   /// Set by the build (--dart-define=APP_VERSION=1.0.N).
   static const current = String.fromEnvironment('APP_VERSION', defaultValue: '0.0.0');
@@ -86,7 +103,20 @@ class AppUpdater {
       final path = '${dir.path}/${Uri.parse(rel.url).pathSegments.last}';
       final file = File(path);
       if (!await file.exists() || await file.length() == 0) {
-        await Dio().download(rel.url, '$path.part');
+        _cancel = CancelToken();
+        download.value = UpdateDownload(version: rel.version, received: 0, total: -1);
+        try {
+          await Dio().download(
+            rel.url,
+            '$path.part',
+            cancelToken: _cancel,
+            onReceiveProgress: (received, total) =>
+                download.value = UpdateDownload(version: rel.version, received: received, total: total),
+          );
+        } finally {
+          download.value = null;
+          _cancel = null;
+        }
         await File('$path.part').rename(path);
       }
       _offered = rel.version;
