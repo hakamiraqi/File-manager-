@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../core/models/user.dart';
@@ -29,12 +32,47 @@ class AuthProvider extends ChangeNotifier {
     }
 
     try {
-      user = await _authService.me();
+      // Not long to wait without internet: the saved session opens instead.
+      user = await _authService.me().timeout(const Duration(seconds: 8));
       status = AuthStatus.authenticated;
-    } catch (_) {
-      status = AuthStatus.unauthenticated;
+      offline = false;
+    } catch (e) {
+      // No internet (or the server is down): open with the saved session instead of the
+      // login screen. Only the server saying the sign-in is no longer valid signs out.
+      final rejected = e is DioException && (e.response?.statusCode == 401 || e.response?.statusCode == 403);
+      final saved = rejected ? null : await _authService.cachedUser();
+      if (saved != null) {
+        user = saved;
+        status = AuthStatus.authenticated;
+        offline = true;
+        _retryWhenOnline();
+      } else {
+        status = AuthStatus.unauthenticated;
+      }
     }
     notifyListeners();
+  }
+
+  /// Opened with the saved session (no internet): true until the server answers again.
+  bool offline = false;
+  Timer? _retry;
+
+  void _retryWhenOnline() {
+    _retry?.cancel();
+    _retry = Timer.periodic(const Duration(seconds: 30), (_) async {
+      try {
+        await ServerConfigService.instance.resolveAndApply();
+        user = await _authService.me();
+        offline = false;
+        _retry?.cancel();
+        notifyListeners();
+      } catch (e) {
+        if (e is DioException && e.response?.statusCode == 401) {
+          _retry?.cancel();
+          await logout();
+        }
+      }
+    });
   }
 
   /// Returns the raw result so the caller can navigate to the 2FA
@@ -78,7 +116,11 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _authService.logout();
+    _retry?.cancel();
+    await _authService.forgetUser();
+    try {
+      await _authService.logout();
+    } catch (_) {}
     user = null;
     status = AuthStatus.unauthenticated;
     notifyListeners();

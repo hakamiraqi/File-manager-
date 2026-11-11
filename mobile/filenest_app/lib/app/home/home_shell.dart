@@ -12,6 +12,7 @@ import '../../features/profile/presentation/profile_screen.dart';
 import '../../features/saved/presentation/saved_screen.dart';
 import '../../features/site/badges_provider.dart';
 import '../../features/theses/presentation/theses_screen.dart';
+import '../../features/auth/state/auth_provider.dart';
 import 'app_drawer.dart';
 
 /// The app's root screen after login, laid out like Telegram: five tabs at the
@@ -36,6 +37,10 @@ class _HomeShellState extends State<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _badges = context.read<BadgesProvider>()..start();
       AppUpdater.instance.start(context);
+      if (context.read<AuthProvider>().offline) {
+        context.toast(context.l('بدون إنترنت: تعمل بجلستك المحفوظة. الملفات المحفوظة والخريطة متاحة.',
+            'Offline: using your saved session. Saved files and the map are available.'));
+      }
     });
   }
 

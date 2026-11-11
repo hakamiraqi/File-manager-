@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../../core/models/user.dart';
 import '../../../core/network/api_client.dart';
@@ -7,6 +10,28 @@ import '../models/login_result.dart';
 
 class AuthService {
   final _dio = ApiClient.instance.dio;
+
+  // The signed-in account kept on the device (2026-11-11, by request), so the app opens
+  // without internet with the same session; cleared on sign-out.
+  static const _store = FlutterSecureStorage();
+  static const _userKey = 'filenest_user_cache';
+
+  FileNestUser _remember(Map<String, dynamic> json) {
+    _store.write(key: _userKey, value: jsonEncode(json));
+    return FileNestUser.fromJson(json);
+  }
+
+  Future<FileNestUser?> cachedUser() async {
+    try {
+      final raw = await _store.read(key: _userKey);
+      if (raw == null) return null;
+      return FileNestUser.fromJson(Map<String, dynamic>.from(jsonDecode(raw) as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> forgetUser() => _store.delete(key: _userKey);
 
   Future<FileNestUser> register({
     required String name,
@@ -22,7 +47,7 @@ class AuthService {
     });
 
     await TokenStorage.instance.save(response.data['token'] as String);
-    return FileNestUser.fromJson(response.data['user'] as Map<String, dynamic>);
+    return _remember(response.data['user'] as Map<String, dynamic>);
   }
 
   /// Returns a completed [LoginResult] with the token already stored, or a
@@ -43,7 +68,7 @@ class AuthService {
     }
 
     await TokenStorage.instance.save(response.data['token'] as String);
-    return LoginResult.completed(FileNestUser.fromJson(response.data['user'] as Map<String, dynamic>));
+    return LoginResult.completed(_remember(response.data['user'] as Map<String, dynamic>));
   }
 
   /// Completes a login that returned twoFactorRequired, with either a TOTP
@@ -60,7 +85,7 @@ class AuthService {
     });
 
     await TokenStorage.instance.save(response.data['token'] as String);
-    return FileNestUser.fromJson(response.data['user'] as Map<String, dynamic>);
+    return _remember(response.data['user'] as Map<String, dynamic>);
   }
 
   Future<void> logout() async {
@@ -73,7 +98,7 @@ class AuthService {
 
   Future<FileNestUser> me() async {
     final response = await _dio.get('/auth/me');
-    return FileNestUser.fromJson(response.data['user'] as Map<String, dynamic>);
+    return _remember(response.data['user'] as Map<String, dynamic>);
   }
 
   Future<bool> hasStoredToken() async => (await TokenStorage.instance.read()) != null;
