@@ -1403,10 +1403,10 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     if (_isFullscreen) return stage;
 
     final size = MediaQuery.of(context).size;
-    final shownRatio = _currentFile.isVideo
-        ? (_rotationQuarterTurns.isOdd ? 1 / videoRatio : videoRatio).clamp(0.75, 2.4)
+    final double shownRatio = _currentFile.isVideo
+        ? (_rotationQuarterTurns.isOdd ? 1 / videoRatio : videoRatio).clamp(0.75, 2.4).toDouble()
         : 16 / 9;
-    final height = (size.width / shownRatio).clamp(200.0, math.max(200.0, size.height * 0.58));
+    final double height = (size.width / shownRatio).clamp(200.0, math.max(200.0, size.height * 0.58)).toDouble();
     return SizedBox(width: double.infinity, height: height, child: stage);
   }
 
@@ -1605,10 +1605,10 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     final accent = Theme.of(context).colorScheme.primary;
     final durationMs = value.duration.inMilliseconds.toDouble();
     final maxMs = durationMs > 0 ? durationMs : 1.0;
-    final positionMs = (_scrubMs ?? value.position.inMilliseconds.toDouble()).clamp(0.0, maxMs);
+    final positionMs = (_scrubMs ?? value.position.inMilliseconds.toDouble()).clamp(0.0, maxMs).toDouble();
     final bufferedMs = value.buffered.isEmpty
         ? 0.0
-        : value.buffered.map((r) => r.end.inMilliseconds).reduce(math.max).toDouble().clamp(0.0, maxMs);
+        : value.buffered.map((r) => r.end.inMilliseconds).reduce(math.max).toDouble().clamp(0.0, maxMs).toDouble();
     const timeStyle = TextStyle(color: Colors.white, fontSize: 12.5, fontFeatures: [FontFeature.tabularFigures()]);
 
     return Directionality(
@@ -1656,7 +1656,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                       return Stack(children: [
                         for (final q in _questions)
                           Positioned(
-                            left: inset + track * ((q.timestampSeconds * 1000) / durationMs).clamp(0.0, 1.0) - 3,
+                            left: inset + track * ((q.timestampSeconds * 1000) / durationMs).clamp(0.0, 1.0).toDouble() - 3,
                             top: c.maxHeight / 2 - 3,
                             child: Container(
                               width: 6,
@@ -1734,7 +1734,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                     width: 6,
                     color: Colors.white24,
                     alignment: Alignment.bottomCenter,
-                    child: FractionallySizedBox(heightFactor: value.clamp(0.0, 1.0), child: Container(color: Colors.white)),
+                    child: FractionallySizedBox(heightFactor: value.clamp(0.0, 1.0).toDouble(), child: Container(color: Colors.white)),
                   ),
                 ),
               ),
