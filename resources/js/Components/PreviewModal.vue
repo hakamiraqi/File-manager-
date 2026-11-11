@@ -22,6 +22,13 @@ import {
     QuestionMarkCircleIcon,
     ChatBubbleLeftIcon,
     PlusIcon,
+    CheckCircleIcon,
+    XCircleIcon,
+    ClockIcon,
+    MapPinIcon,
+    PaperAirplaneIcon,
+    SparklesIcon,
+    LightBulbIcon,
 } from '@heroicons/vue/24/outline';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
@@ -212,15 +219,44 @@ function continueAfterQuestion() {
     player?.play();
 }
 
+const pageDir = typeof document !== 'undefined' ? document.documentElement.dir || 'rtl' : 'rtl';
+const pageLang = typeof document !== 'undefined' ? document.documentElement.lang || 'ar' : 'ar';
+const ARABIC_LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'];
+const choiceLetter = (i) => (pageLang.startsWith('ar') ? ARABIC_LETTERS[i % 6] : String.fromCharCode(65 + i));
+const questionNumber = computed(() => (activeQuestion.value ? questions.value.findIndex((q) => q.id === activeQuestion.value.id) + 1 : 0));
+
+function choiceState(choice) {
+    const fb = answerFeedback.value;
+    if (!fb) return selectedChoiceId.value === choice.id ? 'selected' : 'idle';
+    if (choice.id === fb.correct_choice_id) return 'correct';
+    if (choice.id === selectedChoiceId.value) return 'wrong';
+    return 'dim';
+}
+
 function choiceClasses(choice) {
-    if (!answerFeedback.value) {
-        return selectedChoiceId.value === choice.id
-            ? 'border-[var(--accent-500)] bg-[var(--accent-50)]'
-            : 'border-gray-200';
-    }
-    if (choice.id === answerFeedback.value.correct_choice_id) return 'border-green-500 bg-green-50';
-    if (choice.id === selectedChoiceId.value) return 'border-red-500 bg-red-50';
-    return 'border-gray-200 opacity-60';
+    return {
+        idle: 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-white/5',
+        selected: 'border-[var(--accent-500)] bg-[var(--accent-50)] dark:bg-white/10',
+        correct: 'border-green-500 bg-green-50 dark:bg-green-500/15',
+        wrong: 'border-red-500 bg-red-50 dark:bg-red-500/15',
+        dim: 'border-gray-200 opacity-50 dark:border-gray-700',
+    }[choiceState(choice)];
+}
+
+function choiceBadgeClasses(choice) {
+    return {
+        idle: 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-200',
+        selected: 'bg-[var(--accent-600)] text-white',
+        correct: 'bg-green-600 text-white',
+        wrong: 'bg-red-600 text-white',
+        dim: 'bg-gray-100 text-gray-400 dark:bg-white/5',
+    }[choiceState(choice)];
+}
+
+function questionSegmentClass(q) {
+    if (activeQuestion.value && q.id === activeQuestion.value.id) return 'bg-[var(--accent-500)]';
+    if (q.answered_choice_id != null) return q.answered_correctly === false ? 'bg-red-400' : 'bg-green-400';
+    return 'bg-gray-200 dark:bg-white/10';
 }
 
 function resetQuestionForm() {
@@ -361,6 +397,38 @@ function formatTimestamp(seconds) {
 const comments = ref([]);
 const commentForm = useForm({ body: '', timestamp_seconds: null });
 const anchorCommentToTime = ref(false);
+const videoTime = ref(0);
+const sortedComments = computed(() => [...comments.value].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)));
+
+function avatarColor(name = '') {
+    let hash = 0;
+    for (const ch of name) hash = (hash * 31 + ch.codePointAt(0)) | 0;
+    return `hsl(${Math.abs(hash) % 360} 45% 45%)`;
+}
+
+const initialOf = (name) => (name?.trim() ? [...name.trim()][0].toUpperCase() : '?');
+
+function relativeTime(iso) {
+    const then = new Date(iso);
+    const seconds = Math.round((then - Date.now()) / 1000);
+    const rtf = new Intl.RelativeTimeFormat(pageLang, { numeric: 'auto' });
+    const steps = [
+        [60, 'second'],
+        [3600, 'minute'],
+        [86400, 'hour'],
+        [2592000, 'day'],
+    ];
+    const abs = Math.abs(seconds);
+    if (abs < 60) return rtf.format(0, 'second');
+    for (let i = 1; i < steps.length; i++) {
+        if (abs < steps[i][0]) return rtf.format(Math.round(seconds / steps[i - 1][0]), steps[i][1]);
+    }
+    return then.toLocaleDateString(pageLang);
+}
+
+function canDeleteComment(comment) {
+    return comment.user_id === currentUserId.value || !!page.props.auth?.user?.is_admin;
+}
 
 async function loadComments() {
     comments.value = [];
@@ -525,6 +593,7 @@ function plyrLabels() {
         speed: t('preview.speed', 'السرعة'),
         normal: t('player.speed_normal', 'عادية'),
         quality: t('player.quality', 'الجودة'),
+        download: t('action.download', 'تنزيل'),
         disabled: t('player.off', 'إيقاف'),
         enabled: t('player.on', 'تشغيل'),
     };
@@ -544,7 +613,8 @@ function mountPlyr() {
             // Plyr's default points at its CDN; nothing must load from the
             // internet on the offline server.
             blankVideo: '',
-            controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'pip', 'fullscreen'],
+            controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'download', 'pip', 'fullscreen'],
+            urls: { download: route('files.download', props.file.id) },
             seekTime: 10,
             keyboard: { focused: true, global: false },
             tooltips: { controls: true, seek: true },
@@ -552,8 +622,13 @@ function mountPlyr() {
             i18n: plyrLabels(),
             // Interactive questions shown as marks on the timeline.
             markers: {
-                enabled: questions.value.length > 0,
-                points: questions.value.map((q) => ({ time: q.timestamp_seconds, label: t('preview.interactive_question_label', 'سؤال تفاعلي') })),
+                enabled: questions.value.length > 0 || comments.value.some((c) => c.timestamp_seconds != null),
+                points: [
+                    ...questions.value.map((q) => ({ time: q.timestamp_seconds, label: t('preview.interactive_question_label', 'سؤال تفاعلي') })),
+                    ...comments.value
+                        .filter((c) => c.timestamp_seconds != null)
+                        .map((c) => ({ time: c.timestamp_seconds, label: `💬 ${c.user?.name ?? ''}: ${c.body.length > 40 ? c.body.slice(0, 40) + '…' : c.body}` })),
+                ],
             },
             settings,
             captions: { active: subtitles.value.length > 0, update: true },
@@ -571,7 +646,10 @@ function mountPlyr() {
             if (autoplayNext.value && hasNext.value) startUpNext();
         });
         player.once('loadedmetadata', offerResume);
-        player.on('timeupdate', () => rememberPosition(false));
+        player.on('timeupdate', () => {
+            rememberPosition(false);
+            videoTime.value = player?.currentTime ?? 0;
+        });
         player.on('play', clearUpNext);
 
         player.on('timeupdate', enforceQuestionGate);
@@ -800,55 +878,65 @@ onBeforeUnmount(() => {
                                 </div>
                             </div>
 
-                            <!-- Interactive question overlay: blocks the video until answered -->
-                            <div v-if="activeQuestion" class="absolute inset-0 z-10 flex items-center justify-center bg-black/70 p-4">
-                                <div class="w-full max-w-md rounded-xl bg-white p-5 shadow-xl dark:bg-gray-800">
-                                    <p class="mb-3 flex items-center gap-1.5 text-xs font-medium text-[var(--accent-600)]">
-                                        <QuestionMarkCircleIcon class="h-4 w-4" /> {{ t('preview.interactive_question_label', 'سؤال تفاعلي') }}
-                                    </p>
-                                    <p class="mb-4 font-semibold text-gray-900 dark:text-gray-100">{{ activeQuestion.question }}</p>
-                                    <div class="space-y-2">
-                                        <label
-                                            v-for="choice in activeQuestion.choices"
+                            <!-- Interactive question: blocks the video until answered -->
+                            <div v-if="activeQuestion" :dir="pageDir" class="absolute inset-0 z-10 flex items-center justify-center overflow-y-auto bg-black/75 p-3 backdrop-blur-sm sm:p-6">
+                                <div :key="activeQuestion.id" class="fn-pop my-auto w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl ring-1 ring-black/5 dark:bg-gray-900 dark:ring-white/10">
+                                    <div class="mb-3 flex items-center gap-2">
+                                        <span class="inline-flex items-center gap-1.5 rounded-full bg-[var(--accent-50)] px-2.5 py-1 text-xs font-semibold text-[var(--accent-700)] dark:bg-white/10 dark:text-white">
+                                            <QuestionMarkCircleIcon class="h-4 w-4" />
+                                            {{ t('player.question_n_of', 'سؤال :n من :total', { n: questionNumber, total: questions.length }) }}
+                                        </span>
+                                        <span dir="ltr" class="ms-auto inline-flex items-center gap-1 text-xs tabular-nums text-gray-400">
+                                            <ClockIcon class="h-3.5 w-3.5" /> {{ formatTimestamp(activeQuestion.timestamp_seconds) }}
+                                        </span>
+                                    </div>
+                                    <div v-if="questions.length > 1" class="mb-4 flex gap-1">
+                                        <span v-for="q in questions" :key="q.id" class="h-1 flex-1 rounded-full transition" :class="questionSegmentClass(q)"></span>
+                                    </div>
+                                    <p dir="auto" class="mb-4 text-lg font-bold leading-relaxed text-gray-900 dark:text-white">{{ activeQuestion.question }}</p>
+                                    <div class="space-y-2.5">
+                                        <button
+                                            v-for="(choice, i) in activeQuestion.choices"
                                             :key="choice.id"
-                                            class="flex cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm text-gray-700 dark:text-gray-300"
+                                            type="button"
+                                            :disabled="!!answerFeedback"
+                                            @click="selectedChoiceId = choice.id"
+                                            class="flex w-full items-center gap-3 rounded-xl border-2 p-3 text-start text-sm transition"
                                             :class="choiceClasses(choice)"
                                         >
-                                            <input
-                                                type="radio"
-                                                :value="choice.id"
-                                                v-model="selectedChoiceId"
-                                                :disabled="!!answerFeedback"
-                                                class="border-gray-300 text-[var(--accent-600)] focus:ring-[var(--accent-500)]"
-                                            />
-                                            {{ choice.label }}
-                                        </label>
-                                    </div>
-                                    <div class="mt-4 flex items-center justify-between gap-3">
-                                        <p
-                                            v-if="answerFeedback"
-                                            class="text-sm font-medium"
-                                            :class="answerFeedback.is_correct ? 'text-green-600' : 'text-red-600'"
-                                        >
-                                            {{ answerFeedback.is_correct ? t('preview.correct_answer', 'إجابة صحيحة!') : t('preview.wrong_answer', 'إجابة غير صحيحة.') }}
-                                        </p>
-                                        <span v-else></span>
-                                        <button
-                                            v-if="!answerFeedback"
-                                            @click="submitAnswer"
-                                            :disabled="selectedChoiceId == null || answering"
-                                            class="shrink-0 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)] disabled:opacity-50"
-                                        >
-                                            {{ t('preview.submit_answer', 'إرسال الإجابة') }}
-                                        </button>
-                                        <button
-                                            v-else
-                                            @click="continueAfterQuestion"
-                                            class="shrink-0 rounded-md bg-[var(--accent-600)] px-4 py-1.5 text-sm font-medium text-white hover:bg-[var(--accent-700)]"
-                                        >
-                                            {{ t('preview.continue_watching', 'متابعة المشاهدة') }}
+                                            <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition" :class="choiceBadgeClasses(choice)">{{ choiceLetter(i) }}</span>
+                                            <span dir="auto" class="flex-1 text-gray-800 dark:text-gray-100">{{ choice.label }}</span>
+                                            <CheckCircleIcon v-if="choiceState(choice) === 'correct'" class="h-6 w-6 shrink-0 text-green-500" />
+                                            <XCircleIcon v-else-if="choiceState(choice) === 'wrong'" class="h-6 w-6 shrink-0 text-red-500" />
                                         </button>
                                     </div>
+                                    <div
+                                        v-if="answerFeedback"
+                                        class="mt-4 flex items-center gap-3 rounded-xl p-3"
+                                        :class="answerFeedback.is_correct ? 'bg-green-50 text-green-700 dark:bg-green-500/15 dark:text-green-300' : 'bg-red-50 text-red-700 dark:bg-red-500/15 dark:text-red-300'"
+                                    >
+                                        <SparklesIcon v-if="answerFeedback.is_correct" class="h-7 w-7 shrink-0" />
+                                        <LightBulbIcon v-else class="h-7 w-7 shrink-0" />
+                                        <div>
+                                            <p class="font-bold">{{ answerFeedback.is_correct ? t('preview.correct_answer', 'إجابة صحيحة!') : t('preview.wrong_answer', 'إجابة غير صحيحة.') }}</p>
+                                            <p class="text-xs opacity-80">{{ t('preview.your_score', 'درجتك: :correct من :total', { correct: score.correct, total: score.total }) }}</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        v-if="!answerFeedback"
+                                        @click="submitAnswer"
+                                        :disabled="selectedChoiceId == null || answering"
+                                        class="mt-4 w-full rounded-xl bg-[var(--accent-600)] py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[var(--accent-700)] disabled:opacity-40"
+                                    >
+                                        {{ answering ? t('common.loading', 'جارِ التحميل...') : t('preview.submit_answer', 'إرسال الإجابة') }}
+                                    </button>
+                                    <button
+                                        v-else
+                                        @click="continueAfterQuestion"
+                                        class="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-600)] py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[var(--accent-700)]"
+                                    >
+                                        <PlayIcon class="h-4 w-4" /> {{ t('preview.continue_watching', 'متابعة المشاهدة') }}
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -1137,48 +1225,80 @@ onBeforeUnmount(() => {
                     </div>
 
                     <!-- Comments -->
-                    <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800">
-                        <p class="mb-2 flex items-center gap-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">
-                            <ChatBubbleLeftIcon class="h-4 w-4" /> {{ t('preview.comments_title', 'التعليقات (:count)', { count: comments.length }) }}
-                        </p>
-                        <ul v-if="comments.length" class="mb-3 max-h-40 space-y-2 overflow-y-auto">
-                            <li v-for="comment in comments" :key="comment.id" class="flex items-start justify-between gap-2 text-sm">
-                                <div class="min-w-0">
-                                    <button
-                                        v-if="comment.timestamp_seconds != null"
-                                        @click="seekTo(comment.timestamp_seconds)"
-                                        class="me-1 shrink-0 rounded bg-gray-100 px-1.5 py-0.5 text-xs tabular-nums text-gray-500 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600"
-                                    >
-                                        {{ formatTimestamp(comment.timestamp_seconds) }}
-                                    </button>
-                                    <span class="font-medium text-gray-700 dark:text-gray-300">{{ comment.user?.name }}:</span>
-                                    <span class="text-gray-600 dark:text-gray-400">{{ comment.body }}</span>
-                                </div>
+                    <div v-if="kind(file) === 'video'" class="border-t border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                        <div class="mb-3 flex items-center gap-2">
+                            <ChatBubbleLeftIcon class="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                            <h4 class="font-semibold text-gray-900 dark:text-gray-100">{{ t('player.comments', 'التعليقات') }}</h4>
+                            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-300">{{ comments.length }}</span>
+                        </div>
+
+                        <form
+                            v-if="can.comment"
+                            @submit.prevent="submitComment"
+                            class="mb-4 rounded-2xl border border-gray-200 bg-gray-50 p-2 transition focus-within:border-[var(--accent-500)] focus-within:ring-2 focus-within:ring-[var(--accent-500)]/20 dark:border-gray-700 dark:bg-gray-900/40"
+                        >
+                            <textarea
+                                v-model="commentForm.body"
+                                rows="2"
+                                dir="auto"
+                                :placeholder="t('preview.comment_placeholder', 'أضف تعليقاً...')"
+                                @keydown.ctrl.enter.prevent="submitComment"
+                                @keydown.meta.enter.prevent="submitComment"
+                                class="w-full resize-none border-0 bg-transparent px-2 text-sm text-gray-800 placeholder:text-gray-400 focus:ring-0 dark:text-gray-100"
+                            ></textarea>
+                            <div class="flex items-center gap-2 px-1">
                                 <button
-                                    v-if="comment.user_id === currentUserId"
-                                    @click="deleteComment(comment)"
-                                    class="shrink-0 text-gray-400 hover:text-red-600"
+                                    type="button"
+                                    @click="anchorCommentToTime = !anchorCommentToTime"
+                                    class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition"
+                                    :class="anchorCommentToTime ? 'bg-[var(--accent-600)] text-white' : 'bg-gray-200/70 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'"
                                 >
-                                    <TrashIcon class="h-3.5 w-3.5" />
+                                    <MapPinIcon class="h-3.5 w-3.5" />
+                                    <span v-if="anchorCommentToTime">{{ t('player.at_time', 'عند :time', { time: formatTimestamp(Math.floor(videoTime)) }) }}</span>
+                                    <span v-else>{{ t('player.anchor_current_time', 'ربط بالوقت الحالي') }}</span>
                                 </button>
-                            </li>
-                        </ul>
-                        <form v-if="can.comment" @submit.prevent="submitComment" class="space-y-1.5">
-                            <textarea v-model="commentForm.body" rows="2" :placeholder="t('preview.comment_placeholder', 'أضف تعليقاً...')" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"></textarea>
-                            <div class="flex items-center justify-between">
-                                <label class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
-                                    <input type="checkbox" v-model="anchorCommentToTime" class="rounded border-gray-300" />
-                                    {{ t('preview.anchor_comment', 'ربط التعليق بلحظة :time الحالية', { time: formatTimestamp(Math.floor(player?.currentTime ?? 0)) }) }}
-                                </label>
                                 <button
                                     type="submit"
                                     :disabled="commentForm.processing || !commentForm.body.trim()"
-                                    class="rounded-md bg-gray-800 px-3 py-1.5 text-xs text-white hover:bg-gray-900 disabled:opacity-50"
+                                    class="ms-auto inline-flex items-center gap-1.5 rounded-full bg-[var(--accent-600)] px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-[var(--accent-700)] disabled:opacity-40"
                                 >
-                                    {{ t('preview.post', 'نشر') }}
+                                    <PaperAirplaneIcon class="h-3.5 w-3.5 rtl:-scale-x-100" /> {{ t('preview.post', 'نشر') }}
                                 </button>
                             </div>
                         </form>
+
+                        <p v-if="!comments.length" class="py-6 text-center text-sm text-gray-400">{{ t('player.no_comments_yet', 'لا توجد تعليقات بعد. كن أول من يعلّق.') }}</p>
+                        <ul v-else class="max-h-80 space-y-3 overflow-y-auto pe-1">
+                            <li v-for="comment in sortedComments" :key="comment.id" class="group flex gap-3">
+                                <span
+                                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"
+                                    :style="{ background: avatarColor(comment.user?.name) }"
+                                >{{ initialOf(comment.user?.name) }}</span>
+                                <div class="min-w-0 flex-1 rounded-2xl rounded-ss-sm bg-gray-50 px-3 py-2 dark:bg-gray-700/50">
+                                    <div class="flex items-center gap-2">
+                                        <span class="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">{{ comment.user?.name ?? '—' }}</span>
+                                        <span class="shrink-0 text-[11px] text-gray-400">{{ relativeTime(comment.created_at) }}</span>
+                                        <button
+                                            v-if="canDeleteComment(comment)"
+                                            @click="deleteComment(comment)"
+                                            :title="t('action.delete', 'حذف')"
+                                            class="ms-auto shrink-0 rounded p-1 text-gray-400 transition hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:bg-red-500/10"
+                                        >
+                                            <TrashIcon class="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                    <button
+                                        v-if="comment.timestamp_seconds != null"
+                                        @click="seekTo(comment.timestamp_seconds)"
+                                        dir="ltr"
+                                        class="mt-1 inline-flex items-center gap-1 rounded-full bg-[var(--accent-50)] px-2 py-0.5 text-xs font-semibold tabular-nums text-[var(--accent-700)] transition hover:bg-[var(--accent-600)] hover:text-white dark:bg-white/10 dark:text-white"
+                                    >
+                                        <PlayIcon class="h-3 w-3" /> {{ formatTimestamp(comment.timestamp_seconds) }}
+                                    </button>
+                                    <p dir="auto" class="mt-1 whitespace-pre-line break-words text-sm leading-relaxed text-gray-700 dark:text-gray-200">{{ comment.body }}</p>
+                                </div>
+                            </li>
+                        </ul>
                     </div>
                 </div>
 
@@ -1278,6 +1398,13 @@ onBeforeUnmount(() => {
     border-radius: 6px;
     padding: 0.2em 0.6em;
     background: rgba(0, 0, 0, 0.75);
+}
+.fn-pop {
+    animation: fn-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+@keyframes fn-pop {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: scale(1); }
 }
 /* Little "now playing" bars in the queue. */
 .fn-eq i {

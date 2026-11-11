@@ -419,5 +419,10 @@
     "player.play_now": "شغّل الآن",
     "player.next": "التالي",
     "player.end_of_list": "آخر مقطع في القائمة",
-    "player.now_playing": "يُعرض الآن"
+    "player.now_playing": "يُعرض الآن",
+    "player.question_n_of": "سؤال :n من :total",
+    "player.comments": "التعليقات",
+    "player.at_time": "عند :time",
+    "player.anchor_current_time": "ربط بالوقت الحالي",
+    "player.no_comments_yet": "لا توجد تعليقات بعد. كن أول من يعلّق."
 }

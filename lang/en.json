@@ -419,5 +419,10 @@
     "player.play_now": "Play now",
     "player.next": "Next",
     "player.end_of_list": "Last item in the list",
-    "player.now_playing": "Now playing"
+    "player.now_playing": "Now playing",
+    "player.question_n_of": "Question :n of :total",
+    "player.comments": "Comments",
+    "player.at_time": "At :time",
+    "player.anchor_current_time": "Pin to current time",
+    "player.no_comments_yet": "No comments yet. Be the first."
 }
