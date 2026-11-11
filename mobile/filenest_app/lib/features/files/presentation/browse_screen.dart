@@ -150,6 +150,9 @@ class _BrowseScreenState extends State<BrowseScreen> {
     }
   }
 
+  /// The list came from the copy saved on the device (no internet).
+  bool _fromCache = false;
+
   Future<void> _load({String query = ''}) async {
     setState(() {
       _isLoading = true;
@@ -162,6 +165,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
         _folders = result.folders;
         _files = result.files;
         _breadcrumbs = result.breadcrumbs;
+        _fromCache = result.fromCache;
       });
     } catch (e) {
       setState(() => _error = ApiClient.messageFor(e));
@@ -907,6 +911,17 @@ class _BrowseScreenState extends State<BrowseScreen> {
     // The folder's info panel scrolls with the list (2026-11-10): opened on a phone it is
     // taller than the screen, and fixed above the list it left nothing to scroll.
     final header = <Widget>[
+      if (_fromCache)
+        Container(
+          margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+          child: Text(
+            context.l('بدون إنترنت: القائمة المحفوظة على الجهاز. تفتح الملفات التي فُتحت أو نُزّلت من قبل.',
+                'Offline: the list saved on this device. Files opened or downloaded before will open.'),
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ),
       if (widget.folder != null) _buildFolderInfoPanel(),
       if (!_isLoading && _error == null)
         Padding(

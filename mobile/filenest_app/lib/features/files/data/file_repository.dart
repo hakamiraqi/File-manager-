@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import '../../../core/models/file_item.dart';
 import '../../../core/models/folder_item.dart';
 import '../../../core/network/api_client.dart';
+import '../../../core/storage/offline_cache.dart';
 
 class BrowseResult {
   final FolderItem? currentFolder;
@@ -12,11 +13,15 @@ class BrowseResult {
   final List<FolderItem> folders;
   final List<FileItem> files;
 
+  /// Shown from the copy saved on the device (no internet).
+  final bool fromCache;
+
   BrowseResult({
     required this.currentFolder,
     required this.breadcrumbs,
     required this.folders,
     required this.files,
+    this.fromCache = false,
   });
 }
 
@@ -30,26 +35,38 @@ class FileRepository {
   final Dio _dio = ApiClient.instance.dio;
 
   Future<BrowseResult> browse({int? folderId, String query = ''}) async {
-    final response = await _dio.get('/browse', queryParameters: {
-      if (folderId != null) 'folder': folderId,
-      if (query.isNotEmpty) 'q': query,
-    });
-
-    final data = response.data as Map<String, dynamic>;
+    final key = 'browse_${folderId ?? 'root'}';
+    Map<String, dynamic> data;
+    var fromCache = false;
+    try {
+      final response = await _dio.get('/browse', queryParameters: {
+        if (folderId != null) 'folder': folderId,
+        if (query.isNotEmpty) 'q': query,
+      });
+      data = response.data as Map<String, dynamic>;
+      // Kept for reading without internet (a thesis's files, any folder opened).
+      if (query.isEmpty) OfflineCache.instance.put(key, data);
+    } catch (e) {
+      final saved = OfflineCache.isOffline(e) && query.isEmpty ? await OfflineCache.instance.get(key) : null;
+      if (saved is! Map) rethrow;
+      data = Map<String, dynamic>.from(saved);
+      fromCache = true;
+    }
 
     return BrowseResult(
       currentFolder: data['current_folder'] == null
           ? null
-          : FolderItem.fromJson(data['current_folder']),
+          : FolderItem.fromJson(Map<String, dynamic>.from(data['current_folder'] as Map)),
       breadcrumbs: (data['breadcrumbs'] as List)
-          .map((e) => FolderItem.fromJson(e as Map<String, dynamic>))
+          .map((e) => FolderItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
       folders: (data['folders'] as List)
-          .map((e) => FolderItem.fromJson(e as Map<String, dynamic>))
+          .map((e) => FolderItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
       files: (data['files'] as List)
-          .map((e) => FileItem.fromJson(e as Map<String, dynamic>))
+          .map((e) => FileItem.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList(),
+      fromCache: fromCache,
     );
   }
 

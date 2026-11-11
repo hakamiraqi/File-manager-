@@ -3,6 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../../../core/models/folder_item.dart';
+import '../../../core/storage/offline_cache.dart';
+import '../../downloads/data/offline_download_service.dart';
+import '../../downloads/state/downloads_provider.dart';
+import '../../files/data/file_repository.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../auth/state/auth_provider.dart';
@@ -40,22 +44,96 @@ class _ThesesScreenState extends State<ThesesScreen> {
     super.dispose();
   }
 
+  /// Shown from the list saved on the device (no internet).
+  bool _offline = false;
+
   Future<void> _load({bool reset = false}) async {
     if (_paged.loading || (!reset && !_paged.hasMore)) return;
     if (reset) _paged.reset();
     setState(() => _paged.loading = true);
+    final plain = _filters.isEmpty && _search.text.trim().isEmpty;
     try {
       final r = await SiteApi.instance.theses(filters: {..._filters, 'q': _search.text.trim()}, page: _paged.page + 1);
+      _offline = false;
       _paged.items.addAll((r['data'] as List).cast<Map<String, dynamic>>());
       _paged.page = (r['meta']['current_page'] as num).toInt();
       _paged.lastPage = (r['meta']['last_page'] as num).toInt();
       _total = (r['meta']['total'] as num).toInt();
       if (r['facets'] is Map) _facets = Map<String, dynamic>.from(r['facets'] as Map);
       if (r['degree_labels'] is Map) _degreeLabels = Map<String, dynamic>.from(r['degree_labels'] as Map);
+      // The whole list is kept for reading without internet (2026-11-11, by request).
+      if (plain && _paged.page == 1) _saveAll(r);
     } catch (e) {
-      _paged.error = ApiErrorText.of(e);
+      if (reset && OfflineCache.isOffline(e) && await _fromSaved()) {
+        _offline = true;
+      } else {
+        _paged.error = ApiErrorText.of(e);
+      }
     } finally {
       if (mounted) setState(() => _paged.loading = false);
+    }
+  }
+
+  /// Saves every page of the plain list (the first one is already here).
+  Future<void> _saveAll(Map<String, dynamic> first) async {
+    final all = [...(first['data'] as List)];
+    final last = (first['meta']['last_page'] as num).toInt();
+    try {
+      for (var p = 2; p <= last && p <= 40; p++) {
+        final r = await SiteApi.instance.theses(page: p);
+        all.addAll(r['data'] as List);
+      }
+    } catch (_) {
+      return;
+    }
+    await OfflineCache.instance.put('theses', {'data': all, 'facets': first['facets'], 'degree_labels': first['degree_labels']});
+  }
+
+  /// The saved list, searched and filtered here.
+  Future<bool> _fromSaved() async {
+    final saved = await OfflineCache.instance.get('theses');
+    if (saved is! Map) return false;
+    final q = _search.text.trim().toLowerCase();
+    final list = ((saved['data'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).where((t) {
+      for (final f in _filters.entries) {
+        if ('${t[f.key] ?? ''}' != f.value) return false;
+      }
+      if (q.isEmpty) return true;
+      return [t['title'], t['researcher'], t['supervisor'], t['keywords'], t['subject'], t['department']]
+          .any((v) => v != null && '$v'.toLowerCase().contains(q));
+    }).toList();
+    _paged.items.addAll(list);
+    _paged.page = 1;
+    _paged.lastPage = 1;
+    _total = list.length;
+    if (saved['facets'] is Map) _facets = Map<String, dynamic>.from(saved['facets'] as Map);
+    if (saved['degree_labels'] is Map) _degreeLabels = Map<String, dynamic>.from(saved['degree_labels'] as Map);
+    return true;
+  }
+
+  /// «حفظ الرسالة للقراءة بدون إنترنت»: its folder list and every file in it.
+  Future<void> _saveThesis(Map<String, dynamic> t) async {
+    final offline = OfflineDownloadService.instance;
+    final downloads = context.read<DownloadsProvider>();
+    context.toast(context.l('جارٍ حفظ الرسالة على الجهاز…', 'Saving the thesis on this device…'));
+    try {
+      await offline.ensureLoaded();
+      final result = await FileRepository().browse(folderId: t['id'] as int);
+      var saved = 0;
+      for (final f in result.files) {
+        if (!offline.isDownloaded(f.id)) {
+          await offline.download(f);
+          saved++;
+        }
+      }
+      downloads.load();
+      if (mounted) {
+        context.toast(saved == 0
+            ? context.l('الرسالة محفوظة على الجهاز من قبل.', 'The thesis was already saved.')
+            : context.l('حُفظت الرسالة ($saved ملف)، وتُفتح بدون إنترنت.', 'Saved ($saved files); it opens without internet.'));
+      }
+    } catch (e) {
+      if (mounted) context.toastError(e);
     }
   }
 
@@ -151,6 +229,18 @@ class _ThesesScreenState extends State<ThesesScreen> {
               icon: const Icon(Icons.folder_open_rounded),
               label: Text(context.l('فتح ملفات الرسالة', 'Open the files')),
             ),
+          if (signedIn)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(sheet).pop();
+                  _saveThesis(t);
+                },
+                icon: const Icon(Icons.download_for_offline_outlined),
+                label: Text(context.l('حفظ الرسالة للقراءة بدون إنترنت', 'Save for reading offline')),
+              ),
+            ),
           if (widget.contactEnabled)
             Padding(
               padding: const EdgeInsets.only(top: 8),
@@ -219,6 +309,13 @@ class _ThesesScreenState extends State<ThesesScreen> {
                 Center(child: Text(context.l('$_total رسالة', '$_total theses'), style: TextStyle(color: scheme.onSurfaceVariant))),
               ]),
             ),
+            if (_offline)
+              Container(
+                margin: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+                child: Text(context.l('بدون إنترنت: قائمة الرسائل المحفوظة على الجهاز.', 'Offline: the theses list saved on this device.'), style: const TextStyle(fontSize: 12.5)),
+              ),
             if (_paged.items.isEmpty && !_paged.loading)
               Padding(
                 padding: const EdgeInsets.only(top: 60),
