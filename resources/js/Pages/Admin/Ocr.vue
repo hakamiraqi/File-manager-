@@ -136,9 +136,6 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
             <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-800 dark:text-gray-100">
                 <DocumentMagnifyingGlassIcon class="h-5 w-5 text-gray-500" />
                 {{ t('ocr.title', 'التعرف على النصوص من الصور وملفات PDF الممسوحة') }}
-                <Link v-if="$page.props.auth.user?.is_master_admin" :href="route('admin.qari.index')" class="ms-auto rounded-lg bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-200">
-                    تجربة Qari للعربي
-                </Link>
             </h2>
         </template>
 

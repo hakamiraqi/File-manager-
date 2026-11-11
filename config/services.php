@@ -22,11 +22,6 @@ return [
         'tessdata_best' => env('OCR_TESSDATA_BEST', '/usr/share/tessdata-best'),
     ],
 
-    // Qari-OCR on trial: llama.cpp servers on FileNest's Docker network (deploy/vps/qari).
-    'qari' => [
-        '2b' => env('QARI_2B_URL', 'http://qari-2b:8080'),
-        '4b' => env('QARI_4B_URL', 'http://qari-4b:8080'),
-    ],
 
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),
