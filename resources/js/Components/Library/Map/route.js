@@ -3,6 +3,9 @@
 
 export const CELL = 0.25; // grid resolution in metres
 const CLEARANCE = 0.3; // keep the walker this far from furniture
+// Narrow aisles (2026-11-11: 65–80 cm round a big reading table): when no walk keeps the
+// usual distance, the route is looked for again keeping only this much.
+const TIGHT = 0.1;
 
 /** The four corners of an item's footprint after rotation. */
 export function footprint(item, grow = 0) {
@@ -102,7 +105,7 @@ export function snapToWall(halls, p) {
     return best;
 }
 
-export function buildGrid(floor, items, halls = [], doors = []) {
+export function buildGrid(floor, items, halls = [], doors = [], clearance = CLEARANCE, hallWall = HALL_WALL) {
     const cols = Math.max(1, Math.ceil(floor.width / CELL));
     const rows = Math.max(1, Math.ceil(floor.depth / CELL));
     const blocked = new Uint8Array(cols * rows);
@@ -113,7 +116,7 @@ export function buildGrid(floor, items, halls = [], doors = []) {
         const nearWall = (x, y) => walls.some(([a, b]) => {
             const dx = b.x - a.x, dy = b.y - a.y;
             const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1)));
-            return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy)) < HALL_WALL;
+            return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy)) < hallWall;
         });
         const polys = halls.map(outline);
         for (let r = 0; r < rows; r++) {
@@ -123,14 +126,14 @@ export function buildGrid(floor, items, halls = [], doors = []) {
             }
         }
         for (const d of doors) {
-            const reach = { ...d, width: Math.max(CELL, d.width - 2 * DOOR_EDGE), depth: 2 * (HALL_WALL + CELL) };
+            const reach = { ...d, width: Math.max(CELL, d.width - 2 * DOOR_EDGE), depth: 2 * (hallWall + CELL) };
             for (let r = 0; r < rows; r++) {
                 for (let c = 0; c < cols; c++) if (inside((c + 0.5) * CELL, (r + 0.5) * CELL, reach, 0)) blocked[r * cols + c] = 0;
             }
         }
     }
     for (const it of items) {
-        const grow = it.grow ?? CLEARANCE;
+        const grow = Math.min(it.grow ?? clearance, clearance);
         const poly = it.points?.length >= 3 ? outline(it) : null;
         const pts = poly ? poly.flatMap((p) => [{ x: p.x - grow, y: p.y - grow }, { x: p.x + grow, y: p.y + grow }]) : footprint(it, grow);
         const minX = Math.max(0, Math.floor(Math.min(...pts.map((p) => p.x)) / CELL));
@@ -251,9 +254,9 @@ export function gatePillars(gate) {
     }));
 }
 
-export function standingPoints(shelf) {
+export function standingPoints(shelf, tight = false) {
     const n = frontNormal(shelf);
-    const off = shelf.depth / 2 + CLEARANCE + CELL;
+    const off = shelf.depth / 2 + (tight ? TIGHT + CELL / 2 : CLEARANCE + CELL);
     const pts = [{ x: shelf.x + n.x * off, y: shelf.y + n.y * off, side: 1 }];
     if (shelf.double_sided) pts.push({ x: shelf.x - n.x * off, y: shelf.y - n.y * off, side: -1 });
     return pts;
@@ -272,10 +275,10 @@ export const storeyOf = (it) => it?.storey ?? 0;
 // One grid per floor of the building; it only changes with the plan, so walking (which
 // re-routes as you go) reuses it.
 const gridCache = new WeakMap();
-function storeyGrid(floor, items, storey) {
+function storeyGrid(floor, items, storey, tight = false) {
     let byStorey = gridCache.get(items);
     if (!byStorey) { byStorey = new Map(); gridCache.set(items, byStorey); }
-    const key = `${storey}:${floor.width}x${floor.depth}`;
+    const key = `${storey}:${floor.width}x${floor.depth}:${tight ? 't' : 'n'}`;
     if (byStorey.has(key)) return byStorey.get(key);
     const here = items.filter((it) => storeyOf(it) === storey);
     const halls = here.filter(isHall);
@@ -283,7 +286,7 @@ function storeyGrid(floor, items, storey) {
     const obstacles = here
         .filter((it) => !HALL_KINDS.includes(it.kind) && !['door', 'stairs', 'qr'].includes(it.kind))
         .flatMap((it) => (it.kind === 'gate' ? gatePillars(it) : [it]));
-    const g = buildGrid(floor, obstacles, halls, doors);
+    const g = tight ? buildGrid(floor, obstacles, halls, doors, TIGHT, TIGHT) : buildGrid(floor, obstacles, halls, doors);
     byStorey.set(key, g);
     return g;
 }
@@ -324,16 +327,20 @@ export function linkedStairs(items, stair, storey, liftOnly = false) {
  * @returns {{points: {x:number,y:number,storey:number,stairs?:object}[], length: number}|null}
  */
 export function findRoute(floor, items, start, shelf, { liftOnly = false } = {}) {
+    return routeWith(floor, items, start, shelf, liftOnly, false) ?? routeWith(floor, items, start, shelf, liftOnly, true);
+}
+
+function routeWith(floor, items, start, shelf, liftOnly, tight) {
     const from = storeyOf(start), to = storeyOf(shelf);
-    const goals = standingPoints(shelf);
-    if (from === to) return legRoute(storeyGrid(floor, items, from), start, goals, from);
+    const goals = standingPoints(shelf, tight);
+    if (from === to) return legRoute(storeyGrid(floor, items, from, tight), start, goals, from);
     let best = null;
     for (const a of items.filter((it) => it.kind === 'stairs' && storeyOf(it) === from && (!liftOnly || isLift(it)))) {
         const b = linkedStairs(items, a, to, liftOnly);
         if (!b) continue;
-        const up = legRoute(storeyGrid(floor, items, from), start, [{ x: a.x, y: a.y, exact: true }], from);
+        const up = legRoute(storeyGrid(floor, items, from, tight), start, [{ x: a.x, y: a.y, exact: true }], from);
         if (!up) continue;
-        const down = legRoute(storeyGrid(floor, items, to), { x: b.x, y: b.y }, goals, to);
+        const down = legRoute(storeyGrid(floor, items, to, tight), { x: b.x, y: b.y }, goals, to);
         if (!down) continue;
         const climb = Math.abs(to - from) * STAIRS_COST;
         const total = up.length + climb + down.length;
