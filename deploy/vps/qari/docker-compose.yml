@@ -24,7 +24,7 @@ services:
               "--temp", "0", "--no-webui"]
     volumes: ["/opt/qari/models:/models:ro"]
     cpus: 2
-    mem_limit: 7g
+    mem_limit: 10g  # 7g ran out on a full page (2026-11-11)
     networks: [filenest]
 networks:
   filenest:
