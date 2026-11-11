@@ -23,5 +23,3 @@ jobs:
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           scp -i ~/.ssh/vps_key ops-status.php "$VPS_USER@$VPS_HOST:/tmp/ops-status.php"
           ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo docker cp /tmp/ops-status.php filenest-app:/tmp/ops-status.php && sudo docker exec -u www-data -w /var/www/html filenest-app php -r \"require 'vendor/autoload.php'; \\\$app = require 'bootstrap/app.php'; \\\$app->make(Illuminate\\Contracts\\Console\\Kernel::class)->bootstrap(); require '/tmp/ops-status.php';\"; sudo docker ps --format '{{.Names}} {{.Status}}' | grep filenest; uptime"
-          scp -i ~/.ssh/vps_key survey.sh "$VPS_USER@$VPS_HOST:/tmp/survey.sh"
-          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo bash /tmp/survey.sh; rm -f /tmp/survey.sh"
