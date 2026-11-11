@@ -7,6 +7,8 @@ import '../../auth/state/auth_provider.dart';
 import '../../contact/presentation/contact_screen.dart';
 import '../../site/site_api.dart';
 import 'library_map_screen.dart';
+import '../data/library_map_cache.dart';
+import '../../../core/storage/offline_cache.dart';
 import 'library_widgets.dart';
 
 /// One book: is it on the shelf, hold it, its copies, ask for it.
@@ -36,8 +38,39 @@ class _BookScreenState extends State<BookScreen> {
       final d = await SiteApi.instance.book(widget.bookId);
       if (mounted) setState(() => _data = d);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      // Never opened before and no internet: built from the saved catalogue and map.
+      final d = OfflineCache.isOffline(e) ? await _fromSaved() : null;
+      if (mounted) setState(() => d != null ? _data = d : _error = e.toString());
     }
+  }
+
+  Future<Map<String, dynamic>?> _fromSaved() async {
+    final cat = await OfflineCache.instance.get('library_catalogue');
+    Map<String, dynamic>? card;
+    for (final b in (cat is Map ? (cat['data'] as List? ?? []) : [])) {
+      if (b is Map && b['id'] == widget.bookId) card = Map<String, dynamic>.from(b);
+    }
+    if (card == null) return null;
+    Map? spot;
+    final map = await LibraryMapCache.instance.saved();
+    for (final b in (map?['books'] as List? ?? [])) {
+      if (b is Map && b['id'] == widget.bookId && (b['spots'] as List? ?? []).isNotEmpty) spot = (b['spots'] as List).first as Map;
+    }
+    final total = ((card['copies_count'] as num?) ?? 0).toInt();
+    final free = ((card['available_count'] as num?) ?? 0).toInt();
+    final barcodes = ((spot?['barcodes'] as List?) ?? []).map((e) => '$e').toList();
+    return {
+      'book': {...card, 'section_path': (card['section'] as Map?)?['name']},
+      'copies': [
+        for (var i = 0; i < total; i++)
+          {'barcode': i < barcodes.length ? barcodes[i] : '', 'status': i < free ? 'available' : 'loaned', 'shelf': spot?['code']},
+      ],
+      'map_spot': spot == null ? null : {'code': spot['code'], 'level': spot['level']},
+      'my_hold': null,
+      'queue_length': 0,
+      'contact_enabled': false,
+      '_offline': true,
+    };
   }
 
   Future<void> _hold() async {
@@ -101,6 +134,14 @@ class _BookScreenState extends State<BookScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(padding: const EdgeInsets.only(bottom: 32), children: [
+          if (d['_offline'] == true)
+            Container(
+              margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
+              child: Text(context.l('بدون إنترنت: المعلومات المحفوظة على الجهاز، وقد تكون تغيّرت.', 'Offline: the details saved on this device; they may have changed.'),
+                  style: const TextStyle(fontSize: 12.5)),
+            ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [

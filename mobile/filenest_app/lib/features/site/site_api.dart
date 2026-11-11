@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../core/network/api_client.dart';
+import '../../core/storage/offline_cache.dart';
 
 typedef Json = Map<String, dynamic>;
 
@@ -12,9 +13,21 @@ class SiteApi {
 
   Dio get _dio => ApiClient.instance.dio;
 
+  /// Every page read here is kept on the device (2026-11-11, by request) and shown again when
+  /// there is no internet: the library, a book opened before, my loans, the theses.
   Future<Json> _get(String path, [Map<String, dynamic>? query]) async {
-    final r = await _dio.get(path, queryParameters: query?..removeWhere((_, v) => v == null || v == ''));
-    return Map<String, dynamic>.from(r.data as Map);
+    query?.removeWhere((_, v) => v == null || v == '');
+    final key = 'site_${path}_${(query?.entries.toList() ?? [])..sort((a, b) => a.key.compareTo(b.key))}';
+    try {
+      final r = await _dio.get(path, queryParameters: query);
+      final data = Map<String, dynamic>.from(r.data as Map);
+      OfflineCache.instance.put(key, data);
+      return data;
+    } catch (e) {
+      final saved = OfflineCache.isOffline(e) ? await OfflineCache.instance.get(key) : null;
+      if (saved is Map) return Map<String, dynamic>.from(saved)..['_offline'] = true;
+      rethrow;
+    }
   }
 
   Future<Json> _send(String method, String path, [Object? data]) async {

@@ -16,7 +16,13 @@ class OfflineCache {
   Future<File> _file(String key) async {
     final dir = Directory('${(await getApplicationSupportDirectory()).path}/offline_cache');
     if (!await dir.exists()) await dir.create(recursive: true);
-    return File('${dir.path}/${key.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}.json');
+    // Readable start, plus a checksum of the whole key so two Arabic searches never share a file.
+    var h = 0x811c9dc5;
+    for (final u in key.codeUnits) {
+      h = ((h ^ u) * 0x01000193) & 0xffffffff;
+    }
+    final safe = key.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_');
+    return File('${dir.path}/${safe.length > 80 ? safe.substring(0, 80) : safe}_${h.toRadixString(16)}.json');
   }
 
   Future<void> put(String key, Object? data) async {

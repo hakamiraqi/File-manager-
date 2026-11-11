@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../app/theme/app_colors.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/ui_kit.dart';
 import '../../auth/state/auth_provider.dart';
@@ -9,6 +10,7 @@ import 'book_screen.dart';
 import 'manage/library_manage_screen.dart';
 import 'library_map_screen.dart';
 import '../data/library_map_cache.dart';
+import '../../../core/storage/offline_cache.dart';
 import 'library_widgets.dart';
 import 'my_loans_screen.dart';
 
@@ -66,17 +68,91 @@ class _LibraryScreenState extends State<LibraryScreen> {
         page: _books.page + 1,
       );
       final meta = r['meta'] as Map;
-      _books.items.addAll((r['data'] as List).cast<Map<String, dynamic>>());
+      _offline = r['_offline'] == true;
+      _books.items.addAll((r['data'] as List).map((e) => Map<String, dynamic>.from(e as Map)));
       _books.page = (meta['current_page'] as num).toInt();
       _books.lastPage = (meta['last_page'] as num).toInt();
       _total = (meta['total'] as num).toInt();
-      if (_books.page == 1) _sections = (r['sections'] as List).cast<Map<String, dynamic>>();
+      if (_books.page == 1) _sections = (r['sections'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final plain = _search.text.trim().isEmpty && _sectionId == null && !_availableOnly && _sort != 'new';
+      if (plain && _books.page == 1 && !_offline) _saveCatalogue(r);
     } catch (e) {
-      _books.error = e.toString();
-      if (mounted) context.toastError(e);
+      if (reset && OfflineCache.isOffline(e) && await _fromCatalogue()) {
+        _offline = true;
+      } else {
+        _books.error = e.toString();
+        if (mounted) context.toastError(e);
+      }
     } finally {
       if (mounted) setState(() => _books.loading = false);
     }
+  }
+
+  /// Shown from what is saved on the device (no internet).
+  bool _offline = false;
+
+  /// The whole catalogue kept on the device (2026-11-11, by request), so the library opens,
+  /// searches and filters without internet. Refreshed at most every 6 hours.
+  Future<void> _saveCatalogue(Map<String, dynamic> first) async {
+    final saved = await OfflineCache.instance.get('library_catalogue');
+    if (saved is Map && DateTime.now().difference(DateTime.tryParse('${saved['at']}') ?? DateTime(2000)).inHours < 6) return;
+    try {
+      final api = SiteApi.instance;
+      final all = [...(first['data'] as List)];
+      final last = ((first['meta'] as Map)['last_page'] as num).toInt();
+      for (var p = 2; p <= last && p <= 200; p++) {
+        all.addAll((await api.books(page: p))['data'] as List);
+      }
+      // The sections, as a tree: each one's parent, name and own sub-sections page.
+      final tree = <String, dynamic>{};
+      final queue = <Map>[...(first['sections'] as List).cast<Map>()];
+      for (final s in queue) {
+        tree['${s['id']}'] = {'parent': null, ...s};
+      }
+      while (queue.isNotEmpty) {
+        final s = queue.removeAt(0);
+        final r = await api.books(section: s['id'] as int);
+        for (final c in (r['sections'] as List).cast<Map>()) {
+          tree['${c['id']}'] = {'parent': s['id'], ...c};
+          queue.add(c);
+        }
+      }
+      await OfflineCache.instance.put('library_catalogue', {'at': DateTime.now().toIso8601String(), 'data': all, 'tree': tree});
+    } catch (_) {}
+  }
+
+  /// The saved catalogue, searched and filtered here.
+  Future<bool> _fromCatalogue() async {
+    final saved = await OfflineCache.instance.get('library_catalogue');
+    if (saved is! Map) return false;
+    final tree = Map<String, dynamic>.from(saved['tree'] as Map);
+    final current = _sectionId;
+    Set<int>? within;
+    if (current != null) {
+      within = {current};
+      var grew = true;
+      while (grew) {
+        grew = false;
+        for (final e in tree.entries) {
+          final parent = (e.value as Map)['parent'];
+          if (parent != null && within.contains(parent) && within.add(int.parse(e.key))) grew = true;
+        }
+      }
+    }
+    final q = _search.text.trim().toLowerCase();
+    var list = ((saved['data'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).where((b) {
+      if (within != null && !within.contains((b['section'] as Map?)?['id'])) return false;
+      if (_availableOnly && ((b['available_count'] as num?) ?? 0) == 0) return false;
+      if (q.isEmpty) return true;
+      return '${b['title']} ${b['authors'] ?? ''} ${b['isbn'] ?? ''}'.toLowerCase().contains(q);
+    }).toList();
+    if (_sort == 'new') list.sort((a, b) => ((b['id'] as num?) ?? 0).compareTo((a['id'] as num?) ?? 0));
+    _books.items.addAll(list);
+    _books.page = 1;
+    _books.lastPage = 1;
+    _total = list.length;
+    _sections = tree.values.map((e) => Map<String, dynamic>.from(e as Map)).where((s) => s['parent'] == current).toList();
+    return true;
   }
 
   void _openSection(Map<String, dynamic> s) {
@@ -161,7 +237,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     },
                   ),
                   const SizedBox(width: 10),
-                  Center(child: Text(context.l('$_total كتاب', '$_total books'), style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant))),
+                  Center(
+                    child: Text(
+                      _offline ? context.l('$_total كتاب · بدون إنترنت (المحفوظ على الجهاز)', '$_total books · offline (saved on this device)') : context.l('$_total كتاب', '$_total books'),
+                      style: TextStyle(color: _offline ? AppColors.warning : Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                  ),
                 ]),
               ),
             ),
