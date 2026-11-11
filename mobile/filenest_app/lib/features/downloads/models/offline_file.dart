@@ -44,6 +44,16 @@ class OfflineFileRecord {
     );
   }
 
+  OfflineFileRecord withPath(String path) => OfflineFileRecord(
+        fileId: fileId,
+        name: name,
+        localPath: path,
+        size: size,
+        mimeType: mimeType,
+        downloadedAt: downloadedAt,
+        quizQuestions: quizQuestions,
+      );
+
   factory OfflineFileRecord.fromJson(Map<String, dynamic> json) {
     return OfflineFileRecord(
       fileId: json['file_id'] as int,

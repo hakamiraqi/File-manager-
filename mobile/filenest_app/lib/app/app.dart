@@ -20,7 +20,8 @@ class FileNestApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..bootstrap()),
-        ChangeNotifierProvider(create: (_) => DownloadsProvider()),
+        // Loaded at start, so every list knows at once which files are on the device.
+        ChangeNotifierProvider(create: (_) => DownloadsProvider()..load()),
         ChangeNotifierProvider(create: (_) => LocaleProvider()..bootstrap()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()..bootstrap()),
         ChangeNotifierProvider(create: (_) => BadgesProvider()),

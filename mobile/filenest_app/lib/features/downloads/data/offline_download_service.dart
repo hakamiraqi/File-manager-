@@ -283,7 +283,15 @@ class OfflineDownloadService {
 
       final raw = await file.readAsString();
       final decoded = jsonDecode(raw) as List;
-      return decoded.map((e) => OfflineFileRecord.fromJson(e as Map<String, dynamic>)).toList();
+      // The app's folder can move when the app is updated (iPhone gives it a new path), so a
+      // saved file is looked up by its name in today's folder (2026-11-11).
+      final dir = (await _filesDirectory()).path;
+      return decoded.map((e) {
+        final r = OfflineFileRecord.fromJson(e as Map<String, dynamic>);
+        if (File(r.localPath).existsSync()) return r;
+        final moved = '$dir/${r.localPath.split(RegExp(r'[\\/]')).last}';
+        return File(moved).existsSync() ? r.withPath(moved) : r;
+      }).toList();
     } catch (_) {
       // A corrupt or unreadable manifest just means "nothing downloaded
       // yet" instead of crashing the Downloads tab.
