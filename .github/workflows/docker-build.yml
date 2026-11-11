@@ -54,6 +54,8 @@ jobs:
           php artisan key:generate
           npm ci --no-audit --no-fund && npx vite build
       - name: Text recognition tools (for the real-engine OCR test)
+        timeout-minutes: 6
+        continue-on-error: true
         # Retried, and not fatal: when Ubuntu's mirrors are unreachable the real-engine OCR tests
         # skip themselves instead of blocking every other test.
         run: |
