@@ -54,6 +54,13 @@ jobs:
           php artisan key:generate
           npm ci --no-audit --no-fund && npx vite build
       - name: Text recognition tools (for the real-engine OCR test)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ara poppler-utils >/dev/null
+        # Retried, and not fatal: when Ubuntu's mirrors are unreachable the real-engine OCR tests
+        # skip themselves instead of blocking every other test.
+        run: |
+          for i in 1 2 3; do
+            sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ara poppler-utils >/dev/null && exit 0
+            echo "apt attempt $i failed"; sleep 20
+          done
+          echo "::warning::Tesseract could not be installed; the real-engine OCR tests will be skipped.
       - name: Guest landing and smoke tests
         run: php artisan test --filter='GuestLandingTest|Thesis|ExampleTest|AssignedFoldersTest|GoldenPathTest|Library|StaffAnalytics|OfflineActivation|ProfileAvatar|ProfileTest|SavedItems|ActivityLogPage|UserStatus|LanguagesTest|NotificationsTest|PublicSiteTest|MobileFeaturesApiTest|OcrTest|OfflineExportTest|ThumbnailTest|QariTrialTest'
