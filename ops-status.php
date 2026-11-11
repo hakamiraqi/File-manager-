@@ -1,8 +1,4 @@
 <?php
-foreach (\App\Models\File::where('ocr_status','failed')->get(['id','size','ocr_error','ocr_attempts']) as $f) { echo 'FAILED: '.$f->id.' '.round($f->size/1048576).'MB attempts='.$f->ocr_attempts.' '.$f->ocr_error."\n"; }
-\App\Models\Setting::setMany(['ocr_all_day_days' => '5', 'ocr_timeout_minutes' => '10']);
-echo 'OCR SETTINGS NOW: all_day='.\App\Models\Setting::get('ocr_all_day_days').' timeout='.\App\Models\Setting::get('ocr_timeout_minutes')."\n";
-
 // Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
 // Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
