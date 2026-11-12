@@ -99,6 +99,7 @@ class CoverFinder
         $v = mb_strtolower($v);
         $v = preg_replace('/[\x{064B}-\x{0652}\x{0640}]/u', '', $v);
         $v = strtr($v, ['أ' => 'ا', 'إ' => 'ا', 'آ' => 'ا', 'ى' => 'ي', 'ة' => 'ه']);
+        $v = preg_replace("/['’`ʼ]/u", '', $v); // Gray's = Grays
         $v = preg_replace('/[^\p{L}\p{N}]+/u', ' ', $v);
         $v = preg_replace('/^(the|a|an|ال)\s+/u', '', trim($v));
 
