@@ -1,4 +1,6 @@
 import 'dart:io';
+import '../../../core/widgets/ui_kit.dart';
+import '../../pdf_tools/presentation/local_pdf_tools_screen.dart';
 
 import 'package:flutter/material.dart';
 
@@ -33,6 +35,23 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => context.read<DownloadsProvider>().load());
   }
 
+  /// The on-device PDF tools work offline, so they are offered here too (2026-11-12).
+  Widget _pdfToolsTile(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+        child: Material(
+          color: Theme.of(context).colorScheme.primary.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          child: ListTile(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            leading: const Icon(Icons.picture_as_pdf_rounded),
+            title: Text(context.l('أدوات PDF بدون إنترنت', 'PDF tools, offline')),
+            subtitle: Text(context.l('دمج، تنظيم، تقسيم، تدوير، صور إلى PDF', 'Merge, organise, split, rotate, images to PDF')),
+            trailing: const Icon(Icons.chevron_left_rounded),
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LocalPdfToolsScreen())),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final downloads = context.watch<DownloadsProvider>();
@@ -44,7 +63,8 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
     if (downloads.items.isEmpty) {
       return ListView(
         children: [
-          const SizedBox(height: 80),
+          _pdfToolsTile(context),
+          const SizedBox(height: 60),
           EmptyState(
             icon: Icons.download_for_offline_outlined,
             message: context.tr('downloads.empty'),
@@ -55,6 +75,7 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
 
     return Column(
       children: [
+        _pdfToolsTile(context),
         if (downloads.pendingAnswerCount > 0)
           Container(
             width: double.infinity,

@@ -9,6 +9,7 @@ import '../../features/auth/state/auth_provider.dart';
 import '../../features/contact/presentation/contact_screen.dart';
 import '../../features/lectures/presentation/lectures_screen.dart';
 import '../../features/library/data/library_manage_api.dart';
+import '../../features/pdf_tools/presentation/local_pdf_tools_screen.dart';
 import '../../features/library/presentation/library_map_screen.dart';
 import '../../features/library/presentation/my_loans_screen.dart';
 import '../../features/playlists/presentation/playlists_screen.dart';
@@ -63,9 +64,12 @@ List<NavDestinationItem> buildSecondaryDestinations(BuildContext context) {
     NavDestinationItem(
       icon: Icons.build_circle_outlined,
       label: context.l('أدوات PDF', 'PDF tools'),
-      onTap: () => push(LibraryMapScreen(
-        title: context.l('أدوات PDF', 'PDF tools'),
-        link: () async => (await LibraryManageApi.instance.webLink('pdf-tools')).path,
+      // On the device first (works without internet); the full server tools from there.
+      onTap: () => push(LocalPdfToolsScreen(
+        onOpenServerTools: () => push(LibraryMapScreen(
+          title: context.l('أدوات PDF', 'PDF tools'),
+          link: () async => (await LibraryManageApi.instance.webLink('pdf-tools')).path,
+        )),
       )),
     ),
     NavDestinationItem(
