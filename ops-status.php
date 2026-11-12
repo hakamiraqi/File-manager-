@@ -1,19 +1,28 @@
 <?php
-// One-off check of the office editor: the document server fetches a real file through the
-// signed link and converts it (no data is changed).
+// Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
+// Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
-use Illuminate\Support\Facades\Http;
-$office = app(App\Services\Office\OnlyOffice::class);
-echo 'ENABLED: '.json_encode($office->enabled())."\n";
-echo 'HEALTH: '.Http::timeout(20)->get(config('services.onlyoffice.internal_url').'/healthcheck')->body()."\n";
-foreach (['docx', 'xlsx', 'pptx'] as $ext) {
-    $f = File::where('extension', $ext)->where('size', '<', 5e6)->first();
-    if (! $f) { echo "$ext: none\n"; continue; }
-    $cfg = $office->config($f, $f->user, 'ar');
-    $req = ['async' => false, 'filetype' => $ext, 'key' => 'chk-'.$f->id.'-'.time(), 'outputtype' => 'pdf', 'title' => 'x.'.$ext, 'url' => $cfg['document']['url']];
-    $req['token'] = $office->sign($req);
-    $r = Http::timeout(120)->acceptJson()->post(config('services.onlyoffice.internal_url').'/ConvertService.ashx', $req);
-    $j = $r->json() ?? [];
-    $pdf = isset($j['fileUrl']) ? Http::timeout(60)->get($office->internalise($j['fileUrl'])) : null;
-    echo "$ext #{$f->id}: HTTP ".$r->status().' end='.json_encode($j['endConvert'] ?? null).' error='.json_encode($j['error'] ?? null).' pdf='.($pdf ? $pdf->status().' '.strlen($pdf->body()).'B '.substr($pdf->body(), 0, 5) : '-')."\n";
-}
+use App\Models\Folder;
+use Illuminate\Support\Facades\DB;
+$root = Folder::where('name', 'like', 'المكتبة الإلكترونية (الرقمية)%')->whereNull('parent_id')->first();
+$ids = [$root->id]; $frontier = [$root->id];
+while ($frontier) { $frontier = Folder::whereIn('parent_id', $frontier)->pluck('id')->all(); $ids = array_merge($ids, $frontier); }
+$q = fn () => File::whereIn('folder_id', $ids);
+echo 'FILES: '.$q()->count()."\n";
+echo 'TEXT INDEXED: '.$q()->whereNotNull('content_indexed_at')->count()."\n";
+echo 'WITH TEXT: '.$q()->whereRaw('length(content_text) > 100')->count()."\n";
+echo 'OCR DONE LAST HOUR: '.$q()->where('ocr_status', 'done')->where('updated_at', '>=', now()->subHour())->count()."\n";
+echo 'OCR: '.json_encode($q()->selectRaw('coalesce(ocr_status, "none") s, count(*) n')->groupBy('s')->pluck('n', 's'))."\n";
+echo 'JOBS WAITING: '.DB::table('jobs')->count().'  FAILED: '.DB::table('failed_jobs')->count()."\n";
+echo 'APP TIME: '.now()->toDateTimeString().' '.config('app.timezone')."\n";
+$s = app(App\Services\Ocr\OcrSettings::class)->all();
+echo 'OCR LAST: '.json_encode(DB::table('ocr_load_samples')->latest('id')->limit(4)->get(['state','reason','processed','cpu','created_at']))."
+";
+$p = $q()->where('ocr_status', 'processing')->first(['id','extension','size','updated_at','ocr_attempts']);
+echo 'PROCESSING: '.json_encode($p)."
+";
+echo 'PENDING SIZE MB: '.round($q()->where('ocr_status', 'pending')->sum('size') / 1e6).'  BY TYPE: '.json_encode($q()->where('ocr_status', 'pending')->selectRaw('extension, count(*) n')->groupBy('extension')->pluck('n', 'extension'))."
+";
+echo 'DONE DETAIL: '.json_encode($q()->where('ocr_status', 'done')->orderByDesc('ocr_done_at')->limit(5)->get(['id', 'size', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error'])->map->only(['id', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error']))."\n";
+echo 'DONE ALL: '.$q()->where('ocr_status', 'done')->count().' FAILED: '.$q()->where('ocr_status', 'failed')->count()."
+";
