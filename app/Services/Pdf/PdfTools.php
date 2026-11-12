@@ -754,6 +754,17 @@ class PdfTools
             $ny0 = max($y0, $ny0);
             $nx1 = min($x1, $nx1);
             $ny1 = min($y1, $ny1);
+            if ($auto) {
+                // A page with one short line still keeps a readable frame around it.
+                foreach ([[&$nx0, &$nx1, $x0, $x1], [&$ny0, &$ny1, $y0, $y1]] as [&$a, &$b, $lo, $hi]) {
+                    if ($b - $a < 72) {
+                        $mid = ($a + $b) / 2;
+                        $a = max($lo, $mid - 36);
+                        $b = min($hi, $mid + 36);
+                    }
+                }
+                unset($a, $b);
+            }
             if ($nx1 - $nx0 < 36 || $ny1 - $ny0 < 36) {
                 throw new PdfToolException("الهوامش أكبر من الصفحة {$n}.");
             }
