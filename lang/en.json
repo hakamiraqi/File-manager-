@@ -424,5 +424,10 @@
     "player.comments": "Comments",
     "player.at_time": "At :time",
     "player.anchor_current_time": "Pin to current time",
-    "player.no_comments_yet": "No comments yet. Be the first."
+    "player.no_comments_yet": "No comments yet. Be the first.",
+    "saved.kind_video": "Videos",
+    "saved.kind_image": "Images",
+    "saved.kind_audio": "Audio",
+    "saved.kind_document": "Documents",
+    "saved.kind_other": "Other"
 }

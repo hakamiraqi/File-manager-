@@ -424,5 +424,10 @@
     "player.comments": "التعليقات",
     "player.at_time": "عند :time",
     "player.anchor_current_time": "ربط بالوقت الحالي",
-    "player.no_comments_yet": "لا توجد تعليقات بعد. كن أول من يعلّق."
+    "player.no_comments_yet": "لا توجد تعليقات بعد. كن أول من يعلّق.",
+    "saved.kind_video": "فيديو",
+    "saved.kind_image": "صور",
+    "saved.kind_audio": "صوت",
+    "saved.kind_document": "مستندات",
+    "saved.kind_other": "أخرى"
 }

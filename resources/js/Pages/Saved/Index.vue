@@ -10,6 +10,7 @@ import { useTrans } from '@/Composables/useTrans';
 import {
     BookmarkIcon, ArrowDownTrayIcon, FolderIcon, MagnifyingGlassIcon, Squares2X2Icon, ListBulletIcon,
     XMarkIcon, TrashIcon, DocumentIcon, ArrowTopRightOnSquareIcon,
+    FilmIcon, PhotoIcon, MusicalNoteIcon, DocumentTextIcon, Squares2X2Icon as AllIcon, CubeIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -34,6 +35,7 @@ onMounted(() => {
 });
 function setTab(key) {
     tab.value = key;
+    kind.value = 'all';
     history.replaceState(history.state, '', key === 'downloads' ? '#downloads' : location.pathname);
 }
 function setView(v) {
@@ -43,17 +45,44 @@ function setView(v) {
 
 // Unsaving on this page hides the tile at once, like Instagram.
 const savedRows = computed(() => props.saved.filter((r) => isSaved(r.type, r.item.id)));
+
+// One filter for both tabs: by what the thing is (video, image, audio, document, other, folder).
+const DOC_EXT = /\.(pdf|docx?|odt|rtf|txt|md|pptx?|odp|xlsx?|ods|csv|epub)$/i;
+function category(r) {
+    if (r.type === 'folder') return 'folder';
+    const mime = (r.item.mime_type || '').toLowerCase();
+    const name = r.item.name || '';
+    if (mime.startsWith('video/') || /\.(mp4|mkv|webm|mov|avi|m4v)$/i.test(name)) return 'video';
+    if (mime.startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|bmp|svg)$/i.test(name)) return 'image';
+    if (mime.startsWith('audio/') || /\.(mp3|m4a|wav|ogg|aac|flac|opus)$/i.test(name)) return 'audio';
+    if (mime.startsWith('text/') || /pdf|word|officedocument|opendocument|msexcel|powerpoint|epub|rtf/.test(mime) || DOC_EXT.test(name)) return 'document';
+    return 'other';
+}
+
+const tabRows = computed(() => (tab.value === 'saved' ? savedRows.value : props.downloads));
 const rows = computed(() => {
-    const list = tab.value === 'saved' ? savedRows.value : props.downloads;
     const needle = q.value.trim().toLowerCase();
-    return list.filter((r) => (kind.value === 'all' || r.type === kind.value) && (!needle || r.item.name?.toLowerCase().includes(needle)));
+    return tabRows.value.filter((r) => (kind.value === 'all' || category(r) === kind.value) && (!needle || r.item.name?.toLowerCase().includes(needle)));
 });
 const counts = computed(() => ({
     saved: savedRows.value.length,
     downloads: props.downloads.length,
-    files: (tab.value === 'saved' ? savedRows.value : props.downloads).filter((r) => r.type === 'file').length,
-    folders: savedRows.value.filter((r) => r.type === 'folder').length,
 }));
+const kindChips = computed(() => {
+    const n = { all: tabRows.value.length, video: 0, image: 0, audio: 0, document: 0, other: 0, folder: 0 };
+    for (const r of tabRows.value) n[category(r)]++;
+    return [
+        { key: 'all', label: t('saved.all', 'الكل'), icon: AllIcon },
+        { key: 'video', label: t('saved.kind_video', 'فيديو'), icon: FilmIcon },
+        { key: 'image', label: t('saved.kind_image', 'صور'), icon: PhotoIcon },
+        { key: 'audio', label: t('saved.kind_audio', 'صوت'), icon: MusicalNoteIcon },
+        { key: 'document', label: t('saved.kind_document', 'مستندات'), icon: DocumentTextIcon },
+        { key: 'other', label: t('saved.kind_other', 'أخرى'), icon: CubeIcon },
+        { key: 'folder', label: t('saved.folders', 'مجلدات'), icon: FolderIcon },
+    ]
+        .map((c) => ({ ...c, n: n[c.key] }))
+        .filter((c) => c.key === 'all' || c.n > 0 || c.key === kind.value);
+});
 const previewList = computed(() => rows.value.filter((r) => r.type === 'file').map((r) => r.item));
 
 function open(r) {
@@ -107,18 +136,6 @@ const nf = new Intl.NumberFormat('ar-IQ');
                         <MagnifyingGlassIcon class="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                         <input v-model="q" type="search" :placeholder="t('saved.search', 'ابحث بالاسم')" class="w-full rounded-xl border-gray-200 ps-9 text-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100" />
                     </div>
-                    <div v-if="tab === 'saved'" class="flex rounded-xl border border-gray-200 bg-white p-1 text-sm dark:border-gray-700 dark:bg-gray-800">
-                        <button
-                            v-for="k in [
-                                { key: 'all', label: t('saved.all', 'الكل') },
-                                { key: 'file', label: t('saved.files', 'ملفات') + ' ' + nf.format(counts.files) },
-                                { key: 'folder', label: t('saved.folders', 'مجلدات') + ' ' + nf.format(counts.folders) },
-                            ]"
-                            :key="k.key" type="button" @click="kind = k.key"
-                            class="rounded-lg px-3 py-1.5 font-medium"
-                            :class="kind === k.key ? 'bg-[var(--accent-600)] text-white' : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'"
-                        >{{ k.label }}</button>
-                    </div>
                     <div class="flex rounded-xl border border-gray-200 bg-white p-1 dark:border-gray-700 dark:bg-gray-800">
                         <button type="button" class="rounded-lg p-1.5" :class="view === 'grid' ? 'bg-gray-100 dark:bg-gray-700' : ''" :title="t('view.grid', 'شبكة')" @click="setView('grid')"><Squares2X2Icon class="h-5 w-5 text-gray-600 dark:text-gray-300" /></button>
                         <button type="button" class="rounded-lg p-1.5" :class="view === 'list' ? 'bg-gray-100 dark:bg-gray-700' : ''" :title="t('view.list', 'قائمة')" @click="setView('list')"><ListBulletIcon class="h-5 w-5 text-gray-600 dark:text-gray-300" /></button>
@@ -128,13 +145,28 @@ const nf = new Intl.NumberFormat('ar-IQ');
                     </button>
                 </div>
 
+                <!-- Filter by type, on both tabs -->
+                <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" style="scrollbar-width: none">
+                    <button
+                        v-for="c in kindChips" :key="c.key" type="button" @click="kind = c.key"
+                        class="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition"
+                        :class="kind === c.key
+                            ? 'border-[var(--accent-600)] bg-[var(--accent-600)] text-white shadow-sm'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'"
+                    >
+                        <component :is="c.icon" class="h-4 w-4" />
+                        {{ c.label }}
+                        <span class="rounded-full px-1.5 text-xs" :class="kind === c.key ? 'bg-white/25' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'">{{ nf.format(c.n) }}</span>
+                    </button>
+                </div>
+
                 <!-- Empty -->
                 <div v-if="!rows.length" class="flex flex-col items-center rounded-2xl border border-dashed border-gray-300 px-6 py-16 text-center dark:border-gray-700">
                     <span class="flex h-16 w-16 items-center justify-center rounded-full border-2 border-gray-300 text-gray-400 dark:border-gray-600">
                         <component :is="tab === 'saved' ? BookmarkIcon : ArrowDownTrayIcon" class="h-8 w-8" />
                     </span>
                     <h3 class="mt-4 text-lg font-semibold text-gray-800 dark:text-gray-100">
-                        {{ q ? t('saved.no_match', 'لا نتائج مطابقة') : tab === 'saved' ? t('saved.empty_title', 'احفظ ما تحتاج الرجوع إليه') : t('saved.empty_dl_title', 'لا توجد تنزيلات بعد') }}
+                        {{ q || kind !== 'all' ? t('saved.no_match', 'لا نتائج مطابقة') : tab === 'saved' ? t('saved.empty_title', 'احفظ ما تحتاج الرجوع إليه') : t('saved.empty_dl_title', 'لا توجد تنزيلات بعد') }}
                     </h3>
                     <p v-if="!q" class="mt-1 max-w-sm text-sm text-gray-500 dark:text-gray-400">
                         {{ tab === 'saved'
@@ -156,7 +188,7 @@ const nf = new Intl.NumberFormat('ar-IQ');
                             <FileThumbnail v-else :file="r.item" :src="route('files.thumbnail', r.item.id)" icon-class="h-14 w-14" />
                         </div>
                         <div class="p-2.5">
-                            <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100" :title="r.item.name">{{ r.item.name }}</p>
+                            <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100" :title="r.item.name"><bdi>{{ r.item.name }}</bdi></p>
                             <p class="mt-0.5 truncate text-xs text-gray-400">
                                 <template v-if="tab === 'downloads'">{{ fmt(r.downloaded_at) }}<template v-if="r.times > 1"> · {{ t('saved.times', 'مرات') }} {{ nf.format(r.times) }}</template></template>
                                 <template v-else>{{ r.type === 'folder' ? t('saved.folder', 'مجلد') : r.item.human_size }} · {{ fmt(r.saved_at) }}</template>
@@ -182,7 +214,7 @@ const nf = new Intl.NumberFormat('ar-IQ');
                             <FileThumbnail v-else :file="r.item" :src="route('files.thumbnail', r.item.id)" icon-class="h-7 w-7" />
                         </div>
                         <div class="min-w-0 flex-1">
-                            <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ r.item.name }}</p>
+                            <p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100"><bdi>{{ r.item.name }}</bdi></p>
                             <p class="truncate text-xs text-gray-400">
                                 <template v-if="tab === 'downloads'">{{ t('saved.downloaded_on', 'نُزّل في') }} {{ fmt(r.downloaded_at) }}<template v-if="r.times > 1"> · {{ t('saved.times', 'مرات') }} {{ nf.format(r.times) }}</template></template>
                                 <template v-else>{{ r.type === 'folder' ? t('saved.folder', 'مجلد') : r.item.human_size }} · {{ t('saved.saved_on', 'حُفظ في') }} {{ fmt(r.saved_at) }}</template>
