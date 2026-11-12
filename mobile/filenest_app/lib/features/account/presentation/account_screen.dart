@@ -24,7 +24,6 @@ class _AccountScreenState extends State<AccountScreen> {
 
   bool _savingProfile = false;
   bool _savingPassword = false;
-  bool _savingLocale = false;
   String? _profileError;
   String? _passwordError;
 
@@ -86,18 +85,6 @@ class _AccountScreenState extends State<AccountScreen> {
       setState(() => _passwordError = ApiClient.messageFor(e));
     } finally {
       if (mounted) setState(() => _savingPassword = false);
-    }
-  }
-
-  Future<void> _changeLocale(String locale) async {
-    setState(() => _savingLocale = true);
-    try {
-      await _profileService.updatePreferences(locale: locale);
-      await context.read<AuthProvider>().refreshProfile();
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ApiClient.messageFor(e))));
-    } finally {
-      if (mounted) setState(() => _savingLocale = false);
     }
   }
 
@@ -168,19 +155,6 @@ class _AccountScreenState extends State<AccountScreen> {
             ],
             const SizedBox(height: 12),
             FilledButton(onPressed: _savingProfile ? null : _saveProfile, child: Text(context.tr('action.save'))),
-
-            const Divider(height: 40),
-
-            Text(context.tr('settings.language'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            SegmentedButton<String>(
-              segments: [
-                ButtonSegment(value: 'ar', label: Text(context.tr('settings.language_ar'))),
-                const ButtonSegment(value: 'en', label: Text('English')),
-              ],
-              selected: {user?.locale ?? 'ar'},
-              onSelectionChanged: _savingLocale ? null : (selection) => _changeLocale(selection.first),
-            ),
 
             const Divider(height: 40),
 

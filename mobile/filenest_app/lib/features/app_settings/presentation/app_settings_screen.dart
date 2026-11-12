@@ -4,12 +4,28 @@ import 'package:provider/provider.dart';
 import '../../../app/state/theme_provider.dart';
 import '../../../core/i18n/app_strings.dart';
 import '../../../core/i18n/locale_provider.dart';
+import '../../account/data/profile_service.dart';
+import '../../auth/state/auth_provider.dart';
 
 /// Lets the user switch the app's display language and force light/dark
 /// instead of following the OS — the mobile counterpart of the web app's
 /// Profile → "تفضيلات الواجهة" section and its theme toggle.
 class AppSettingsScreen extends StatelessWidget {
   const AppSettingsScreen({super.key});
+
+  /// The only language switch (2026-11-12; it was also under «الحساب»): changes the app at
+  /// once and, when signed in, saves it on the account too, so emails and notifications follow.
+  static Future<void> _setLanguage(BuildContext context, String code) async {
+    final auth = context.read<AuthProvider>();
+    await context.read<LocaleProvider>().setLocale(code);
+    if (auth.user == null) return;
+    try {
+      await ProfileService().updatePreferences(locale: code);
+      await auth.refreshProfile();
+    } catch (_) {
+      // Offline: the app still switches; the account catches up next time it's chosen.
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,13 +41,13 @@ class AppSettingsScreen extends StatelessWidget {
             title: Text(context.tr('settings.language_ar')),
             value: 'ar',
             groupValue: localeProvider.locale.languageCode,
-            onChanged: (value) => context.read<LocaleProvider>().setLocale(value!),
+            onChanged: (value) => _setLanguage(context, value!),
           ),
           RadioListTile<String>(
             title: Text(context.tr('settings.language_en')),
             value: 'en',
             groupValue: localeProvider.locale.languageCode,
-            onChanged: (value) => context.read<LocaleProvider>().setLocale(value!),
+            onChanged: (value) => _setLanguage(context, value!),
           ),
           const Divider(height: 32),
           _SectionHeader(title: context.tr('settings.theme')),
