@@ -18,17 +18,23 @@ $envFile = Join-Path $root 'app\.env'
 
 function Say($t) { Write-Host "`n== $t" -ForegroundColor Cyan }
 
+# Waits for the installer itself only: Start-Process -Wait also waits for everything it
+# started, and the prerequisites leave Erlang's epmd running, so it would never return.
+function Install([string]$exe, [string]$arguments, [int]$minutes = 40) {
+    $p = [Diagnostics.Process]::Start((Join-Path $here $exe), $arguments)
+    if (-not $p.WaitForExit($minutes * 60000)) { throw "$exe did not finish in $minutes minutes." }
+    if ($p.ExitCode -ne 0) { throw "$exe failed (code $($p.ExitCode))." }
+}
+
 $admin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $admin) { throw 'Run install-office.cmd as administrator (right click > Run as administrator).' }
 if (-not (Test-Path $envFile)) { throw "FileNest was not found next to this folder ($envFile). Put office-addon inside the FileNest folder and start FileNest once first." }
 
 Say 'Prerequisites (Erlang, RabbitMQ, PostgreSQL)'
-$p = Start-Process -FilePath (Join-Path $here 'onlyoffice-documentserver-prerequisites.exe') -ArgumentList '/SILENT', '/NORESTART' -Wait -PassThru
-if ($p.ExitCode -ne 0) { throw "The prerequisites installer failed (code $($p.ExitCode))." }
+Install 'onlyoffice-documentserver-prerequisites.exe' '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
 
 Say "ONLYOFFICE Docs (port $Port)"
-$p = Start-Process -FilePath (Join-Path $here 'onlyoffice-documentserver.exe') -ArgumentList '/SILENT', '/NORESTART', "/DS_PORT=$Port" -Wait -PassThru
-if ($p.ExitCode -ne 0) { throw "The ONLYOFFICE installer failed (code $($p.ExitCode))." }
+Install 'onlyoffice-documentserver.exe' "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /DS_PORT=$Port"
 
 $ds = Join-Path ${env:ProgramFiles} 'ONLYOFFICE\DocumentServer'
 $local = Join-Path $ds 'config\local.json'
