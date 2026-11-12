@@ -39,6 +39,13 @@ use Illuminate\Support\Facades\Route;
 | so every route below is safe to call from outside the browser.
 */
 
+// The office editor's own calls (no user session): fetch a file and send back the saved one.
+// Signed, short-lived links handed to it in the editor settings; the save also carries a JWT.
+Route::middleware('signed:relative')->prefix('office-link')->group(function () {
+    Route::get('/files/{file}/download', [\App\Http\Controllers\OfficeController::class, 'download'])->name('office.download');
+    Route::post('/files/{file}/callback', [\App\Http\Controllers\OfficeController::class, 'callback'])->name('office.callback');
+});
+
 Route::prefix('v1')->name('api.v1.')->group(function () {
     Route::middleware('throttle:api-auth')->group(function () {
         Route::post('/auth/register', [AuthController::class, 'register'])->name('auth.register');
@@ -155,6 +162,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::delete('/notifications/{notification}', [\App\Http\Controllers\Api\V1\MobileController::class, 'deleteNotification'])->name('notifications.destroy');
         Route::get('/saved', [\App\Http\Controllers\Api\V1\MobileController::class, 'saved'])->name('saved.index');
         Route::get('/lectures', [\App\Http\Controllers\LectureController::class, 'api'])->name('lectures.index');
+        Route::post('/files/new-document', [\App\Http\Controllers\OfficeController::class, 'create'])->name('files.new-document');
         Route::post('/saved/toggle', [\App\Http\Controllers\Api\V1\MobileController::class, 'toggleSaved'])->name('saved.toggle');
         Route::post('/saved/forget-download', [\App\Http\Controllers\Api\V1\MobileController::class, 'forgetDownload'])->name('saved.forget');
         Route::get('/library/mine', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mine'])->name('library.mine');

@@ -1611,5 +1611,15 @@
     "pdf.next": "Next",
     "pdf.no_hits": "No results",
     "pdf.find": "Find",
-    "pdf.no_text": "This file is images with no text yet; it becomes copyable and searchable once text recognition reads it."
+    "pdf.no_text": "This file is images with no text yet; it becomes copyable and searchable once text recognition reads it.",
+    "office.new": "New document",
+    "office.new_word": "Word document",
+    "office.new_excel": "Excel sheet",
+    "office.new_ppt": "PowerPoint presentation",
+    "office.open": "Open in the editor",
+    "office.edit": "Edit",
+    "office.editing": "Editing · saves automatically",
+    "office.viewing": "View only",
+    "office.loading": "Opening the editor…",
+    "office.unavailable": "The editor isn't available right now. You can download the file, or try again shortly."
 }

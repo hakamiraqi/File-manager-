@@ -26,6 +26,8 @@ import '../data/file_repository.dart';
 import 'widgets/folder_picker_dialog.dart';
 import 'widgets/item_tiles.dart';
 import 'widgets/upload_fab.dart';
+import '../../library/data/library_manage_api.dart';
+import '../../library/presentation/library_map_screen.dart';
 
 /// The file browser: search, breadcrumbs, folder/file CRUD, upload, and a
 /// quick ephemeral preview-download on tap.
@@ -629,6 +631,50 @@ class _BrowseScreenState extends State<BrowseScreen> {
     }
   }
 
+  static const _officeExtensions = {'docx', 'odt', 'rtf', 'txt', 'doc', 'docm', 'dotx', 'xlsx', 'ods', 'csv', 'xls', 'xlsm', 'pptx', 'odp', 'ppt', 'ppsx', 'pdf'};
+
+  bool _isOfficeFile(FileItem file) {
+    final dot = file.name.lastIndexOf('.');
+    return dot > 0 && _officeExtensions.contains(file.name.substring(dot + 1).toLowerCase());
+  }
+
+  /// Word / Excel / PowerPoint / PDF in the site's office editor, inside the app's web view.
+  void _openInEditor(int id, String name) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => LibraryMapScreen(title: name, link: () async => (await LibraryManageApi.instance.webLink('office', ids: [id])).path),
+    )).then((_) => _load());
+  }
+
+  Future<void> _newDocument() async {
+    final type = await showModalBottomSheet<String>(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (c) => SafeArea(
+        child: Wrap(children: [
+          ListTile(leading: const Icon(Icons.description_outlined, color: Color(0xFF2B579A)), title: Text(context.l('مستند Word', 'Word document')), onTap: () => Navigator.pop(c, 'docx')),
+          ListTile(leading: const Icon(Icons.grid_on_rounded, color: Color(0xFF217346)), title: Text(context.l('جدول Excel', 'Excel spreadsheet')), onTap: () => Navigator.pop(c, 'xlsx')),
+          ListTile(leading: const Icon(Icons.slideshow_rounded, color: Color(0xFFD24726)), title: Text(context.l('عرض PowerPoint', 'PowerPoint presentation')), onTap: () => Navigator.pop(c, 'pptx')),
+        ]),
+      ),
+    );
+    if (type == null || !mounted) return;
+    try {
+      final r = await ApiClient.instance.dio.post('/files/new-document', data: {'type': type, if (widget.folder?.id != null) 'folder_id': widget.folder!.id});
+      final f = (r.data as Map)['file'] as Map;
+      if (!mounted) return;
+      _openInEditor((f['id'] as num).toInt(), '${f['name']}');
+    } on DioException catch (e) {
+      if (!mounted) return;
+      if (e.response?.statusCode == 404) {
+        context.toast(context.l('المحرر المكتبي غير مفعّل على هذا الخادم.', 'The office editor is not enabled on this server.'));
+      } else {
+        _showError(e);
+      }
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
   void _showFileMenu(FileItem file) {
     showModalBottomSheet(
       context: context,
@@ -643,6 +689,11 @@ class _BrowseScreenState extends State<BrowseScreen> {
               file.isPlayableMedia ? _playMedia(file) : _previewFile(file);
             },
           ),
+          if (_isOfficeFile(file))
+            ListTile(leading: const Icon(Icons.edit_document), title: Text(context.l('فتح في المحرر', 'Open in editor')), onTap: () {
+              Navigator.of(sheetContext).pop();
+              _openInEditor(file.id, file.name);
+            }),
           ListTile(leading: const Icon(Icons.ios_share_rounded), title: Text(context.tr('action.share')), onTap: () {
             Navigator.of(sheetContext).pop();
             _shareFile(file);
@@ -721,6 +772,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       onUpload: _uploadFile,
       onUploadFolder: _uploadFolder,
       onUploadFromUrl: _uploadFromUrl,
+      onNewDocument: _newDocument,
     );
 
     return WillPopScope(

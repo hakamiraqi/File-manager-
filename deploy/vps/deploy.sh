@@ -18,6 +18,8 @@ if [ ! -f .env ]; then
         deploy/vps/env.example > .env
     echo "Created .env with fresh secrets."
 fi
+# The office editor's shared secret (added 2026-11-12; existing .env files get one once).
+grep -q '^ONLYOFFICE_JWT_SECRET=.\+' .env || { sed -i '/^ONLYOFFICE_JWT_SECRET=/d' .env; echo "ONLYOFFICE_JWT_SECRET=$(rand 40)" >> .env; echo "Added the office editor secret to .env."; }
 mkdir -p public/downloads
 # The web and app containers read this folder as another user, so it must stay world-readable.
 chmod 755 public public/downloads
@@ -49,6 +51,9 @@ until sudo docker exec filenest-app test -f storage/app/.seeded 2>/dev/null; do
 done
 # Workers keep old code in memory; restart them on every deploy.
 compose restart queue scheduler >/dev/null
+
+# The office editor runs on its own: a failure here is reported, never stops the deploy.
+compose --profile office up -d onlyoffice || echo "Office editor (ONLYOFFICE) did not start; the site works without it." >&2
 
 if [ "$first_run" = yes ] || [ ! -f "$HOME/filenest-admin-password.txt" ]; then
     pw="$(rand 16)"

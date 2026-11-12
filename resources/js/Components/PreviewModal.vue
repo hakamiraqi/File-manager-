@@ -1,6 +1,6 @@
 <script setup>
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount } from 'vue';
-import { useForm, router, usePage } from '@inertiajs/vue3';
+import { useForm, router, usePage, Link } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import SaveButton from '@/Components/SaveButton.vue';
 import { defineAsyncComponent } from 'vue';
@@ -29,6 +29,7 @@ import {
     PaperAirplaneIcon,
     SparklesIcon,
     LightBulbIcon,
+    PencilSquareIcon,
 } from '@heroicons/vue/24/outline';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
@@ -57,6 +58,8 @@ const interactiveVideoEnabled = computed(() => page.props.appSettings?.interacti
 
 // Shown as PDF converted on the server by LibreOffice (FileController::documentPreview).
 const OFFICE_EXTENSIONS = ['doc', 'docx', 'odt', 'rtf', 'ppt', 'pptx', 'odp', 'xls', 'xlsx', 'ods'];
+const OFFICE_EDIT_EXT = ['docx', 'odt', 'rtf', 'txt', 'doc', 'docm', 'dotx', 'xlsx', 'ods', 'csv', 'xls', 'xlsm', 'pptx', 'odp', 'ppt', 'ppsx', 'pdf'];
+const editableInOffice = (f) => !!page.props.appSettings?.officeEditor && OFFICE_EDIT_EXT.includes((f?.extension || f?.name?.split('.').pop() || '').toLowerCase());
 const officePreviewEnabled = computed(() => page.props.appSettings?.officePreviewEnabled ?? false);
 
 function kind(file) {
@@ -813,6 +816,13 @@ onBeforeUnmount(() => {
                         <QueueListIcon class="h-5 w-5 dark:text-gray-300" />
                     </button>
                     <SaveButton v-if="currentUserId" type="file" :id="file.id" class="!rounded-md !p-2" />
+                    <Link
+                        v-if="currentUserId && editableInOffice(file)"
+                        :href="route('office.edit', file.id)"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-600)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--accent-700)]"
+                    >
+                        <PencilSquareIcon class="h-4 w-4" /> <span class="hidden sm:inline">{{ t('office.edit', 'تحرير') }}</span>
+                    </Link>
                     <a :href="route('files.download', file.id)" class="rounded-md p-2 hover:bg-gray-100 dark:hover:bg-gray-700" :title="t('action.download', 'تنزيل')">
                         <ArrowDownTrayIcon class="h-5 w-5 dark:text-gray-300" />
                     </a>

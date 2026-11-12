@@ -1611,5 +1611,15 @@
     "pdf.next": "التالي",
     "pdf.no_hits": "لا نتائج",
     "pdf.find": "بحث",
-    "pdf.no_text": "هذا الملف صور بلا نص بعد؛ يصبح قابلاً للنسخ والبحث بعد أن يقرأه التعرف على النصوص."
+    "pdf.no_text": "هذا الملف صور بلا نص بعد؛ يصبح قابلاً للنسخ والبحث بعد أن يقرأه التعرف على النصوص.",
+    "office.new": "مستند جديد",
+    "office.new_word": "مستند Word",
+    "office.new_excel": "جدول Excel",
+    "office.new_ppt": "عرض PowerPoint",
+    "office.open": "فتح في المحرر",
+    "office.edit": "تحرير",
+    "office.editing": "تحرير · يُحفظ تلقائياً",
+    "office.viewing": "عرض فقط",
+    "office.loading": "جارٍ فتح المحرر…",
+    "office.unavailable": "المحرر غير متاح الآن. يمكنك تنزيل الملف وفتحه، أو المحاولة بعد قليل."
 }

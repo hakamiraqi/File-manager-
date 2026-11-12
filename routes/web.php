@@ -110,6 +110,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/saved', [\App\Http\Controllers\SavedController::class, 'index'])->name('saved.index');
     Route::get('/lectures', [\App\Http\Controllers\LectureController::class, 'index'])->name('lectures.index');
+    // The office editor (/office itself is the editor's own address on this site).
+    Route::get('/editor/files/{file}', [\App\Http\Controllers\OfficeController::class, 'edit'])->name('office.edit');
+    Route::post('/editor/new', [\App\Http\Controllers\OfficeController::class, 'create'])->name('office.create');
     Route::post('/saved/toggle', [\App\Http\Controllers\SavedController::class, 'toggle'])->name('saved.toggle');
     Route::delete('/saved/downloads', [\App\Http\Controllers\SavedController::class, 'forgetDownload'])->name('saved.downloads.forget');
     Route::get('/playlists', [PlaylistController::class, 'index'])->name('playlists.index');

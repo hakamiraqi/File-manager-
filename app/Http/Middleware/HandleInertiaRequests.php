@@ -94,6 +94,7 @@ class HandleInertiaRequests extends Middleware
                 'remoteUploadEnabled' => (bool) ($settings['remote_upload_enabled'] ?? false),
                 // Word/PowerPoint/Excel previews need LibreOffice on the server (the VPS image has it).
                 'officePreviewEnabled' => app(\App\Services\LibreOfficeConverter::class)->available(),
+                'officeEditor' => app(\App\Services\Office\OnlyOffice::class)->enabled(),
                 'interactiveVideoEnabled' => (bool) ($settings['interactive_video_enabled'] ?? false),
             ],
             'translations' => array_merge(

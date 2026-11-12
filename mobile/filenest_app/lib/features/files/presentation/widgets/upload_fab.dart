@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/i18n/app_strings.dart';
+import '../../../../core/widgets/ui_kit.dart';
 
 /// A minimal "speed dial" (new folder / upload folder / upload file / upload
 /// from URL) without pulling in an extra package just for this.
@@ -11,12 +12,14 @@ class UploadFab extends StatefulWidget {
     required this.onUpload,
     required this.onUploadFolder,
     required this.onUploadFromUrl,
+    this.onNewDocument,
   });
 
   final VoidCallback onNewFolder;
   final VoidCallback onUpload;
   final VoidCallback onUploadFolder;
   final VoidCallback onUploadFromUrl;
+  final VoidCallback? onNewDocument;
 
   @override
   State<UploadFab> createState() => _UploadFabState();
@@ -41,6 +44,18 @@ class _UploadFabState extends State<UploadFab> {
             label: Text(context.tr('folder.new')),
           ),
           const SizedBox(height: 12),
+          if (widget.onNewDocument != null) ...[
+            FloatingActionButton.extended(
+              heroTag: 'new-document',
+              onPressed: () {
+                setState(() => _open = false);
+                widget.onNewDocument!();
+              },
+              icon: const Icon(Icons.note_add_outlined),
+              label: Text(context.l('مستند جديد', 'New document')),
+            ),
+            const SizedBox(height: 12),
+          ],
           FloatingActionButton.extended(
             heroTag: 'upload-folder',
             onPressed: () {

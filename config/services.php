@@ -24,6 +24,17 @@ return [
         'magick' => env('OCR_MAGICK'),
     ],
 
+    // The office editor (ONLYOFFICE Docs). Off while no secret is set.
+    'onlyoffice' => [
+        'secret' => env('ONLYOFFICE_JWT_SECRET'),
+        // Where browsers load the editor from (a path on this site, or a full URL).
+        'public_url' => env('ONLYOFFICE_PUBLIC_URL', '/office'),
+        // How the editor reaches this site for the file and the save callback, and how this
+        // site reaches the editor to fetch the saved file (container names on the server).
+        'app_internal_url' => env('ONLYOFFICE_APP_INTERNAL_URL', 'http://filenest-web'),
+        'internal_url' => env('ONLYOFFICE_INTERNAL_URL', 'http://onlyoffice'),
+    ],
+
 
     'postmark' => [
         'key' => env('POSTMARK_API_KEY'),

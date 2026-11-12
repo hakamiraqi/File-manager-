@@ -81,9 +81,35 @@ services:
       - ../../public/downloads:/var/www/html/public/downloads:ro
     networks: [default, edge]
 
+  # The office editor (2026-11-12): ONLYOFFICE Docs Community, free, opens Word, Excel, PowerPoint
+  # and PDF files for editing in the site and the apps. Reached at /office through filenest-web, and
+  # reaches back to filenest-web for the file and to save it, every request signed with the shared
+  # secret. In its own profile so that a failed start never holds up the site's deploy.
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    container_name: filenest-onlyoffice
+    restart: unless-stopped
+    profiles: [office]
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:-}
+      JWT_HEADER: Authorization
+      # The files and the save callback are on filenest-web, a private address on this network.
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "false"
+    mem_limit: 5g
+    volumes:
+      - filenest_office_data:/var/www/onlyoffice/Data
+      - filenest_office_cache:/var/lib/onlyoffice
+    networks:
+      default:
+        aliases: [onlyoffice]
+
 volumes:
   filenest_db:
   filenest_storage:
+  filenest_office_data:
+  filenest_office_cache:
 
 networks:
   edge:

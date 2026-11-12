@@ -18,6 +18,8 @@ import { useTrans } from '@/Composables/useTrans';
 import {
     FolderIcon,
     FolderPlusIcon,
+    DocumentPlusIcon,
+    PencilSquareIcon,
     FolderArrowDownIcon,
     ArrowUpTrayIcon,
     LinkIcon,
@@ -94,6 +96,14 @@ function makeFolderInfoForm(folder) {
         folder_type: folder?.folder_type ?? 'files',
         ...Object.fromEntries(folderInfoFields.map((field) => [field, folder?.[field] ?? ''])),
     });
+}
+
+// The office editor (ONLYOFFICE on the server): open Word/Excel/PowerPoint/PDF files to edit, and new documents.
+const officeEditor = computed(() => !!page.props.appSettings?.officeEditor);
+const OFFICE_EXT = ['docx', 'odt', 'rtf', 'txt', 'doc', 'docm', 'dotx', 'xlsx', 'ods', 'csv', 'xls', 'xlsm', 'pptx', 'odp', 'ppt', 'ppsx', 'pdf'];
+const isOfficeFile = (f) => officeEditor.value && OFFICE_EXT.includes((f.extension || f.name?.split('.').pop() || '').toLowerCase());
+function newDocument(type) {
+    router.post(route('office.create'), { type, folder_id: props.currentFolder?.id ?? null });
 }
 
 const folderInfoForm = ref(makeFolderInfoForm(props.currentFolder));
@@ -672,6 +682,27 @@ function uploadFromUrl() {
                 >
                     <LinkIcon class="h-5 w-5" /> {{ t('action.upload_remote', 'رفع من رابط') }}
                 </button>
+                <Dropdown v-if="can.upload && officeEditor" align="right">
+                    <template #trigger>
+                        <button
+                            type="button"
+                            class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                        >
+                            <DocumentPlusIcon class="h-5 w-5" /> {{ t('office.new', 'مستند جديد') }}
+                        </button>
+                    </template>
+                    <template #content>
+                        <DropdownLink as="button" @click="newDocument('docx')">
+                            <span class="me-2 inline-flex h-5 w-5 items-center justify-center rounded bg-blue-600 text-[10px] font-bold text-white">W</span>{{ t('office.new_word', 'مستند Word') }}
+                        </DropdownLink>
+                        <DropdownLink as="button" @click="newDocument('xlsx')">
+                            <span class="me-2 inline-flex h-5 w-5 items-center justify-center rounded bg-emerald-600 text-[10px] font-bold text-white">X</span>{{ t('office.new_excel', 'جدول Excel') }}
+                        </DropdownLink>
+                        <DropdownLink as="button" @click="newDocument('pptx')">
+                            <span class="me-2 inline-flex h-5 w-5 items-center justify-center rounded bg-orange-600 text-[10px] font-bold text-white">P</span>{{ t('office.new_ppt', 'عرض PowerPoint') }}
+                        </DropdownLink>
+                    </template>
+                </Dropdown>
                 <input ref="fileInput" data-testid="upload-file-input" type="file" multiple class="hidden" @change="onFilesChosen" />
                 <input
                     ref="folderInput"
@@ -896,6 +927,9 @@ function uploadFromUrl() {
                                 </DropdownLink>
                                 <DropdownLink v-if="can.share" as="button" @click="shareTarget = { ...file, type: 'file' }">
                                     <ShareIcon class="me-2 inline h-4 w-4" /> {{ t('action.share', 'مشاركة') }}
+                                </DropdownLink>
+                                <DropdownLink v-if="isOfficeFile(file)" :href="route('office.edit', file.id)">
+                                    <PencilSquareIcon class="me-2 inline h-4 w-4" /> {{ t('office.open', 'فتح في المحرر') }}
                                 </DropdownLink>
                                 <DropdownLink v-if="isMediaFile(file)" as="button" @click="playlistTarget = { ...file, type: 'file' }">
                                     <QueueListIcon class="me-2 inline h-4 w-4" /> {{ t('action.add_to_playlist', 'إضافة إلى قائمة تشغيل') }}

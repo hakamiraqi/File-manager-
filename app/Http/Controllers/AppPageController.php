@@ -27,6 +27,8 @@ class AppPageController extends Controller
         'rfid' => ['library.manage.rfid', 'manage-library', true],
         'labels' => ['library.manage.labels', 'manage-library', false],
         'cards' => ['library.manage.members.cards', 'manage-library', false],
+        // The office editor for one file (ids[0]); the file's own permission is checked there.
+        'office' => ['office.edit', null, true],
     ];
 
     /** API: the signed link for one page. */
@@ -39,7 +41,7 @@ class AppPageController extends Controller
             'ids' => ['array', 'max:500'], 'ids.*' => ['integer'],
         ]);
         [, $ability] = self::PAGES[$data['page']];
-        abort_unless($request->user()->can($ability), 403, 'لا تملك صلاحية هذه الصفحة.');
+        abort_unless($ability === null || $request->user()->can($ability), 403, 'لا تملك صلاحية هذه الصفحة.');
 
         $params = array_filter([
             'user' => $request->user()->id,
@@ -63,7 +65,7 @@ class AppPageController extends Controller
         [$route, $ability, $inApp] = $page;
 
         $user = User::find($request->integer('user'));
-        abort_unless($user && $user->is_active && $user->can($ability), 403);
+        abort_unless($user && $user->is_active && ($ability === null || $user->can($ability)), 403);
         if (Auth::id() !== $user->id) {
             Auth::login($user);
             $request->session()->regenerate();
@@ -77,6 +79,10 @@ class AppPageController extends Controller
             'copies' => array_map('intval', (array) $request->query('copies', [])) ?: null,
             'ids' => array_map('intval', (array) $request->query('ids', [])) ?: null,
         ]);
+
+        if ($route === 'office.edit') {
+            return redirect()->route($route, ['file' => (int) ($params['ids'][0] ?? 0)]);
+        }
 
         return redirect()->route($route, $params);
     }
