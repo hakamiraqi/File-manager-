@@ -21,6 +21,7 @@ return [
         // Folder with the more accurate («best») Arabic model; used when «الدقة» is «عالية».
         'tessdata_best' => env('OCR_TESSDATA_BEST', '/usr/share/tessdata-best'),
         'qpdf' => env('OCR_QPDF'),
+        'magick' => env('OCR_MAGICK'),
     ],
 
 

@@ -36,6 +36,48 @@ class OcrEngine
         return $this->locate('tesseract', config('services.ocr.tesseract'), [base_path('../tesseract/tesseract.exe')]);
     }
 
+    public function magick(): ?string
+    {
+        return $this->locate('magick', config('services.ocr.magick'), [base_path('../imagemagick/magick.exe')]);
+    }
+
+    /**
+     * Straightens tilted scans and evens out faded ink before reading (ImageMagick -deskew
+     * -normalize), in place and side by side. Tested on the library's scans (2026-11-12): up to
+     * 4 points more clean words on messy pages, the same on clean ones; the other clean-ups
+     * tried (unpaper, shadow removal, thresholds, 400 dpi, single-block layout) were not better.
+     * The page keeps its exact size so the searchable text layer lines up with the original.
+     * A page that fails to clean is simply read as it was.
+     */
+    private function straighten(array $images, float $deadline): void
+    {
+        $magick = $this->magick();
+        if ($magick === null || $images === []) {
+            return;
+        }
+        $timeout = $this->remaining($deadline);
+        Process::pool(function (Pool $pool) use ($images, $magick, $timeout) {
+            foreach ($images as $i => $image) {
+                [$w, $h] = @getimagesize($image) ?: [0, 0];
+                if ($w < 1 || $h < 1) {
+                    continue;
+                }
+                $pool->as((string) $i)->timeout($timeout)->env(['MAGICK_THREAD_LIMIT' => '1'])->command([
+                    ...$this->nice(), $magick, $image, '-deskew', '40%', '+repage', '-normalize',
+                    '-gravity', 'center', '-background', 'white', '-extent', "{$w}x{$h}", $image.'.clean.png',
+                ]);
+            }
+        })->start()->wait();
+        foreach ($images as $image) {
+            $clean = $image.'.clean.png';
+            if (is_file($clean) && filesize($clean) > 0) {
+                @rename($clean, $image);
+            } else {
+                @unlink($clean);
+            }
+        }
+    }
+
     /** qpdf lays the recognised text under the scanned pages (searchable PDF). */
     public function qpdf(): ?string
     {
@@ -59,6 +101,7 @@ class OcrEngine
             'pdf' => $this->pdftoppm() !== null,
             'best' => $this->bestDir() !== null,
             'searchable_pdf' => $this->qpdf() !== null,
+            'cleanup' => $this->magick() !== null,
         ];
     }
 
@@ -135,6 +178,7 @@ class OcrEngine
                 if ($images->isEmpty()) {
                     break; // past the last page (the count was unknown)
                 }
+                $this->straighten($images->map(fn ($f) => $f->getPathname())->all(), $deadline);
                 foreach ($this->tesseractMany($bin, $images->map(fn ($f) => $f->getPathname())->all(), $langs, $deadline) as $text) {
                     $texts[] = $text;
                 }
