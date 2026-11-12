@@ -787,7 +787,7 @@ function uploadFromUrl() {
                     </button>
                     <FolderIcon class="shrink-0 text-amber-400" :class="isList ? 'h-7 w-7' : 'h-12 w-12'" />
                     <!-- dir="auto" (2026-11-10, by request): an English name is cut at its end, so its start shows. -->
-                    <p class="truncate text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? 'min-w-0 flex-1 text-start' : 'mt-2 w-full'"><span dir="auto" class="inline-block max-w-full truncate align-bottom">{{ folder.name }}</span></p>
+                    <p class="text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? 'min-w-0 flex-1 text-start' : 'mt-2 w-full truncate'" :title="folder.name"><span :class="isList ? 'line-clamp-2 break-words leading-snug' : 'inline-block max-w-full truncate align-bottom'"><bdi>{{ folder.name }}</bdi></span></p>
                     <span v-if="isList" class="hidden shrink-0 text-xs text-gray-400 sm:inline">{{ formatDate(folder.created_at) }}</span>
                     <span
                         v-if="folder.folder_type === 'thesis'"
@@ -863,16 +863,23 @@ function uploadFromUrl() {
                         <FileThumbnail :file="file" :src="route('files.thumbnail', file.id)" :icon-class="isList ? 'h-7 w-7' : 'h-12 w-12'" />
                     </div>
                     <div :class="isList ? 'min-w-0 flex-1 text-start' : 'w-full'">
-                        <p class="flex items-center gap-1 truncate text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? '' : 'mt-2 w-full justify-center'">
-                            <DocumentMagnifyingGlassIcon v-if="file.is_indexed" class="h-3.5 w-3.5 shrink-0 text-gray-400" :title="t('file.indexed', 'مفهرس للبحث داخل المحتوى')" />
-                            <span dir="auto" class="truncate">{{ file.name }}</span>
+                        <!-- In the list the name gets two lines and the size moves under it on phones
+                             (2026-11-12): beside the size and buttons it was cut to one word. -->
+                        <p
+                            class="flex gap-1 text-sm font-medium text-gray-700 dark:text-gray-200"
+                            :class="isList ? 'items-start' : 'mt-2 w-full items-center justify-center truncate'"
+                            :title="file.name"
+                        >
+                            <DocumentMagnifyingGlassIcon v-if="file.is_indexed" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" :title="t('file.indexed', 'مفهرس للبحث داخل المحتوى')" />
+                            <span :class="isList ? 'line-clamp-2 break-words leading-snug' : 'truncate'"><bdi>{{ file.name }}</bdi></span>
                         </p>
                         <p v-if="!isList" class="text-xs text-gray-400">{{ file.human_size ?? '' }}</p>
+                        <p v-else class="mt-0.5 text-xs text-gray-400 sm:hidden">{{ file.human_size ?? '' }} · {{ formatDate(file.created_at) }}</p>
                         <p v-if="file.content_snippet" class="mt-1 line-clamp-2 w-full text-start text-xs text-gray-500 dark:text-gray-400" dir="auto">
                             {{ file.content_snippet }}
                         </p>
                     </div>
-                    <span v-if="isList" class="shrink-0 text-xs text-gray-400">{{ file.human_size ?? '' }}</span>
+                    <span v-if="isList" class="hidden shrink-0 text-xs text-gray-400 sm:inline">{{ file.human_size ?? '' }}</span>
                     <span v-if="isList" class="hidden w-24 shrink-0 text-xs text-gray-400 sm:inline">{{ formatDate(file.created_at) }}</span>
 
                     <div class="absolute end-2 flex items-center gap-0.5" :class="isList ? 'top-1/2 -translate-y-1/2' : 'top-2'" @click.stop>
