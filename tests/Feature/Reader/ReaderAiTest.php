@@ -57,8 +57,11 @@ class ReaderAiTest extends TestCase
 
     public function test_the_key_is_kept_encrypted_and_never_shown(): void
     {
-        $admin = User::factory()->create(['role' => 'admin']);
+        $admin = User::factory()->create(['role' => 'admin', 'is_master_admin' => true]);
+        Setting::set('ai_api_key', Crypt::encryptString('sk-ant-secret'));
         $this->actingAs($admin)->get(route('admin.settings.index'))->assertOk()
-            ->assertInertia(fn ($p) => $p->where('settings.ai_api_key_set', false)->missing('settings.ai_api_key'));
+            ->assertInertia(fn ($p) => $p->where('settings.ai_api_key_set', true)->missing('settings.ai_api_key'));
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/admin/settings')->assertOk()
+            ->assertJsonMissingPath('settings.ai_api_key')->assertJsonPath('settings.ai_api_key_set', true);
     }
 }
