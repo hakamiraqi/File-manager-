@@ -179,7 +179,8 @@ class PdfToolsTest extends TestCase
 
     public function test_the_self_test_passes_with_the_programs_this_machine_has(): void
     {
-        $this->artisan('pdf:selftest')->assertSuccessful();
+        $code = \Illuminate\Support\Facades\Artisan::call('pdf:selftest');
+        $this->assertSame(0, $code, \Illuminate\Support\Facades\Artisan::output());
     }
 
     public function test_phase_three_tools_crop_redact_blank_pages_repair_and_inserted_pages(): void
