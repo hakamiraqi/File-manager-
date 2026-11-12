@@ -219,7 +219,7 @@ function observeAll() {
                     area = a;
                 }
             }
-            if (area > 0) current.value = best;
+            if (area > 0 && keepPage === null) current.value = best;
         },
         { root: scroller.value, threshold: [0, 0.1, 0.25, 0.5, 0.75, 1] },
     );
@@ -232,16 +232,20 @@ function observeAll() {
 
 // Anything that changes the pages' size redraws them, keeping the page being read in place.
 let relayoutTimer = null;
+let keepPage = null; // the page being read when the layout started changing
 const layoutSig = computed(() => [Math.round(box.w), Math.round(box.h), zoom.value, fit.value, mode.value, rotation.value].join('|'));
 watch(layoutSig, () => {
     if (!pages.value) return;
+    // Taken before the pages change size: the scroll position is meaningless after that.
+    if (keepPage === null) keepPage = current.value;
     clearTimeout(relayoutTimer);
     relayoutTimer = setTimeout(async () => {
-        const keep = current.value;
+        const keep = keepPage;
         for (const n of [...drawn.keys()]) forget(n);
         await nextTick();
         observeAll();
         goTo(keep, false);
+        keepPage = null;
         thumbsRefresh();
     }, 120);
 });
@@ -1035,7 +1039,7 @@ const toolHint = computed(
 
 const pageWrapClass = computed(() =>
     mode.value === 'paged'
-        ? 'flex h-full w-full shrink-0 snap-center snap-always items-center justify-center overflow-auto p-2'
+        ? 'flex h-full shrink-0 snap-center snap-always items-center justify-center overflow-auto p-2'
         : mode.value === 'spread'
           ? 'flex justify-center odd:justify-end even:justify-start'
           : 'mb-3 flex justify-center',
@@ -1095,11 +1099,11 @@ watch(
                     <input
                         v-model="pageInput"
                         inputmode="numeric"
-                        class="w-11 rounded-md border-gray-300 px-1 py-0.5 text-center text-xs dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                        class="fn-input w-11 rounded-md px-1 py-0.5 text-center text-xs"
                         :aria-label="t('reader.page', 'صفحة')"
                         @blur="pageInput = String(current)"
                     />
-                    <span class="fn-muted">/ {{ pages }}</span>
+                    <span class="fn-muted whitespace-nowrap">/ {{ pages }}</span>
                 </form>
                 <button type="button" class="fn-btn hidden sm:inline-flex" :title="t('pdf.next', 'التالي')" :disabled="current >= pages" @click="stepPage(1)">
                     <ChevronDownIcon class="h-4 w-4" />
@@ -1127,7 +1131,7 @@ watch(
             <button type="button" class="fn-btn" :class="{ 'fn-on': annotating }" :title="t('reader.annotate', 'تظليل وكتابة وتوقيع')" @click="annotating = !annotating">
                 <PencilIcon class="h-5 w-5" />
             </button>
-            <button type="button" class="fn-btn" :class="{ 'fn-on': autoOn }" :title="t('reader.auto', 'تمرير تلقائي')" @click="autoOn ? stopAuto() : startAuto()">
+            <button type="button" class="fn-btn hidden sm:inline-flex" :class="{ 'fn-on': autoOn }" :title="t('reader.auto', 'تمرير تلقائي')" @click="autoOn ? stopAuto() : startAuto()">
                 <PauseIcon v-if="autoOn" class="h-5 w-5" />
                 <PlayIcon v-else class="h-5 w-5" />
             </button>
@@ -1140,7 +1144,7 @@ watch(
                     <EllipsisHorizontalIcon class="h-5 w-5" />
                 </button>
                 <div v-if="menu" class="fixed inset-0 z-40" @click="menu = false" />
-                <div v-if="menu" class="fn-menu absolute end-0 top-full z-50 mt-1 w-72 rounded-xl border p-3 text-sm shadow-xl">
+                <div v-if="menu" class="fn-menu absolute end-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-1rem)] rounded-xl border p-3 text-sm shadow-xl">
                     <p class="fn-label">{{ t('reader.view', 'طريقة العرض') }}</p>
                     <div class="mb-3 grid grid-cols-3 gap-1">
                         <button
@@ -1154,7 +1158,7 @@ watch(
                             <component :is="m.icon" class="h-5 w-5" />{{ m.label() }}
                         </button>
                     </div>
-                    <div class="mb-3 flex items-center gap-1">
+                    <div class="mb-3 flex flex-wrap items-center gap-1">
                         <button type="button" class="fn-chip" :class="{ 'fn-chip-on': fit === 'width' }" @click="(fit = 'width'), setZoom(1)">{{ t('reader.fit_width', 'ملء العرض') }}</button>
                         <button type="button" class="fn-chip" :class="{ 'fn-chip-on': fit === 'page' }" @click="(fit = 'page'), setZoom(1)">{{ t('reader.fit_page', 'الصفحة كاملة') }}</button>
                         <span class="flex-1" />
@@ -1352,7 +1356,7 @@ watch(
                 @touchstart.passive="userScrolled"
             >
                 <div :class="containerClass">
-                    <div v-for="n in pages" :key="n" :class="pageWrapClass">
+                    <div v-for="n in pages" :key="n" :class="pageWrapClass" :style="mode === 'paged' ? { width: box.w + 'px' } : null">
                         <div
                             :ref="(el) => (pageEls[n - 1] = el)"
                             :data-page="n"
@@ -1616,6 +1620,11 @@ watch(
 .fn-line {
     border-color: var(--fn-line);
 }
+.fn-input {
+    border-color: var(--fn-line);
+    background: color-mix(in srgb, var(--fn-bg) 40%, var(--fn-bar));
+    color: var(--fn-text);
+}
 .fn-muted {
     color: var(--fn-muted);
 }
@@ -1625,8 +1634,10 @@ watch(
     font-weight: 600;
     color: var(--fn-muted);
 }
-.fn-btn {
+.fn-btn:not(.hidden) {
     display: inline-flex;
+}
+.fn-btn {
     min-height: 2.25rem;
     min-width: 2.25rem;
     align-items: center;
@@ -1652,6 +1663,7 @@ watch(
     background: var(--fn-line);
 }
 .fn-chip {
+    white-space: nowrap;
     border-radius: 9999px;
     border: 1px solid var(--fn-line);
     padding: 0.25rem 0.625rem;
