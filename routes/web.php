@@ -113,6 +113,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // The office editor (/office itself is the editor's own address on this site).
     Route::get('/editor/files/{file}', [\App\Http\Controllers\OfficeController::class, 'edit'])->name('office.edit');
     Route::post('/editor/new', [\App\Http\Controllers\OfficeController::class, 'create'])->name('office.create');
+    // The PDF reader: full screen, with each reader's own place, bookmarks and notes.
+    Route::get('/reader/files/{file}', [\App\Http\Controllers\ReaderController::class, 'show'])->name('reader.show');
+    Route::get('/reader/files/{file}/state', [\App\Http\Controllers\ReaderController::class, 'state'])->name('reader.state');
+    Route::put('/reader/files/{file}/state', [\App\Http\Controllers\ReaderController::class, 'save'])->name('reader.state.save');
+    Route::put('/reader/signature', [\App\Http\Controllers\ReaderController::class, 'saveSignature'])->name('reader.signature');
+    Route::delete('/reader/signature', [\App\Http\Controllers\ReaderController::class, 'forgetSignature'])->name('reader.signature.forget');
     Route::post('/saved/toggle', [\App\Http\Controllers\SavedController::class, 'toggle'])->name('saved.toggle');
     Route::delete('/saved/downloads', [\App\Http\Controllers\SavedController::class, 'forgetDownload'])->name('saved.downloads.forget');
     Route::get('/playlists', [PlaylistController::class, 'index'])->name('playlists.index');

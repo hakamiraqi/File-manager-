@@ -29,6 +29,8 @@ class AppPageController extends Controller
         'cards' => ['library.manage.members.cards', 'manage-library', false],
         // The office editor for one file (ids[0]); the file's own permission is checked there.
         'office' => ['office.edit', null, true],
+        // The PDF reader for one file (ids[0]).
+        'reader' => ['reader.show', null, true],
     ];
 
     /** API: the signed link for one page. */
@@ -80,7 +82,7 @@ class AppPageController extends Controller
             'ids' => array_map('intval', (array) $request->query('ids', [])) ?: null,
         ]);
 
-        if ($route === 'office.edit') {
+        if ($route === 'office.edit' || $route === 'reader.show') {
             return redirect()->route($route, ['file' => (int) ($params['ids'][0] ?? 0)]);
         }
 

@@ -6,7 +6,7 @@ import SaveButton from '@/Components/SaveButton.vue';
 import { defineAsyncComponent } from 'vue';
 // Loaded only when a PDF is opened on a phone (pdf.js is large).
 const PdfViewer = defineAsyncComponent(() => import('@/Components/PdfViewer.vue'));
-import {
+import { BookOpenIcon,
     XMarkIcon,
     ArrowDownTrayIcon,
     ForwardIcon,
@@ -817,6 +817,14 @@ onBeforeUnmount(() => {
                     </button>
                     <SaveButton v-if="currentUserId" type="file" :id="file.id" class="!rounded-md !p-2" />
                     <Link
+                        v-if="currentUserId && (kind(file) === 'pdf' || kind(file) === 'document')"
+                        :href="route('reader.show', file.id)"
+                        class="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+                        :title="t('reader.open_full', 'فتح في القارئ')"
+                    >
+                        <BookOpenIcon class="h-5 w-5" /> <span class="hidden sm:inline">{{ t('reader.read', 'قراءة') }}</span>
+                    </Link>
+                    <Link
                         v-if="currentUserId && editableInOffice(file)"
                         :href="route('office.edit', file.id)"
                         class="inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-600)] px-3 py-1.5 text-sm font-semibold text-white hover:bg-[var(--accent-700)]"
@@ -989,10 +997,16 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
 
-                        <PdfViewer v-else-if="kind(file) === 'pdf' && touchScreen" :src="route('files.preview', file.id)" />
-                        <PdfViewer v-else-if="kind(file) === 'document' && touchScreen" :src="route('files.document-preview', file.id)" />
-                        <iframe v-else-if="kind(file) === 'pdf'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
-                        <iframe v-else-if="kind(file) === 'document'" :src="route('files.document-preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
+                        <!-- The reader (2026-11-12): the same on every screen, with notes and bookmarks. -->
+                        <PdfViewer
+                            v-else-if="kind(file) === 'pdf' || kind(file) === 'document'"
+                            :key="file.id"
+                            :src="kind(file) === 'pdf' ? route('files.preview', file.id) : route('files.document-preview', file.id)"
+                            :file-id="file.id"
+                            :file-name="file.name"
+                            :download-url="route('files.download', file.id)"
+                            :reader-href="route('reader.show', file.id)"
+                        />
                         <iframe v-else-if="kind(file) === 'text'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
                         <p v-else-if="!file.is_indexed" class="text-sm text-gray-500 dark:text-gray-400">{{ t('preview.no_preview', 'لا تتوفر معاينة لهذا النوع من الملفات. الرجاء تنزيله للاطلاع عليه.') }}</p>
                     </div>

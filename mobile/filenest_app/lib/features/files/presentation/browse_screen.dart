@@ -690,6 +690,13 @@ class _BrowseScreenState extends State<BrowseScreen> {
             },
           ),
           if (_isOfficeFile(file))
+            ListTile(leading: const Icon(Icons.menu_book_rounded), title: Text(context.l('قراءة (تظليل وملاحظات وعلامات)', 'Read (highlights, notes, bookmarks)')), onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => LibraryMapScreen(title: file.name, link: () async => (await LibraryManageApi.instance.webLink('reader', ids: [file.id])).path),
+              ));
+            }),
+          if (_isOfficeFile(file))
             ListTile(leading: const Icon(Icons.edit_document), title: Text(context.l('فتح في المحرر', 'Open in editor')), onTap: () {
               Navigator.of(sheetContext).pop();
               _openInEditor(file.id, file.name);
