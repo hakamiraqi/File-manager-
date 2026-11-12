@@ -86,7 +86,7 @@ class GuestBrowseController extends Controller
 
         \App\Models\ActivityLog::record('file.downloaded', "زائر غير مسجّل حمّل الملف \"{$file->name}\"", $file);
 
-        return response()->download($file->disk()->path($file->path), $file->name);
+        return response()->download($file->searchablePdf() ?? $file->disk()->path($file->path), $file->name);
     }
 
     public function thumbnail(Request $request, File $file): BinaryFileResponse

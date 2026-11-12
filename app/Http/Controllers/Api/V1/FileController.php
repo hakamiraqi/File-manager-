@@ -143,7 +143,8 @@ class FileController extends Controller
         ActivityLog::record('file.downloaded', "حمّل الملف \"{$file->name}\"", $file);
         app(\App\Services\NotificationDispatcher::class)->downloadOccurred($file->user, $file->name);
 
-        return response()->download($file->disk()->path($file->path), $file->name);
+        // A recognised scan comes with its text layer, as on the site.
+        return response()->download($file->searchablePdf() ?? $file->disk()->path($file->path), $file->name);
     }
 
     public function preview(Request $request, File $file): StreamedResponse|BinaryFileResponse
@@ -152,6 +153,10 @@ class FileController extends Controller
 
         if (! $request->user()->canPerform('view')) {
             throw new AuthorizationException('لا تملك صلاحية عرض الملفات.');
+        }
+
+        if ($searchable = $file->searchablePdf()) {
+            return response()->file($searchable, ['Content-Type' => 'application/pdf']);
         }
 
         if ($file->disk === 'filemanager' || $file->disk === 'local') {

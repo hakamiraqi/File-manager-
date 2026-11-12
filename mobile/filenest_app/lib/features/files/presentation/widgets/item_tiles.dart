@@ -7,6 +7,30 @@ import '../../../../core/widgets/authenticated_thumbnail.dart';
 import '../../../../core/widgets/file_icons.dart';
 import '../../../downloads/presentation/widgets/download_status_icon.dart';
 
+/// A file or folder name in its own direction («2.2mm Drilling Guide.mp4» stays in that order
+/// in the Arabic layout), still aligned to the page's reading side.
+Widget nameText(BuildContext context, String name, {int? maxLines, TextStyle? style}) {
+  TextDirection? dir;
+  for (final r in name.runes) {
+    if ((r >= 0x0590 && r <= 0x08FF) || (r >= 0xFB1D && r <= 0xFDFF) || (r >= 0xFE70 && r <= 0xFEFF)) {
+      dir = TextDirection.rtl;
+      break;
+    }
+    if ((r >= 0x41 && r <= 0x5A) || (r >= 0x61 && r <= 0x7A)) {
+      dir = TextDirection.ltr;
+      break;
+    }
+  }
+  return Text(
+    name,
+    textDirection: dir,
+    textAlign: Directionality.of(context) == TextDirection.rtl ? TextAlign.right : TextAlign.left,
+    maxLines: maxLines,
+    overflow: maxLines == null ? null : TextOverflow.ellipsis,
+    style: style,
+  );
+}
+
 class FolderTile extends StatelessWidget {
   final FolderItem folder;
   final VoidCallback onTap;
@@ -36,7 +60,7 @@ class FolderTile extends StatelessWidget {
       leading: selectionMode
           ? Checkbox(value: selected, onChanged: (_) => onTap())
           : Icon(Icons.folder_rounded, color: _colorFor(folder.color)),
-      title: Text(folder.name),
+      title: nameText(context, folder.name),
       subtitle: labels.isEmpty ? null : Text(labels.join(' · ')),
       trailing: selectionMode ? null : IconButton(icon: const Icon(Icons.more_vert), onPressed: onMenu),
       selected: selected,
@@ -87,7 +111,7 @@ class FileTile extends StatelessWidget {
           : (file.hasThumbnail && file.thumbnailUrl != null)
               ? AuthenticatedThumbnail(url: file.thumbnailUrl!, fallbackIcon: fileIconForExtension(file.extension))
               : Icon(fileIconForExtension(file.extension), color: Colors.grey.shade700),
-      title: Text(file.name),
+      title: nameText(context, file.name),
       subtitle: Text(
         file.contentSnippet ?? file.humanSize,
         maxLines: 1,

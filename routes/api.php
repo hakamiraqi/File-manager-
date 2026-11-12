@@ -276,6 +276,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
             Route::middleware('can:view-statistics')->group(function () {
                 Route::get('/activity', [AdminActivityLogController::class, 'index'])->name('activity.index');
                 Route::get('/analytics', [AdminAnalyticsController::class, 'index'])->name('analytics.index');
+                // The site's staff analytics page (2026-11-12) for the apps, its props as JSON.
+                Route::get('/staff-analytics', [\App\Http\Controllers\Admin\AnalyticsController::class, 'index'])
+                    ->middleware('web-json')->name('staff-analytics');
             });
         });
     });

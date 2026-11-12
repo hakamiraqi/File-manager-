@@ -169,6 +169,8 @@ class _OcrScreenState extends State<OcrScreen> {
           subtitle: Text([
             context.l('اللغات: ${((engine['languages'] as List?) ?? []).join('، ')}', 'Languages: ${((engine['languages'] as List?) ?? []).join(', ')}'),
             engine['pdf'] == true ? 'PDF ✓' : 'PDF ✗',
+            if (engine['searchable_pdf'] == true) context.l('نسخة قابلة للبحث والنسخ ✓', 'Searchable copy ✓'),
+            if (engine['cleanup'] == true) context.l('تنظيف الصفحات ✓', 'Page clean-up ✓'),
           ].join(' · ')),
         ),
       ]),
@@ -313,6 +315,7 @@ class _OcrSettingsFormState extends State<_OcrSettingsForm> with AutomaticKeepAl
   late String _start = '${widget.settings['ocr_start'] ?? '15:00'}';
   late String _end = '${widget.settings['ocr_end'] ?? '07:00'}';
   late String _languages = '${widget.settings['ocr_languages'] ?? 'ara+eng'}';
+  late String _quality = '${widget.settings['ocr_quality'] ?? 'best'}' == 'fast' ? 'fast' : 'best';
   late Set<int> _days = _parseDays('${widget.settings['ocr_days'] ?? ''}');
   late Set<int> _allDay = _parseDays('${widget.settings['ocr_all_day_days'] ?? ''}');
   bool _busy = false;
@@ -352,6 +355,7 @@ class _OcrSettingsFormState extends State<_OcrSettingsForm> with AutomaticKeepAl
       'ocr_start': _start,
       'ocr_end': _end,
       'ocr_languages': _languages,
+      'ocr_quality': _quality,
       for (final n in _numbers) n.$1: int.tryParse(_c[n.$1]!.text.trim()) ?? 0,
     });
     if (mounted) setState(() => _busy = false);
@@ -424,6 +428,17 @@ class _OcrSettingsFormState extends State<_OcrSettingsForm> with AutomaticKeepAl
                 DropdownMenuItem(value: 'eng', child: Text(context.l('الإنجليزية', 'English'))),
               ],
               onChanged: (v) => setState(() => _languages = v ?? _languages),
+            ),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              value: _quality,
+              isExpanded: true,
+              decoration: InputDecoration(labelText: context.l('الدقة', 'Accuracy')),
+              items: [
+                DropdownMenuItem(value: 'best', child: Text(context.l('عالية — النموذج الدقيق و300 نقطة (أبطأ)', 'High — accurate model, 300 dpi (slower)'), overflow: TextOverflow.ellipsis)),
+                DropdownMenuItem(value: 'fast', child: Text(context.l('سريعة — النموذج العادي و200 نقطة', 'Fast — standard model, 200 dpi'), overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) => setState(() => _quality = v ?? _quality),
             ),
             for (final n in _numbers)
               Padding(

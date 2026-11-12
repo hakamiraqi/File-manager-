@@ -25,6 +25,60 @@ class SavedScreen extends StatefulWidget {
 class _SavedScreenState extends State<SavedScreen> {
   Map<String, dynamic>? _data;
   String? _error;
+  // Filter by what the thing is, on both tabs, as on the site (2026-11-12).
+  final Map<bool, String> _kind = {false: 'all', true: 'all'};
+
+  static String _category(Map r) {
+    if (r['type'] == 'folder') return 'folder';
+    final item = r['item'] as Map;
+    final mime = '${item['mime_type'] ?? ''}'.toLowerCase();
+    final ext = '${item['extension'] ?? ''}'.toLowerCase();
+    if (mime.startsWith('video/') || const ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'].contains(ext)) return 'video';
+    if (mime.startsWith('image/') || const ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp', 'svg'].contains(ext)) return 'image';
+    if (mime.startsWith('audio/') || const ['mp3', 'm4a', 'wav', 'ogg', 'aac', 'flac', 'opus'].contains(ext)) return 'audio';
+    if (mime.startsWith('text/') ||
+        RegExp('pdf|word|officedocument|opendocument|excel|powerpoint|epub|rtf').hasMatch(mime) ||
+        const ['pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'md', 'ppt', 'pptx', 'odp', 'xls', 'xlsx', 'ods', 'csv', 'epub'].contains(ext)) {
+      return 'document';
+    }
+    return 'other';
+  }
+
+  Widget _kindChips(List<Map> rows, bool download) {
+    final counts = <String, int>{'all': rows.length};
+    for (final r in rows) {
+      final c = _category(r);
+      counts[c] = (counts[c] ?? 0) + 1;
+    }
+    final chips = <(String, IconData, String)>[
+      ('all', Icons.apps_rounded, context.l('الكل', 'All')),
+      ('video', Icons.movie_outlined, context.l('فيديو', 'Videos')),
+      ('image', Icons.image_outlined, context.l('صور', 'Images')),
+      ('audio', Icons.music_note_outlined, context.l('صوت', 'Audio')),
+      ('document', Icons.description_outlined, context.l('مستندات', 'Documents')),
+      ('other', Icons.category_outlined, context.l('أخرى', 'Other')),
+      ('folder', Icons.folder_outlined, context.l('مجلدات', 'Folders')),
+    ].where((c) => c.$1 == 'all' || (counts[c.$1] ?? 0) > 0 || _kind[download] == c.$1).toList();
+    return SizedBox(
+      height: 50,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        children: [
+          for (final (key, icon, label) in chips)
+            Padding(
+              padding: const EdgeInsetsDirectional.only(end: 6),
+              child: ChoiceChip(
+                avatar: Icon(icon, size: 16),
+                label: Text('$label ${counts[key] ?? 0}'),
+                selected: _kind[download] == key,
+                onSelected: (_) => setState(() => _kind[download] = key),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -129,8 +183,10 @@ class _SavedScreenState extends State<SavedScreen> {
     );
   }
 
-  Widget _list(List<Map> rows, {required bool download}) {
-    if (rows.isEmpty) {
+  Widget _list(List<Map> all, {required bool download}) {
+    final kind = _kind[download]!;
+    final rows = kind == 'all' ? all : all.where((r) => _category(r) == kind).toList();
+    if (all.isEmpty) {
       return RefreshIndicator(
         onRefresh: _load,
         child: ListView(children: [
@@ -147,6 +203,12 @@ class _SavedScreenState extends State<SavedScreen> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(padding: const EdgeInsets.only(bottom: 24), children: [
+        _kindChips(all, download),
+        if (rows.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(32),
+            child: Center(child: Text(context.l('لا نتائج مطابقة', 'No matching results'))),
+          ),
         if (download)
           Align(
             alignment: AlignmentDirectional.centerEnd,
