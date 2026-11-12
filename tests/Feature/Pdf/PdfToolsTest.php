@@ -137,6 +137,9 @@ class PdfToolsTest extends TestCase
         $r = $this->actingAs($this->owner)->postJson(route('pdf-tools.run', 'numbers'), ['files' => [$f->id], 'position' => 'bottom-right', 'format' => 'n/N', 'start' => 1])->assertOk();
         $this->assertMatchesRegularExpression('#2\s*/\s*3#', $this->text($r->json('files.0.id')));
 
+        $r = $this->postJson(route('pdf-tools.run', 'numbers'), ['files' => [$f->id], 'position' => 'bottom-center', 'format' => 'ar-page'])->assertOk();
+        $this->assertSame(3, $this->pages($r->json('files.0.id')));
+
         $r = $this->postJson(route('pdf-tools.run', 'rotate'), ['files' => [$f->id], 'degrees' => 90, 'which' => 'odd'])->assertOk();
         $this->assertSame(3, $this->pages($r->json('files.0.id')));
 

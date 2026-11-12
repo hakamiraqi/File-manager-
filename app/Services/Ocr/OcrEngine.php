@@ -223,6 +223,22 @@ class OcrEngine
             return false;
         }
         sort($pages, SORT_NATURAL);
+        // When the time ran out, the pages being read at that moment were cut off half-written
+        // (2026-11-12: three long books got no searchable copy because of them). Only the whole
+        // pages from page 1 on are used; the overlay covers the first pages and leaves the rest.
+        $whole = [];
+        foreach ($pages as $i => $page) {
+            $size = (int) @filesize($page);
+            $tail = $size > 0 ? (string) @file_get_contents($page, false, null, max(0, $size - 64)) : '';
+            if ((int) basename($page, '.pdf') !== $i + 1 || ! str_contains($tail, '%%EOF')) {
+                break;
+            }
+            $whole[] = $page;
+        }
+        $pages = $whole;
+        if ($pages === []) {
+            return false;
+        }
         $layer = $layerDir.'/all.pdf';
         $r = Process::timeout(600)->run([$qpdf, '--empty', '--pages', ...$pages, '--', $layer]);
         if (! in_array($r->exitCode(), [0, 3], true) || ! is_file($layer)) {

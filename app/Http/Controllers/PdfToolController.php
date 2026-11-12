@@ -209,7 +209,7 @@ class PdfToolController extends Controller
                 $r = $out('مُخفى');
                 $n = $t->redact($t->pdfPath($first), $boxes, $r['path'], $dir);
 
-                return [[$r], "أُخفيت المناطق نهائياً في {$n} صفحة. نص هذه الصفحات صار صورة؛ يُقرأ من جديد بالتعرف على النصوص."];
+                return [[$r], "أُخفيت المناطق نهائياً في {$n} صفحة. الصفحات المُخفى منها صارت صوراً، وقُرئ نصها الباقي من جديد ليبقى قابلاً للنسخ والبحث."];
 
             case 'repair':
                 $r = $out('مُصلح');
@@ -383,7 +383,7 @@ class PdfToolController extends Controller
             ],
             'organize' => $many(1, 20) + ['pages' => ['required', 'array', 'min:1', 'max:20000'], 'pages.*' => ['array'], 'pages.*.0' => ['required', 'integer', 'min:0'], 'pages.*.1' => ['nullable', 'integer', 'in:0,90,180,270'], 'pages.*.2' => ['nullable', 'integer', 'min:0', 'max:19']],
             'header_footer' => $one + ['mark' => ['required', 'file', 'mimes:png', 'max:15360'], 'pages' => ['nullable', 'in:all,first,odd,even'], 'numbers' => ['nullable', 'boolean'],
-                'position' => ['nullable', 'in:bottom-center,bottom-left,bottom-right,top-center,top-left,top-right'], 'format' => ['nullable', 'in:n,n/N,-n-,page'], 'size' => ['nullable', 'integer', 'min:6', 'max:36']],
+                'position' => ['nullable', 'in:bottom-center,bottom-left,bottom-right,top-center,top-left,top-right'], 'format' => ['nullable', 'in:n,n/N,-n-,page,ar,ar/N,ar-page'], 'size' => ['nullable', 'integer', 'min:6', 'max:36']],
             'crop' => $one + ['top' => ['nullable', 'numeric', 'min:0', 'max:300'], 'right' => ['nullable', 'numeric', 'min:0', 'max:300'], 'bottom' => ['nullable', 'numeric', 'min:0', 'max:300'], 'left' => ['nullable', 'numeric', 'min:0', 'max:300'],
                 'auto' => ['nullable', 'boolean'], 'which' => ['nullable', 'in:all,odd,even,first']],
             'redact' => $one + ['boxes' => ['required', 'array', 'min:1', 'max:2000'], 'boxes.*.page' => ['required', 'integer', 'min:1'],
@@ -396,7 +396,7 @@ class PdfToolController extends Controller
             'watermark' => $one + ['mark' => ['required', 'file', 'mimes:png', 'max:15360'], 'under' => ['nullable', 'boolean'], 'pages' => ['nullable', 'in:all,first,odd,even']],
             'numbers' => $one + [
                 'position' => ['required', 'in:bottom-center,bottom-left,bottom-right,top-center,top-left,top-right'],
-                'format' => ['required', 'in:n,n/N,-n-,page'],
+                'format' => ['required', 'in:n,n/N,-n-,page,ar,ar/N,ar-page'],
                 'start' => ['nullable', 'integer', 'min:1', 'max:100000'],
                 'from' => ['nullable', 'integer', 'min:1', 'max:100000'],
                 'size' => ['nullable', 'integer', 'min:6', 'max:36'],
