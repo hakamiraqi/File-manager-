@@ -66,11 +66,13 @@ $tunnelSite = if ($TunnelPort -gt 0) {
 # Reached only by the tunnel program on this computer.
 http://:$TunnelPort {
 	bind 127.0.0.1
+	import office
 	import tunnelapp
 }
 "@
 } else { '' }
 
+$OfficePort = 8088
 $upstreams = (0..($Workers - 1) | ForEach-Object { "127.0.0.1:$(9300 + $_)" }) -join ' '
 $ca = "$fwd/caddy-data/caddy/pki/authorities/local"
 @"
@@ -140,7 +142,23 @@ $ca = "$fwd/caddy-data/caddy/pki/authorities/local"
 # certificate, the setup page and the program for the other computers
 # (client\, see offline/windows/client). The client downloads the
 # certificate from here before it trusts https.
+# The office editor (ONLYOFFICE Docs, the optional add-on in office-addon\): Word,
+# Excel, PowerPoint and PDF editing on the site (2026-11-12). It runs as Windows
+# services on port $OfficePort; without the add-on these addresses just fail.
+(office) {
+	handle_path /office/* {
+		reverse_proxy 127.0.0.1:$OfficePort {
+			header_up X-Forwarded-Host {host}/office
+			flush_interval -1
+			transport http {
+				read_timeout 3600s
+			}
+		}
+	}
+}
+
 (lanfiles) {
+	import office
 	handle /ca.crt {
 		root * "$ca"
 		rewrite * /root.crt

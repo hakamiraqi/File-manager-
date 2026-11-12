@@ -27,3 +27,17 @@
 - كل الخطوط والأيقونات والمكتبات داخل الحزمة، فلا تحتاج الصفحات أي اتصال خارجي.
 - قاعدة البيانات على المنفذ 3308 لهذا الحاسوب فقط، فيمكن تشغيلها بجانب سيرفر العيادات (غيّر منفذ الويب لأحدهما).
 - يحتاج ويندوز 10 أو أحدث (64 بت).
+
+## Office editor add-on (Word, Excel, PowerPoint, PDF)
+
+The office editor (ONLYOFFICE Docs Community) needs Windows services (Erlang, RabbitMQ,
+PostgreSQL), so it is a separate download: `FileNestOffice-addon-windows.zip` from
+`/downloads` on the main site (built by the "Offline server (Windows)" workflow).
+Unzip it inside the FileNest folder (it becomes `office-addon\`), run
+`install-office.cmd` as administrator, then restart FileNest from its panel. Nothing is
+downloaded during the install. The editor listens on 127.0.0.1:8088 and is reached through
+Caddy at `/office/`; the script writes the shared key and addresses into `app\.env`.
+Without the add-on the site works as before and simply hides the editor.
+
+qpdf (searchable copies of scanned PDFs) and ImageMagick (page cleanup before text
+recognition) are part of the main package in `qpdf\` and `imagemagick\`.

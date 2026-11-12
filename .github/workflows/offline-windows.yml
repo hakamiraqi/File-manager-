@@ -203,6 +203,39 @@ jobs:
           test "$(stat -c %s $OUT/tesseract/tessdata/ara.traineddata)" -gt 1000000
           du -sh $OUT/tesseract $OUT/poppler
 
+      - name: Searchable PDFs and page cleanup (qpdf, ImageMagick)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # qpdf lays the recognised text under scanned pages (copyable, searchable PDFs);
+          # ImageMagick straightens and cleans the page pictures before recognition.
+          # Both are found by the app at ..\qpdf\bin\qpdf.exe and ..\imagemagick\magick.exe.
+          OUT=dist/FileNestOffline
+          command -v 7z >/dev/null || sudo apt-get install -y p7zip-full >/dev/null
+          Q=$(gh release view -R qpdf/qpdf --json assets --jq '.assets[] | select(.name|test("-msvc64\\.zip$")) | .url' | head -1)
+          test -n "$Q"
+          curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o qpdf.zip "$Q"
+          unzip -q qpdf.zip -d qpdf-x
+          QB=$(find qpdf-x -iname qpdf.exe | head -1)
+          mkdir -p $OUT/qpdf && cp -r "$(dirname "$(dirname "$QB")")"/. $OUT/qpdf/
+          test -f $OUT/qpdf/bin/qpdf.exe
+          M=$(gh release view -R ImageMagick/ImageMagick --json assets --jq '.assets[] | select(.name|test("portable-Q16-(HDRI-)?x64\\.(zip|7z)$")) | .url' | head -1 || true)
+          if [ -z "$M" ]; then
+            F=$(curl -fsSL --retry 3 https://imagemagick.org/archive/binaries/ | grep -oE 'ImageMagick-[0-9.]+-[0-9]+-portable-Q16-(HDRI-)?x64\.(zip|7z)' | sort -V | tail -1)
+            [ -n "$F" ] && M="https://imagemagick.org/archive/binaries/$F"
+          fi
+          if [ -n "$M" ]; then
+            curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o "im.${M##*.}" "$M"
+            7z x -y -oim-x "im.${M##*.}" >/dev/null
+            MB=$(find im-x -iname magick.exe | head -1)
+            mkdir -p $OUT/imagemagick && cp -r "$(dirname "$MB")"/. $OUT/imagemagick/
+            rm -rf $OUT/imagemagick/www $OUT/imagemagick/images
+            test -f $OUT/imagemagick/magick.exe
+          else
+            echo "::warning::No portable ImageMagick found; the package recognises pages without cleanup."
+          fi
+          du -sh $OUT/qpdf $OUT/imagemagick 2>/dev/null || true
+
       - name: Zip
         run: |
           cd dist && zip -qr9 ../FileNestOffline-windows.zip FileNestOffline
@@ -255,6 +288,12 @@ jobs:
           if ($langs -notmatch '(?m)^ara\s*$') { throw 'Tesseract or its Arabic model is missing.' }
           & "$root\poppler\pdftoppm.exe" -v 2>&1 | Select-Object -First 1 | Write-Host
           if ($LASTEXITCODE -ne 0) { throw 'pdftoppm does not start.' }
+          & "$root\qpdf\bin\qpdf.exe" --version 2>&1 | Select-Object -First 1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw 'qpdf does not start.' }
+          if (Test-Path "$root\imagemagick\magick.exe") {
+            & "$root\imagemagick\magick.exe" -version 2>&1 | Select-Object -First 1 | Write-Host
+            if ($LASTEXITCODE -ne 0) { throw 'ImageMagick does not start.' }
+          }
           Push-Location "$root\app"
           & "$root\php\php.exe" -c "$root\php\php.ini" artisan ocr:run --force --batch=1 2>&1 | Write-Host
           if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'ocr:run failed.' }
@@ -356,3 +395,87 @@ jobs:
           vps "cat > '$dir/offline-latest.json.tmp' && mv '$dir/offline-latest.json.tmp' '$dir/offline-latest.json' && chmod 644 '$dir/offline-latest.json'" < offline-latest.json
           vps "cd '$dir' && python3 -c \"import json,os; p='releases.json'; d=json.load(open(p)) if os.path.exists(p) else {}; d['offline_server']={'version':'$N','url':'/downloads/$f'}; json.dump(d,open(p+'.tmp','w'),indent=2); os.replace(p+'.tmp',p)\" \
             && for o in FileNestOffline-*.zip; do [ \"\$o\" = '$f' ] || rm -f -- \"\$o\"; done; cat releases.json; ls -la"
+
+  office-addon:
+    # The optional office editor for the offline server (ONLYOFFICE Docs Community with its
+    # Erlang/RabbitMQ/PostgreSQL prerequisites), as its own zip: it is large and needs an
+    # administrator install, so it is not part of the portable package.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download the installers
+        run: |
+          OUT=dist/office-addon
+          mkdir -p $OUT
+          cp offline/windows/office-addon/install-office.ps1 offline/windows/office-addon/install-office.cmd $OUT/
+          for f in onlyoffice-documentserver-prerequisites.exe onlyoffice-documentserver.exe; do
+            curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o $OUT/$f \
+              "https://download.onlyoffice.com/install/documentserver/windows/$f"
+            test "$(stat -c %s $OUT/$f)" -gt 10000000
+          done
+          ls -la $OUT
+          cd dist && zip -qr0 ../FileNestOffice-addon-windows.zip office-addon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: office-addon
+          path: FileNestOffice-addon-windows.zip
+          retention-days: 14
+
+  office-addon-test:
+    # Installs the add-on on a real Windows machine next to a stand-in FileNest folder and
+    # checks that the editor answers and that app\.env got its settings.
+    needs: office-addon
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: office-addon
+      - name: Install and check
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force C:\FN\app | Out-Null
+          Set-Content C:\FN\app\.env "APP_NAME=FileNest`nONLYOFFICE_JWT_SECRET=old" -Encoding UTF8
+          Set-Content C:\FN\config.txt "HTTP_PORT=80" -Encoding ASCII
+          Expand-Archive FileNestOffice-addon-windows.zip -DestinationPath C:\FN
+          & powershell -NoProfile -ExecutionPolicy Bypass -File C:\FN\office-addon\install-office.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'install-office.ps1 failed.' }
+          $h = (Invoke-WebRequest http://127.0.0.1:8088/healthcheck -UseBasicParsing -TimeoutSec 30).Content
+          Write-Host "healthcheck: $h"
+          if ($h -notmatch 'true') { throw 'ONLYOFFICE does not answer.' }
+          $api = Invoke-WebRequest http://127.0.0.1:8088/web-apps/apps/api/documents/api.js -UseBasicParsing -TimeoutSec 30
+          if ($api.StatusCode -ne 200) { throw 'api.js is not served.' }
+          $envText = Get-Content C:\FN\app\.env -Raw
+          Write-Host ($envText -replace 'SECRET=.*', 'SECRET=***')
+          if ($envText -notmatch '(?m)^ONLYOFFICE_JWT_SECRET=[A-Za-z0-9]{16,}') { throw 'The signing key was not written.' }
+          if ($envText -match '(?m)^ONLYOFFICE_JWT_SECRET=old') { throw 'The old key was kept.' }
+          if ($envText -notmatch '(?m)^ONLYOFFICE_INTERNAL_URL=http://127.0.0.1:8088') { throw 'The editor address was not written.' }
+
+  office-addon-publish:
+    needs: office-addon-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      APP_DIR: /home/ubuntu/filenest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: office-addon
+      - name: Upload to the VPS (/downloads/FileNestOffice-addon-windows.zip) when it changed
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          [ -n "$KEY" ] || { echo "::error::Secret VPS_SSH_KEY is not set."; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          vps() { ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "$@"; }
+          f=FileNestOffice-addon-windows.zip
+          dir="$APP_DIR/public/downloads"
+          sum=$(sha256sum $f | cut -d' ' -f1)
+          if [ "$(vps "cat '$dir/$f.sha256' 2>/dev/null")" = "$sum" ]; then echo "Unchanged."; exit 0; fi
+          vps "mkdir -p '$dir' && cat > '$dir/$f.tmp' && mv '$dir/$f.tmp' '$dir/$f' && chmod 644 '$dir/$f' && echo $sum > '$dir/$f.sha256'" < $f
+          vps "cd '$dir' && python3 -c \"import json,os; p='releases.json'; d=json.load(open(p)) if os.path.exists(p) else {}; d['offline_office_addon']={'url':'/downloads/$f','sha256':'$sum'}; json.dump(d,open(p+'.tmp','w'),indent=2); os.replace(p+'.tmp',p)\""
