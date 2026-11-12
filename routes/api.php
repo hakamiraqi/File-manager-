@@ -163,6 +163,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/saved', [\App\Http\Controllers\Api\V1\MobileController::class, 'saved'])->name('saved.index');
         Route::get('/lectures', [\App\Http\Controllers\LectureController::class, 'api'])->name('lectures.index');
         Route::post('/files/new-document', [\App\Http\Controllers\OfficeController::class, 'create'])->name('files.new-document');
+        // The reader's own place, bookmarks and notes on a file, for the app's reader (kept offline, synced here).
+        Route::get('/files/{file}/reader-state', [\App\Http\Controllers\ReaderController::class, 'state'])->name('api.v1.files.reader-state');
+        Route::put('/files/{file}/reader-state', [\App\Http\Controllers\ReaderController::class, 'save'])->name('api.v1.files.reader-state.save');
         Route::post('/saved/toggle', [\App\Http\Controllers\Api\V1\MobileController::class, 'toggleSaved'])->name('saved.toggle');
         Route::post('/saved/forget-download', [\App\Http\Controllers\Api\V1\MobileController::class, 'forgetDownload'])->name('saved.forget');
         Route::get('/library/mine', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mine'])->name('library.mine');

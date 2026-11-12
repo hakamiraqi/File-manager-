@@ -77,6 +77,8 @@ class PdfSelfTest extends Command
         });
         $check('numbers', function () use ($t, $in, $dir, $must) {
             $t->numbers($in, ['format' => 'n/N', 'position' => 'bottom-right'], "$dir/n.pdf", $dir);
+            $t->numbers($in, ['format' => 'ar-page', 'position' => 'bottom-center'], "$dir/n-ar.pdf", $dir);
+            $must($t->pageCount("$dir/n-ar.pdf") === 3, 'Arabic numbering lost pages');
             if ($t->poppler('pdftotext')) {
                 $must((bool) preg_match('#2\s*/\s*3#', $t->toTextString("$dir/n.pdf")), 'page number not found');
             }

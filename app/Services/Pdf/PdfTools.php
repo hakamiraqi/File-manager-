@@ -333,7 +333,23 @@ class PdfTools
 
             return count($objects);
         };
-        $fontId = $add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+        $format = (string) ($o['format'] ?? 'n');
+        $arabic = str_starts_with($format, 'ar');
+        if ($arabic) {
+            // Arabic-Indic digits and «صفحة … من …» need their own glyphs: a tiny font
+            // (digits and the joined letter forms only) is embedded and written by glyph number.
+            $ttf = (string) file_get_contents(resource_path('fonts/filenest-digits.ttf'));
+            $fileId = $add('<< /Length '.strlen($ttf).' /Length1 '.strlen($ttf)." >>\nstream\n".$ttf."\nendstream");
+            $descId = $add("<< /Type /FontDescriptor /FontName /FileNestDigits /Flags 4 /FontBBox [-10 -244 774 742] /ItalicAngle 0 /Ascent 928 /Descent -236 /CapHeight 729 /StemV 80 /FontFile2 {$fileId} 0 R >>");
+            $w = '';
+            foreach (self::DIGIT_GLYPHS as [$gid, $adv]) {
+                $w .= $gid.' ['.round($adv * 1000 / 2048).'] ';
+            }
+            $cidId = $add("<< /Type /Font /Subtype /CIDFontType2 /BaseFont /FileNestDigits /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor {$descId} 0 R /CIDToGIDMap /Identity /DW 600 /W [ {$w}] >>");
+            $fontId = $add("<< /Type /Font /Subtype /Type0 /BaseFont /FileNestDigits /Encoding /Identity-H /DescendantFonts [{$cidId} 0 R] >>");
+        } else {
+            $fontId = $add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+        }
         $pagesId = $add(''); // filled in at the end
         foreach ($sizes as $i => [$w, $h]) {
             $n = $i + 1;
@@ -341,14 +357,20 @@ class PdfTools
             if ($n >= $from) {
                 $num = $start + $n - $from;
                 $last = $start + $total - $from;
-                $text = match ($o['format'] ?? 'n') {
+                $ar = fn (int $v) => strtr((string) $v, ['0' => '٠', '1' => '١', '2' => '٢', '3' => '٣', '4' => '٤', '5' => '٥', '6' => '٦', '7' => '٧', '8' => '٨', '9' => '٩']);
+                // Arabic lines are written as they are seen, left to right: the page being read
+                // is on the right, and the words are in their joined forms, last letter first.
+                $text = match ($format) {
                     'n/N' => "{$num} / {$last}",
                     '-n-' => "- {$num} -",
                     'page' => "Page {$num} of {$last}",
+                    'ar' => $ar($num),
+                    'ar/N' => $ar($last).' / '.$ar($num),
+                    'ar-page' => $ar($last)." \u{FEE6}\u{FEE3} ".$ar($num)." \u{FE94}\u{FEA4}\u{FED4}\u{FEBB}",
                     default => (string) $num,
                 };
             }
-            $tw = $this->helveticaWidth($text) * $font;
+            $tw = ($arabic ? $this->glyphWidth($text) : $this->helveticaWidth($text)) * $font;
             [$v, $hz] = array_pad(explode('-', $pos, 2), 2, 'center');
             $x = match ($hz) {
                 'left' => $margin,
@@ -356,7 +378,8 @@ class PdfTools
                 default => ($w - $tw) / 2,
             };
             $y = $v === 'top' ? $h - $margin - $font : $margin;
-            $stream = $text === '' ? '' : sprintf("BT /F1 %d Tf 0.2 0.2 0.2 rg %.2F %.2F Td (%s) Tj ET", $font, $x, $y, $text);
+            $shown = $arabic ? '<'.$this->glyphHex($text).'>' : '('.$text.')';
+            $stream = $text === '' ? '' : sprintf('BT /F1 %d Tf 0.2 0.2 0.2 rg %.2F %.2F Td %s Tj ET', $font, $x, $y, $shown);
             $contentId = $add('<< /Length '.strlen($stream)." >>\nstream\n".$stream."\nendstream");
             $kids[] = $add(sprintf('<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %.2F %.2F] /Resources << /Font << /F1 %d 0 R >> >> /Contents %d 0 R >>', $pagesId, $w, $h, $fontId, $contentId));
         }
@@ -439,7 +462,9 @@ class PdfTools
         foreach ($images as $img) {
             $args[] = $img.'[0]'; // first frame of GIF/TIFF
         }
-        array_push($args, '-auto-orient', '-background', 'white', '-alpha', 'remove', '-alpha', 'off', '-quality', '90', $out);
+        // Phone photos are far bigger than a page needs (2026-11-12: an 8-photo PDF took half a
+        // minute to open in the office editor on a phone): at most ~300 dpi on A4.
+        array_push($args, '-auto-orient', '-resize', '2480x2480>', '-background', 'white', '-alpha', 'remove', '-alpha', 'off', '-quality', '85', $out);
         $this->run($args, 900);
     }
 
@@ -846,6 +871,19 @@ class PdfTools
             $page = $prefix.'.pdf';
             $this->run([$magick, '-units', 'PixelsPerInch', '-density', (string) $dpi, $png, '-quality', '92', '-compress', 'jpeg', $page], 600);
             @unlink($png);
+            // The page is a picture now: its remaining words are read again and laid invisibly
+            // under it, so the copy stays searchable and copyable (never the hidden parts).
+            if ($this->ocr->available() && count($replaced) < 40) {
+                try {
+                    $read = $prefix.'-text.pdf';
+                    $r = $this->ocr->recognize($page, 'pdf', \App\Services\Ocr\OcrSettings::get('ocr_languages') ?: 'ara+eng', 180, 1, null, $read);
+                    if (($r['searchable'] ?? false) && is_file($read)) {
+                        $page = $read;
+                    }
+                } catch (\Throwable) {
+                    // Without the text layer the page is still correctly blacked out.
+                }
+            }
             $replaced[$n] = $page;
         }
         if (! $replaced) {
@@ -1011,6 +1049,32 @@ class PdfTools
 
             return $r->successful() && $line !== '' ? $line : null;
         });
+    }
+
+    /** resources/fonts/filenest-digits.ttf (a subset of DejaVu Sans): code point => [glyph, advance of 2048]. */
+    private const DIGIT_GLYPHS = [0x0020 => [1, 651], 0x002D => [2, 739], 0x002F => [3, 690], 0x0030 => [4, 1303], 0x0031 => [5, 1303], 0x0032 => [6, 1303], 0x0033 => [7, 1303],
+        0x0034 => [8, 1303], 0x0035 => [9, 1303], 0x0036 => [10, 1303], 0x0037 => [11, 1303], 0x0038 => [12, 1303], 0x0039 => [13, 1303], 0x0660 => [14, 1100], 0x0661 => [15, 1100],
+        0x0662 => [16, 1100], 0x0663 => [17, 1100], 0x0664 => [18, 1100], 0x0665 => [19, 1100], 0x0666 => [20, 1100], 0x0667 => [21, 1100], 0x0668 => [22, 1100], 0x0669 => [23, 1100],
+        0xFE94 => [25, 1098], 0xFEA4 => [26, 1322], 0xFEBB => [27, 1739], 0xFED4 => [28, 1036], 0xFEE3 => [29, 1097], 0xFEE6 => [30, 1559]];
+
+    private function glyphHex(string $text): string
+    {
+        $hex = '';
+        foreach (mb_str_split($text) as $ch) {
+            $hex .= sprintf('%04X', self::DIGIT_GLYPHS[mb_ord($ch)][0] ?? 1);
+        }
+
+        return $hex;
+    }
+
+    private function glyphWidth(string $text): float
+    {
+        $sum = 0;
+        foreach (mb_str_split($text) as $ch) {
+            $sum += self::DIGIT_GLYPHS[mb_ord($ch)][1] ?? 651;
+        }
+
+        return $sum / 2048;
     }
 
     /** Helvetica advance widths (per 1 pt of font size) for the characters page numbers use. */

@@ -346,6 +346,8 @@ const isPdf = (f) => (f.extension || '').toLowerCase() === 'pdf';
                                     <option value="n">1</option>
                                     <option value="n/N">1 / 20</option>
                                     <option value="-n-">- 1 -</option>
+                                    <option value="ar">٣</option>
+                                    <option value="ar-page">صفحة ٣ من ٢٠</option>
                                 </select>
                             </template>
                         </div>
@@ -435,6 +437,9 @@ const isPdf = (f) => (f.extension || '').toLowerCase() === 'pdf';
                                     <option value="n/N">1 / 20</option>
                                     <option value="-n-">- 1 -</option>
                                     <option value="page">Page 1 of 20</option>
+                                    <option value="ar">٣</option>
+                                    <option value="ar/N">٢٠ / ٣</option>
+                                    <option value="ar-page">صفحة ٣ من ٢٠</option>
                                 </select>
                             </label>
                             <label class="flex items-center gap-2">{{ t('pdft.start_at', 'يبدأ العدّ من') }}<input v-model.number="opt.start" type="number" min="1" class="w-20 rounded-lg border-gray-300 py-1 dark:border-gray-600 dark:bg-gray-900" /></label>

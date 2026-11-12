@@ -53,6 +53,11 @@ class PdfReaderTest extends TestCase
             ->assertJsonCount(2, 'state.bookmarks')
             ->assertJsonPath('state.annotations.0.text', 'مرحبا');
 
+        // The app reads and writes the same state through the API.
+        $this->actingAs($owner, 'sanctum')->getJson("/api/v1/files/{$file->id}/reader-state")->assertOk()->assertJsonPath('state.last_page', 37);
+        $this->putJson("/api/v1/files/{$file->id}/reader-state", ['last_page' => 38])->assertOk();
+        $this->actingAs($owner);
+
         // Only the place changes: the rest stays.
         $this->putJson(route('reader.state.save', $file), ['last_page' => 40])->assertOk();
         $s = ReaderState::first();
