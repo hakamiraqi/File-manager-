@@ -74,7 +74,7 @@ class LecturesTest extends TestCase
         $pdf = File::factory()->create(['user_id' => $admin->id, 'folder_id' => $open->id, 'extension' => 'pdf', 'mime_type' => 'application/pdf']);
         $playlist = Playlist::create(['user_id' => $student->id, 'name' => 'مراجعة']);
 
-        $this->actingAs($student)->postJson(route('playlists.items.store', $playlist), ['file_id' => $lecture->id])->assertSuccessful();
+        $this->actingAs($student)->postJson(route('playlists.items.store', $playlist), ['file_id' => $lecture->id])->assertRedirect();
         $this->assertTrue($playlist->items()->where('file_id', $lecture->id)->exists());
 
         $this->postJson(route('playlists.items.store', $playlist), ['file_id' => $secret->id])->assertForbidden();
