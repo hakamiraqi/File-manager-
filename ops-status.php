@@ -1,28 +1,58 @@
 <?php
-// Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
-// Counts only: how far text extraction and recognition have got on the e-library.
+// One-off (2026-11-12): 1) clean-up before OCR with ImageMagick / unpaper; 2) a real searchable PDF.
 use App\Models\File;
-use App\Models\Folder;
-use Illuminate\Support\Facades\DB;
-$root = Folder::where('name', 'like', 'المكتبة الإلكترونية (الرقمية)%')->whereNull('parent_id')->first();
-$ids = [$root->id]; $frontier = [$root->id];
-while ($frontier) { $frontier = Folder::whereIn('parent_id', $frontier)->pluck('id')->all(); $ids = array_merge($ids, $frontier); }
-$q = fn () => File::whereIn('folder_id', $ids);
-echo 'FILES: '.$q()->count()."\n";
-echo 'TEXT INDEXED: '.$q()->whereNotNull('content_indexed_at')->count()."\n";
-echo 'WITH TEXT: '.$q()->whereRaw('length(content_text) > 100')->count()."\n";
-echo 'OCR DONE LAST HOUR: '.$q()->where('ocr_status', 'done')->where('updated_at', '>=', now()->subHour())->count()."\n";
-echo 'OCR: '.json_encode($q()->selectRaw('coalesce(ocr_status, "none") s, count(*) n')->groupBy('s')->pluck('n', 's'))."\n";
-echo 'JOBS WAITING: '.DB::table('jobs')->count().'  FAILED: '.DB::table('failed_jobs')->count()."\n";
-echo 'APP TIME: '.now()->toDateTimeString().' '.config('app.timezone')."\n";
-$s = app(App\Services\Ocr\OcrSettings::class)->all();
-echo 'OCR LAST: '.json_encode(DB::table('ocr_load_samples')->latest('id')->limit(4)->get(['state','reason','processed','cpu','created_at']))."
-";
-$p = $q()->where('ocr_status', 'processing')->first(['id','extension','size','updated_at','ocr_attempts']);
-echo 'PROCESSING: '.json_encode($p)."
-";
-echo 'PENDING SIZE MB: '.round($q()->where('ocr_status', 'pending')->sum('size') / 1e6).'  BY TYPE: '.json_encode($q()->where('ocr_status', 'pending')->selectRaw('extension, count(*) n')->groupBy('extension')->pluck('n', 'extension'))."
-";
-echo 'DONE DETAIL: '.json_encode($q()->where('ocr_status', 'done')->orderByDesc('ocr_done_at')->limit(5)->get(['id', 'size', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error'])->map->only(['id', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error']))."\n";
-echo 'DONE ALL: '.$q()->where('ocr_status', 'done')->count().' FAILED: '.$q()->where('ocr_status', 'failed')->count()."
-";
+echo 'TOOLS: '.trim(shell_exec('for t in magick convert unpaper qpdf; do command -v $t >/dev/null && printf "%s " $t; done') ?? '')."\n";
+$clean = function (string $text): array {
+    $tokens = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+    $ok = 0;
+    foreach ($tokens as $t) {
+        if (preg_match('/^[(«"]?(\p{Arabic}{2,}|[A-Za-z]{2,}|[0-9٠-٩]+)[.,،:؛)»"]?$/u', $t) && ! str_contains($t, '�')) $ok++;
+    }
+    return [count($tokens), $ok, count($tokens) ? round(100 * $ok / count($tokens), 1) : 0];
+};
+$magick = trim(shell_exec('command -v magick || command -v convert') ?? '');
+$variants = [
+    'A current' => null,
+    'E deskew+normalize' => fn ($in, $out) => "$magick ".escapeshellarg($in)." -deskew 40% -normalize ".escapeshellarg($out),
+    'F deskew+shadow removal' => fn ($in, $out) => "$magick ".escapeshellarg($in)." -deskew 40% \\( +clone -blur 0x20 \\) -compose Divide_Src -composite -normalize ".escapeshellarg($out),
+    'U unpaper' => fn ($in, $out) => 'unpaper -q --overwrite '.escapeshellarg($in).' '.escapeshellarg($out),
+];
+foreach ([[205, 3, 6], [205, 20, 23], [226, 3, 6]] as [$id, $from, $to]) {
+    $f = File::find($id);
+    exec("pdftoppm -r 300 -gray -f $from -l $to ".escapeshellarg($f->disk()->path($f->path)).' /tmp/vv');
+    $pages = glob('/tmp/vv*.pgm');
+    echo "FILE #$id pages $from-$to\n";
+    foreach ($variants as $name => $prep) {
+        $t = microtime(true);
+        $all = '';
+        foreach ($pages as $p) {
+            $in = $p;
+            if ($prep) {
+                $in = $p.'.out.pgm';
+                exec($prep($p, $in).' 2>&1', $o, $code);
+                if (! is_file($in)) { echo "  $name: prep failed ($code) ".implode(' ', array_slice($o, -2))."\n"; continue 2; }
+            }
+            $all .= "\n".(shell_exec('tesseract --tessdata-dir /usr/share/tessdata-best '.escapeshellarg($in).' - -l ara+eng 2>/dev/null') ?? '');
+            if ($in !== $p) @unlink($in);
+        }
+        [$w, $ok, $pct] = $clean($all);
+        echo "  VARIANT $name: $w words, $ok clean ($pct%), ".round((microtime(true) - $t) / max(1, count($pages)), 1)."s/page\n";
+    }
+    array_map('unlink', $pages);
+}
+
+// A real searchable copy: the smallest recognised scanned PDF with a few pages.
+$file = File::where('extension', 'pdf')->where('ocr_status', 'done')->whereBetween('ocr_pages', [2, 12])->orderBy('ocr_pages')->first();
+if ($file) {
+    $t = microtime(true);
+    app(App\Services\Ocr\OcrRunner::class)->process($file);
+    $file->refresh();
+    $copy = $file->searchablePdf();
+    $orig = $file->disk()->path($file->path);
+    $count = fn ($p) => mb_strlen(trim((string) shell_exec('pdftotext -q '.escapeshellarg($p).' - 2>/dev/null')));
+    echo "SEARCHABLE #{$file->id}: ".($copy ? 'made' : 'NOT made')." in ".round(microtime(true) - $t)."s, pages {$file->ocr_pages}, status {$file->ocr_status}\n";
+    if ($copy) {
+        echo "  copyable text: original ".$count($orig)." chars -> searchable ".$count($copy)." chars; size ".round(filesize($orig) / 1048576, 2)." MB -> ".round(filesize($copy) / 1048576, 2)." MB\n";
+    }
+}
+echo 'OCR PDFS DONE: '.File::where('extension', 'pdf')->where('ocr_status', 'done')->where('ocr_pages', '>', 0)->count().', pages '.File::where('extension', 'pdf')->where('ocr_status', 'done')->sum('ocr_pages')."\n";
