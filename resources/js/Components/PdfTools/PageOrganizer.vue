@@ -4,13 +4,19 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useTrans } from '@/Composables/useTrans';
 import { openPdf, pageCanvas } from './pdfjs';
-import { ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon, TrashIcon, ArrowUturnLeftIcon, CheckIcon } from '@heroicons/vue/24/outline';
+import FilePicker from './FilePicker.vue';
+import { ArrowPathIcon, ChevronLeftIcon, ChevronRightIcon, TrashIcon, ArrowUturnLeftIcon, CheckIcon, DocumentPlusIcon, PlusIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({ src: { type: String, required: true }, modelValue: { type: Array, default: () => [] } });
-const emit = defineEmits(['update:modelValue', 'pages']);
+// sources: the other files whose pages were inserted (their order is the «source» number - 1)
+const emit = defineEmits(['update:modelValue', 'pages', 'sources']);
 const { t } = useTrans();
 
-const items = ref([]); // { n, rot, key }
+const items = ref([]); // { n, rot, key, src } (n 0 = a blank page; src 0 = this file)
+const extra = ref([]); // inserted files, in source order (src = index + 1)
+const docs = []; // pdf.js documents by source
+let keySeq = 100000;
+const picking = ref(false);
 const removed = ref([]);
 const selected = ref(new Set());
 const loading = ref(true);
@@ -22,19 +28,21 @@ let observer = null;
 const drawn = new Set();
 
 const rtl = document.documentElement.dir === 'rtl';
-const sync = () => emit('update:modelValue', items.value.map((i) => [i.n, i.rot]));
+const sync = () => emit('update:modelValue', items.value.map((i) => [i.n, i.rot, i.src || 0]));
+const tkey = (it) => `${it.src || 0}-${it.n}-${it.key}`;
 
 async function open() {
     try {
         task = openPdf(props.src);
         doc = await task.promise;
-        items.value = Array.from({ length: doc.numPages }, (_, i) => ({ n: i + 1, rot: 0, key: i + 1 }));
+        docs[0] = doc;
+        items.value = Array.from({ length: doc.numPages }, (_, i) => ({ n: i + 1, rot: 0, key: i + 1, src: 0 }));
         emit('pages', doc.numPages);
         sync();
         loading.value = false;
         await nextTick();
         observer = new IntersectionObserver(
-            (entries) => entries.forEach((e) => e.isIntersecting && draw(Number(e.target.dataset.n))),
+            (entries) => entries.forEach((e) => e.isIntersecting && draw(e.target.dataset.k)),
             { rootMargin: '400px' },
         );
         Object.values(thumbEls.value).forEach((el) => el && observer.observe(el));
@@ -43,14 +51,49 @@ async function open() {
         failed.value = true;
     }
 }
-async function draw(n) {
-    if (drawn.has(n) || !doc) return;
-    drawn.add(n);
+async function draw(k) {
+    if (!k || drawn.has(k)) return;
+    const it = items.value.find((i) => tkey(i) === k);
+    if (!it || it.n === 0) return;
+    const d = docs[it.src || 0];
+    if (!d) return;
+    drawn.add(k);
     try {
-        const c = await pageCanvas(doc, n, 150);
-        thumbEls.value[n]?.replaceChildren(c);
+        const c = await pageCanvas(d, it.n, 150);
+        thumbEls.value[k]?.replaceChildren(c);
     } catch {
-        drawn.delete(n);
+        drawn.delete(k);
+    }
+}
+
+// Insert a blank page (after the selected page, or at the end).
+function insertBlank() {
+    const at = lastSelectedIndex();
+    items.value.splice(at + 1, 0, { n: 0, rot: 0, key: ++keySeq, src: 0 });
+    sync();
+}
+function lastSelectedIndex() {
+    let at = items.value.length - 1;
+    items.value.forEach((i, idx) => selected.value.has(i.key) && (at = idx));
+    return at;
+}
+// Insert all pages of another PDF.
+async function insertFile(list) {
+    picking.value = false;
+    const f = list[0];
+    if (!f) return;
+    try {
+        const d = await openPdf(route('files.preview', f.id)).promise;
+        extra.value.push(f);
+        const src = extra.value.length;
+        docs[src] = d;
+        const at = lastSelectedIndex();
+        const added = Array.from({ length: d.numPages }, (_, i) => ({ n: i + 1, rot: 0, key: ++keySeq, src }));
+        items.value.splice(at + 1, 0, ...added);
+        emit('sources', [...extra.value]);
+        sync();
+    } catch {
+        /* the file could not be opened */
     }
 }
 watch(
@@ -64,6 +107,7 @@ onMounted(open);
 onBeforeUnmount(() => {
     observer?.disconnect();
     task?.destroy();
+    docs.slice(1).forEach((d) => d?.destroy());
 });
 
 function turn(i) {
@@ -124,7 +168,9 @@ function reverse() {
     sync();
 }
 function reset() {
-    items.value = [...items.value, ...removed.value].sort((a, b) => a.n - b.n).map((i) => ({ ...i, rot: 0 }));
+    items.value = Array.from({ length: docs[0]?.numPages || 0 }, (_, i) => ({ n: i + 1, rot: 0, key: i + 1, src: 0 }));
+    extra.value = [];
+    emit('sources', []);
     removed.value = [];
     selected.value = new Set();
     sync();
@@ -142,6 +188,8 @@ function reset() {
                 <button type="button" class="pdft-chip" @click="turnSelected"><ArrowPathIcon class="h-4 w-4" />{{ t('pdft.turn', 'تدوير') }}</button>
                 <button type="button" class="pdft-chip text-red-600" @click="removeSelected"><TrashIcon class="h-4 w-4" />{{ t('common.delete', 'حذف') }}</button>
             </template>
+            <button type="button" class="pdft-chip" @click="insertBlank"><PlusIcon class="h-4 w-4" />{{ t('pdft.blank_page', 'صفحة فارغة') }}</button>
+            <button type="button" class="pdft-chip" @click="picking = true"><DocumentPlusIcon class="h-4 w-4" />{{ t('pdft.insert_file', 'إدراج من ملف') }}</button>
             <button type="button" class="pdft-chip" @click="reverse">{{ t('pdft.reverse', 'عكس الترتيب') }}</button>
             <button v-if="removed.length" type="button" class="pdft-chip" @click="restore"><ArrowUturnLeftIcon class="h-4 w-4" />{{ t('pdft.restore', 'استرجاع') }} ({{ removed.length }})</button>
             <button type="button" class="pdft-chip" @click="reset">{{ t('pdft.reset', 'البدء من جديد') }}</button>
@@ -162,9 +210,11 @@ function reset() {
                 @click="toggleSel(it.key)"
             >
                 <div class="flex aspect-[3/4] items-center justify-center overflow-hidden rounded bg-gray-100 dark:bg-gray-900">
+                    <div v-if="it.n === 0" class="flex aspect-[3/4] w-4/5 items-center justify-center bg-white text-[10px] text-gray-400 shadow-inner">{{ t('pdft.blank', 'فارغة') }}</div>
                     <div
-                        :ref="(el) => (thumbEls[it.n] = el)"
-                        :data-n="it.n"
+                        v-else
+                        :ref="(el) => (thumbEls[tkey(it)] = el)"
+                        :data-k="tkey(it)"
                         class="w-full transition-transform"
                         :style="{ transform: `rotate(${it.rot}deg) scale(${it.rot % 180 ? 0.72 : 1})` }"
                     />
@@ -173,7 +223,10 @@ function reset() {
                     <button type="button" class="pdft-mini" :aria-label="t('pdft.earlier', 'قبل')" @click.stop="move(i, -1)">
                         <ChevronRightIcon v-if="rtl" class="h-4 w-4" /><ChevronLeftIcon v-else class="h-4 w-4" />
                     </button>
-                    <span class="text-[11px] tabular-nums text-gray-500">{{ i + 1 }}<span v-if="it.n !== i + 1" class="text-gray-400"> ({{ it.n }})</span></span>
+                    <span class="text-[11px] tabular-nums text-gray-500"
+                        >{{ i + 1 }}<span v-if="it.src" class="text-sky-500"> ({{ String.fromCharCode(64 + it.src) }}{{ it.n }})</span
+                        ><span v-else-if="it.n && it.n !== i + 1" class="text-gray-400"> ({{ it.n }})</span></span
+                    >
                     <button type="button" class="pdft-mini" :aria-label="t('pdft.later', 'بعد')" @click.stop="move(i, 1)">
                         <ChevronLeftIcon v-if="rtl" class="h-4 w-4" /><ChevronRightIcon v-else class="h-4 w-4" />
                     </button>
@@ -184,6 +237,7 @@ function reset() {
                 </div>
             </div>
         </div>
+        <FilePicker v-if="picking" :kinds="['pdf']" @pick="insertFile" @close="picking = false" />
     </div>
 </template>
 

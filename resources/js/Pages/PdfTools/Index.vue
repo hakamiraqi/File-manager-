@@ -7,6 +7,8 @@ import AppLayout from '@/Layouts/AppLayout.vue';
 import FilePicker from '@/Components/PdfTools/FilePicker.vue';
 import PageOrganizer from '@/Components/PdfTools/PageOrganizer.vue';
 import WatermarkDesigner from '@/Components/PdfTools/WatermarkDesigner.vue';
+import HeaderFooterDesigner from '@/Components/PdfTools/HeaderFooterDesigner.vue';
+import CropDesigner from '@/Components/PdfTools/CropDesigner.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
     ArrowDownTrayIcon,
@@ -33,6 +35,12 @@ import {
     DocumentArrowUpIcon,
     PaintBrushIcon,
     WrenchScrewdriverIcon,
+    EyeSlashIcon,
+    ScissorsIcon as CropIcon,
+    WrenchIcon,
+    DocumentMinusIcon,
+    PhotoIcon as ImagesIcon,
+    Bars3BottomLeftIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -50,19 +58,25 @@ const TOOLS = computed(() => [
         { id: 'split', icon: ScissorsIcon, color: 'bg-orange-500', name: t('pdft.split', 'تقسيم'), desc: t('pdft.split_d', 'قسّم الملف إلى أجزاء بنطاقات صفحات أو كل عدد من الصفحات.'), kinds: ['pdf'] },
         { id: 'organize', icon: Squares2X2Icon, color: 'bg-amber-500', name: t('pdft.organize', 'تنظيم الصفحات'), desc: t('pdft.organize_d', 'رتّب الصفحات بالسحب، دوّرها، احذفها أو استخرج ما تريد منها.'), kinds: ['pdf'] },
         { id: 'rotate', icon: ArrowPathIcon, color: 'bg-yellow-500', name: t('pdft.rotate', 'تدوير'), desc: t('pdft.rotate_d', 'دوّر كل الصفحات أو الفردية أو الزوجية.'), kinds: ['pdf'] },
+        { id: 'remove_blank', icon: DocumentMinusIcon, color: 'bg-stone-500', name: t('pdft.remove_blank', 'حذف الصفحات الفارغة'), desc: t('pdft.remove_blank_d', 'يجد الصفحات البيضاء (من المسح الضوئي مثلاً) ويحذفها.'), kinds: ['pdf'] },
+        { id: 'crop', icon: CropIcon, color: 'bg-amber-600', name: t('pdft.crop', 'قص الهوامش'), desc: t('pdft.crop_d', 'قص الهوامش البيضاء تلقائياً أو بمقدار تحدده، لقراءة أريح على الهاتف.'), kinds: ['pdf'] },
     ] },
     { group: t('pdft.g_optimize', 'تحسين وحماية'), items: [
         { id: 'compress', icon: ArrowsPointingInIcon, color: 'bg-emerald-500', name: t('pdft.compress', 'ضغط'), desc: t('pdft.compress_d', 'صغّر حجم الملف للإرسال أو الرفع مع الحفاظ على وضوحه.'), kinds: ['pdf'] },
         { id: 'protect', icon: LockClosedIcon, color: 'bg-sky-600', name: t('pdft.protect', 'حماية بكلمة مرور'), desc: t('pdft.protect_d', 'شفّر الملف (AES-256) وامنع الطباعة أو النسخ إن أردت.'), kinds: ['pdf'] },
         { id: 'unlock', icon: LockOpenIcon, color: 'bg-cyan-600', name: t('pdft.unlock', 'إزالة كلمة المرور'), desc: t('pdft.unlock_d', 'احفظ نسخة بدون كلمة مرور أو قيود (تحتاج كلمة المرور إن وُجدت).'), kinds: ['pdf'] },
+        { id: 'redact', icon: EyeSlashIcon, color: 'bg-gray-800', name: t('pdft.redact', 'إخفاء نهائي'), desc: t('pdft.redact_d', 'غطِّ أسماء أو أرقاماً أو صوراً بمربعات سوداء تُحذف معها نهائياً من الملف.'), kinds: ['pdf'] },
+        { id: 'repair', icon: WrenchIcon, color: 'bg-zinc-600', name: t('pdft.repair', 'إصلاح ملف تالف'), desc: t('pdft.repair_d', 'يعيد بناء ملف PDF لا يفتح أو يفتح ناقصاً.'), kinds: ['pdf'] },
     ] },
     { group: t('pdft.g_edit', 'تحرير'), items: [
         { id: 'watermark', icon: PaintBrushIcon, color: 'bg-violet-500', name: t('pdft.watermark', 'علامة مائية'), desc: t('pdft.watermark_d', 'أضف نصاً (بالعربية أيضاً) أو شعاراً فوق الصفحات أو خلفها.'), kinds: ['pdf'] },
         { id: 'numbers', icon: HashtagIcon, color: 'bg-purple-500', name: t('pdft.numbers', 'ترقيم الصفحات'), desc: t('pdft.numbers_d', 'أضف أرقام الصفحات في المكان والشكل الذي تختاره.'), kinds: ['pdf'] },
+        { id: 'header_footer', icon: Bars3BottomLeftIcon, color: 'bg-fuchsia-600', name: t('pdft.header_footer', 'ترويسة وتذييل'), desc: t('pdft.header_footer_d', 'أضف سطراً أعلى كل صفحة وأسفلها (اسم الكلية، المادة، التاريخ) مع الترقيم إن أردت.'), kinds: ['pdf'] },
     ] },
     { group: t('pdft.g_convert', 'تحويل'), items: [
         { id: 'to_word', icon: DocumentTextIcon, color: 'bg-blue-600', name: t('pdft.to_word', 'PDF إلى Word'), desc: t('pdft.to_word_d', 'حوّل الملف إلى مستند Word قابل للتعديل.'), kinds: ['pdf'] },
         { id: 'to_images', icon: PhotoIcon, color: 'bg-teal-600', name: t('pdft.to_images', 'PDF إلى صور'), desc: t('pdft.to_images_d', 'كل صفحة صورة PNG أو JPG، في ملف مضغوط واحد.'), kinds: ['pdf'] },
+        { id: 'extract_images', icon: ImagesIcon, color: 'bg-emerald-700', name: t('pdft.extract_images', 'استخراج الصور'), desc: t('pdft.extract_images_d', 'كل الصور الموجودة داخل الملف بجودتها الأصلية، في ملف مضغوط.'), kinds: ['pdf'] },
         { id: 'to_text', icon: QueueListIcon, color: 'bg-slate-600', name: t('pdft.to_text', 'PDF إلى نص'), desc: t('pdft.to_text_d', 'استخرج النص كله في ملف نصي.'), kinds: ['pdf'] },
         { id: 'images_to_pdf', icon: DocumentArrowUpIcon, color: 'bg-lime-600', name: t('pdft.images_to_pdf', 'صور إلى PDF'), desc: t('pdft.images_to_pdf_d', 'اجمع الصور (صور الهاتف، المسح الضوئي) في ملف PDF واحد.'), kinds: ['image'], multiple: true },
         { id: 'office_to_pdf', icon: SparklesIcon, color: 'bg-indigo-600', name: t('pdft.office_to_pdf', 'Word / Excel / PowerPoint إلى PDF'), desc: t('pdft.office_to_pdf_d', 'حوّل المستندات المكتبية إلى PDF.'), kinds: ['office'], multiple: true },
@@ -124,11 +138,15 @@ const defaults = {
     watermark: { under: false, pages: 'all' },
     numbers: { position: 'bottom-center', format: 'n', start: 1, from: 1, size: 11 },
     to_images: { format: 'png', dpi: 150 },
+    header_footer: { pages: 'all', numbers: false, position: 'bottom-center', format: 'n' },
+    crop: { auto: true, top: 3, right: 3, bottom: 3, left: 3, which: 'all' },
 };
 watch(active, (id) => (opt.value = JSON.parse(JSON.stringify(defaults[id] || {}))), { immediate: true });
 const organized = ref([]);
+const organizeExtra = ref([]);
 const pageCount = ref(0);
 const designer = ref(null);
+const hfDesigner = ref(null);
 
 const minFiles = computed(() => (active.value === 'merge' ? 2 : 1));
 const problem = computed(() => {
@@ -147,18 +165,30 @@ const result = ref(null);
 const error = ref('');
 async function run() {
     if (problem.value || running.value) return;
+    if (active.value === 'redact') {
+        // Areas are drawn on the page in the reader.
+        window.location.href = route('reader.show', { file: first.value.id, tool: 'redact' });
+        return;
+    }
     running.value = true;
     error.value = '';
     result.value = null;
     try {
         const form = new FormData();
-        files.value.forEach((f) => form.append('files[]', f.id));
+        (active.value === 'organize' ? [files.value[0], ...organizeExtra.value] : files.value).forEach((f) => form.append('files[]', f.id));
         const o = { ...opt.value };
         delete o.confirm;
         if (active.value === 'organize') organized.value.forEach((p, i) => {
             form.append(`pages[${i}][0]`, p[0]);
             form.append(`pages[${i}][1]`, p[1]);
+            form.append(`pages[${i}][2]`, p[2] || 0);
         });
+        if (active.value === 'header_footer') {
+            if (!hfDesigner.value?.ready()) throw new Error(t('pdft.need_header', 'اكتب نص الترويسة أو التذييل.'));
+            form.append('mark', await hfDesigner.value.toBlob(), 'mark.png');
+            o.numbers = o.numbers ? 1 : 0;
+        }
+        if (active.value === 'crop') o.auto = o.auto ? 1 : 0;
         if (active.value === 'watermark') {
             if (!designer.value?.ready()) throw new Error(t('pdft.need_mark', 'اكتب نص العلامة أو اختر صورة.'));
             form.append('mark', await designer.value.toBlob(), 'mark.png');
@@ -281,7 +311,39 @@ const isPdf = (f) => (f.extension || '').toLowerCase() === 'pdf';
                         </label>
                     </template>
 
-                    <PageOrganizer v-else-if="active === 'organize'" :key="first.id" v-model="organized" :src="previewSrc" @pages="pageCount = $event" />
+                    <PageOrganizer v-else-if="active === 'organize'" :key="first.id" v-model="organized" :src="previewSrc" @pages="pageCount = $event" @sources="organizeExtra = $event" />
+
+                    <template v-else-if="active === 'header_footer'">
+                        <HeaderFooterDesigner ref="hfDesigner" :key="first.id" :src="previewSrc" />
+                        <div class="mt-4 flex flex-wrap items-center gap-4 border-t border-gray-100 pt-3 dark:border-gray-700">
+                            <select v-model="opt.pages" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-900">
+                                <option value="all">{{ t('pdft.all_pages', 'كل الصفحات') }}</option>
+                                <option value="odd">{{ t('pdft.odd', 'الفردية') }}</option>
+                                <option value="even">{{ t('pdft.even', 'الزوجية') }}</option>
+                            </select>
+                            <label class="inline-flex items-center gap-1"><input v-model="opt.numbers" type="checkbox" class="rounded" />{{ t('pdft.add_numbers', 'مع أرقام الصفحات') }}</label>
+                            <template v-if="opt.numbers">
+                                <select v-model="opt.position" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-900">
+                                    <option value="bottom-center">{{ t('pdft.bottom', 'أسفل') }} · {{ t('pdft.pos_center', 'الوسط') }}</option>
+                                    <option value="bottom-left">{{ t('pdft.bottom', 'أسفل') }} · {{ t('pdft.left_side', 'يسار') }}</option>
+                                    <option value="bottom-right">{{ t('pdft.bottom', 'أسفل') }} · {{ t('pdft.right_side', 'يمين') }}</option>
+                                    <option value="top-left">{{ t('pdft.top', 'أعلى') }} · {{ t('pdft.left_side', 'يسار') }}</option>
+                                    <option value="top-right">{{ t('pdft.top', 'أعلى') }} · {{ t('pdft.right_side', 'يمين') }}</option>
+                                </select>
+                                <select v-model="opt.format" class="rounded-lg border-gray-300 py-1 text-sm dark:border-gray-600 dark:bg-gray-900">
+                                    <option value="n">1</option>
+                                    <option value="n/N">1 / 20</option>
+                                    <option value="-n-">- 1 -</option>
+                                </select>
+                            </template>
+                        </div>
+                    </template>
+
+                    <CropDesigner v-else-if="active === 'crop'" :key="first.id" v-model="opt" :src="previewSrc" />
+
+                    <p v-else-if="active === 'redact'" class="text-gray-600 dark:text-gray-300">
+                        {{ t('pdft.redact_how', 'يُفتح الملف في القارئ على أداة «إخفاء نهائي»: اسحب مستطيلاً فوق كل ما تريد إخفاءه، ثم اضغط «تطبيق الإخفاء». تُحفظ نسخة جديدة بلا ما تحت المربعات.') }}
+                    </p>
 
                     <template v-else-if="active === 'rotate'">
                         <div class="mb-3 flex flex-wrap gap-2">
@@ -391,7 +453,7 @@ const isPdf = (f) => (f.extension || '').toLowerCase() === 'pdf';
                     >
                         <span v-if="running" class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         <component :is="current.icon" v-else class="h-5 w-5" />
-                        {{ running ? t('pdft.working', 'جارٍ التنفيذ…') : t('pdft.run', 'تنفيذ') }}
+                        {{ running ? t('pdft.working', 'جارٍ التنفيذ…') : active === 'redact' ? t('pdft.open_reader', 'فتح في القارئ') : t('pdft.run', 'تنفيذ') }}
                     </button>
                     <span v-if="problem && files.length" class="text-xs text-gray-500">{{ problem }}</span>
                     <span v-if="running" class="text-xs text-gray-500">{{ t('pdft.wait', 'قد تستغرق الملفات الكبيرة دقيقة أو أكثر؛ أبقِ الصفحة مفتوحة.') }}</span>

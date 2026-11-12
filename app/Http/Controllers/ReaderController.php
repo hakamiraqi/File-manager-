@@ -36,6 +36,9 @@ class ReaderController extends Controller
             'signature' => ReaderSignature::where('user_id', $request->user()->id)->value('strokes'),
             'canDownload' => $request->user()->canPerform('download'),
             'inApp' => (bool) $request->session()->get('in_app'),
+            'canCreate' => $request->user()->canPerform('upload'),
+            'tools' => app(\App\Services\Pdf\PdfTools::class)->capabilities(),
+            'startTool' => in_array($request->query('tool'), ['redact'], true) ? $request->query('tool') : null,
         ]);
     }
 
@@ -59,7 +62,7 @@ class ReaderController extends Controller
             'bookmarks.*.page' => ['required', 'integer', 'min:1'],
             'bookmarks.*.title' => ['nullable', 'string', 'max:200'],
             'annotations' => ['sometimes', 'array', 'max:20000'],
-            'annotations.*.type' => ['required', 'string', 'in:highlight,underline,strike,ink,text,note,sign'],
+            'annotations.*.type' => ['required', 'string', 'in:highlight,underline,strike,squiggly,ink,text,note,sign,rect,ellipse,line,arrow,stamp,redact'],
             'annotations.*.page' => ['required', 'integer', 'min:1'],
         ]);
         // Validation keeps only the checked keys (type, page); each note keeps all of its own.

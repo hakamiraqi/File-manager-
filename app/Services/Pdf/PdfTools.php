@@ -26,6 +26,8 @@ class PdfTools
     public const TOOLS = [
         'merge', 'split', 'organize', 'rotate', 'compress', 'protect', 'unlock',
         'watermark', 'numbers', 'to_images', 'images_to_pdf', 'office_to_pdf', 'to_word', 'to_text',
+        // Phase 3 (2026-11-12)
+        'header_footer', 'crop', 'redact', 'repair', 'remove_blank', 'extract_images',
     ];
 
     public const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'heic'];
@@ -105,6 +107,12 @@ class PdfTools
             'office_to_pdf' => $officeConvert,
             'to_word' => $this->poppler('pdftotext') !== null || $this->office->enabled(),
             'to_text' => $this->poppler('pdftotext') !== null,
+            'header_footer' => $qpdf && $magick,
+            'crop' => $qpdf && $this->pdftoppm() !== null && $this->poppler('pdfinfo') !== null,
+            'redact' => $qpdf && $magick && $this->pdftoppm() !== null,
+            'repair' => $qpdf,
+            'remove_blank' => $qpdf && $this->pdftoppm() !== null,
+            'extract_images' => $this->poppler('pdfimages') !== null,
             // Inputs other than PDF in «merge».
             'merge_images' => $magick,
             'merge_office' => $officeConvert,
@@ -179,7 +187,7 @@ class PdfTools
     public function organize(string $pdf, array $pages, string $out): void
     {
         $qpdf = $this->need($this->qpdf(), 'qpdf');
-        $list = implode(',', array_map(fn ($p) => (int) $p[0], $pages));
+        $list = self::compactRange(array_map(fn ($p) => (int) $p[0], $pages));
         $args = [$qpdf, '--empty', '--pages', $pdf, $list, '--'];
         $turns = [];
         foreach ($pages as $i => $p) {
@@ -189,7 +197,7 @@ class PdfTools
             }
         }
         foreach ($turns as $deg => $at) {
-            $args[] = '--rotate=+'.$deg.':'.implode(',', $at);
+            $args[] = '--rotate=+'.$deg.':'.self::compactRange($at);
         }
         $args[] = $out;
         $this->run($args, 900, [0, 3]);
@@ -484,6 +492,367 @@ class PdfTools
     public function toTextString(string $pdf): string
     {
         return $this->run([$this->need($this->poppler('pdftotext'), 'pdftotext'), '-enc', 'UTF-8', $pdf, '-'], 600);
+    }
+
+    /**
+     * Pages from several PDFs (and blank pages) in any order, each turned.
+     *
+     * @param  list<string>  $sources  PDFs; index 0 is the main file
+     * @param  list<array{0:int,1:int,2?:int}>  $pages  [page (0 = blank), rotation, source]
+     */
+    public function assemble(array $sources, array $pages, string $out, string $dir): void
+    {
+        $blank = null;
+        $groups = []; // [file, [pages]] — neighbours from one file share one entry (short command line on Windows)
+        $turns = [];
+        foreach ($pages as $i => $p) {
+            $n = (int) $p[0];
+            if ($n === 0) {
+                if ($blank === null) {
+                    [$w, $h] = $this->pageSizes($sources[0])[0] ?? [595.28, 841.89];
+                    $blank = $dir.'/blank.pdf';
+                    file_put_contents($blank, self::blankPdf($w, $h));
+                }
+                [$file, $page] = [$blank, 1];
+            } else {
+                $file = $sources[(int) ($p[2] ?? 0)] ?? throw new PdfToolException('ملف غير معروف في الترتيب.');
+                $page = $n;
+            }
+            $last = count($groups) - 1;
+            if ($last >= 0 && $groups[$last][0] === $file) {
+                $groups[$last][1][] = $page;
+            } else {
+                $groups[] = [$file, [$page]];
+            }
+            $deg = ((int) ($p[1] ?? 0) % 360 + 360) % 360;
+            if ($deg) {
+                $turns[$deg][] = $i + 1;
+            }
+        }
+        $args = [$this->need($this->qpdf(), 'qpdf'), '--empty', '--pages'];
+        foreach ($groups as [$file, $list]) {
+            array_push($args, $file, self::compactRange($list));
+        }
+        $args[] = '--';
+        foreach ($turns as $deg => $at) {
+            $args[] = '--rotate=+'.$deg.':'.self::compactRange($at);
+        }
+        $args[] = $out;
+        $this->run($args, 900, [0, 3]);
+    }
+
+    /** [1,2,3,7,5,6] => "1-3,7,5-6" (order kept). */
+    public static function compactRange(array $list): string
+    {
+        $parts = [];
+        $start = $prev = null;
+        foreach ($list as $n) {
+            if ($prev !== null && $n === $prev + 1) {
+                $prev = $n;
+                continue;
+            }
+            if ($start !== null) {
+                $parts[] = $start === $prev ? (string) $start : "{$start}-{$prev}";
+            }
+            $start = $prev = $n;
+        }
+        if ($start !== null) {
+            $parts[] = $start === $prev ? (string) $start : "{$start}-{$prev}";
+        }
+
+        return implode(',', $parts);
+    }
+
+    public static function blankPdf(float $w, float $h): string
+    {
+        $objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>', sprintf('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2F %.2F] >>', $w, $h)];
+        $out = "%PDF-1.4\n";
+        $off = [];
+        foreach ($objs as $i => $o) {
+            $off[] = strlen($out);
+            $out .= ($i + 1)." 0 obj\n{$o}\nendobj\n";
+        }
+        $x = strlen($out);
+        $out .= "xref\n0 4\n0000000000 65535 f \n";
+        foreach ($off as $o) {
+            $out .= sprintf("%010d 00000 n \n", $o);
+        }
+
+        return $out."trailer << /Size 4 /Root 1 0 R >>\nstartxref\n{$x}\n%%EOF\n";
+    }
+
+    /** Rebuilds a damaged file (qpdf reconstructs its index; Ghostscript rewrites it when that is not enough). */
+    public function repair(string $pdf, string $out): string
+    {
+        $r = Process::timeout(900)->run([$this->need($this->qpdf(), 'qpdf'), $pdf, $out]);
+        if (in_array($r->exitCode(), [0, 3], true) && is_file($out) && filesize($out) > 0) {
+            return $r->exitCode() === 3 ? 'fixed' : 'clean';
+        }
+        if ($gs = $this->ghostscript()) {
+            $this->run([$gs, '-q', '-dNOPAUSE', '-dBATCH', '-dSAFER', '-sDEVICE=pdfwrite', '-sOutputFile='.$out, $pdf], 1800);
+            if (is_file($out) && filesize($out) > 0) {
+                return 'rewritten';
+            }
+        }
+        throw new PdfToolException('تعذّر إصلاح الملف؛ قد يكون تالفاً بشدة.');
+    }
+
+    /** Every embedded picture, as it is stored in the file, in a zip. */
+    public function extractImages(string $pdf, string $out, string $dir): int
+    {
+        $prefix = $dir.'/img';
+        $this->run([$this->need($this->poppler('pdfimages'), 'pdfimages'), '-all', '-p', $pdf, $prefix], 1800);
+        $images = array_values(array_filter(glob($prefix.'*') ?: [], 'is_file'));
+        natsort($images);
+        if (! $images) {
+            throw new PdfToolException('لا توجد صور داخل هذا الملف.');
+        }
+        $zip = new \ZipArchive;
+        $zip->open($out, \ZipArchive::CREATE | \ZipArchive::OVERWRITE);
+        foreach (array_values($images) as $img) {
+            $zip->addFile($img, basename($img));
+        }
+        $zip->close();
+
+        return count($images);
+    }
+
+    /**
+     * Each page drawn small in grey (for finding blank pages and white margins).
+     *
+     * @return array<int, string> page number => png path
+     */
+    public function renderSmall(string $pdf, string $dir, int $dpi = 40, ?int $first = null, ?int $last = null): array
+    {
+        $prefix = $dir.'/small';
+        $args = [$this->need($this->pdftoppm(), 'pdftoppm'), '-r', (string) $dpi, '-gray', '-png'];
+        if ($first) {
+            array_push($args, '-f', (string) $first, '-l', (string) ($last ?? $first));
+        }
+        array_push($args, $pdf, $prefix);
+        $this->run($args, 1800);
+        $pages = [];
+        foreach (glob($prefix.'*.png') ?: [] as $f) {
+            if (preg_match('/-(\d+)\.png$/', $f, $m)) {
+                $pages[(int) $m[1]] = $f;
+            }
+        }
+        ksort($pages);
+
+        return $pages;
+    }
+
+    /** The box around everything printed on a small grey page, as fractions [x0, y0, x1, y1] (top-left origin), or null when blank. */
+    public static function inkBox(string $png, int $threshold = 235): ?array
+    {
+        $im = @imagecreatefrompng($png);
+        if (! $im) {
+            return null;
+        }
+        $w = imagesx($im);
+        $h = imagesy($im);
+        $x0 = $w;
+        $y0 = $h;
+        $x1 = -1;
+        $y1 = -1;
+        $dark = 0;
+        for ($y = 0; $y < $h; $y++) {
+            for ($x = 0; $x < $w; $x++) {
+                if ((imagecolorat($im, $x, $y) & 0xFF) < $threshold) {
+                    $dark++;
+                    $x0 = min($x0, $x);
+                    $x1 = max($x1, $x);
+                    $y0 = min($y0, $y);
+                    $y1 = max($y1, $y);
+                }
+            }
+        }
+        imagedestroy($im);
+        // A few specks (scanner dust, a page number alone is more) still count as blank.
+        if ($x1 < 0 || $dark < max(8, $w * $h * 0.0005)) {
+            return null;
+        }
+
+        return [$x0 / $w, $y0 / $h, ($x1 + 1) / $w, ($y1 + 1) / $h];
+    }
+
+    /** Pages that have nothing printed on them. @return list<int> */
+    public function blankPages(string $pdf, string $dir): array
+    {
+        $blank = [];
+        foreach ($this->renderSmall($pdf, $dir, 30) as $n => $png) {
+            if (self::inkBox($png) === null) {
+                $blank[] = $n;
+            }
+            @unlink($png);
+        }
+
+        return $blank;
+    }
+
+    /**
+     * Sets each page's visible area (CropBox). $margins are millimetres cut from each side
+     * [top, right, bottom, left]; with $auto the white margins are found on every page
+     * (keeping $margins as padding around what is printed).
+     */
+    public function crop(string $pdf, array $margins, bool $auto, string $which, string $out, string $dir): int
+    {
+        $qpdf = $this->need($this->qpdf(), 'qpdf');
+        $mm = fn ($v) => max(0, (float) $v) * 72 / 25.4;
+        [$top, $right, $bottom, $left] = array_map($mm, array_pad($margins, 4, 0));
+        $boxes = $this->cropBoxes($pdf);
+        $count = count($boxes);
+        $small = $auto ? $this->renderSmall($pdf, $dir, 40) : [];
+
+        $json = json_decode($this->run([$qpdf, '--json=2', '--json-key=pages', $pdf], 300));
+        $objects = array_map(fn ($p) => $p->object, $json->pages ?? []);
+        if (count($objects) !== $count) {
+            throw new PdfToolException('تعذّر قراءة صفحات الملف.');
+        }
+        $args = [$qpdf, '--json=2', '--json-key=qpdf'];
+        foreach ($objects as $o) {
+            $args[] = '--json-object='.$o;
+        }
+        $args[] = $pdf;
+        $doc = json_decode($this->run($args, 300));
+        $header = $doc->qpdf[0];
+        $values = $doc->qpdf[1];
+
+        $changed = new \stdClass;
+        $done = 0;
+        foreach ($objects as $i => $ref) {
+            $n = $i + 1;
+            if (($which === 'odd' && $n % 2 === 0) || ($which === 'even' && $n % 2 === 1) || ($which === 'first' && $n !== 1)) {
+                continue;
+            }
+            [$x0, $y0, $x1, $y1, $rot] = $boxes[$i];
+            // Sides as the reader sees them, turned back to the page's own (unrotated) sides.
+            $side = match ($rot) {
+                90 => ['t' => $left, 'r' => $top, 'b' => $right, 'l' => $bottom],
+                180 => ['t' => $bottom, 'r' => $left, 'b' => $top, 'l' => $right],
+                270 => ['t' => $right, 'r' => $bottom, 'b' => $left, 'l' => $top],
+                default => ['t' => $top, 'r' => $right, 'b' => $bottom, 'l' => $left],
+            };
+            if ($auto) {
+                $ink = isset($small[$n]) && $rot === 0 ? self::inkBox($small[$n]) : null;
+                if ($ink === null) {
+                    continue; // blank or turned page: left as it is
+                }
+                $w = $x1 - $x0;
+                $h = $y1 - $y0;
+                $nx0 = $x0 + $ink[0] * $w - $side['l'];
+                $nx1 = $x0 + $ink[2] * $w + $side['r'];
+                $ny1 = $y1 - $ink[1] * $h + $side['t'];
+                $ny0 = $y1 - $ink[3] * $h - $side['b'];
+            } else {
+                $nx0 = $x0 + $side['l'];
+                $nx1 = $x1 - $side['r'];
+                $ny0 = $y0 + $side['b'];
+                $ny1 = $y1 - $side['t'];
+            }
+            $nx0 = max($x0, $nx0);
+            $ny0 = max($y0, $ny0);
+            $nx1 = min($x1, $nx1);
+            $ny1 = min($y1, $ny1);
+            if ($nx1 - $nx0 < 36 || $ny1 - $ny0 < 36) {
+                throw new PdfToolException("الهوامش أكبر من الصفحة {$n}.");
+            }
+            $key = 'obj:'.$ref;
+            $obj = $values->{$key};
+            $obj->value->{'/CropBox'} = [round($nx0, 2), round($ny0, 2), round($nx1, 2), round($ny1, 2)];
+            $changed->{$key} = $obj;
+            $done++;
+        }
+        foreach ($small as $png) {
+            @unlink($png);
+        }
+        if (! $done) {
+            throw new PdfToolException('لم تتغير أي صفحة (لا هوامش بيضاء يمكن قصها).');
+        }
+        $upd = $dir.'/crop.json';
+        file_put_contents($upd, json_encode(['qpdf' => [$header, $changed]], JSON_UNESCAPED_SLASHES));
+        $this->run([$qpdf, $pdf, '--update-from-json='.$upd, $out], 900, [0, 3]);
+
+        return $done;
+    }
+
+    /** @return list<array{0:float,1:float,2:float,3:float,4:int}> each page's CropBox and rotation */
+    private function cropBoxes(string $pdf): array
+    {
+        $r = $this->run([$this->need($this->poppler('pdfinfo'), 'pdfinfo'), '-box', '-f', '1', '-l', '100000', $pdf], 120);
+        $box = [];
+        $rot = [];
+        foreach (preg_split('/\R/', $r) as $line) {
+            if (preg_match('/^Page\s+(\d+)\s+CropBox:\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)/', $line, $m)) {
+                $box[(int) $m[1]] = [(float) $m[2], (float) $m[3], (float) $m[4], (float) $m[5]];
+            } elseif (preg_match('/^Page\s+(\d+)\s+rot:\s+(\d+)/', $line, $m)) {
+                $rot[(int) $m[1]] = ((int) $m[2]) % 360;
+            }
+        }
+        ksort($box);
+        $out = [];
+        foreach ($box as $n => [$a, $b, $c, $d]) {
+            $out[] = [min($a, $c), min($b, $d), max($a, $c), max($b, $d), $rot[$n] ?? 0];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Blacks out areas for good: each page with boxes is redrawn as a picture with the boxes
+     * burned in, so the text under them is gone from the file (not just covered).
+     *
+     * @param  array<int, list<array{0:float,1:float,2:float,3:float}>>  $boxes  page => boxes as fractions of the shown page (x, y, w, h; top-left)
+     */
+    public function redact(string $pdf, array $boxes, string $out, string $dir): int
+    {
+        $count = $this->pageCount($pdf);
+        $magick = $this->need($this->magick(), 'ImageMagick');
+        $dpi = 200;
+        $replaced = [];
+        foreach ($boxes as $n => $list) {
+            $n = (int) $n;
+            if ($n < 1 || $n > $count || ! $list) {
+                continue;
+            }
+            $prefix = $dir."/red-{$n}";
+            $this->run([$this->need($this->pdftoppm(), 'pdftoppm'), '-r', (string) $dpi, '-png', '-singlefile', '-f', (string) $n, '-l', (string) $n, $pdf, $prefix], 600);
+            $png = $prefix.'.png';
+            $im = @imagecreatefrompng($png) ?: throw new PdfToolException("تعذّر رسم الصفحة {$n}.");
+            $w = imagesx($im);
+            $h = imagesy($im);
+            $black = imagecolorallocate($im, 0, 0, 0);
+            foreach ($list as $b) {
+                [$x, $y, $bw, $bh] = array_map('floatval', $b);
+                imagefilledrectangle($im, (int) floor($x * $w), (int) floor($y * $h), (int) ceil(($x + $bw) * $w), (int) ceil(($y + $bh) * $h), $black);
+            }
+            imagepng($im, $png);
+            imagedestroy($im);
+            $page = $prefix.'.pdf';
+            $this->run([$magick, '-units', 'PixelsPerInch', '-density', (string) $dpi, $png, '-quality', '92', '-compress', 'jpeg', $page], 600);
+            @unlink($png);
+            $replaced[$n] = $page;
+        }
+        if (! $replaced) {
+            throw new PdfToolException('حدّد مناطق للإخفاء أولاً.');
+        }
+        $args = [$this->need($this->qpdf(), 'qpdf'), '--empty', '--pages'];
+        $from = 1;
+        ksort($replaced);
+        foreach ($replaced as $n => $page) {
+            if ($n > $from) {
+                array_push($args, $pdf, $from === $n - 1 ? (string) $from : $from.'-'.($n - 1));
+            }
+            array_push($args, $page, '1');
+            $from = $n + 1;
+        }
+        if ($from <= $count) {
+            array_push($args, $pdf, $from.'-'.$count);
+        }
+        array_push($args, '--', $out);
+        $this->run($args, 900, [0, 3]);
+
+        return count($replaced);
     }
 
     /** A small real PDF with one line of text per page (self-test and tests). */

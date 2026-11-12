@@ -143,18 +143,76 @@ class PdfToolController extends Controller
                 return [$made, null];
 
             case 'organize':
-                $pdf = $t->pdfPath($first);
-                $count = $t->pageCount($pdf);
-                $pages = array_map(fn ($p) => [(int) $p[0], (int) ($p[1] ?? 0)], $o['pages']);
+                // files[0] is the file being organised; any others are files whose pages were inserted.
+                $sources = $files->map(fn (File $f) => $t->asPdf($f, $dir))->all();
+                $counts = array_map(fn ($p) => $t->pageCount($p), $sources);
+                $pages = array_map(fn ($p) => [(int) $p[0], (int) ($p[1] ?? 0), (int) ($p[2] ?? 0)], $o['pages']);
                 foreach ($pages as $p) {
-                    if ($p[0] < 1 || $p[0] > $count) {
+                    if ($p[0] !== 0 && ($p[0] < 1 || $p[0] > ($counts[$p[2]] ?? 0))) {
                         throw new PdfToolException('رقم صفحة خارج الملف.');
                     }
                 }
                 $r = $out('منظّم');
-                $t->organize($pdf, $pages, $r['path']);
+                $t->assemble($sources, $pages, $r['path'], $dir);
 
                 return [[$r], null];
+
+            case 'header_footer':
+                $png = $dir.'/mark.png';
+                $request->file('mark')->move($dir, 'mark.png');
+                $r = $out('ترويسة');
+                $t->watermark($t->pdfPath($first), $png, false, $o['pages'] ?? 'all', $r['path'], $dir);
+                if (! empty($o['numbers'])) {
+                    $numbered = $dir.'/numbered.pdf';
+                    $t->numbers($r['path'], $o + ['position' => 'bottom-center', 'format' => 'n'], $numbered, $dir);
+                    rename($numbered, $r['path']);
+                }
+
+                return [[$r], null];
+
+            case 'crop':
+                $r = $out('مقصوص');
+                $n = $t->crop($t->pdfPath($first), [$o['top'] ?? 0, $o['right'] ?? 0, $o['bottom'] ?? 0, $o['left'] ?? 0], (bool) ($o['auto'] ?? false), $o['which'] ?? 'all', $r['path'], $dir);
+
+                return [[$r], "قُصّت {$n} صفحة."];
+
+            case 'redact':
+                $boxes = [];
+                foreach ($o['boxes'] as $b) {
+                    $boxes[(int) $b['page']][] = [(float) $b['x'], (float) $b['y'], (float) $b['w'], (float) $b['h']];
+                }
+                $r = $out('مُخفى');
+                $n = $t->redact($t->pdfPath($first), $boxes, $r['path'], $dir);
+
+                return [[$r], "أُخفيت المناطق نهائياً في {$n} صفحة. نص هذه الصفحات صار صورة؛ يُقرأ من جديد بالتعرف على النصوص."];
+
+            case 'repair':
+                $r = $out('مُصلح');
+                $how = $t->repair($first->disk()->path($first->path), $r['path']);
+
+                return [[$r], $how === 'clean' ? 'لم توجد أخطاء في بنية الملف؛ حُفظت نسخة نظيفة منه.' : 'أُصلح الملف.'];
+
+            case 'remove_blank':
+                $pdf = $t->pdfPath($first);
+                $count = $t->pageCount($pdf);
+                $blank = $t->blankPages($pdf, $dir);
+                if (! $blank) {
+                    throw new PdfToolException('لا توجد صفحات فارغة في الملف.');
+                }
+                if (count($blank) >= $count) {
+                    throw new PdfToolException('كل صفحات الملف فارغة.');
+                }
+                $keep = array_values(array_diff(range(1, $count), $blank));
+                $r = $out('بدون الصفحات الفارغة');
+                $t->organize($pdf, array_map(fn ($n) => [$n, 0], $keep), $r['path']);
+
+                return [[$r], 'حُذفت '.count($blank).' صفحة فارغة: '.PdfTools::compactRange($blank).'.'];
+
+            case 'extract_images':
+                $r = $out('الصور', 'zip');
+                $n = $t->extractImages($t->pdfPath($first), $r['path'], $dir);
+
+                return [[$r], "{$n} صورة في ملف مضغوط واحد."];
 
             case 'rotate':
                 $r = $out('مُدوّر');
@@ -243,6 +301,35 @@ class PdfToolController extends Controller
         throw new PdfToolException('أداة غير معروفة.');
     }
 
+    /**
+     * The reader saves a changed copy of a PDF it has open (a filled-in form): the bytes come
+     * from the browser and are stored as a new file next to the original.
+     */
+    public function saveCopy(Request $request, File $file, StorageQuotaService $quota): JsonResponse
+    {
+        $user = $request->user();
+        abort_unless($user->can('view', $file) && $user->canPerform('upload'), 403);
+        $data = $request->validate([
+            'pdf' => ['required', 'file', 'max:51200'],
+            'kind' => ['nullable', 'in:filled'],
+        ]);
+        $upload = $request->file('pdf');
+        $head = (string) file_get_contents($upload->getRealPath(), false, null, 0, 5);
+        abort_unless($head === '%PDF-', 422, 'الملف ليس PDF.');
+        $quota->assertHasSpace($user, (int) $upload->getSize());
+        $dir = storage_path('app/tmp/pdf-tools/'.Str::uuid());
+        Fs::ensureDirectoryExists($dir);
+        try {
+            $upload->move($dir, 'copy.pdf');
+            $name = Str::limit(pathinfo($file->name, PATHINFO_FILENAME), 150, '').' (معبأ).pdf';
+            $made = $this->store($user, $this->targetFolder($user, $file), $dir.'/copy.pdf', $name, 'copy', $quota);
+        } finally {
+            Fs::deleteDirectory($dir);
+        }
+
+        return response()->json(['file' => (new FileResource($made))->resolve($request)]);
+    }
+
     private function rules(string $tool): array
     {
         $one = ['files' => ['required', 'array', 'size:1'], 'files.*' => ['integer']];
@@ -255,7 +342,14 @@ class PdfToolController extends Controller
                 'ranges' => ['required_if:mode,ranges', 'nullable', 'string', 'max:500', 'regex:/^[\d\sz,\-]+$/'],
                 'every' => ['required_if:mode,every', 'nullable', 'integer', 'min:1', 'max:10000'],
             ],
-            'organize' => $one + ['pages' => ['required', 'array', 'min:1', 'max:20000'], 'pages.*' => ['array'], 'pages.*.0' => ['required', 'integer', 'min:1'], 'pages.*.1' => ['nullable', 'integer', 'in:0,90,180,270']],
+            'organize' => $many(1, 20) + ['pages' => ['required', 'array', 'min:1', 'max:20000'], 'pages.*' => ['array'], 'pages.*.0' => ['required', 'integer', 'min:0'], 'pages.*.1' => ['nullable', 'integer', 'in:0,90,180,270'], 'pages.*.2' => ['nullable', 'integer', 'min:0', 'max:19']],
+            'header_footer' => $one + ['mark' => ['required', 'file', 'mimes:png', 'max:15360'], 'pages' => ['nullable', 'in:all,first,odd,even'], 'numbers' => ['nullable', 'boolean'],
+                'position' => ['nullable', 'in:bottom-center,bottom-left,bottom-right,top-center,top-left,top-right'], 'format' => ['nullable', 'in:n,n/N,-n-,page'], 'size' => ['nullable', 'integer', 'min:6', 'max:36']],
+            'crop' => $one + ['top' => ['nullable', 'numeric', 'min:0', 'max:300'], 'right' => ['nullable', 'numeric', 'min:0', 'max:300'], 'bottom' => ['nullable', 'numeric', 'min:0', 'max:300'], 'left' => ['nullable', 'numeric', 'min:0', 'max:300'],
+                'auto' => ['nullable', 'boolean'], 'which' => ['nullable', 'in:all,odd,even,first']],
+            'redact' => $one + ['boxes' => ['required', 'array', 'min:1', 'max:2000'], 'boxes.*.page' => ['required', 'integer', 'min:1'],
+                'boxes.*.x' => ['required', 'numeric', 'between:0,1'], 'boxes.*.y' => ['required', 'numeric', 'between:0,1'], 'boxes.*.w' => ['required', 'numeric', 'between:0,1'], 'boxes.*.h' => ['required', 'numeric', 'between:0,1']],
+            'repair', 'remove_blank', 'extract_images' => $one,
             'rotate' => $one + ['degrees' => ['required', 'in:90,180,270'], 'which' => ['nullable', 'in:all,odd,even']],
             'compress' => $one + ['level' => ['nullable', 'in:low,medium,high']],
             'protect' => $one + ['password' => ['required', 'string', 'min:1', 'max:128'], 'deny' => ['nullable', 'array'], 'deny.*' => ['in:print,copy,modify']],
@@ -284,6 +378,8 @@ class PdfToolController extends Controller
                 'merge' => $kind === 'pdf' || ($kind === 'image' && $caps['merge_images']) || ($kind === 'office' && $caps['merge_office']),
                 'images_to_pdf' => $kind === 'image',
                 'office_to_pdf' => $kind === 'office',
+                // Pages inserted from other files may come from images or documents too.
+                'organize' => $kind === 'pdf' || ($f !== $files->first() && (($kind === 'image' && $caps['merge_images']) || ($kind === 'office' && $caps['merge_office']))),
                 default => $kind === 'pdf',
             };
             if (! $ok) {

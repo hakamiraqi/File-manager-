@@ -18,6 +18,7 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { useTrans } from '@/Composables/useTrans';
 import SignaturePad from '@/Components/Reader/SignaturePad.vue';
+import './Reader/annotation-layer.css';
 import {
     ArrowDownTrayIcon,
     ArrowPathIcon,
@@ -49,6 +50,11 @@ import {
     TrashIcon,
     ViewColumnsIcon,
     WrenchScrewdriverIcon,
+    SpeakerWaveIcon,
+    StopIcon,
+    Bars3BottomRightIcon,
+    StopCircleIcon,
+    EyeSlashIcon,
     XMarkIcon,
 } from '@heroicons/vue/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/vue/24/solid';
@@ -66,6 +72,9 @@ const props = defineProps({
     canDownload: { type: Boolean, default: true },
     downloadUrl: { type: String, default: null },
     readerHref: { type: String, default: null },
+    canCreate: { type: Boolean, default: false },
+    tools: { type: Object, default: () => ({}) },
+    startTool: { type: String, default: null },
 });
 
 const rtl = typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
@@ -85,9 +94,12 @@ const theme = ref(saved.theme || 'light'); // light | night | green | sepia
 const penColor = ref(saved.penColor || '#e11d48');
 const penSize = ref(saved.penSize || 4);
 const autoSpeed = ref(saved.autoSpeed || 4);
-watch([mode, fit, theme, penColor, penSize, autoSpeed], () => {
+const shapeKind = ref(saved.shapeKind || 'rect'); // rect | ellipse | line | arrow
+const reflowSize = ref(saved.reflowSize || 18); // text view font size (px)
+const ttsRate = ref(saved.ttsRate || 1); // reading aloud speed
+watch([mode, fit, theme, penColor, penSize, autoSpeed, () => shapeKind.value, () => reflowSize.value, () => ttsRate.value], () => {
     try {
-        localStorage.setItem(PREFS, JSON.stringify({ mode: mode.value, fit: fit.value, theme: theme.value, penColor: penColor.value, penSize: penSize.value, autoSpeed: autoSpeed.value }));
+        localStorage.setItem(PREFS, JSON.stringify({ mode: mode.value, fit: fit.value, theme: theme.value, penColor: penColor.value, penSize: penSize.value, autoSpeed: autoSpeed.value, shapeKind: shapeKind.value, reflowSize: reflowSize.value, ttsRate: ttsRate.value }));
     } catch {
         /* private mode */
     }
@@ -183,6 +195,24 @@ async function draw(n) {
         } catch {
             // The picture stays; only selection is missing on this page.
         }
+        // Links (go to a chapter, open a website) and form fields to fill in (2026-11-12).
+        try {
+            const annots = await page.getAnnotations({ intent: 'display' });
+            if (annots.length && drawn.get(n) === render) {
+                const al = document.createElement('div');
+                al.className = 'annotationLayer';
+                slot.appendChild(al);
+                await new pdfjs.AnnotationLayer({
+                    div: al,
+                    page,
+                    viewport: page.getViewport({ scale, rotation: turn }).clone({ dontFlip: true }),
+                    linkService,
+                    annotationStorage: doc.annotationStorage,
+                }).render({ annotations: annots, renderForms: true, linkService, enableScripting: false, hasJSActions: false, fieldObjects: null });
+            }
+        } catch {
+            // Without links and fields the page still reads.
+        }
     } catch {
         drawn.delete(n);
     }
@@ -203,7 +233,9 @@ function observeAll() {
         (entries) => {
             for (const e of entries) {
                 const n = Number(e.target.dataset.page);
-                if (e.isIntersecting) draw(n);
+                if (mode.value === 'reflow') {
+                    if (e.isIntersecting) loadReflow(n);
+                } else if (e.isIntersecting) draw(n);
                 else forget(n);
             }
         },
@@ -264,6 +296,79 @@ function goTo(n, smooth = true) {
 }
 const stepPage = (d) => goTo(current.value + d * (mode.value === 'spread' ? 2 : 1));
 
+// The page a PDF destination points at (contents entries and links inside the file).
+async function destPage(dest) {
+    try {
+        if (typeof dest === 'string') dest = await doc.getDestination(dest);
+        if (!Array.isArray(dest)) return null;
+        return typeof dest[0] === 'number' ? dest[0] + 1 : (await doc.getPageIndex(dest[0])) + 1;
+    } catch {
+        return null;
+    }
+}
+// What pdf.js's links and fields ask of the viewer.
+const linkService = {
+    externalLinkEnabled: true,
+    isInPresentationMode: false,
+    rotation: 0,
+    eventBus: { dispatch() {}, on() {}, off() {}, _on() {}, _off() {} },
+    get pagesCount() {
+        return pages.value;
+    },
+    get page() {
+        return current.value;
+    },
+    set page(v) {
+        goTo(v);
+    },
+    addLinkAttributes(link, url) {
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer nofollow';
+    },
+    getDestinationHash: () => '#',
+    getAnchorUrl: () => '#',
+    setHash() {},
+    async goToDestination(dest) {
+        const p = await destPage(dest);
+        if (p) goTo(p);
+    },
+    goToPage(n) {
+        goTo(n);
+    },
+    goToXY(n) {
+        goTo(n);
+    },
+    executeNamedAction(a) {
+        if (a === 'NextPage') stepPage(1);
+        else if (a === 'PrevPage') stepPage(-1);
+        else if (a === 'FirstPage') goTo(1);
+        else if (a === 'LastPage') goTo(pages.value);
+    },
+    executeSetOCGState() {},
+};
+
+// ---- Fillable forms: filled in on the page, saved as a new copy (the original stays as it is).
+const hasForm = ref(false);
+const formSaving = ref(false);
+const savedCopy = ref(null);
+async function saveForm() {
+    if (!doc || !props.fileId || formSaving.value) return;
+    formSaving.value = true;
+    try {
+        const bytes = await doc.saveDocument();
+        const form = new FormData();
+        form.append('pdf', new Blob([bytes], { type: 'application/pdf' }), 'filled.pdf');
+        form.append('kind', 'filled');
+        const { data } = await window.axios.post(route('reader.copy', props.fileId), form);
+        savedCopy.value = data.file;
+    } catch (e) {
+        flash(e.response?.data?.message || t('reader.form_failed', 'تعذّر حفظ النموذج.'));
+    } finally {
+        formSaving.value = false;
+    }
+}
+
 const pageInput = ref('');
 watch(current, (n) => (pageInput.value = String(n)), { immediate: true });
 
@@ -287,6 +392,7 @@ async function open() {
         await nextTick();
         observeAll();
         loadOutline();
+        doc.getFieldObjects().then((f) => (hasForm.value = !!f && Object.keys(f).length > 0)).catch(() => {});
         await stateReady;
         const last = state.last_page || 1;
         if (last > 1 && last <= pages.value) {
@@ -472,14 +578,7 @@ async function loadOutline() {
         const walk = async (list, depth) => {
             for (const it of list) {
                 if (flat.length >= 3000) return;
-                let page = null;
-                try {
-                    let dest = it.dest;
-                    if (typeof dest === 'string') dest = await doc.getDestination(dest);
-                    if (Array.isArray(dest)) page = typeof dest[0] === 'number' ? dest[0] + 1 : (await doc.getPageIndex(dest[0])) + 1;
-                } catch {
-                    page = null;
-                }
+                const page = it.dest ? await destPage(it.dest) : null;
                 flat.push({ title: it.title, page, depth });
                 if (it.items?.length) await walk(it.items, depth + 1);
             }
@@ -637,6 +736,37 @@ function boardPoint(n, clientX, clientY) {
 
 // Pen
 const liveInk = ref(null); // { page, points }
+// Shapes and the areas to black out: dragged from one corner to the other.
+const liveShape = ref(null); // { page, kind, x1, y1, x2, y2 }
+const STAMPS = [
+    { text: 'موافق', color: '#16a34a' },
+    { text: 'مراجَع', color: '#2563eb' },
+    { text: 'سري', color: '#dc2626' },
+    { text: 'عاجل', color: '#ea580c' },
+    { text: 'مسودة', color: '#6b7280' },
+    { text: 'مرفوض', color: '#b91c1c' },
+    { text: 'APPROVED', color: '#16a34a' },
+    { text: 'CONFIDENTIAL', color: '#dc2626' },
+];
+const stamp = ref(STAMPS[0]);
+const customStamp = ref('');
+function boxOf(sh) {
+    return { x: Math.min(sh.x1, sh.x2), y: Math.min(sh.y1, sh.y2), w: Math.abs(sh.x2 - sh.x1), h: Math.abs(sh.y2 - sh.y1) };
+}
+function arrowHead(a) {
+    const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
+    const len = Math.max(10, a.size * 4);
+    const p = (d) => [a.x2 - len * Math.cos(ang + d), a.y2 - len * Math.sin(ang + d)];
+    const [l, r] = [p(0.45), p(-0.45)];
+    return `M${a.x2} ${a.y2} L${l[0]} ${l[1]} L${r[0]} ${r[1]} Z`;
+}
+function squiggle(r) {
+    const y = r[1] + r[3] - 1;
+    const step = Math.max(3, r[3] * 0.25);
+    let d = `M${r[0]} ${y}`;
+    for (let x = r[0], i = 0; x < r[0] + r[2]; x += step, i++) d += ` L${Math.min(x + step, r[0] + r[2])} ${y + (i % 2 ? -1 : 1) * step * 0.45}`;
+    return d;
+}
 function svgDown(n, e) {
     if (!annotating.value) return;
     const p = boardPoint(n, e.clientX, e.clientY);
@@ -644,6 +774,13 @@ function svgDown(n, e) {
     if (tool.value === 'pen') {
         e.currentTarget.setPointerCapture(e.pointerId);
         liveInk.value = { page: n, points: [p] };
+    } else if (tool.value === 'shape' || tool.value === 'redact') {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        liveShape.value = { page: n, kind: tool.value === 'redact' ? 'redact' : shapeKind.value, x1: p[0], y1: p[1], x2: p[0], y2: p[1] };
+    } else if (tool.value === 'stamp') {
+        const st = customStamp.value.trim() ? { text: customStamp.value.trim(), color: penColor.value } : stamp.value;
+        const w = Math.min(420, 70 + st.text.length * 26);
+        addAnn({ id: uid(), type: 'stamp', page: n, x: p[0] - w / 2, y: p[1] - 30, w, h: 60, text: st.text, color: st.color });
     } else if (tool.value === 'text' || tool.value === 'note') {
         editor.value = { mode: tool.value, page: n, x: p[0], y: p[1], text: '', id: null, ...popAt(e.clientX, e.clientY) };
     } else if (tool.value === 'sign') {
@@ -658,12 +795,28 @@ function svgDown(n, e) {
     }
 }
 function svgMove(n, e) {
+    if (liveShape.value && liveShape.value.page === n) {
+        const q = boardPoint(n, e.clientX, e.clientY);
+        if (q) [liveShape.value.x2, liveShape.value.y2] = q;
+        return;
+    }
     if (!liveInk.value || liveInk.value.page !== n) return;
     const p = boardPoint(n, e.clientX, e.clientY);
     const last = liveInk.value.points[liveInk.value.points.length - 1];
     if (p && Math.hypot(p[0] - last[0], p[1] - last[1]) >= unit(n, 1.5)) liveInk.value.points.push(p);
 }
 function svgUp() {
+    const sh = liveShape.value;
+    liveShape.value = null;
+    if (sh) {
+        const b = boxOf(sh);
+        if (Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) < 6) return;
+        const r = (v) => Math.round(v * 10) / 10;
+        if (sh.kind === 'line' || sh.kind === 'arrow') addAnn({ id: uid(), type: sh.kind, page: sh.page, x1: r(sh.x1), y1: r(sh.y1), x2: r(sh.x2), y2: r(sh.y2), color: penColor.value, size: Math.min(penSize.value, 12) });
+        else if (sh.kind === 'redact') addAnn({ id: uid(), type: 'redact', page: sh.page, x: r(b.x), y: r(b.y), w: r(b.w), h: r(b.h) });
+        else addAnn({ id: uid(), type: sh.kind, page: sh.page, x: r(b.x), y: r(b.y), w: r(b.w), h: r(b.h), color: penColor.value, size: Math.min(penSize.value, 12) });
+        return;
+    }
     const ink = liveInk.value;
     liveInk.value = null;
     if (!ink || ink.points.length < 2) return;
@@ -1017,15 +1170,184 @@ const modeOptions = [
     { id: 'scroll', label: () => t('reader.mode_scroll', 'تمرير متصل'), icon: DocumentIcon },
     { id: 'paged', label: () => t('reader.mode_paged', 'صفحة صفحة'), icon: BookOpenIcon },
     { id: 'spread', label: () => t('reader.mode_spread', 'صفحتان'), icon: ViewColumnsIcon },
+    { id: 'reflow', label: () => t('reader.mode_reflow', 'نص متدفق'), icon: Bars3BottomRightIcon },
 ];
-const tools = [
+const canRedact = computed(() => !!(props.fileId && props.canCreate && props.tools?.redact));
+const tools = computed(() => [
     { id: 'select', icon: CursorArrowRaysIcon, label: () => t('reader.tool_select', 'تحديد وتظليل') },
     { id: 'pen', icon: PencilIcon, label: () => t('reader.pen', 'قلم') },
-    { id: 'text', icon: null, label: () => t('reader.text', 'نص') },
+    { id: 'shape', icon: null, glyph: '□', label: () => t('reader.shapes', 'أشكال') },
+    { id: 'text', icon: null, glyph: 'T', label: () => t('reader.text', 'نص') },
     { id: 'note', icon: ChatBubbleLeftEllipsisIcon, label: () => t('reader.note', 'ملاحظة') },
+    { id: 'stamp', icon: null, glyph: '✓', label: () => t('reader.stamp', 'ختم') },
     { id: 'sign', icon: PencilSquareIcon, label: () => t('reader.signature', 'توقيع') },
+    ...(canRedact.value ? [{ id: 'redact', icon: EyeSlashIcon, label: () => t('reader.redact', 'إخفاء نهائي') }] : []),
     { id: 'eraser', icon: BackspaceIcon, label: () => t('reader.eraser', 'ممحاة') },
+]);
+const SHAPES = [
+    { id: 'rect', glyph: '▭', label: () => t('reader.rect', 'مستطيل') },
+    { id: 'ellipse', glyph: '◯', label: () => t('reader.ellipse', 'دائرة') },
+    { id: 'line', glyph: '╱', label: () => t('reader.line', 'خط') },
+    { id: 'arrow', glyph: '↗', label: () => t('reader.arrow', 'سهم') },
 ];
+
+// ---- Black out for good (redaction): boxes drawn here, burned into a new copy on the server.
+const redactions = computed(() => state.annotations.filter((a) => a.type === 'redact'));
+const redactConfirm = ref(false);
+const redactBusy = ref(false);
+async function applyRedactions() {
+    if (!redactConfirm.value) {
+        redactConfirm.value = true;
+        return;
+    }
+    redactConfirm.value = false;
+    redactBusy.value = true;
+    try {
+        const form = new FormData();
+        form.append('files[]', props.fileId);
+        redactions.value.forEach((a, i) => {
+            const h = boardH(a.page);
+            form.append(`boxes[${i}][page]`, a.page);
+            form.append(`boxes[${i}][x]`, Math.max(0, a.x / 1000).toFixed(5));
+            form.append(`boxes[${i}][y]`, Math.max(0, a.y / h).toFixed(5));
+            form.append(`boxes[${i}][w]`, Math.min(1, a.w / 1000).toFixed(5));
+            form.append(`boxes[${i}][h]`, Math.min(1, a.h / h).toFixed(5));
+        });
+        const { data } = await window.axios.post(route('pdf-tools.run', 'redact'), form, { timeout: 1800000 });
+        state.annotations = state.annotations.filter((a) => a.type !== 'redact');
+        markDirty('annotations', 300);
+        savedCopy.value = data.files?.[0] || null;
+        tool.value = 'select';
+    } catch (e) {
+        flash(e.response?.data?.message || t('reader.redact_failed', 'تعذّر الإخفاء.'));
+    } finally {
+        redactBusy.value = false;
+    }
+}
+
+// ---- Reading aloud (the browser's own voices; Arabic when the device has one).
+const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+const tts = reactive({ on: false, paused: false, page: 1, list: [], i: 0, sentence: '' });
+function voiceFor(text) {
+    const ar = /[\u0600-\u06FF]/.test(text);
+    const voices = window.speechSynthesis.getVoices();
+    return voices.find((v) => (ar ? v.lang.toLowerCase().startsWith('ar') : v.lang.toLowerCase().startsWith((document.documentElement.lang || 'en').slice(0, 2)))) || null;
+}
+async function ttsStart(fromPage = current.value) {
+    if (!ttsSupported || !doc) return;
+    window.speechSynthesis.cancel();
+    tts.on = true;
+    tts.paused = false;
+    await ttsLoad(fromPage);
+}
+async function ttsLoad(n) {
+    for (; n <= pages.value; n++) {
+        const text = (await pageText(n)).replace(/\s+/g, ' ').trim();
+        if (!text) continue;
+        tts.page = n;
+        tts.list = text.split(/(?<=[.!?؟؛:])\s+/).flatMap((x) => (x.length > 220 ? x.match(/.{1,200}(\s|$)/g) || [x] : [x])).filter((x) => x.trim());
+        tts.i = 0;
+        if (current.value !== n) goTo(n);
+        return ttsSpeak();
+    }
+    ttsStop();
+    flash(hasText.value === false ? t('reader.tts_no_text', 'لا يوجد نص لقراءته في هذا الملف بعد.') : t('reader.tts_end', 'انتهت القراءة.'));
+}
+function ttsSpeak() {
+    if (!tts.on) return;
+    if (tts.i >= tts.list.length) return ttsLoad(tts.page + 1);
+    const text = tts.list[tts.i];
+    tts.sentence = text;
+    const u = new SpeechSynthesisUtterance(text);
+    const v = voiceFor(text);
+    if (v) u.voice = v;
+    u.lang = v?.lang || (/[\u0600-\u06FF]/.test(text) ? 'ar' : document.documentElement.lang || 'en');
+    u.rate = ttsRate.value;
+    u.onend = () => {
+        if (!tts.on || tts.paused) return;
+        tts.i++;
+        ttsSpeak();
+    };
+    u.onerror = () => {};
+    window.speechSynthesis.speak(u);
+}
+function ttsToggle() {
+    if (!tts.on) return ttsStart();
+    if (tts.paused) {
+        tts.paused = false;
+        window.speechSynthesis.resume();
+        if (!window.speechSynthesis.speaking) ttsSpeak();
+    } else {
+        tts.paused = true;
+        window.speechSynthesis.pause();
+    }
+}
+function ttsStop() {
+    tts.on = false;
+    tts.paused = false;
+    tts.sentence = '';
+    if (ttsSupported) window.speechSynthesis.cancel();
+}
+function ttsStep(d) {
+    window.speechSynthesis.cancel();
+    tts.i = Math.max(0, tts.i + d);
+    tts.paused = false;
+    setTimeout(ttsSpeak, 50);
+}
+watch(ttsRate, () => tts.on && !tts.paused && ttsStep(0));
+
+// ---- Text view (reflow): the words of each page as flowing paragraphs, sized for phones.
+const reflow = reactive({}); // page => list of { text, heading } | 'loading'
+async function loadReflow(n) {
+    if (reflow[n] || !doc) return;
+    reflow[n] = 'loading';
+    try {
+        const page = await doc.getPage(n);
+        const content = await page.getTextContent();
+        const lines = [];
+        for (const it of content.items) {
+            if (!it.str) continue;
+            const y = Math.round(it.transform[5]);
+            const size = Math.hypot(it.transform[2], it.transform[3]) || 10;
+            const last = lines[lines.length - 1];
+            if (last && Math.abs(last.y - y) < size * 0.5) {
+                last.text += (it.hasEOL || last.text.endsWith(' ') || it.str.startsWith(' ') ? '' : ' ') + it.str;
+                last.size = Math.max(last.size, size);
+            } else lines.push({ y, text: it.str, size });
+            if (it.hasEOL && lines.length) lines[lines.length - 1].eol = true;
+        }
+        const sizes = lines.map((l) => l.size).sort((a, b) => a - b);
+        const body = sizes[Math.floor(sizes.length / 2)] || 10;
+        const paras = [];
+        let prev = null;
+        for (const l of lines) {
+            const text = l.text.replace(/\s+/g, ' ').trim();
+            if (!text) continue;
+            const heading = l.size > body * 1.25;
+            const gap = prev ? Math.abs(prev.y - l.y) : 0;
+            const cur = paras[paras.length - 1];
+            if (cur && !heading && !cur.heading && gap < body * 1.8) cur.text += ' ' + text;
+            else paras.push({ text, heading });
+            prev = l;
+        }
+        reflow[n] = paras;
+    } catch {
+        reflow[n] = [];
+    }
+}
+
+// ---- Reading without the bars: one tap on the page hides them, a double tap zooms.
+const chrome = ref(true);
+let tapTimer = null;
+function pageTap(e) {
+    if (annotating.value || window.getSelection()?.toString() || e.target.closest?.('a, input, textarea, select, button, .fn-clickable, section')) return;
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(() => (chrome.value = !chrome.value), 260);
+}
+function pageDouble() {
+    clearTimeout(tapTimer);
+    setZoom(zoom.value > 1.05 ? 1 : 2);
+}
 const toolHint = computed(
     () =>
         ({
@@ -1035,6 +1357,9 @@ const toolHint = computed(
             note: t('reader.hint_note', 'المس مكاناً لإضافة ملاحظة لاصقة'),
             sign: signatureStrokes.value ? t('reader.hint_sign', 'المس مكان التوقيع في الصفحة') : t('reader.hint_sign_new', 'المس مكان التوقيع، ثم ارسم توقيعك'),
             eraser: t('reader.hint_eraser', 'المس أي تظليل أو رسم أو ملاحظة لحذفه'),
+            shape: t('reader.hint_shape', 'اسحب على الصفحة لرسم الشكل'),
+            stamp: t('reader.hint_stamp', 'اختر الختم ثم المس مكانه في الصفحة'),
+            redact: t('reader.hint_redact', 'اسحب مستطيلاً فوق ما تريد إخفاءه نهائياً، ثم اضغط «تطبيق الإخفاء»'),
         })[tool.value],
 );
 
@@ -1046,11 +1371,15 @@ const pageWrapClass = computed(() =>
           : 'mb-3 flex justify-center',
 );
 const containerClass = computed(() =>
-    mode.value === 'paged' ? 'flex h-full' : mode.value === 'spread' ? 'grid min-w-min grid-cols-2 gap-3 px-2 py-2' : 'min-w-min px-2 py-2',
+    mode.value === 'paged' ? 'flex h-full' : mode.value === 'spread' ? 'grid min-w-min grid-cols-2 gap-3 px-2 py-2' : mode.value === 'reflow' ? 'mx-auto max-w-2xl px-4 py-4' : 'min-w-min px-2 py-2',
 );
 
 onMounted(() => {
     if (!props.embedded) root.value?.focus();
+    if (props.startTool === 'redact' && canRedact.value) {
+        annotating.value = true;
+        tool.value = 'redact';
+    }
     loadState();
     open();
     resizeObserver = new ResizeObserver(() => measure());
@@ -1060,6 +1389,7 @@ onMounted(() => {
     window.addEventListener('beforeunload', flush);
 });
 onBeforeUnmount(() => {
+    ttsStop();
     flush();
     close();
     resizeObserver?.disconnect();
@@ -1088,7 +1418,7 @@ watch(
         @keydown="onKey"
     >
         <!-- Top bar -->
-        <div class="fn-bar flex shrink-0 items-center gap-0.5 border-b px-1.5 py-1 sm:gap-1">
+        <div v-show="chrome" class="fn-bar flex shrink-0 items-center gap-0.5 border-b px-1.5 py-1 sm:gap-1">
             <button type="button" class="fn-btn" :class="{ 'fn-on': sidebar }" :title="t('reader.pages', 'الصفحات والفهرس')" @click="openSidebar(tab)">
                 <Squares2X2Icon class="h-5 w-5" />
             </button>
@@ -1132,6 +1462,9 @@ watch(
             <button type="button" class="fn-btn" :class="{ 'fn-on': annotating }" :title="t('reader.annotate', 'تظليل وكتابة وتوقيع')" @click="annotating = !annotating">
                 <PencilIcon class="h-5 w-5" />
             </button>
+            <button v-if="ttsSupported" type="button" class="fn-btn" :class="{ 'fn-on': tts.on }" :title="t('reader.listen', 'استماع')" @click="tts.on ? ttsStop() : ttsStart()">
+                <SpeakerWaveIcon class="h-5 w-5" />
+            </button>
             <button type="button" class="fn-btn hidden sm:inline-flex" :class="{ 'fn-on': autoOn }" :title="t('reader.auto', 'تمرير تلقائي')" @click="autoOn ? stopAuto() : startAuto()">
                 <PauseIcon v-if="autoOn" class="h-5 w-5" />
                 <PlayIcon v-else class="h-5 w-5" />
@@ -1147,7 +1480,7 @@ watch(
                 <div v-if="menu" class="fixed inset-0 z-40" @click="menu = false" />
                 <div v-if="menu" class="fn-menu absolute end-0 top-full z-50 mt-1 w-72 max-w-[calc(100vw-1rem)] rounded-xl border p-3 text-sm shadow-xl">
                     <p class="fn-label">{{ t('reader.view', 'طريقة العرض') }}</p>
-                    <div class="mb-3 grid grid-cols-3 gap-1">
+                    <div class="mb-3 grid grid-cols-4 gap-1">
                         <button
                             v-for="m in modeOptions"
                             :key="m.id"
@@ -1166,6 +1499,11 @@ watch(
                         <button type="button" class="fn-btn" :title="t('reader.zoom_out', 'تصغير')" @click="setZoom(zoom - 0.1)"><MagnifyingGlassMinusIcon class="h-4 w-4" /></button>
                         <span class="w-10 text-center text-xs tabular-nums">{{ zoomLabel }}</span>
                         <button type="button" class="fn-btn" :title="t('reader.zoom_in', 'تكبير')" @click="setZoom(zoom + 0.1)"><MagnifyingGlassPlusIcon class="h-4 w-4" /></button>
+                    </div>
+                    <div v-if="mode === 'reflow'" class="mb-3 flex items-center gap-2 text-xs">
+                        {{ t('reader.text_size', 'حجم النص') }}
+                        <input v-model.number="reflowSize" type="range" min="14" max="30" class="flex-1" />
+                        <span class="w-8 tabular-nums">{{ reflowSize }}</span>
                     </div>
                     <p class="fn-label">{{ t('reader.colors', 'لون القراءة') }}</p>
                     <div class="mb-3 grid grid-cols-4 gap-1">
@@ -1204,7 +1542,7 @@ watch(
         </div>
 
         <!-- Search -->
-        <form v-if="showSearch && pages" class="fn-bar flex shrink-0 items-center gap-1.5 border-b px-2 py-1.5" @submit.prevent="search">
+        <form v-if="showSearch && pages" v-show="chrome" class="fn-bar flex shrink-0 items-center gap-1.5 border-b px-2 py-1.5" @submit.prevent="search">
             <input
                 ref="searchInput"
                 v-model="query"
@@ -1225,7 +1563,7 @@ watch(
         </form>
 
         <!-- Annotation tools -->
-        <div v-if="annotating" class="fn-bar flex shrink-0 flex-wrap items-center gap-1 border-b px-1.5 py-1">
+        <div v-if="annotating" v-show="chrome" class="fn-bar flex shrink-0 flex-wrap items-center gap-1 border-b px-1.5 py-1">
             <button
                 v-for="tl in tools"
                 :key="tl.id"
@@ -1236,10 +1574,28 @@ watch(
                 @click="tl.id === 'sign' && !signatureStrokes ? ((tool = 'sign'), (signing = { page: null })) : (tool = tl.id)"
             >
                 <component :is="tl.icon" v-if="tl.icon" class="h-5 w-5" />
-                <span v-else class="w-5 text-center font-serif text-base font-bold leading-5">T</span>
+                <span v-else class="w-5 text-center font-serif text-base font-bold leading-5">{{ tl.glyph }}</span>
                 <span class="hidden text-xs lg:inline">{{ tl.label() }}</span>
             </button>
-            <template v-if="tool === 'pen' || tool === 'text'">
+            <template v-if="tool === 'shape'">
+                <span class="fn-sep" />
+                <button v-for="sh in SHAPES" :key="sh.id" type="button" class="fn-btn text-lg" :class="{ 'fn-on': shapeKind === sh.id }" :title="sh.label()" @click="shapeKind = sh.id">{{ sh.glyph }}</button>
+            </template>
+            <template v-if="tool === 'stamp'">
+                <span class="fn-sep" />
+                <button
+                    v-for="st in STAMPS"
+                    :key="st.text"
+                    type="button"
+                    class="rounded-md border-2 px-1.5 py-0.5 text-[11px] font-bold"
+                    :style="{ color: st.color, borderColor: stamp.text === st.text && !customStamp ? st.color : 'transparent' }"
+                    @click="(stamp = st), (customStamp = '')"
+                >
+                    {{ st.text }}
+                </button>
+                <input v-model="customStamp" dir="auto" maxlength="24" class="fn-input w-28 rounded-md px-2 py-0.5 text-xs" :placeholder="t('reader.stamp_custom', 'ختم آخر…')" />
+            </template>
+            <template v-if="tool === 'pen' || tool === 'text' || tool === 'shape'">
                 <span class="fn-sep" />
                 <button
                     v-for="c in PEN_COLORS"
@@ -1251,7 +1607,7 @@ watch(
                     :aria-label="c"
                     @click="penColor = c"
                 />
-                <select v-if="tool === 'pen'" v-model.number="penSize" class="rounded-md border-gray-300 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
+                <select v-if="tool === 'pen' || tool === 'shape'" v-model.number="penSize" class="rounded-md border-gray-300 py-0.5 text-xs dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100">
                     <option :value="2">{{ t('reader.thin', 'رفيع') }}</option>
                     <option :value="4">{{ t('reader.medium', 'متوسط') }}</option>
                     <option :value="8">{{ t('reader.thick', 'عريض') }}</option>
@@ -1264,6 +1620,24 @@ watch(
             <button type="button" class="fn-btn" :disabled="!redoStack.length" :title="t('reader.redo', 'إعادة')" @click="redo"><ArrowUturnRightIcon class="h-5 w-5 rtl:-scale-x-100" /></button>
             <button type="button" class="fn-btn" :title="t('common.close', 'إغلاق')" @click="annotating = false"><XMarkIcon class="h-5 w-5" /></button>
             <p class="fn-muted w-full px-1 text-[11px]">{{ toolHint }}</p>
+            <div v-if="redactions.length" class="flex w-full flex-wrap items-center gap-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800 dark:bg-red-500/10 dark:text-red-300">
+                <EyeSlashIcon class="h-4 w-4" />
+                <span>{{ redactions.length }} {{ t('reader.redact_count', 'منطقة للإخفاء') }}</span>
+                <span v-if="redactConfirm" class="font-semibold">{{ t('reader.redact_sure', 'تُنشأ نسخة جديدة يُحذف منها ما تحت المربعات نهائياً. متأكد؟') }}</span>
+                <span class="flex-1" />
+                <button v-if="redactConfirm" type="button" class="rounded-md px-2 py-1 hover:bg-red-100" @click="redactConfirm = false">{{ t('common.cancel', 'إلغاء') }}</button>
+                <button type="button" class="rounded-md bg-red-600 px-3 py-1 font-semibold text-white disabled:opacity-50" :disabled="redactBusy" @click="applyRedactions">
+                    {{ redactBusy ? t('pdft.working', 'جارٍ التنفيذ…') : redactConfirm ? t('reader.redact_yes', 'نعم، أخفِ نهائياً') : t('reader.redact_apply', 'تطبيق الإخفاء') }}
+                </button>
+            </div>
+        </div>
+
+        <!-- A fillable form -->
+        <div v-if="hasForm && fileId && canCreate" v-show="chrome" class="flex shrink-0 items-center gap-2 bg-sky-50 px-3 py-1.5 text-xs text-sky-800 dark:bg-sky-500/10 dark:text-sky-300">
+            <span class="flex-1">{{ t('reader.form_hint', 'هذا نموذج قابل للتعبئة: املأ الحقول في الصفحات ثم احفظ نسخة معبأة.') }}</span>
+            <button type="button" class="rounded-md bg-sky-600 px-3 py-1 font-semibold text-white disabled:opacity-50" :disabled="formSaving" @click="saveForm">
+                {{ formSaving ? t('reader.saving', 'يحفظ…') : t('reader.form_save', 'حفظ النموذج المعبأ') }}
+            </button>
         </div>
 
         <p v-if="hasText === false" class="shrink-0 bg-amber-50 px-3 py-1 text-[11px] text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">
@@ -1357,19 +1731,37 @@ watch(
                 @wheel.passive="userScrolled"
                 @touchstart.passive="userScrolled"
             >
-                <div :class="containerClass">
+                <div v-if="mode === 'reflow'" :class="containerClass" :style="{ fontSize: reflowSize + 'px' }" @click="pageTap">
+                    <section
+                        v-for="n in pages"
+                        :key="n"
+                        :ref="(el) => (pageEls[n - 1] = el)"
+                        :data-page="n"
+                        class="fn-reflow mb-6 min-h-[30vh] rounded-xl px-4 py-3 shadow-sm"
+                    >
+                        <p class="fn-muted mb-2 text-[11px]">{{ t('reader.page', 'صفحة') }} {{ n }}</p>
+                        <p v-if="reflow[n] === 'loading' || !reflow[n]" class="fn-muted text-sm">…</p>
+                        <p v-else-if="!reflow[n].length" class="fn-muted text-sm">{{ t('reader.reflow_empty', 'لا نص في هذه الصفحة (قد تكون صورة).') }}</p>
+                        <template v-else>
+                            <component :is="pp.heading ? 'h3' : 'p'" v-for="(pp, i) in reflow[n]" :key="i" dir="auto" :class="pp.heading ? 'mb-2 mt-3 text-[1.2em] font-bold' : 'mb-3 leading-[1.9]'">{{ pp.text }}</component>
+                        </template>
+                    </section>
+                </div>
+                <div v-else :class="containerClass">
                     <div v-for="n in pages" :key="n" :class="pageWrapClass" :style="mode === 'paged' ? { width: box.w + 'px' } : null">
                         <div
                             :ref="(el) => (pageEls[n - 1] = el)"
                             :data-page="n"
                             class="fn-page relative shrink-0 bg-white shadow-md"
                             :style="{ width: pw(n) + 'px', height: ph(n) + 'px' }"
+                            @click="pageTap"
+                            @dblclick="pageDouble"
                         >
                             <div :ref="(el) => (slotEls[n - 1] = el)" class="fn-slot absolute inset-0" />
                             <svg
                                 :ref="(el) => (svgEls[n - 1] = el)"
                                 class="fn-ann"
-                                :class="{ 'fn-ann-active': annotating && tool !== 'select', 'touch-none': annotating && tool === 'pen' }"
+                                :class="{ 'fn-ann-active': annotating && tool !== 'select', 'touch-none': annotating && ['pen', 'shape', 'redact'].includes(tool) }"
                                 :viewBox="`0 0 1000 ${boardH(n)}`"
                                 preserveAspectRatio="none"
                                 :style="{ width: unrotW(n) + 'px', height: unrotH(n) + 'px', transform: `translate(-50%, -50%) rotate(${rotation}deg)` }"
@@ -1446,6 +1838,32 @@ watch(
                                         />
                                     </svg>
                                 </template>
+                                <template v-for="a in byPage[n] || []" :key="'s' + a.id">
+                                    <rect v-if="a.type === 'rect'" :data-ann="a.id" :x="a.x" :y="a.y" :width="a.w" :height="a.h" fill="none" :stroke="a.color" :stroke-width="a.size" rx="3" />
+                                    <ellipse v-else-if="a.type === 'ellipse'" :data-ann="a.id" :cx="a.x + a.w / 2" :cy="a.y + a.h / 2" :rx="a.w / 2" :ry="a.h / 2" fill="none" :stroke="a.color" :stroke-width="a.size" />
+                                    <line v-else-if="a.type === 'line'" :data-ann="a.id" :x1="a.x1" :y1="a.y1" :x2="a.x2" :y2="a.y2" :stroke="a.color" :stroke-width="a.size" stroke-linecap="round" />
+                                    <g v-else-if="a.type === 'arrow'" :data-ann="a.id">
+                                        <line :x1="a.x1" :y1="a.y1" :x2="a.x2" :y2="a.y2" :stroke="a.color" :stroke-width="a.size" stroke-linecap="round" />
+                                        <path :d="arrowHead(a)" :fill="a.color" />
+                                    </g>
+                                    <g v-else-if="a.type === 'stamp'" :data-ann="a.id" :transform="`rotate(-8 ${a.x + a.w / 2} ${a.y + a.h / 2})`">
+                                        <rect :x="a.x" :y="a.y" :width="a.w" :height="a.h" rx="10" :fill="a.color" fill-opacity="0.07" :stroke="a.color" stroke-width="4" />
+                                        <rect :x="a.x + 6" :y="a.y + 6" :width="a.w - 12" :height="a.h - 12" rx="7" fill="none" :stroke="a.color" stroke-width="1.5" />
+                                        <text :x="a.x + a.w / 2" :y="a.y + a.h / 2" :fill="a.color" :font-size="a.h * 0.5" font-weight="800" text-anchor="middle" dominant-baseline="central" font-family="system-ui, sans-serif">{{ a.text }}</text>
+                                    </g>
+                                    <g v-else-if="a.type === 'squiggly'" :data-ann="a.id">
+                                        <rect v-for="(r, i) in a.rects" :key="'h' + i" :x="r[0]" :y="r[1]" :width="r[2]" :height="r[3]" fill="transparent" />
+                                        <path v-for="(r, i) in a.rects" :key="i" :d="squiggle(r)" fill="none" :stroke="a.color" :stroke-width="Math.max(1.2, r[3] * 0.07)" />
+                                    </g>
+                                    <g v-else-if="a.type === 'redact'" :data-ann="a.id">
+                                        <rect :x="a.x" :y="a.y" :width="a.w" :height="a.h" fill="#000" fill-opacity="0.82" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 4" />
+                                    </g>
+                                </template>
+                                <template v-if="liveShape && liveShape.page === n">
+                                    <rect v-if="liveShape.kind === 'rect' || liveShape.kind === 'redact'" v-bind="boxOf(liveShape)" :width="boxOf(liveShape).w" :height="boxOf(liveShape).h" :fill="liveShape.kind === 'redact' ? '#000' : 'none'" :fill-opacity="0.6" :stroke="liveShape.kind === 'redact' ? '#dc2626' : penColor" :stroke-width="liveShape.kind === 'redact' ? 2 : penSize" />
+                                    <ellipse v-else-if="liveShape.kind === 'ellipse'" :cx="boxOf(liveShape).x + boxOf(liveShape).w / 2" :cy="boxOf(liveShape).y + boxOf(liveShape).h / 2" :rx="boxOf(liveShape).w / 2" :ry="boxOf(liveShape).h / 2" fill="none" :stroke="penColor" :stroke-width="penSize" />
+                                    <line v-else :x1="liveShape.x1" :y1="liveShape.y1" :x2="liveShape.x2" :y2="liveShape.y2" :stroke="penColor" :stroke-width="Math.min(penSize, 12)" stroke-linecap="round" />
+                                </template>
                                 <path
                                     v-if="liveInk && liveInk.page === n && liveInk.points.length > 1"
                                     :d="inkPath(liveInk.points)"
@@ -1483,6 +1901,37 @@ watch(
             <template v-if="saving || saveFailed"> · {{ saveFailed ? t('reader.not_saved', 'لم يُحفظ بعد') : t('reader.saving', 'يحفظ…') }}</template>
         </div>
 
+        <!-- Reading aloud -->
+        <div v-if="tts.on" class="absolute inset-x-0 bottom-12 z-30 flex justify-center px-3">
+            <div class="fn-menu flex w-full max-w-xl items-center gap-1 rounded-2xl border p-2 shadow-xl">
+                <button type="button" class="fn-btn" :title="t('pdf.prev', 'السابق')" @click="ttsStep(-1)"><ChevronRightIcon v-if="rtl" class="h-5 w-5" /><ChevronLeftIcon v-else class="h-5 w-5" /></button>
+                <button type="button" class="fn-btn fn-on" @click="ttsToggle"><PlayIcon v-if="tts.paused" class="h-5 w-5" /><PauseIcon v-else class="h-5 w-5" /></button>
+                <button type="button" class="fn-btn" :title="t('pdf.next', 'التالي')" @click="ttsStep(1)"><ChevronLeftIcon v-if="rtl" class="h-5 w-5" /><ChevronRightIcon v-else class="h-5 w-5" /></button>
+                <p class="mx-1 line-clamp-2 min-w-0 flex-1 text-xs" dir="auto">{{ tts.sentence }}</p>
+                <select v-model.number="ttsRate" class="fn-input rounded-md py-0.5 text-xs">
+                    <option :value="0.75">0.75×</option>
+                    <option :value="1">1×</option>
+                    <option :value="1.25">1.25×</option>
+                    <option :value="1.5">1.5×</option>
+                </select>
+                <button type="button" class="fn-btn" :title="t('reader.stop', 'إيقاف')" @click="ttsStop"><StopIcon class="h-5 w-5" /></button>
+            </div>
+        </div>
+
+        <!-- A new copy was saved (filled form, blacked-out copy) -->
+        <div v-if="savedCopy" class="absolute inset-x-0 top-14 z-40 flex justify-center px-3">
+            <div class="flex items-center gap-3 rounded-xl bg-emerald-700 px-4 py-2 text-sm text-white shadow-lg">
+                <span>{{ t('reader.copy_saved', 'حُفظت نسخة جديدة:') }} <bdi class="font-semibold">{{ savedCopy.name }}</bdi></span>
+                <a :href="route('reader.show', savedCopy.id)" class="font-semibold underline">{{ t('reader.open_copy', 'فتح') }}</a>
+                <button type="button" class="opacity-80 hover:opacity-100" @click="savedCopy = null"><XMarkIcon class="h-4 w-4" /></button>
+            </div>
+        </div>
+
+        <!-- Bars hidden for quiet reading -->
+        <button v-if="!chrome" type="button" class="fn-btn absolute end-2 top-2 z-30 bg-black/40 text-white" :title="t('reader.show_bars', 'إظهار الأدوات')" @click="chrome = true">
+            <EllipsisHorizontalIcon class="h-5 w-5" />
+        </button>
+
         <!-- Resumed where the reader stopped -->
         <div v-if="resumed" class="absolute inset-x-0 bottom-12 z-20 flex justify-center px-3">
             <div class="flex items-center gap-3 rounded-xl bg-gray-900/90 px-4 py-2 text-sm text-white shadow-lg">
@@ -1514,6 +1963,7 @@ watch(
             <span class="fn-sep" />
             <button type="button" class="fn-btn font-semibold underline decoration-2 underline-offset-2" :title="t('reader.underline', 'تسطير')" @click="markSelection('underline', '#2563eb')">U</button>
             <button type="button" class="fn-btn font-semibold line-through decoration-2" :title="t('reader.strike', 'شطب')" @click="markSelection('strike', '#dc2626')">S</button>
+            <button type="button" class="fn-btn font-semibold underline decoration-wavy decoration-2 underline-offset-2" :title="t('reader.squiggly', 'خط متموج')" @click="markSelection('squiggly', '#e11d48')">W</button>
             <button type="button" class="fn-btn" :title="t('reader.note', 'ملاحظة')" @click="noteOnSelection"><ChatBubbleLeftEllipsisIcon class="h-5 w-5" /></button>
             <button type="button" class="fn-btn text-xs" @click="copySelection">{{ t('reader.copy', 'نسخ') }}</button>
         </div>
@@ -1719,6 +2169,25 @@ watch(
     .fn-turn {
         display: inline-flex;
     }
+}
+
+/* ---- Text view (reflow) ---- */
+.fn-reflow {
+    background: #fff;
+    color: #111827;
+}
+.dark .fn-reflow,
+.fn-theme-night .fn-reflow {
+    background: #111827;
+    color: #e5e7eb;
+}
+.fn-theme-sepia .fn-reflow {
+    background: #f4e7c5;
+    color: #3b2f1e;
+}
+.fn-theme-green .fn-reflow {
+    background: #d6ead6;
+    color: #1f2d1f;
 }
 
 /* ---- Pages ---- */

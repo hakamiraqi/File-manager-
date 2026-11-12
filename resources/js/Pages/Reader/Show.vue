@@ -12,6 +12,9 @@ const props = defineProps({
     signature: { type: Array, default: null },
     canDownload: Boolean,
     inApp: Boolean,
+    canCreate: Boolean,
+    tools: { type: Object, default: () => ({}) },
+    startTool: { type: String, default: null },
 });
 const { t } = useTrans();
 const back = () => (props.file.folder_id ? route('dashboard', { folder: props.file.folder_id }) : route('dashboard'));
@@ -44,6 +47,9 @@ const OFFICE = ['docx', 'odt', 'rtf', 'txt', 'xlsx', 'ods', 'csv', 'pptx', 'odp'
             :signature="signature"
             :can-download="canDownload"
             :download-url="canDownload ? route('files.download', file.id) : null"
+            :can-create="canCreate"
+            :tools="tools"
+            :start-tool="startTool"
         />
     </div>
 </template>

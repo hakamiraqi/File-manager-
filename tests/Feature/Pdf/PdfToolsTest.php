@@ -181,4 +181,53 @@ class PdfToolsTest extends TestCase
     {
         $this->artisan('pdf:selftest')->assertSuccessful();
     }
+
+    public function test_phase_three_tools_crop_redact_blank_pages_repair_and_inserted_pages(): void
+    {
+        $tools = app(PdfTools::class);
+        if (! $tools->pdftoppm() || ! $tools->magick() || ! $tools->poppler('pdfinfo') || ! $tools->poppler('pdftotext')) {
+            $this->markTestSkipped('Poppler or ImageMagick is not installed here.');
+        }
+        $a = $this->pdf(3, 'a.pdf');
+        $b = $this->pdf(2, 'b.pdf');
+        $this->actingAs($this->owner);
+
+        // Organise with a blank page and a page from another file, then find and drop the blank page.
+        $r = $this->postJson(route('pdf-tools.run', 'organize'), ['files' => [$a->id, $b->id], 'pages' => [[1, 0, 0], [0, 0, 0], [2, 0, 1], [3, 90, 0]]])->assertOk();
+        $mixed = $r->json('files.0.id');
+        $this->assertSame(4, $this->pages($mixed));
+        $r = $this->postJson(route('pdf-tools.run', 'remove_blank'), ['files' => [$mixed]])->assertOk();
+        $this->assertSame(3, $this->pages($r->json('files.0.id')));
+        $this->postJson(route('pdf-tools.run', 'remove_blank'), ['files' => [$a->id]])->assertStatus(422);
+
+        // Crop: every page gets a smaller visible area.
+        $r = $this->postJson(route('pdf-tools.run', 'crop'), ['files' => [$a->id], 'top' => 20, 'right' => 10, 'bottom' => 20, 'left' => 10, 'auto' => 0])->assertOk();
+        $cropped = File::findOrFail($r->json('files.0.id'));
+        $sizes = $tools->pageSizes($cropped->disk()->path($cropped->path));
+        $this->assertCount(3, $sizes);
+        $this->assertLessThan(612, $sizes[0][0]);
+
+        // Redact: the words under the box are gone, the other pages keep theirs.
+        $r = $this->postJson(route('pdf-tools.run', 'redact'), ['files' => [$a->id], 'boxes' => [['page' => 2, 'x' => 0.05, 'y' => 0.03, 'w' => 0.9, 'h' => 0.2]]])->assertOk();
+        $text = $this->text($r->json('files.0.id'));
+        $this->assertStringNotContainsString('Hello page 2', $text);
+        $this->assertStringContainsString('Hello page 3', $text);
+
+        // Repair a file whose index points to the wrong place.
+        $broken = $this->pdf(2, 'broken.pdf');
+        $broken->disk()->put($broken->path, preg_replace('/startxref\s+\d+/', 'startxref 99', $broken->disk()->get($broken->path)));
+        $r = $this->postJson(route('pdf-tools.run', 'repair'), ['files' => [$broken->id]])->assertOk();
+        $this->assertSame(2, $this->pages($r->json('files.0.id')));
+    }
+
+    public function test_the_reader_saves_a_filled_copy_next_to_the_original(): void
+    {
+        $f = $this->pdf(1);
+        $pdf = UploadedFile::fake()->createWithContent('filled.pdf', PdfTools::samplePdf(1));
+        $r = $this->actingAs($this->owner)->post(route('reader.copy', $f), ['pdf' => $pdf, 'kind' => 'filled'], ['Accept' => 'application/json'])->assertOk();
+        $this->assertSame('doc (معبأ).pdf', $r->json('file.name'));
+        $this->assertSame($this->folder->id, $r->json('file.folder_id'));
+        $junk = UploadedFile::fake()->createWithContent('x.pdf', 'not a pdf');
+        $this->post(route('reader.copy', $f), ['pdf' => $junk], ['Accept' => 'application/json'])->assertStatus(422);
+    }
 }

@@ -1006,6 +1006,7 @@ onBeforeUnmount(() => {
                             :file-name="file.name"
                             :download-url="route('files.download', file.id)"
                             :reader-href="route('reader.show', file.id)"
+                            :can-create="!!currentUserId"
                         />
                         <iframe v-else-if="kind(file) === 'text'" :src="route('files.preview', file.id)" class="h-[65vh] w-full rounded bg-white" />
                         <p v-else-if="!file.is_indexed" class="text-sm text-gray-500 dark:text-gray-400">{{ t('preview.no_preview', 'لا تتوفر معاينة لهذا النوع من الملفات. الرجاء تنزيله للاطلاع عليه.') }}</p>

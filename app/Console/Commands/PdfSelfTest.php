@@ -98,6 +98,41 @@ class PdfSelfTest extends Command
             $must($pages("$dir/ip.pdf") === 2, 'expected 2 pages');
         });
         $check('to_text', fn () => $must(str_contains($t->toTextString($in), 'Hello page 2'), 'text not found'));
+        $check('organize', function () use ($t, $in, $dir, $pages, $must) {
+            $t->assemble([$in, $in], [[1, 0, 0], [0, 0, 0], [2, 90, 1], [3, 0, 0]], "$dir/as.pdf", $dir);
+            $must($pages("$dir/as.pdf") === 4, 'expected 4 pages with a blank one');
+
+            return 'with a blank page and pages from another file';
+        });
+        $check('remove_blank', function () use ($t, $dir, $must) {
+            $blank = $t->blankPages("$dir/as.pdf", $dir);
+            $must($blank === [2], 'expected page 2 blank, got '.json_encode($blank));
+        });
+        $check('crop', function () use ($t, $in, $dir, $must) {
+            $n = $t->crop($in, [10, 10, 10, 10], false, 'all', "$dir/cr.pdf", $dir);
+            $must($n === 3, 'expected 3 pages cropped');
+            $n = $t->crop($in, [2, 2, 2, 2], true, 'all', "$dir/cr2.pdf", $dir);
+
+            return "auto: {$n} pages";
+        });
+        $check('redact', function () use ($t, $in, $dir, $must) {
+            $t->redact($in, [2 => [[0.05, 0.05, 0.9, 0.2]]], "$dir/rd.pdf", $dir);
+            $must(! str_contains($t->toTextString("$dir/rd.pdf"), 'Hello page 2'), 'text still there');
+            $must(str_contains($t->toTextString("$dir/rd.pdf"), 'Hello page 3'), 'other pages lost');
+        });
+        $check('repair', function () use ($t, $in, $dir) {
+            $broken = "$dir/broken.pdf";
+            file_put_contents($broken, preg_replace('/startxref\s+\d+/', 'startxref 12345', (string) file_get_contents($in)));
+
+            return $t->repair($broken, "$dir/fixed.pdf");
+        });
+        $check('extract_images', function () use ($t, $dir) {
+            if (! is_file("$dir/ip.pdf")) {
+                return 'skipped (no sample with images)';
+            }
+
+            return $t->extractImages("$dir/ip.pdf", "$dir/ei.zip", $dir).' images';
+        });
 
         Fs::deleteDirectory($dir);
         $required = array_filter(explode(',', (string) $this->option('require')));
