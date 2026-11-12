@@ -689,6 +689,13 @@ class _BrowseScreenState extends State<BrowseScreen> {
               file.isPlayableMedia ? _playMedia(file) : _previewFile(file);
             },
           ),
+          if (_isOfficeFile(file) || const {'jpg', 'jpeg', 'png', 'webp'}.contains(file.name.split('.').last.toLowerCase()))
+            ListTile(leading: const Icon(Icons.build_circle_outlined), title: Text(context.l('أدوات PDF (دمج، ضغط، حماية…)', 'PDF tools (merge, compress, protect…)')), onTap: () {
+              Navigator.of(sheetContext).pop();
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => LibraryMapScreen(title: context.l('أدوات PDF', 'PDF tools'), link: () async => (await LibraryManageApi.instance.webLink('pdf-tools', ids: [file.id])).path),
+              ));
+            }),
           if (_isOfficeFile(file))
             ListTile(leading: const Icon(Icons.menu_book_rounded), title: Text(context.l('قراءة (تظليل وملاحظات وعلامات)', 'Read (highlights, notes, bookmarks)')), onTap: () {
               Navigator.of(sheetContext).pop();

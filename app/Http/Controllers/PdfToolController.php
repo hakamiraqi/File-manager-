@@ -385,7 +385,10 @@ class PdfToolController extends Controller
         $disk = Storage::disk(config('filenest.disk'));
         $relative = "{$user->id}/".Str::uuid().'.'.$ext;
         $disk->makeDirectory((string) $user->id);
-        rename($path, $disk->path($relative)) || copy($path, $disk->path($relative));
+        // rename() fails across drives (Windows: the data folder may be on another disk).
+        if (! @rename($path, $disk->path($relative)) && ! copy($path, $disk->path($relative))) {
+            throw new PdfToolException('تعذّر حفظ النتيجة.');
+        }
         $size = (int) filesize($disk->path($relative));
 
         $file = File::create([

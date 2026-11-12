@@ -50,7 +50,8 @@ class PdfTools
 
     public function magick(): ?string
     {
-        return $this->ocr->magick() ?? $this->which('convert', 'magick-convert');
+        // On Windows «convert» is the system's disk tool, never ImageMagick.
+        return $this->ocr->magick() ?? (PHP_OS_FAMILY === 'Windows' ? null : $this->which('convert', 'convert'));
     }
 
     public function poppler(string $name): ?string
@@ -72,11 +73,14 @@ class PdfTools
         if ($configured && is_file($configured)) {
             return $configured;
         }
-        foreach (glob(base_path('../ghostscript/bin/gswin64c.exe')) ?: [] as $bundled) {
-            return $bundled;
+        // The offline Windows server carries its own copy next to the app.
+        foreach ([base_path('../ghostscript/bin/gswin64c.exe'), base_path('../ghostscript/bin/gswin32c.exe')] as $bundled) {
+            if (is_file($bundled)) {
+                return realpath($bundled) ?: $bundled;
+            }
         }
 
-        return $this->which('gs', 'gs');
+        return $this->which('gs', PHP_OS_FAMILY === 'Windows' ? 'gswin64c' : 'gs');
     }
 
     /** Which tools this server can run. @return array<string, bool> */
@@ -480,6 +484,34 @@ class PdfTools
     public function toTextString(string $pdf): string
     {
         return $this->run([$this->need($this->poppler('pdftotext'), 'pdftotext'), '-enc', 'UTF-8', $pdf, '-'], 600);
+    }
+
+    /** A small real PDF with one line of text per page (self-test and tests). */
+    public static function samplePdf(int $pages = 3): string
+    {
+        $objs = ['<< /Type /Catalog /Pages 2 0 R >>', '', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+        $kids = [];
+        for ($i = 1; $i <= $pages; $i++) {
+            $stream = "BT /F1 24 Tf 72 720 Td (Hello page {$i}) Tj ET";
+            $objs[] = '<< /Length '.strlen($stream)." >>\nstream\n{$stream}\nendstream";
+            $content = count($objs);
+            $objs[] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents {$content} 0 R >>";
+            $kids[] = count($objs).' 0 R';
+        }
+        $objs[1] = '<< /Type /Pages /Kids ['.implode(' ', $kids).'] /Count '.$pages.' >>';
+        $out = "%PDF-1.4\n";
+        $offsets = [];
+        foreach ($objs as $i => $o) {
+            $offsets[] = strlen($out);
+            $out .= ($i + 1)." 0 obj\n{$o}\nendobj\n";
+        }
+        $x = strlen($out);
+        $out .= "xref\n0 ".(count($objs) + 1)."\n0000000000 65535 f \n";
+        foreach ($offsets as $off) {
+            $out .= sprintf("%010d 00000 n \n", $off);
+        }
+
+        return $out.'trailer << /Size '.(count($objs) + 1)." /Root 1 0 R >>\nstartxref\n{$x}\n%%EOF\n";
     }
 
     // ------------------------------------------------------------------ helpers

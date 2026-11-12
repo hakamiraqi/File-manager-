@@ -11,7 +11,7 @@ const { t } = useTrans();
 const o = reactive({
     kind: 'text',
     text: 'سري',
-    size: 14, // % of the page width per character height
+    size: 11, // % of the page width per character height
     color: '#dc2626',
     opacity: 25,
     angle: -35,

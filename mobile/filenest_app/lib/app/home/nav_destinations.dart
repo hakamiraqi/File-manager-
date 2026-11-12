@@ -8,6 +8,7 @@ import '../../features/app_settings/presentation/app_settings_screen.dart';
 import '../../features/auth/state/auth_provider.dart';
 import '../../features/contact/presentation/contact_screen.dart';
 import '../../features/lectures/presentation/lectures_screen.dart';
+import '../../features/library/data/library_manage_api.dart';
 import '../../features/library/presentation/library_map_screen.dart';
 import '../../features/library/presentation/my_loans_screen.dart';
 import '../../features/playlists/presentation/playlists_screen.dart';
@@ -58,6 +59,14 @@ List<NavDestinationItem> buildSecondaryDestinations(BuildContext context) {
       icon: Icons.video_library_outlined,
       label: context.l('المحاضرات المرئية', 'Video lectures'),
       onTap: () => push(const LecturesScreen()),
+    ),
+    NavDestinationItem(
+      icon: Icons.build_circle_outlined,
+      label: context.l('أدوات PDF', 'PDF tools'),
+      onTap: () => push(LibraryMapScreen(
+        title: context.l('أدوات PDF', 'PDF tools'),
+        link: () async => (await LibraryManageApi.instance.webLink('pdf-tools')).path,
+      )),
     ),
     NavDestinationItem(
       icon: Icons.map_outlined,

@@ -135,7 +135,7 @@ class PdfToolsTest extends TestCase
             $this->markTestSkipped('Poppler is not installed here.');
         }
         $r = $this->actingAs($this->owner)->postJson(route('pdf-tools.run', 'numbers'), ['files' => [$f->id], 'position' => 'bottom-right', 'format' => 'n/N', 'start' => 1])->assertOk();
-        $this->assertStringContainsString('2 / 3', $this->text($r->json('files.0.id')));
+        $this->assertMatchesRegularExpression('#2\s*/\s*3#', $this->text($r->json('files.0.id')));
 
         $r = $this->postJson(route('pdf-tools.run', 'rotate'), ['files' => [$f->id], 'degrees' => 90, 'which' => 'odd'])->assertOk();
         $this->assertSame(3, $this->pages($r->json('files.0.id')));
@@ -175,5 +175,10 @@ class PdfToolsTest extends TestCase
         $stranger->update(['role' => 'user']);
         $this->actingAs($stranger)->postJson(route('pdf-tools.run', 'compress'), ['files' => [$f->id]])->assertForbidden();
         $this->assertSame(1, File::count());
+    }
+
+    public function test_the_self_test_passes_with_the_programs_this_machine_has(): void
+    {
+        $this->artisan('pdf:selftest')->assertSuccessful();
     }
 }
