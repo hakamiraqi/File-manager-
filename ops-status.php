@@ -1,17 +1,30 @@
 <?php
-// One-off (2026-11-12): why does the accurate OCR model return nothing?
+// One-off (2026-11-12): fast vs accurate OCR on the same pages (plain text output), with a short sample.
 use App\Models\File;
-echo "LS:\n".shell_exec('ls -la /usr/share/tessdata-best 2>&1');
-echo "LANGS:\n".shell_exec('tesseract --tessdata-dir /usr/share/tessdata-best --list-langs 2>&1');
-echo "VERSION: ".trim(shell_exec('tesseract --version 2>&1 | head -1'))."\n";
-echo "HEAD ara: ".bin2hex(substr(file_get_contents('/usr/share/tessdata-best/ara.traineddata') ?: '', 0, 16))."\n";
 $f = File::find(205);
 $pdf = $f->disk()->path($f->path);
-exec('pdftoppm -r 300 -f 4 -l 4 -png '.escapeshellarg($pdf).' /tmp/diag');
-$png = glob('/tmp/diag*.png')[0] ?? null;
-echo "RUN best ara:\n".substr(shell_exec('tesseract '.escapeshellarg($png).' - -l ara --tessdata-dir /usr/share/tessdata-best 2>&1') ?? '', 0, 400)."\n";
-echo "RUN best ara+eng (stderr only):\n".shell_exec('tesseract '.escapeshellarg($png).' - -l ara+eng --tessdata-dir /usr/share/tessdata-best 2>&1 >/dev/null')."\n";
-foreach (File::whereIn('id', [1, 2, 10, 205, 226])->get(['id', 'content_text', 'ocr_pages']) as $x) {
-    echo "TEXT #{$x->id}: ".mb_strlen((string) $x->content_text)." chars\n";
+exec('pdftoppm -r 300 -f 3 -l 6 -png '.escapeshellarg($pdf).' /tmp/cmp');
+$pages = glob('/tmp/cmp*.png');
+echo "COMPARE: file #205, ".count($pages)." pages at 300 dpi\n";
+$clean = function (string $text): array {
+    $tokens = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY);
+    $ok = 0;
+    foreach ($tokens as $t) {
+        if (preg_match('/^[(«"]?(\p{Arabic}{2,}|[A-Za-z]{2,}|[0-9٠-٩]+)[.,،:؛)»"]?$/u', $t) && ! str_contains($t, '�')) $ok++;
+    }
+    return [count($tokens), count($tokens) ? round(100 * $ok / count($tokens), 1) : 0];
+};
+foreach (['FAST' => '', 'ACCURATE' => '--tessdata-dir /usr/share/tessdata-best '] as $label => $flag) {
+    $t = microtime(true);
+    $all = '';
+    $first = null;
+    foreach ($pages as $png) {
+        $txt = shell_exec('tesseract '.$flag.escapeshellarg($png).' - -l ara+eng 2>/dev/null') ?? '';
+        $first ??= $txt;
+        $all .= "\n".$txt;
+    }
+    [$words, $pct] = $clean($all);
+    echo "$label: $words words, clean words $pct%, ".round((microtime(true) - $t) / max(1, count($pages)), 1)."s/page\n";
+    echo "$label SAMPLE: ".mb_substr(preg_replace('/\s+/u', ' ', trim($first)), 0, 160)."\n";
 }
-@unlink($png);
+array_map('unlink', $pages);
