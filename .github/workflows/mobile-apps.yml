@@ -66,6 +66,17 @@ jobs:
           printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=filenest\nstoreFile=release.jks\n' "$pass" "$pass" > android/key.properties
       - run: flutter pub get
       # The on-device PDF tools with the real PDFium (merge, organise, rotate, images to PDF).
+      # «flutter test» does not bundle native libraries, so PDFium for Linux is put where
+      # pdfrx looks first (the app builds bundle their own).
+      - name: PDFium for the host test
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          U=$(gh release view -R bblanchon/pdfium-binaries --json assets --jq '.assets[] | select(.name=="pdfium-linux-x64.tgz") | .url')
+          curl -fsSL --retry 5 -o /tmp/pdfium.tgz "$U"
+          mkdir -p /tmp/pdfium && tar -xzf /tmp/pdfium.tgz -C /tmp/pdfium
+          mkdir -p "$FLUTTER_ROOT/bin/cache/artifacts/engine/linux-x64/lib"
+          cp /tmp/pdfium/lib/libpdfium.so "$FLUTTER_ROOT/bin/cache/artifacts/engine/linux-x64/lib/"
       - run: flutter test test/local_pdf_tools_test.dart
       - run: flutter build apk --release $BUILD_FLAGS --dart-define=API_BASE_URL=$API_BASE_URL
       - run: cp build/app/outputs/flutter-apk/app-release.apk ../../FileNest-android.apk
