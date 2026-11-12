@@ -22,6 +22,7 @@ const playlists = ref([]);
 const loading = ref(false);
 const addingId = ref(null);
 const creatingNew = ref(false);
+const error = ref('');
 
 const form = useForm({ name: '' });
 
@@ -40,6 +41,7 @@ watch(
     (show) => {
         if (show) {
             creatingNew.value = false;
+            error.value = '';
             form.reset();
             load();
         }
@@ -48,11 +50,20 @@ watch(
 
 function addTo(playlist) {
     addingId.value = playlist.id;
+    error.value = '';
     axios
         .post(route('playlists.items.store', playlist.id), { file_id: props.item.id })
         .then(() => {
             playlist.contains_file = true;
             playlist.items_count += 1;
+        })
+        // Say why instead of silently doing nothing (2026-11-12).
+        .catch((e) => {
+            const errors = e.response?.data?.errors;
+            error.value = (errors && Object.values(errors)[0]?.[0])
+                || (e.response?.status === 403 || e.response?.status === 404
+                    ? t('playlist.add_denied', 'لا يمكنك إضافة هذا الملف.')
+                    : t('playlist.add_failed', 'تعذّرت الإضافة، حاول مرة أخرى.'));
         })
         .finally(() => (addingId.value = null));
 }
@@ -100,10 +111,12 @@ function createAndAdd() {
                 </button>
             </div>
 
+            <p v-if="error" class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-300">{{ error }}</p>
+
             <form v-if="creatingNew" @submit.prevent="createAndAdd" class="mt-4 border-t border-gray-200 pt-4 dark:border-gray-700">
                 <InputLabel for="new_playlist_name" :value="t('playlist.new_name_label', 'اسم قائمة التشغيل الجديدة')" />
                 <TextInput id="new_playlist_name" v-model="form.name" class="mt-1 block w-full" autofocus />
-                <InputError :message="form.errors.name" class="mt-2" />
+                <InputError :message="form.errors.name || form.errors.file_id" class="mt-2" />
                 <div class="mt-3 flex justify-end gap-3">
                     <SecondaryButton type="button" @click="creatingNew = false">{{ t('action.cancel', 'إلغاء') }}</SecondaryButton>
                     <PrimaryButton :disabled="form.processing">{{ t('playlist.create_and_add', 'إنشاء وإضافة') }}</PrimaryButton>

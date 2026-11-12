@@ -65,4 +65,4 @@ jobs:
           done
           echo "::warning::Tesseract could not be installed; the real-engine OCR tests will be skipped.
       - name: Guest landing and smoke tests
-        run: php artisan test --filter='GuestLandingTest|Thesis|ExampleTest|AssignedFoldersTest|GoldenPathTest|Library|StaffAnalytics|OfflineActivation|ProfileAvatar|ProfileTest|SavedItems|ActivityLogPage|UserStatus|LanguagesTest|NotificationsTest|PublicSiteTest|MobileFeaturesApiTest|OcrTest|OfflineExportTest|ThumbnailTest'
+        run: php artisan test --filter='GuestLandingTest|Thesis|ExampleTest|AssignedFoldersTest|GoldenPathTest|Library|StaffAnalytics|OfflineActivation|ProfileAvatar|ProfileTest|SavedItems|ActivityLogPage|UserStatus|LanguagesTest|NotificationsTest|PublicSiteTest|MobileFeaturesApiTest|OcrTest|OfflineExportTest|ThumbnailTest|LecturesTest'

@@ -109,6 +109,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/shares/{share}/email', [ShareController::class, 'sendEmail'])->name('shares.email');
 
     Route::get('/saved', [\App\Http\Controllers\SavedController::class, 'index'])->name('saved.index');
+    Route::get('/lectures', [\App\Http\Controllers\LectureController::class, 'index'])->name('lectures.index');
     Route::post('/saved/toggle', [\App\Http\Controllers\SavedController::class, 'toggle'])->name('saved.toggle');
     Route::delete('/saved/downloads', [\App\Http\Controllers\SavedController::class, 'forgetDownload'])->name('saved.downloads.forget');
     Route::get('/playlists', [PlaylistController::class, 'index'])->name('playlists.index');

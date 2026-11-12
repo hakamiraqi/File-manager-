@@ -149,14 +149,25 @@ class File extends Model
         return str_starts_with((string) $this->mime_type, 'image/');
     }
 
+    public const VIDEO_EXTENSIONS = ['mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', '3gp', 'mpg', 'mpeg'];
+
+    public const AUDIO_EXTENSIONS = ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga', 'opus', 'flac', 'wma'];
+
+    /** By type, or by extension when the upload came with a generic type (application/octet-stream). */
     public function isVideo(): bool
     {
-        return str_starts_with((string) $this->mime_type, 'video/');
+        $mime = (string) $this->mime_type;
+
+        return str_starts_with($mime, 'video/')
+            || (! str_starts_with($mime, 'audio/') && in_array(strtolower((string) $this->extension), self::VIDEO_EXTENSIONS, true));
     }
 
     public function isAudio(): bool
     {
-        return str_starts_with((string) $this->mime_type, 'audio/');
+        $mime = (string) $this->mime_type;
+
+        return str_starts_with($mime, 'audio/')
+            || (! str_starts_with($mime, 'video/') && in_array(strtolower((string) $this->extension), self::AUDIO_EXTENSIONS, true));
     }
 
     public function isPdf(): bool

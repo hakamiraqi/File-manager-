@@ -72,7 +72,9 @@ class PlaylistController extends Controller
         ActivityLog::record('playlist.created', "أنشأ قائمة تشغيل \"{$playlist->name}\"", $playlist);
 
         if (! empty($data['file_id'])) {
-            $file = File::where('user_id', $request->user()->id)->whereNull('deleted_at')->findOrFail($data['file_id']);
+            // Any video or audio file the user may watch (2026-11-12): only their own uploads were
+        // accepted before, so lectures uploaded by staff were refused with a bare «not found».
+        $file = File::findOrFail($data['file_id']);
             $this->authorize('view', $file);
             $this->addFileToPlaylist($playlist, $file);
         }
@@ -116,7 +118,9 @@ class PlaylistController extends Controller
 
         $data = $request->validate(['file_id' => ['required', 'integer']]);
 
-        $file = File::where('user_id', $request->user()->id)->whereNull('deleted_at')->findOrFail($data['file_id']);
+        // Any video or audio file the user may watch (2026-11-12): only their own uploads were
+        // accepted before, so lectures uploaded by staff were refused with a bare «not found».
+        $file = File::findOrFail($data['file_id']);
         $this->authorize('view', $file);
 
         $this->addFileToPlaylist($playlist, $file);

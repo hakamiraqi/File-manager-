@@ -429,5 +429,22 @@
     "saved.kind_image": "Images",
     "saved.kind_audio": "Audio",
     "saved.kind_document": "Documents",
-    "saved.kind_other": "Other"
+    "saved.kind_other": "Other",
+    "nav.lectures": "Video lectures",
+    "lectures.search": "Search lectures or subjects",
+    "lectures.by_folder": "By folder",
+    "lectures.all_videos": "All videos",
+    "lectures.sort_newest": "Newest first",
+    "lectures.sort_name": "By name",
+    "lectures.continue": "Continue watching",
+    "lectures.no_folder": "Not in a folder",
+    "lectures.n_videos": ":n videos",
+    "lectures.play_all": "Play all",
+    "lectures.open_in_files": "Open in files",
+    "lectures.new": "New",
+    "lectures.empty": "No video lectures available to you yet.",
+    "lectures.updated": "Last added",
+    "lectures.limited": "Showing the first 3000 videos; use search for the rest.",
+    "playlist.add_denied": "You can't add this file.",
+    "playlist.add_failed": "Couldn't add it, try again."
 }

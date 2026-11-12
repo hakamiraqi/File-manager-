@@ -154,6 +154,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::post('/notifications/{notification}/read', [\App\Http\Controllers\Api\V1\MobileController::class, 'readNotification'])->name('notifications.read');
         Route::delete('/notifications/{notification}', [\App\Http\Controllers\Api\V1\MobileController::class, 'deleteNotification'])->name('notifications.destroy');
         Route::get('/saved', [\App\Http\Controllers\Api\V1\MobileController::class, 'saved'])->name('saved.index');
+        Route::get('/lectures', [\App\Http\Controllers\LectureController::class, 'api'])->name('lectures.index');
         Route::post('/saved/toggle', [\App\Http\Controllers\Api\V1\MobileController::class, 'toggleSaved'])->name('saved.toggle');
         Route::post('/saved/forget-download', [\App\Http\Controllers\Api\V1\MobileController::class, 'forgetDownload'])->name('saved.forget');
         Route::get('/library/mine', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mine'])->name('library.mine');

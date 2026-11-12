@@ -429,5 +429,22 @@
     "saved.kind_image": "صور",
     "saved.kind_audio": "صوت",
     "saved.kind_document": "مستندات",
-    "saved.kind_other": "أخرى"
+    "saved.kind_other": "أخرى",
+    "nav.lectures": "المحاضرات المرئية",
+    "lectures.search": "ابحث عن محاضرة أو مادة",
+    "lectures.by_folder": "حسب المجلد",
+    "lectures.all_videos": "كل المقاطع",
+    "lectures.sort_newest": "الأحدث أولاً",
+    "lectures.sort_name": "حسب الاسم",
+    "lectures.continue": "أكمل المشاهدة",
+    "lectures.no_folder": "خارج المجلدات",
+    "lectures.n_videos": ":n مقطع",
+    "lectures.play_all": "تشغيل الكل",
+    "lectures.open_in_files": "فتح في الملفات",
+    "lectures.new": "جديد",
+    "lectures.empty": "لا توجد محاضرات مرئية متاحة لك بعد.",
+    "lectures.updated": "آخر إضافة",
+    "lectures.limited": "تُعرض أول 3000 مقطع؛ استخدم البحث للوصول إلى البقية.",
+    "playlist.add_denied": "لا يمكنك إضافة هذا الملف.",
+    "playlist.add_failed": "تعذّرت الإضافة، حاول مرة أخرى."
 }
