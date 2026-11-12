@@ -1,25 +1,28 @@
 <?php
-// One-off (2026-11-12): check page clean-up on the server, then re-read the recognised scanned PDFs
-// so each gets a searchable copy (and its text rebuilt without the old doubling).
+// Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
+// Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
-$engine = app(App\Services\Ocr\OcrEngine::class);
-echo 'ENGINE: '.json_encode(array_intersect_key($engine->info(), array_flip(['best', 'searchable_pdf', 'cleanup'])))."\n";
-$f = File::find(1125);
-exec('pdftoppm -r 300 -gray -png -f 1 -l 1 '.escapeshellarg($f->disk()->path($f->path)).' /tmp/mk');
-$png = glob('/tmp/mk*.png')[0];
-[$w, $h] = getimagesize($png);
-exec($engine->magick().' '.escapeshellarg($png).' -deskew 40% +repage -normalize -gravity center -background white -extent '.$w.'x'.$h.' '.escapeshellarg($png.'.c.png').' 2>&1', $o, $code);
-[$w2, $h2] = @getimagesize($png.'.c.png') ?: [0, 0];
-echo "MAGICK PNG: exit $code, {$w}x{$h} -> {$w2}x{$h2} ".implode(' ', $o)."\n";
-@unlink($png); @unlink($png.'.c.png');
-
-$t = microtime(true);
-app(App\Services\Ocr\OcrRunner::class)->process($f);
-$f->refresh();
-echo "RE-READ #1125 with clean-up: ".($f->searchablePdf() ? 'searchable copy made' : 'NO copy')." in ".round(microtime(true) - $t)."s, ".mb_strlen((string) $f->content_text)." chars\n";
-
-$q = File::where('extension', 'pdf')->where('ocr_status', 'done')->where('ocr_pages', '>', 0)->where('id', '!=', 1125);
-echo 'REQUEUE: '.$q->count().' PDFs, '.(clone $q)->sum('ocr_pages')." pages\n";
-$n = $q->update(['ocr_status' => 'pending', 'ocr_attempts' => 0, 'ocr_error' => null, 'ocr_priority' => -1]);
-echo "REQUEUED: $n (after any never-read files)\n";
-echo 'WINDOW: '.json_encode(App\Models\Setting::whereIn('key', ['ocr_days', 'ocr_start', 'ocr_end', 'ocr_all_day_days'])->pluck('value', 'key'))."\n";
+use App\Models\Folder;
+use Illuminate\Support\Facades\DB;
+$root = Folder::where('name', 'like', 'المكتبة الإلكترونية (الرقمية)%')->whereNull('parent_id')->first();
+$ids = [$root->id]; $frontier = [$root->id];
+while ($frontier) { $frontier = Folder::whereIn('parent_id', $frontier)->pluck('id')->all(); $ids = array_merge($ids, $frontier); }
+$q = fn () => File::whereIn('folder_id', $ids);
+echo 'FILES: '.$q()->count()."\n";
+echo 'TEXT INDEXED: '.$q()->whereNotNull('content_indexed_at')->count()."\n";
+echo 'WITH TEXT: '.$q()->whereRaw('length(content_text) > 100')->count()."\n";
+echo 'OCR DONE LAST HOUR: '.$q()->where('ocr_status', 'done')->where('updated_at', '>=', now()->subHour())->count()."\n";
+echo 'OCR: '.json_encode($q()->selectRaw('coalesce(ocr_status, "none") s, count(*) n')->groupBy('s')->pluck('n', 's'))."\n";
+echo 'JOBS WAITING: '.DB::table('jobs')->count().'  FAILED: '.DB::table('failed_jobs')->count()."\n";
+echo 'APP TIME: '.now()->toDateTimeString().' '.config('app.timezone')."\n";
+$s = app(App\Services\Ocr\OcrSettings::class)->all();
+echo 'OCR LAST: '.json_encode(DB::table('ocr_load_samples')->latest('id')->limit(4)->get(['state','reason','processed','cpu','created_at']))."
+";
+$p = $q()->where('ocr_status', 'processing')->first(['id','extension','size','updated_at','ocr_attempts']);
+echo 'PROCESSING: '.json_encode($p)."
+";
+echo 'PENDING SIZE MB: '.round($q()->where('ocr_status', 'pending')->sum('size') / 1e6).'  BY TYPE: '.json_encode($q()->where('ocr_status', 'pending')->selectRaw('extension, count(*) n')->groupBy('extension')->pluck('n', 'extension'))."
+";
+echo 'DONE DETAIL: '.json_encode($q()->where('ocr_status', 'done')->orderByDesc('ocr_done_at')->limit(5)->get(['id', 'size', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error'])->map->only(['id', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error']))."\n";
+echo 'DONE ALL: '.$q()->where('ocr_status', 'done')->count().' FAILED: '.$q()->where('ocr_status', 'failed')->count()."
+";
