@@ -1,58 +1,25 @@
 <?php
-// One-off (2026-11-12): 1) clean-up before OCR with ImageMagick / unpaper; 2) a real searchable PDF.
+// One-off (2026-11-12): check page clean-up on the server, then re-read the recognised scanned PDFs
+// so each gets a searchable copy (and its text rebuilt without the old doubling).
 use App\Models\File;
-echo 'TOOLS: '.trim(shell_exec('for t in magick convert unpaper qpdf; do command -v $t >/dev/null && printf "%s " $t; done') ?? '')."\n";
-$clean = function (string $text): array {
-    $tokens = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY);
-    $ok = 0;
-    foreach ($tokens as $t) {
-        if (preg_match('/^[(«"]?(\p{Arabic}{2,}|[A-Za-z]{2,}|[0-9٠-٩]+)[.,،:؛)»"]?$/u', $t) && ! str_contains($t, '�')) $ok++;
-    }
-    return [count($tokens), $ok, count($tokens) ? round(100 * $ok / count($tokens), 1) : 0];
-};
-$magick = trim(shell_exec('command -v magick || command -v convert') ?? '');
-$variants = [
-    'A current' => null,
-    'E deskew+normalize' => fn ($in, $out) => "$magick ".escapeshellarg($in)." -deskew 40% -normalize ".escapeshellarg($out),
-    'F deskew+shadow removal' => fn ($in, $out) => "$magick ".escapeshellarg($in)." -deskew 40% \\( +clone -blur 0x20 \\) -compose Divide_Src -composite -normalize ".escapeshellarg($out),
-    'U unpaper' => fn ($in, $out) => 'unpaper -q --overwrite '.escapeshellarg($in).' '.escapeshellarg($out),
-];
-foreach ([[205, 3, 6], [205, 20, 23], [226, 3, 6]] as [$id, $from, $to]) {
-    $f = File::find($id);
-    exec("pdftoppm -r 300 -gray -f $from -l $to ".escapeshellarg($f->disk()->path($f->path)).' /tmp/vv');
-    $pages = glob('/tmp/vv*.pgm');
-    echo "FILE #$id pages $from-$to\n";
-    foreach ($variants as $name => $prep) {
-        $t = microtime(true);
-        $all = '';
-        foreach ($pages as $p) {
-            $in = $p;
-            if ($prep) {
-                $in = $p.'.out.pgm';
-                exec($prep($p, $in).' 2>&1', $o, $code);
-                if (! is_file($in)) { echo "  $name: prep failed ($code) ".implode(' ', array_slice($o, -2))."\n"; continue 2; }
-            }
-            $all .= "\n".(shell_exec('tesseract --tessdata-dir /usr/share/tessdata-best '.escapeshellarg($in).' - -l ara+eng 2>/dev/null') ?? '');
-            if ($in !== $p) @unlink($in);
-        }
-        [$w, $ok, $pct] = $clean($all);
-        echo "  VARIANT $name: $w words, $ok clean ($pct%), ".round((microtime(true) - $t) / max(1, count($pages)), 1)."s/page\n";
-    }
-    array_map('unlink', $pages);
-}
+$engine = app(App\Services\Ocr\OcrEngine::class);
+echo 'ENGINE: '.json_encode(array_intersect_key($engine->info(), array_flip(['best', 'searchable_pdf', 'cleanup'])))."\n";
+$f = File::find(1125);
+exec('pdftoppm -r 300 -gray -png -f 1 -l 1 '.escapeshellarg($f->disk()->path($f->path)).' /tmp/mk');
+$png = glob('/tmp/mk*.png')[0];
+[$w, $h] = getimagesize($png);
+exec($engine->magick().' '.escapeshellarg($png).' -deskew 40% +repage -normalize -gravity center -background white -extent '.$w.'x'.$h.' '.escapeshellarg($png.'.c.png').' 2>&1', $o, $code);
+[$w2, $h2] = @getimagesize($png.'.c.png') ?: [0, 0];
+echo "MAGICK PNG: exit $code, {$w}x{$h} -> {$w2}x{$h2} ".implode(' ', $o)."\n";
+@unlink($png); @unlink($png.'.c.png');
 
-// A real searchable copy: the smallest recognised scanned PDF with a few pages.
-$file = File::where('extension', 'pdf')->where('ocr_status', 'done')->whereBetween('ocr_pages', [2, 12])->orderBy('ocr_pages')->first();
-if ($file) {
-    $t = microtime(true);
-    app(App\Services\Ocr\OcrRunner::class)->process($file);
-    $file->refresh();
-    $copy = $file->searchablePdf();
-    $orig = $file->disk()->path($file->path);
-    $count = fn ($p) => mb_strlen(trim((string) shell_exec('pdftotext -q '.escapeshellarg($p).' - 2>/dev/null')));
-    echo "SEARCHABLE #{$file->id}: ".($copy ? 'made' : 'NOT made')." in ".round(microtime(true) - $t)."s, pages {$file->ocr_pages}, status {$file->ocr_status}\n";
-    if ($copy) {
-        echo "  copyable text: original ".$count($orig)." chars -> searchable ".$count($copy)." chars; size ".round(filesize($orig) / 1048576, 2)." MB -> ".round(filesize($copy) / 1048576, 2)." MB\n";
-    }
-}
-echo 'OCR PDFS DONE: '.File::where('extension', 'pdf')->where('ocr_status', 'done')->where('ocr_pages', '>', 0)->count().', pages '.File::where('extension', 'pdf')->where('ocr_status', 'done')->sum('ocr_pages')."\n";
+$t = microtime(true);
+app(App\Services\Ocr\OcrRunner::class)->process($f);
+$f->refresh();
+echo "RE-READ #1125 with clean-up: ".($f->searchablePdf() ? 'searchable copy made' : 'NO copy')." in ".round(microtime(true) - $t)."s, ".mb_strlen((string) $f->content_text)." chars\n";
+
+$q = File::where('extension', 'pdf')->where('ocr_status', 'done')->where('ocr_pages', '>', 0)->where('id', '!=', 1125);
+echo 'REQUEUE: '.$q->count().' PDFs, '.(clone $q)->sum('ocr_pages')." pages\n";
+$n = $q->update(['ocr_status' => 'pending', 'ocr_attempts' => 0, 'ocr_error' => null, 'ocr_priority' => -1]);
+echo "REQUEUED: $n (after any never-read files)\n";
+echo 'WINDOW: '.json_encode(App\Models\Setting::whereIn('key', ['ocr_days', 'ocr_start', 'ocr_end', 'ocr_all_day_days'])->pluck('value', 'key'))."\n";
