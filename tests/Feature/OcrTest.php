@@ -38,11 +38,15 @@ class OcrTest extends TestCase
                 return ['available' => true, 'version' => '5.4.0', 'languages' => ['ara', 'eng'], 'pdf' => true];
             }
 
-            public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300, ?string $quality = null): array
+            public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300, ?string $quality = null, ?string $searchablePdf = null): array
             {
                 $this->seen[] = basename($path);
+                if ($searchablePdf !== null) {
+                    @mkdir(dirname($searchablePdf), 0777, true);
+                    file_put_contents($searchablePdf, '%PDF-1.4 searchable copy');
+                }
 
-                return ['text' => $this->text, 'pages' => $extension === 'pdf' ? 2 : 1];
+                return ['text' => $this->text, 'pages' => $extension === 'pdf' ? 2 : 1, 'searchable' => $searchablePdf !== null];
             }
         });
         // A quiet computer.
@@ -226,6 +230,59 @@ class OcrTest extends TestCase
         $this->assertTrue($some['partial']);
         $this->assertStringNotContainsString('DENTAL', $some['text']);
         @unlink($path);
+    }
+
+    public function test_a_recognised_scan_is_served_as_a_searchable_pdf_and_reading_again_does_not_double_the_text(): void
+    {
+        Storage::fake(config('filenest.disk'));
+        $this->fakeEngine();
+        Setting::setMany(['ocr_start' => '00:00', 'ocr_end' => '00:00', 'ocr_days' => '0,1,2,3,4,5,6']);
+        $admin = User::factory()->create(['role' => 'admin']);
+        $scan = $this->file('pdf', ['user_id' => $admin->id, 'mime_type' => 'application/pdf']);
+        // Read before: its old recognised text must be replaced, not added to.
+        $scan->forceFill(['content_indexed_at' => now(), 'content_text' => 'نص عربي مقروء', 'ocr_status' => 'pending', 'ocr_done_at' => now()->subDay()])->save();
+
+        app(\App\Services\Ocr\OcrRunner::class)->process($scan->fresh());
+
+        $scan = $scan->fresh();
+        $this->assertSame('نص عربي مقروء', $scan->content_text);
+        $this->assertNotNull($scan->searchablePdf());
+
+        $this->actingAs($admin);
+        $preview = $this->get(route('files.preview', $scan));
+        $preview->assertOk();
+        $this->assertSame($scan->searchablePdf(), $preview->baseResponse->getFile()->getPathname());
+        $download = $this->get(route('files.download', $scan));
+        $download->assertOk();
+        $this->assertSame($scan->searchablePdf(), $download->baseResponse->getFile()->getPathname());
+        $this->assertStringContainsString('scan.pdf', (string) $download->headers->get('content-disposition'));
+
+        // A new version of the file never shows the old copy; deleting removes it.
+        $old = $scan->searchablePdf();
+        $scan->forceFill(['size' => $scan->size + 1])->save();
+        $this->assertNull($scan->fresh()->searchablePdf());
+        $scan->fresh()->forceDelete();
+        $this->assertFileDoesNotExist($old);
+    }
+
+    public function test_the_real_engine_makes_a_searchable_copy_with_the_same_pages(): void
+    {
+        $engine = app(OcrEngine::class);
+        if (! $engine->available() || ! $engine->supports('pdf') || $engine->qpdf() === null) {
+            $this->markTestSkipped('Tesseract, pdftoppm or qpdf is not installed here.');
+        }
+        $path = tempnam(sys_get_temp_dir(), 'ocr').'.pdf';
+        file_put_contents($path, $this->pdf(['SEARCHABLE ONE', 'SEARCHABLE TWO']));
+        $out = sys_get_temp_dir().'/searchable-'.uniqid().'.pdf';
+
+        $result = $engine->recognize($path, 'pdf', 'eng', 120, 300, 'fast', $out);
+
+        $this->assertTrue($result['searchable']);
+        $this->assertFileExists($out);
+        $this->assertSame(2, $engine->pageCount($out));
+        $this->assertStringContainsString('SEARCHABLE', $result['text']);
+        @unlink($path);
+        @unlink($out);
     }
 
     public function test_the_accurate_model_folder_is_used_when_installed_and_skipped_when_not(): void

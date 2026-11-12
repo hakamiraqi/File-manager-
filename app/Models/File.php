@@ -45,7 +45,34 @@ class File extends Model
             foreach ($file->qualities as $quality) {
                 $file->disk()->delete($quality->path);
             }
+            $file->forgetSearchablePdf();
         });
+    }
+
+    /**
+     * The copy of a scanned PDF with its recognised text laid under the pages (made by OCR).
+     * Named after the size so a replaced file never shows an old copy.
+     */
+    public function searchablePdfPath(): string
+    {
+        return storage_path('app/searchable/'.$this->id.'-'.$this->size.'.pdf');
+    }
+
+    public function searchablePdf(): ?string
+    {
+        if (strtolower((string) $this->extension) !== 'pdf') {
+            return null;
+        }
+        $path = $this->searchablePdfPath();
+
+        return is_file($path) ? $path : null;
+    }
+
+    public function forgetSearchablePdf(): void
+    {
+        foreach (glob(storage_path('app/searchable/'.$this->id.'-*.pdf')) ?: [] as $old) {
+            @unlink($old);
+        }
     }
 
     protected function humanSize(): Attribute

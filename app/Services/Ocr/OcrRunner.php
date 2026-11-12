@@ -109,15 +109,22 @@ class OcrRunner
             if (! is_file($path)) {
                 throw new \RuntimeException('الملف غير موجود على القرص.');
             }
+            $isPdf = strtolower((string) $file->extension) === 'pdf';
+            if ($isPdf) {
+                $file->forgetSearchablePdf();
+            }
             $result = $this->engine->recognize(
                 $path,
                 (string) $file->extension,
                 OcrSettings::get('ocr_languages') ?: 'ara+eng',
                 max(1, OcrSettings::int('ocr_timeout_minutes')) * 60,
                 max(1, OcrSettings::int('ocr_max_pages')),
+                searchablePdf: $isPdf ? $file->searchablePdfPath() : null,
             );
             $text = $this->tidy($result['text']);
-            $existing = trim((string) $file->content_text);
+            // The file's own text (a PDF's text layer), read afresh: merging with content_text
+            // instead doubled the text every time a file was recognised again (2026-11-12).
+            $existing = trim((string) app(\App\Services\DocumentTextExtractor::class)->extract($path, (string) $file->extension));
             $merged = $existing !== '' && $text !== '' ? $existing."\n\n".$text : ($text !== '' ? $text : ($existing ?: null));
 
             $file->forceFill([

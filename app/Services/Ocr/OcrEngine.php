@@ -36,6 +36,12 @@ class OcrEngine
         return $this->locate('tesseract', config('services.ocr.tesseract'), [base_path('../tesseract/tesseract.exe')]);
     }
 
+    /** qpdf lays the recognised text under the scanned pages (searchable PDF). */
+    public function qpdf(): ?string
+    {
+        return $this->locate('qpdf', config('services.ocr.qpdf'), [base_path('../qpdf/bin/qpdf.exe')]);
+    }
+
     public function pdftoppm(): ?string
     {
         return $this->locate('pdftoppm', config('services.ocr.pdftoppm'), [base_path('../poppler/pdftoppm.exe')]);
@@ -52,6 +58,7 @@ class OcrEngine
             'languages' => $bin ? $this->installedLanguages() : [],
             'pdf' => $this->pdftoppm() !== null,
             'best' => $this->bestDir() !== null,
+            'searchable_pdf' => $this->qpdf() !== null,
         ];
     }
 
@@ -73,14 +80,17 @@ class OcrEngine
     }
 
     /**
-     * Recognises the text of one file.
+     * Recognises the text of one file. For a PDF, when $searchablePdf is given (and qpdf is
+     * installed), it also writes a copy of the PDF there with the recognised text laid invisibly
+     * under each scanned page, so it can be searched and copied from in any PDF reader.
      *
-     * @return array{text: string, pages: int}
+     * @return array{text: string, pages: int, searchable?: bool}
      */
-    public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300, ?string $quality = null): array
+    public function recognize(string $path, string $extension, string $languages, int $timeoutSeconds, int $maxPages = 300, ?string $quality = null, ?string $searchablePdf = null): array
     {
         $bin = $this->tesseract() ?? throw new RuntimeException('برنامج التعرف على النصوص (Tesseract) غير مثبت.');
         $this->best = ($quality ?? OcrSettings::get('ocr_quality')) === 'best' ? $this->bestDir() : null;
+        $this->pageLayer = null;
         $langs = $this->usableLanguages($languages);
         $deadline = microtime(true) + $timeoutSeconds;
 
@@ -98,6 +108,13 @@ class OcrEngine
         // are kept («partial»), so a long book still becomes searchable.
         $total = $this->pageCount($path);
         $last = min(max(1, $maxPages), $total ?? max(1, $maxPages));
+        $this->dpi = $this->best ? 300 : 200;
+        if ($searchablePdf !== null && $this->qpdf() !== null) {
+            $this->pageLayer = $work.'/layer';
+            Fs::ensureDirectoryExists($this->pageLayer);
+        }
+        $build = false;
+        $searchable = false;
         $step = $this->parallel();
         $texts = [];
         $read = 0;
@@ -106,7 +123,7 @@ class OcrEngine
             for ($first = 1; $first <= $last; $first += $step) {
                 $to = min($last, $first + $step - 1);
                 $r = Process::timeout($this->remaining($deadline))
-                    ->run([...$this->nice(), $pdftoppm, '-r', $this->best ? '300' : '200', '-gray', '-png', '-f', (string) $first, '-l', (string) $to, $path, $work.'/p']);
+                    ->run([...$this->nice(), $pdftoppm, '-r', (string) $this->dpi, '-gray', '-png', '-f', (string) $first, '-l', (string) $to, $path, $work.'/p']);
                 if (! $r->successful()) {
                     if ($read === 0) {
                         throw new RuntimeException('تعذر فتح ملف PDF: '.Str::limit(trim($r->errorOutput()), 200));
@@ -127,16 +144,58 @@ class OcrEngine
                     break;
                 }
             }
+            $build = true;
         } catch (ProcessTimedOutException|RuntimeException $e) {
             if ($read === 0 || ! $this->isTimeout($e)) {
                 throw $e;
             }
             $partial = true;
+            $build = true; // the pages read so far still get their text layer
         } finally {
+            if ($build && $this->pageLayer !== null) {
+                try {
+                    $searchable = $this->buildSearchablePdf($path, $this->pageLayer, (string) $searchablePdf);
+                } catch (\Throwable $e) {
+                    \Illuminate\Support\Facades\Log::warning('Searchable PDF not made: '.$e->getMessage());
+                }
+            }
+            $this->pageLayer = null;
             Fs::deleteDirectory($work);
         }
 
-        return ['text' => trim(implode("\n\n", array_filter($texts, fn ($t) => trim($t) !== ''))), 'pages' => $read, 'total' => $total, 'partial' => $partial || ($total !== null && $read < $total)];
+        return ['text' => trim(implode("\n\n", array_filter($texts, fn ($t) => trim($t) !== ''))), 'pages' => $read, 'total' => $total, 'partial' => $partial || ($total !== null && $read < $total), 'searchable' => $searchable];
+    }
+
+    /**
+     * Joins the per-page text layers and lays them over the original PDF (qpdf --overlay):
+     * the pages look exactly the same, but now carry invisible, selectable text. The result
+     * replaces $out only when it opens cleanly and has as many pages as the original.
+     */
+    private function buildSearchablePdf(string $original, string $layerDir, string $out): bool
+    {
+        $qpdf = $this->qpdf();
+        $pages = glob($layerDir.'/*.pdf') ?: [];
+        if ($qpdf === null || $pages === []) {
+            return false;
+        }
+        sort($pages, SORT_NATURAL);
+        $layer = $layerDir.'/all.pdf';
+        $r = Process::timeout(600)->run([$qpdf, '--empty', '--pages', ...$pages, '--', $layer]);
+        if (! in_array($r->exitCode(), [0, 3], true) || ! is_file($layer)) {
+            throw new RuntimeException('joining text pages: '.Str::limit(trim($r->errorOutput()), 200));
+        }
+        Fs::ensureDirectoryExists(dirname($out));
+        $tmp = $out.'.part';
+        $r = Process::timeout(900)->run([$qpdf, $original, '--overlay', $layer, '--', $tmp]);
+        // qpdf exits 3 for "done, with warnings" (common with scanner-made PDFs).
+        if (! in_array($r->exitCode(), [0, 3], true) || ! is_file($tmp) || $this->pageCount($tmp) !== $this->pageCount($original)) {
+            @unlink($tmp);
+            throw new RuntimeException('overlay: '.Str::limit(trim($r->errorOutput()), 200));
+        }
+        @unlink($out);
+        rename($tmp, $out);
+
+        return true;
     }
 
     /** Several page images read side by side; their texts in page order. @return list<string> */
@@ -149,7 +208,7 @@ class OcrEngine
         $results = Process::pool(function (Pool $pool) use ($images, $bin, $langs, $timeout) {
             foreach ($images as $i => $image) {
                 $pool->as((string) $i)->timeout($timeout)->env(['OMP_THREAD_LIMIT' => '1'])
-                    ->command([...$this->nice(), $bin, ...($this->best ? ['--tessdata-dir', $this->best] : []), $image, 'stdout', '-l', $langs, '--psm', '3']);
+                    ->command($this->tesseractCommand($bin, $image, $langs));
             }
         })->start()->wait();
         $out = [];
@@ -158,7 +217,7 @@ class OcrEngine
             if (! $r->successful()) {
                 throw new RuntimeException('فشل التعرف: '.Str::limit(trim($r->errorOutput()), 200));
             }
-            $out[] = $r->output();
+            $out[] = $this->pageText($images[$i], $r->output());
         }
         if (microtime(true) >= $deadline) {
             throw new RuntimeException('تجاوز الوقت المسموح لهذا الملف.');
@@ -199,13 +258,50 @@ class OcrEngine
     {
         $r = Process::timeout($this->remaining($deadline))
             ->env(['OMP_THREAD_LIMIT' => '1'])
-            ->run([...$this->nice(), $bin, ...($this->best ? ['--tessdata-dir', $this->best] : []), $image, 'stdout', '-l', $langs, '--psm', '3']);
+            ->run($this->tesseractCommand($bin, $image, $langs));
         if (! $r->successful()) {
             throw new RuntimeException('فشل التعرف: '.Str::limit(trim($r->errorOutput()), 200));
         }
 
-        return $r->output();
+        return $this->pageText($image, $r->output());
     }
+
+    /** Text to stdout, or (making a searchable PDF) text + an invisible-text PDF page to files. */
+    private function tesseractCommand(string $bin, string $image, string $langs): array
+    {
+        $base = [...$this->nice(), $bin, ...($this->best ? ['--tessdata-dir', $this->best] : []), $image];
+        if ($this->pageLayer === null) {
+            return [...$base, 'stdout', '-l', $langs, '--psm', '3'];
+        }
+
+        return [...$base, $this->layerBase($image), '-l', $langs, '--psm', '3', '--dpi', (string) $this->dpi,
+            '-c', 'tessedit_create_txt=1', '-c', 'tessedit_create_pdf=1', '-c', 'textonly_pdf=1'];
+    }
+
+    private function pageText(string $image, string $stdout): string
+    {
+        if ($this->pageLayer === null) {
+            return $stdout;
+        }
+        $txt = $this->layerBase($image).'.txt';
+        $text = is_file($txt) ? (string) file_get_contents($txt) : '';
+        @unlink($txt);
+
+        return $text;
+    }
+
+    /** p-012.png → <layer>/00012 (page order for joining). */
+    private function layerBase(string $image): string
+    {
+        $page = preg_match('/(\d+)\.png$/i', $image, $m) ? (int) $m[1] : crc32($image);
+
+        return $this->pageLayer.DIRECTORY_SEPARATOR.sprintf('%05d', $page);
+    }
+
+    /** Where this reading's per-page text layers go (null: no searchable PDF wanted). */
+    private ?string $pageLayer = null;
+
+    private int $dpi = 200;
 
     /** The «best» model folder for this reading, when chosen and installed. */
     private ?string $best = null;

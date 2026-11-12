@@ -10,7 +10,7 @@ FROM php:8.4-fpm-alpine AS base
 # ImageMagick + unpaper: clean scanned pages (straighten, remove shadows and specks) before OCR.
 RUN apk add --no-cache icu-libs libzip libpng libjpeg-turbo libwebp freetype mariadb-client ffmpeg poppler-utils \
         libreoffice-writer libreoffice-calc libreoffice-impress font-noto-arabic font-dejavu font-liberation fontconfig \
-        tesseract-ocr tesseract-ocr-data-ara tesseract-ocr-data-eng imagemagick unpaper \
+        tesseract-ocr tesseract-ocr-data-ara tesseract-ocr-data-eng imagemagick unpaper qpdf \
     && apk add --no-cache --virtual .build $PHPIZE_DEPS icu-dev libzip-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev linux-headers \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install -j"$(nproc)" pdo_mysql intl zip gd bcmath exif opcache pcntl \
