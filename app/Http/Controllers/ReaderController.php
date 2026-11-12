@@ -62,6 +62,10 @@ class ReaderController extends Controller
             'annotations.*.type' => ['required', 'string', 'in:highlight,underline,strike,ink,text,note,sign'],
             'annotations.*.page' => ['required', 'integer', 'min:1'],
         ]);
+        // Validation keeps only the checked keys (type, page); each note keeps all of its own.
+        if (isset($data['annotations'])) {
+            $data['annotations'] = array_values(array_filter((array) $request->input('annotations'), 'is_array'));
+        }
         if (isset($data['annotations']) && strlen(json_encode($data['annotations'])) > self::MAX_ANNOTATIONS_BYTES) {
             return response()->json(['message' => 'الملاحظات على هذا الملف كثيرة جداً.'], 422);
         }
