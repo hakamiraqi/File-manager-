@@ -47,7 +47,7 @@ class CoverFinder
         }
         arsort($out);
 
-        return array_slice(array_keys($out), 0, 3);
+        return array_map('strval', array_slice(array_keys($out), 0, 3));
     }
 
     private static function isbn13ok(string $d): bool
