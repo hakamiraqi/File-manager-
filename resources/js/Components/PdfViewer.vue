@@ -48,6 +48,7 @@ import {
     Squares2X2Icon,
     TrashIcon,
     ViewColumnsIcon,
+    WrenchScrewdriverIcon,
     XMarkIcon,
 } from '@heroicons/vue/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/vue/24/solid';
@@ -1195,6 +1196,7 @@ watch(
                         <button v-if="canFull" type="button" class="fn-item" @click="(menu = false), toggleFull()">
                             <ArrowsPointingOutIcon class="h-4 w-4" />{{ t('reader.fullscreen', 'ملء الشاشة') }}
                         </button>
+                        <a v-if="fileId" :href="route('pdf-tools.index', { 'files[]': fileId })" class="fn-item"><WrenchScrewdriverIcon class="h-4 w-4" />{{ t('nav.pdf_tools', 'أدوات PDF') }}</a>
                         <a v-if="readerHref" :href="readerHref" class="fn-item"><BookOpenIcon class="h-4 w-4" />{{ t('reader.open_full', 'فتح في القارئ') }}</a>
                     </div>
                 </div>

@@ -11,7 +11,7 @@ import FlashMessages from '@/Components/FlashMessages.vue';
 import ThemeToggle from '@/Components/ThemeToggle.vue';
 import NotificationBell from '@/Components/NotificationBell.vue';
 import { useTrans } from '@/Composables/useTrans';
-import {
+import { WrenchScrewdriverIcon,
     FolderIcon,
     ShareIcon,
     TrashIcon,
@@ -42,6 +42,7 @@ const nav = computed(() => [
     { label: t('nav.theses', 'الرسائل والأطاريح'), href: route('theses.index'), icon: AcademicCapIcon, active: route().current('theses.*') },
     { label: t('nav.library', 'المكتبة'), href: page.props.permissions?.library_unread ? route('library.my-loans') : route('library.index'), icon: BookOpenIcon, active: route().current('library.*'), badge: page.props.permissions?.library_unread || 0 },
     { label: t('nav.lectures', 'المحاضرات المرئية'), href: route('lectures.index'), icon: FilmIcon, active: route().current('lectures.*') },
+    { label: t('nav.pdf_tools', 'أدوات PDF'), href: route('pdf-tools.index'), icon: WrenchScrewdriverIcon, active: route().current('pdf-tools.*') },
     { label: t('nav.saved', 'المحفوظات والتنزيلات'), href: route('saved.index'), icon: BookmarkIcon, active: route().current('saved.*') },
     { label: t('nav.playlists', 'قوائم التشغيل'), href: route('playlists.index'), icon: QueueListIcon, active: route().current('playlists.*') },
     { label: t('nav.shares', 'الروابط المشتركة'), href: route('shares.index'), icon: ShareIcon, active: route().current('shares.index') },

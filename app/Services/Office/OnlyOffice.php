@@ -163,4 +163,39 @@ class OnlyOffice
 
         return $internal.$path.($query ? "?$query" : '');
     }
+
+    /**
+     * Converts a file with the editor's converter (2026-11-12, PDF tools): Word/Excel/PowerPoint
+     * to PDF where LibreOffice is missing (the offline server), and PDF to Word with its layout.
+     * Returns the converted bytes, or null.
+     */
+    public function convert(File $file, string $to, int $timeout = 300): ?string
+    {
+        if (! $this->enabled()) {
+            return null;
+        }
+        $internal = rtrim((string) config('services.onlyoffice.app_internal_url'), '/');
+        $req = [
+            'async' => false,
+            'filetype' => strtolower((string) $file->extension),
+            'key' => 'cv-'.$this->key($file).'-'.$to,
+            'outputtype' => $to,
+            'title' => 'file.'.strtolower((string) $file->extension),
+            'url' => $internal.URL::temporarySignedRoute('office.download', now()->addHour(), ['file' => $file->id], false),
+        ];
+        $req['token'] = $this->sign($req);
+        try {
+            $r = \Illuminate\Support\Facades\Http::timeout($timeout)->acceptJson()
+                ->post(rtrim((string) config('services.onlyoffice.internal_url'), '/').'/ConvertService.ashx', $req);
+            $url = $r->json('fileUrl');
+            if (! $r->successful() || ! $r->json('endConvert') || ! $url) {
+                return null;
+            }
+            $out = \Illuminate\Support\Facades\Http::timeout($timeout)->get($this->internalise($url));
+
+            return $out->successful() ? $out->body() : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
 }

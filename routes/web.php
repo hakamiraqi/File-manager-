@@ -114,6 +114,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/editor/files/{file}', [\App\Http\Controllers\OfficeController::class, 'edit'])->name('office.edit');
     Route::post('/editor/new', [\App\Http\Controllers\OfficeController::class, 'create'])->name('office.create');
     // The PDF reader: full screen, with each reader's own place, bookmarks and notes.
+    // PDF tools: merge, split, organise, compress, protect, watermark, numbers, conversions.
+    Route::get('/pdf-tools', [\App\Http\Controllers\PdfToolController::class, 'index'])->name('pdf-tools.index');
+    Route::get('/pdf-tools/files', [\App\Http\Controllers\PdfToolController::class, 'files'])->name('pdf-tools.files');
+    Route::post('/pdf-tools/{tool}', [\App\Http\Controllers\PdfToolController::class, 'run'])->name('pdf-tools.run');
     Route::get('/reader/files/{file}', [\App\Http\Controllers\ReaderController::class, 'show'])->name('reader.show');
     Route::get('/reader/files/{file}/state', [\App\Http\Controllers\ReaderController::class, 'state'])->name('reader.state');
     Route::put('/reader/files/{file}/state', [\App\Http\Controllers\ReaderController::class, 'save'])->name('reader.state.save');

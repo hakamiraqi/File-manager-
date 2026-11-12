@@ -31,6 +31,8 @@ class AppPageController extends Controller
         'office' => ['office.edit', null, true],
         // The PDF reader for one file (ids[0]).
         'reader' => ['reader.show', null, true],
+        // PDF tools, optionally with files chosen (ids) and a tool (?tool=).
+        'pdf-tools' => ['pdf-tools.index', null, true],
     ];
 
     /** API: the signed link for one page. */
@@ -82,6 +84,9 @@ class AppPageController extends Controller
             'ids' => array_map('intval', (array) $request->query('ids', [])) ?: null,
         ]);
 
+        if ($route === 'pdf-tools.index') {
+            return redirect()->route($route, array_filter(['files' => $params['ids'] ?? null, 'tool' => $request->query('tool')]));
+        }
         if ($route === 'office.edit' || $route === 'reader.show') {
             return redirect()->route($route, ['file' => (int) ($params['ids'][0] ?? 0)]);
         }

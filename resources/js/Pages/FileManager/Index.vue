@@ -15,7 +15,7 @@ import SaveButton from '@/Components/SaveButton.vue';
 import TagInput from '@/Components/TagInput.vue';
 import { useChunkedUpload } from '@/Composables/useChunkedUpload';
 import { useTrans } from '@/Composables/useTrans';
-import {
+import { BookOpenIcon, WrenchScrewdriverIcon,
     FolderIcon,
     FolderPlusIcon,
     DocumentPlusIcon,
@@ -927,6 +927,15 @@ function uploadFromUrl() {
                                 </DropdownLink>
                                 <DropdownLink v-if="can.share" as="button" @click="shareTarget = { ...file, type: 'file' }">
                                     <ShareIcon class="me-2 inline h-4 w-4" /> {{ t('action.share', 'مشاركة') }}
+                                </DropdownLink>
+                                <DropdownLink v-if="(file.extension || '').toLowerCase() === 'pdf'" :href="route('reader.show', file.id)">
+                                    <BookOpenIcon class="me-2 inline h-4 w-4" /> {{ t('reader.read', 'قراءة') }}
+                                </DropdownLink>
+                                <DropdownLink
+                                    v-if="['pdf', 'jpg', 'jpeg', 'png', 'webp', 'docx', 'doc', 'xlsx', 'pptx', 'odt'].includes((file.extension || '').toLowerCase())"
+                                    :href="route('pdf-tools.index', { 'files[]': file.id })"
+                                >
+                                    <WrenchScrewdriverIcon class="me-2 inline h-4 w-4" /> {{ t('nav.pdf_tools', 'أدوات PDF') }}
                                 </DropdownLink>
                                 <DropdownLink v-if="isOfficeFile(file)" :href="route('office.edit', file.id)">
                                     <PencilSquareIcon class="me-2 inline h-4 w-4" /> {{ t('office.open', 'فتح في المحرر') }}

@@ -25,6 +25,9 @@ return [
     ],
 
     // The office editor (ONLYOFFICE Docs). Off while no secret is set.
+    // Ghostscript for «ضغط PDF» (found on PATH or next to the offline app when not set).
+    'pdf' => ['gs' => env('PDF_GHOSTSCRIPT')],
+
     'onlyoffice' => [
         'secret' => env('ONLYOFFICE_JWT_SECRET'),
         // Where browsers load the editor from (a path on this site, or a full URL).
