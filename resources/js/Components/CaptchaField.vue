@@ -1,8 +1,11 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import { onMounted } from 'vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import TextInput from '@/Components/TextInput.vue';
 import InputError from '@/Components/InputError.vue';
+
+const { t } = useTrans();
 
 const props = defineProps({
     captcha: { type: Object, default: () => ({ enabled: false }) },
@@ -34,7 +37,7 @@ onMounted(() => {
             />
         </template>
         <template v-else>
-            <InputLabel value="رمز التحقق: كم يساوي" />
+            <InputLabel :value="t('auth.captcha_question', 'رمز التحقق: كم يساوي')" />
             <div class="mt-1 flex items-center gap-2">
                 <span class="rounded-md bg-gray-100 px-3 py-2 font-mono text-sm" dir="ltr">{{ captcha.question }} =</span>
                 <TextInput

@@ -117,7 +117,7 @@ watch(() => props.monthly, renderChart);
                     <input type="date" v-model="to" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
                 <button @click="apply()" class="rounded-lg bg-[var(--accent-600)] px-4 py-2 text-sm text-white">{{ t('action.apply', 'عرض') }}</button>
                 <div class="flex flex-wrap gap-1">
-                    <button v-for="q in [['month', 'هذا الشهر'], ['quarter', 'آخر 3 أشهر'], ['year', 'هذه السنة'], ['twelve', 'آخر 12 شهراً']]" :key="q[0]" @click="quick(q[0])"
+                    <button v-for="q in [['month', t('library.rep.q_month', 'هذا الشهر')], ['quarter', t('library.rep.q_quarter', 'آخر 3 أشهر')], ['year', t('library.rep.q_year', 'هذه السنة')], ['twelve', t('library.rep.q_twelve', 'آخر 12 شهراً')]]" :key="q[0]" @click="quick(q[0])"
                         class="rounded-full border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700">{{ t('library.rep.q_' + q[0], q[1]) }}</button>
                 </div>
                 <div class="ms-auto flex gap-2">

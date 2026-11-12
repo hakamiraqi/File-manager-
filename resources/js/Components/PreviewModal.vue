@@ -613,7 +613,13 @@ function mountPlyr() {
             // Plyr's default points at its CDN; nothing must load from the
             // internet on the offline server.
             blankVideo: '',
-            controls: ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'download', 'pip', 'fullscreen'],
+            // Phones (2026-11-12): with every button the timeline had no room left and vanished,
+            // so the video couldn't be seeked. There the volume slider (the phone has buttons),
+            // ±10s (double-tap does it), download (in the header) and PiP are left out, and the
+            // timeline gets its own row (CSS below).
+            controls: window.matchMedia('(max-width: 640px)').matches
+                ? ['play-large', 'play', 'progress', 'current-time', 'duration', 'mute', 'captions', 'settings', 'fullscreen']
+                : ['play-large', 'rewind', 'play', 'fast-forward', 'progress', 'current-time', 'duration', 'mute', 'volume', 'captions', 'settings', 'download', 'pip', 'fullscreen'],
             urls: { download: route('files.download', props.file.id) },
             seekTime: 10,
             keyboard: { focused: true, global: false },
@@ -1405,6 +1411,27 @@ onBeforeUnmount(() => {
 @keyframes fn-pop {
     from { opacity: 0; transform: scale(0.92); }
     to { opacity: 1; transform: scale(1); }
+}
+/* Phones: the timeline on its own full-width row above the buttons, like YouTube. */
+@media (max-width: 640px) {
+    .fn-player .plyr--video .plyr__controls {
+        flex-wrap: wrap;
+        padding: 20px 8px 6px;
+        row-gap: 2px;
+    }
+    .fn-player .plyr__controls .plyr__progress__container {
+        order: -1;
+        flex: 1 0 100%;
+        margin: 0 4px 2px;
+        padding: 0;
+    }
+    /* play and the time on the left, the other buttons on the right */
+    .fn-player .plyr__controls .plyr__controls__item:first-child {
+        margin-right: 0;
+    }
+    .fn-player .plyr__controls .plyr__time--current {
+        margin-right: auto;
+    }
 }
 /* Little "now playing" bars in the queue. */
 .fn-eq i {

@@ -1,4 +1,5 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 // Every page of a PDF, drawn in the page itself (2026-11-11). Phone browsers show a PDF in
 // an <iframe> as its first page only (iPhone) or not at all (Android), so on touch screens
 // the preview draws the pages with pdf.js instead. Pages are drawn as they scroll into view
@@ -6,6 +7,8 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+
+const { t } = useTrans();
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -149,10 +152,10 @@ watch(
 
         <div v-if="loading" class="absolute inset-0 flex flex-col items-center justify-center gap-3 text-sm text-gray-600 dark:text-gray-300">
             <div class="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
-            <span>جارٍ تحميل الملف… <span v-if="progress" dir="ltr">{{ progress }}%</span></span>
+            <span>{{ t('pdf.loading', 'جارٍ تحميل الملف…') }} <span v-if="progress" dir="ltr">{{ progress }}%</span></span>
         </div>
         <div v-else-if="failed" class="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-gray-600 dark:text-gray-300">
-            تعذّر عرض الملف هنا. استخدم زر التنزيل لفتحه.
+            {{ t('pdf.failed', 'تعذّر عرض الملف هنا. استخدم زر التنزيل لفتحه.') }}
         </div>
 
         <div

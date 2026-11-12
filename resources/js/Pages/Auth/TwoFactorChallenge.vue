@@ -1,4 +1,5 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import { ref } from 'vue';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
@@ -6,6 +7,8 @@ import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
+
+const { t } = useTrans();
 
 const usingRecoveryCode = ref(false);
 
@@ -29,16 +32,16 @@ function submit() {
 
 <template>
     <GuestLayout>
-        <Head title="التحقق بخطوتين" />
+        <Head :title="t('auth.2fa_title', 'التحقق بخطوتين')" />
 
         <p class="mb-4 text-sm text-gray-600">
-            <span v-if="!usingRecoveryCode">أدخل رمز التحقق المكوّن من 6 أرقام من تطبيق المصادقة الخاص بك.</span>
-            <span v-else>أدخل أحد رموز الاسترداد التي حفظتها عند تفعيل المصادقة الثنائية.</span>
+            <span v-if="!usingRecoveryCode">{{ t('auth.2fa_code_text', 'أدخل رمز التحقق المكوّن من 6 أرقام من تطبيق المصادقة الخاص بك.') }}</span>
+            <span v-else>{{ t('auth.2fa_recovery_text', 'أدخل أحد رموز الاسترداد التي حفظتها عند تفعيل المصادقة الثنائية.') }}</span>
         </p>
 
         <form @submit.prevent="submit">
             <div v-if="!usingRecoveryCode">
-                <InputLabel for="code" value="رمز التحقق" />
+                <InputLabel for="code" :value="t('auth.2fa_code', 'رمز التحقق')" />
                 <TextInput
                     id="code"
                     v-model="form.code"
@@ -51,7 +54,7 @@ function submit() {
             </div>
 
             <div v-else>
-                <InputLabel for="recovery_code" value="رمز الاسترداد" />
+                <InputLabel for="recovery_code" :value="t('auth.2fa_recovery', 'رمز الاسترداد')" />
                 <TextInput
                     id="recovery_code"
                     v-model="form.recovery_code"
@@ -67,11 +70,11 @@ function submit() {
                     @click="toggleRecoveryCode"
                     class="text-sm text-gray-600 underline hover:text-gray-900"
                 >
-                    {{ usingRecoveryCode ? 'استخدام رمز التحقق بدلاً من ذلك' : 'استخدام رمز استرداد بدلاً من ذلك' }}
+                    {{ usingRecoveryCode ? t('auth.2fa_use_code', 'استخدام رمز التحقق بدلاً من ذلك') : t('auth.2fa_use_recovery', 'استخدام رمز استرداد بدلاً من ذلك') }}
                 </button>
 
                 <PrimaryButton :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
-                    تأكيد
+                    {{ t('auth.confirm', 'تأكيد') }}
                 </PrimaryButton>
             </div>
         </form>

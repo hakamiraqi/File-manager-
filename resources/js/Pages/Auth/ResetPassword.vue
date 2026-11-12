@@ -1,10 +1,13 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
 import GuestLayout from '@/Layouts/GuestLayout.vue';
 import InputError from '@/Components/InputError.vue';
 import InputLabel from '@/Components/InputLabel.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import TextInput from '@/Components/TextInput.vue';
 import { Head, useForm } from '@inertiajs/vue3';
+
+const { t } = useTrans();
 
 const props = defineProps({
     email: {
@@ -33,11 +36,11 @@ const submit = () => {
 
 <template>
     <GuestLayout>
-        <Head title="إعادة تعيين كلمة المرور" />
+        <Head :title="t('auth.reset_title', 'إعادة تعيين كلمة المرور')" />
 
         <form @submit.prevent="submit">
             <div>
-                <InputLabel for="email" value="البريد الإلكتروني" />
+                <InputLabel for="email" :value="t('auth.email', 'البريد الإلكتروني')" />
 
                 <TextInput
                     id="email"
@@ -53,7 +56,7 @@ const submit = () => {
             </div>
 
             <div class="mt-4">
-                <InputLabel for="password" value="كلمة المرور" />
+                <InputLabel for="password" :value="t('auth.password', 'كلمة المرور')" />
 
                 <TextInput
                     id="password"
@@ -70,7 +73,7 @@ const submit = () => {
             <div class="mt-4">
                 <InputLabel
                     for="password_confirmation"
-                    value="تأكيد كلمة المرور"
+                    :value="t('auth.confirm_password', 'تأكيد كلمة المرور')"
                 />
 
                 <TextInput
@@ -93,7 +96,7 @@ const submit = () => {
                     :class="{ 'opacity-25': form.processing }"
                     :disabled="form.processing"
                 >
-                    إعادة تعيين كلمة المرور
+                    {{ t('auth.reset_title', 'إعادة تعيين كلمة المرور') }}
                 </PrimaryButton>
             </div>
         </form>

@@ -23,7 +23,7 @@ const props = defineProps({
 });
 
 const DAYS = [
-    [6, 'السبت'], [0, 'الأحد'], [1, 'الاثنين'], [2, 'الثلاثاء'], [3, 'الأربعاء'], [4, 'الخميس'], [5, 'الجمعة'],
+    [6, t('ocr.day_sat', 'السبت')], [0, t('ocr.day_sun', 'الأحد')], [1, t('ocr.day_mon', 'الاثنين')], [2, t('ocr.day_tue', 'الثلاثاء')], [3, t('ocr.day_wed', 'الأربعاء')], [4, t('ocr.day_thu', 'الخميس')], [5, t('ocr.day_fri', 'الجمعة')],
 ];
 const list = (v) => (v || '').split(',').filter((x) => x !== '').map(Number);
 
@@ -60,21 +60,21 @@ function post(name, params = {}) {
 }
 
 const STATE = {
-    running: { label: 'يعمل الآن', icon: PlayIcon, cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-800' },
-    idle: { label: 'لا توجد ملفات بالانتظار', icon: CheckCircleIcon, cls: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:ring-sky-800' },
-    outside_hours: { label: 'خارج وقت العمل، ينتظر', icon: MoonIcon, cls: 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:ring-indigo-800' },
-    busy: { label: 'متوقف مؤقتاً لأن الحاسوب مشغول', icon: PauseIcon, cls: 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800' },
-    disabled: { label: 'متوقف (غير مفعّل)', icon: NoSymbolIcon, cls: 'bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:ring-gray-600' },
-    no_engine: { label: 'برنامج التعرف غير مثبت', icon: ExclamationTriangleIcon, cls: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-900/30 dark:text-red-300 dark:ring-red-800' },
+    running: { label: t('ocr.state_running', 'يعمل الآن'), icon: PlayIcon, cls: 'bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:ring-emerald-800' },
+    idle: { label: t('ocr.state_idle', 'لا توجد ملفات بالانتظار'), icon: CheckCircleIcon, cls: 'bg-sky-50 text-sky-700 ring-sky-200 dark:bg-sky-900/30 dark:text-sky-300 dark:ring-sky-800' },
+    outside_hours: { label: t('ocr.state_outside', 'خارج وقت العمل، ينتظر'), icon: MoonIcon, cls: 'bg-indigo-50 text-indigo-700 ring-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-300 dark:ring-indigo-800' },
+    busy: { label: t('ocr.state_busy', 'متوقف مؤقتاً لأن الحاسوب مشغول'), icon: PauseIcon, cls: 'bg-amber-50 text-amber-700 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:ring-amber-800' },
+    disabled: { label: t('ocr.state_disabled', 'متوقف (غير مفعّل)'), icon: NoSymbolIcon, cls: 'bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:ring-gray-600' },
+    no_engine: { label: t('ocr.state_no_engine', 'برنامج التعرف غير مثبت'), icon: ExclamationTriangleIcon, cls: 'bg-red-50 text-red-700 ring-red-200 dark:bg-red-900/30 dark:text-red-300 dark:ring-red-800' },
 };
 const last = computed(() => props.state.last);
-const stateInfo = computed(() => STATE[last.value?.state] || { label: 'لم يبدأ بعد', icon: ClockIcon, cls: STATE.disabled.cls });
+const stateInfo = computed(() => STATE[last.value?.state] || { label: t('ocr.state_never', 'لم يبدأ بعد'), icon: ClockIcon, cls: STATE.disabled.cls });
 
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString('ar-IQ', { timeZone: 'Asia/Baghdad', weekday: 'long', hour: '2-digit', minute: '2-digit' }) : '');
 const ago = (iso) => {
     if (!iso) return '';
     const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-    return m < 1 ? 'الآن' : m < 60 ? `قبل ${m} د` : `قبل ${Math.round(m / 60)} س`;
+    return m < 1 ? t('ocr.now', 'الآن') : m < 60 ? t('ocr.min_ago', 'قبل :n د', { n: m }) : t('ocr.h_ago', 'قبل :n س', { n: Math.round(m / 60) });
 };
 
 const total = computed(() => props.counts.pending + props.counts.processing + props.counts.done + props.counts.failed + props.counts.skipped);
@@ -83,15 +83,15 @@ const eta = computed(() => {
     const spp = props.state.seconds_per_page;
     if (!spp || !props.counts.pending) return null;
     const hours = (spp * props.counts.pending * 3) / 3600; // ~3 pages per file on average
-    return hours < 1 ? 'أقل من ساعة' : `قرابة ${Math.ceil(hours)} ساعة عمل`;
+    return hours < 1 ? t('ocr.eta_lt_hour', 'أقل من ساعة') : t('ocr.eta_hours', 'قرابة :n ساعة عمل', { n: Math.ceil(hours) });
 });
 
 const load = computed(() => props.state.load || {});
 const meters = computed(() => [
-    { icon: CpuChipIcon, label: 'المعالج', value: load.value.cpu == null ? '—' : `${load.value.cpu}%`, limit: `الحد ${form.ocr_max_cpu}%`, bad: load.value.cpu != null && form.ocr_max_cpu > 0 && load.value.cpu > form.ocr_max_cpu, pct: load.value.cpu },
-    { icon: ServerStackIcon, label: 'الذاكرة الحرة', value: load.value.ram_free_mb == null ? '—' : `${(load.value.ram_free_mb / 1024).toFixed(1)} غيغا`, limit: `الحد الأدنى ${(form.ocr_min_ram_mb / 1024).toFixed(1)} غيغا`, bad: load.value.ram_free_mb != null && load.value.ram_free_mb < form.ocr_min_ram_mb },
-    { icon: CircleStackIcon, label: 'مساحة القرص الحرة', value: load.value.disk_free_gb == null ? '—' : `${load.value.disk_free_gb} غيغا`, limit: `الحد الأدنى ${form.ocr_min_disk_gb} غيغا`, bad: load.value.disk_free_gb != null && load.value.disk_free_gb < form.ocr_min_disk_gb },
-    { icon: UsersIcon, label: 'المستخدمون الآن', value: load.value.active_users ?? 0, limit: `الحد ${form.ocr_max_users}`, bad: form.ocr_max_users > 0 && load.value.active_users > form.ocr_max_users },
+    { icon: CpuChipIcon, label: t('ocr.cpu', 'المعالج'), value: load.value.cpu == null ? '—' : `${load.value.cpu}%`, limit: t('ocr.limit_pct', 'الحد :n%', { n: form.ocr_max_cpu }), bad: load.value.cpu != null && form.ocr_max_cpu > 0 && load.value.cpu > form.ocr_max_cpu, pct: load.value.cpu },
+    { icon: ServerStackIcon, label: t('ocr.ram', 'الذاكرة الحرة'), value: load.value.ram_free_mb == null ? '—' : t('ocr.gb', ':n غيغا', { n: (load.value.ram_free_mb / 1024).toFixed(1) }), limit: t('ocr.min_gb', 'الحد الأدنى :n غيغا', { n: (form.ocr_min_ram_mb / 1024).toFixed(1) }), bad: load.value.ram_free_mb != null && load.value.ram_free_mb < form.ocr_min_ram_mb },
+    { icon: CircleStackIcon, label: t('ocr.disk', 'مساحة القرص الحرة'), value: load.value.disk_free_gb == null ? '—' : t('ocr.gb', ':n غيغا', { n: load.value.disk_free_gb }), limit: t('ocr.min_gb', 'الحد الأدنى :n غيغا', { n: form.ocr_min_disk_gb }), bad: load.value.disk_free_gb != null && load.value.disk_free_gb < form.ocr_min_disk_gb },
+    { icon: UsersIcon, label: t('ocr.users_now', 'المستخدمون الآن'), value: load.value.active_users ?? 0, limit: t('ocr.limit', 'الحد :n', { n: form.ocr_max_users }), bad: form.ocr_max_users > 0 && load.value.active_users > form.ocr_max_users },
 ]);
 
 // Load chart: processor line, users bars, shaded columns where files were processed.
@@ -107,12 +107,12 @@ const weekMax = computed(() => Math.max(1, ...props.week.map((d) => d.done)));
 const dayName = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('ar-IQ', { weekday: 'short' });
 
 const TABS = computed(() => [
-    ['pending', 'بالانتظار', props.counts.pending],
-    ['processing', 'قيد المعالجة', props.counts.processing],
-    ['done', 'أُنجزت', props.counts.done],
-    ['failed', 'تعذرت', props.counts.failed],
-    ['skipped', 'مستبعدة', props.counts.skipped],
-    ['all', 'الكل', total.value],
+    ['pending', t('ocr.tab_pending', 'بالانتظار'), props.counts.pending],
+    ['processing', t('ocr.tab_processing', 'قيد المعالجة'), props.counts.processing],
+    ['done', t('ocr.tab_done', 'أُنجزت'), props.counts.done],
+    ['failed', t('ocr.tab_failed', 'تعذرت'), props.counts.failed],
+    ['skipped', t('ocr.tab_skipped', 'مستبعدة'), props.counts.skipped],
+    ['all', t('saved.all', 'الكل'), total.value],
 ]);
 const search = ref(props.filters.q);
 function filter(status) {
@@ -125,7 +125,7 @@ const STATUS_PILL = {
     failed: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300',
     skipped: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
 };
-const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد المعالجة', done: 'أُنجز', failed: 'تعذر', skipped: 'مستبعد' };
+const STATUS_LABEL = { pending: t('ocr.tab_pending', 'بالانتظار'), processing: t('ocr.tab_processing', 'قيد المعالجة'), done: t('ocr.st_done', 'أُنجز'), failed: t('ocr.st_failed', 'تعذر'), skipped: t('ocr.st_skipped', 'مستبعد') };
 </script>
 
 <template>
@@ -150,17 +150,17 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
                         </span>
                         <p v-if="last?.reason" class="text-sm text-amber-700 dark:text-amber-300">{{ last.reason }}</p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">
-                            <template v-if="state.in_window">داخل وقت العمل الآن.</template>
-                            <template v-else-if="state.next_start">يبدأ وقت العمل القادم {{ fmt(state.next_start) }}.</template>
-                            <template v-if="last"> آخر فحص {{ ago(last.at) }}<template v-if="last.processed">، عالج {{ last.processed }} ملف</template>.</template>
+                            <template v-if="state.in_window">{{ t('ocr.in_window', 'داخل وقت العمل الآن.') }}</template>
+                            <template v-else-if="state.next_start">{{ t('ocr.next_start', 'يبدأ وقت العمل القادم :when.', { when: fmt(state.next_start) }) }}</template>
+                            <template v-if="last"> {{ t('ocr.last_check', 'آخر فحص :when', { when: ago(last.at) }) }}<template v-if="last.processed">{{ t('ocr.processed_n', '، عالج :n ملف', { n: last.processed }) }}</template>.</template>
                         </p>
                     </div>
                     <div class="flex flex-wrap gap-2">
                         <button type="button" @click="post('admin.ocr.run')" :disabled="!engine.available || !counts.pending" class="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-600)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-700)] disabled:opacity-40">
-                            <BoltIcon class="h-4 w-4" /> شغّل دفعة الآن
+                            <BoltIcon class="h-4 w-4" /> {{ t('ocr.run_now', 'شغّل دفعة الآن') }}
                         </button>
                         <button type="button" @click="post('admin.ocr.queue')" class="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                            <QueueListIcon class="h-4 w-4" /> جرد الملفات الآن
+                            <QueueListIcon class="h-4 w-4" /> {{ t('ocr.scan_now', 'جرد الملفات الآن') }}
                             <span v-if="counts.new" class="rounded-full bg-amber-100 px-1.5 text-xs text-amber-700">{{ counts.new }}</span>
                         </button>
                     </div>
@@ -168,8 +168,8 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
 
                 <div class="mt-5">
                     <div class="mb-1 flex items-center justify-between text-sm">
-                        <span class="font-medium text-gray-700 dark:text-gray-200">أُنجز {{ counts.done }} من {{ total }} ملف</span>
-                        <span class="text-gray-500">{{ progress }}%<template v-if="eta"> · المتبقي {{ eta }}</template></span>
+                        <span class="font-medium text-gray-700 dark:text-gray-200">{{ t('ocr.done_of', 'أُنجز :done من :total ملف', { done: counts.done, total }) }}</span>
+                        <span class="text-gray-500">{{ progress }}%<template v-if="eta"> · {{ t('ocr.remaining', 'المتبقي :eta', { eta }) }}</template></span>
                     </div>
                     <div class="h-2.5 overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
                         <div class="h-full rounded-full bg-emerald-500 transition-all" :style="{ width: progress + '%' }" />
@@ -187,19 +187,19 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
                 <div class="mt-4 flex flex-wrap items-center gap-2 text-xs">
                     <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5" :class="engine.available ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-red-50 text-red-700'">
                         <CheckCircleIcon v-if="engine.available" class="h-3.5 w-3.5" /><ExclamationTriangleIcon v-else class="h-3.5 w-3.5" />
-                        Tesseract {{ engine.version || (engine.available ? '' : 'غير مثبت') }}
+                        Tesseract {{ engine.version || (engine.available ? '' : t('ocr.not_installed', 'غير مثبت')) }}
                     </span>
                     <span v-if="engine.languages.length" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-gray-700 dark:text-gray-300" dir="ltr">{{ engine.languages.join(' · ') }}</span>
                     <span class="rounded-full px-2 py-0.5" :class="engine.pdf ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' : 'bg-amber-50 text-amber-700'">
-                        {{ engine.pdf ? 'يقرأ ملفات PDF الممسوحة' : 'قراءة PDF غير متاحة (pdftoppm غير مثبت)' }}
+                        {{ engine.pdf ? t('ocr.reads_pdf', 'يقرأ ملفات PDF الممسوحة') : t('ocr.no_pdf', 'قراءة PDF غير متاحة (pdftoppm غير مثبت)') }}
                     </span>
-                    <span v-if="state.seconds_per_page" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-gray-700 dark:text-gray-300">قرابة {{ state.seconds_per_page }} ثانية للصفحة</span>
+                    <span v-if="state.seconds_per_page" class="rounded-full bg-gray-100 px-2 py-0.5 text-gray-600 dark:bg-gray-700 dark:text-gray-300">{{ t('ocr.sec_per_page', 'قرابة :n ثانية للصفحة', { n: state.seconds_per_page }) }}</span>
                 </div>
             </section>
 
             <!-- Load chart -->
-            <SettingsSection :icon="ChartBarIcon" title="حمل الحاسوب خلال آخر 24 ساعة" description="الخط: استخدام المعالج. الأعمدة: عدد المستخدمين. الخلفية الخضراء: أوقات المعالجة. الخط المتقطع: حد المعالج." tone="sky">
-                <div v-if="chartPts.length < 2" class="py-8 text-center text-sm text-gray-500">تظهر البيانات بعد أول ساعة من التشغيل.</div>
+            <SettingsSection :icon="ChartBarIcon" :title="t('ocr.chart_title', 'حمل الحاسوب خلال آخر 24 ساعة')" :description="t('ocr.chart_desc', 'الخط: استخدام المعالج. الأعمدة: عدد المستخدمين. الخلفية الخضراء: أوقات المعالجة. الخط المتقطع: حد المعالج.')" tone="sky">
+                <div v-if="chartPts.length < 2" class="py-8 text-center text-sm text-gray-500">{{ t('ocr.chart_wait', 'تظهر البيانات بعد أول ساعة من التشغيل.') }}</div>
                 <div v-else class="relative">
                     <svg :viewBox="`0 0 ${W} ${H + 18}`" class="h-48 w-full" preserveAspectRatio="none" @mouseleave="hover = null">
                         <g v-for="(p, i) in chartPts" :key="'b' + i">
@@ -213,7 +213,7 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
                         <text v-for="(p, i) in chartPts" v-show="i % 18 === 0" :key="'t' + i" :x="x(i)" :y="H + 14" text-anchor="middle" class="fill-gray-400 text-[10px]">{{ p.t }}</text>
                     </svg>
                     <div v-if="hover !== null" class="pointer-events-none absolute top-0 rounded-lg bg-gray-900/90 px-2.5 py-1.5 text-xs text-white" :style="{ insetInlineStart: '8px' }">
-                        {{ chartPts[hover].t }} · المعالج {{ chartPts[hover].cpu ?? '—' }}% · المستخدمون {{ chartPts[hover].users }} · عولج {{ chartPts[hover].processed }}
+                        {{ chartPts[hover].t }} · {{ t('ocr.hover', 'المعالج :cpu% · المستخدمون :users · عولج :p', { cpu: chartPts[hover].cpu ?? '—', users: chartPts[hover].users, p: chartPts[hover].processed }) }}
                     </div>
                 </div>
                 <div class="mt-4 flex items-end gap-2">
@@ -235,32 +235,32 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
                     </button>
                     <form @submit.prevent="filter(filters.status)" class="ms-auto flex items-center gap-1 rounded-full bg-gray-100 px-3 dark:bg-gray-700">
                         <MagnifyingGlassIcon class="h-4 w-4 text-gray-400" />
-                        <input v-model="search" type="search" placeholder="اسم الملف" class="w-40 border-0 bg-transparent py-1.5 text-sm focus:ring-0 dark:text-white" />
+                        <input v-model="search" type="search" :placeholder="t('ocr.file_name', 'اسم الملف')" class="w-40 border-0 bg-transparent py-1.5 text-sm focus:ring-0 dark:text-white" />
                     </form>
                     <button v-if="counts.failed" type="button" @click="post('admin.ocr.retry-failed')" class="inline-flex items-center gap-1 rounded-full border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 dark:border-red-800 dark:text-red-300">
-                        <ArrowPathIcon class="h-4 w-4" /> أعد كل المتعذرة
+                        <ArrowPathIcon class="h-4 w-4" /> {{ t('ocr.retry_failed', 'أعد كل المتعذرة') }}
                     </button>
                 </div>
-                <div v-if="!files.data.length" class="p-10 text-center text-sm text-gray-500">لا توجد ملفات هنا.</div>
+                <div v-if="!files.data.length" class="p-10 text-center text-sm text-gray-500">{{ t('ocr.no_files', 'لا توجد ملفات هنا.') }}</div>
                 <ul v-else class="divide-y divide-gray-100 dark:divide-gray-700">
                     <li v-for="f in files.data" :key="f.id" class="flex flex-wrap items-center gap-3 px-4 py-3">
                         <FileIcon :extension="f.extension" class="h-8 w-8 shrink-0" />
                         <div class="min-w-0 flex-1">
                             <Link :href="route('dashboard', f.folder_id ? { folder: f.folder_id } : {})" class="block truncate font-medium text-gray-900 hover:underline dark:text-white">{{ f.name }}</Link>
                             <p class="truncate text-xs text-gray-500 dark:text-gray-400">
-                                {{ f.folder || 'المجلد الرئيسي' }} · {{ f.size }}
-                                <template v-if="f.pages"> · {{ f.pages }} صفحة</template>
+                                {{ f.folder || t('ocr.root_folder', 'المجلد الرئيسي') }} · {{ f.size }}
+                                <template v-if="f.pages"> · {{ t('ocr.pages', ':n صفحة', { n: f.pages }) }}</template>
                                 <template v-if="f.seconds"> · {{ f.seconds }} ث</template>
-                                <template v-if="f.chars"> · {{ f.chars.toLocaleString('ar-IQ') }} حرف</template>
-                                <template v-if="f.attempts && f.status !== 'done'"> · المحاولة {{ f.attempts }}</template>
+                                <template v-if="f.chars"> · {{ t('ocr.chars', ':n حرف', { n: f.chars.toLocaleString() }) }}</template>
+                                <template v-if="f.attempts && f.status !== 'done'"> · {{ t('ocr.attempt', 'المحاولة :n', { n: f.attempts }) }}</template>
                             </p>
                             <p v-if="f.error" class="truncate text-xs" :class="f.status === 'done' ? 'text-gray-400' : 'text-red-600 dark:text-red-400'">{{ f.error }}</p>
                         </div>
                         <span class="rounded-full px-2 py-0.5 text-xs font-semibold" :class="STATUS_PILL[f.status]">{{ STATUS_LABEL[f.status] }}</span>
                         <div class="flex items-center gap-1">
-                            <button v-if="f.status === 'pending'" type="button" title="عالجه أولاً" @click="post('admin.ocr.file', { file: f.id, action: 'prioritize' })" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><ForwardIcon class="h-4 w-4" /></button>
-                            <button v-if="['failed', 'skipped', 'done'].includes(f.status)" type="button" title="أعد المعالجة" @click="post('admin.ocr.file', { file: f.id, action: 'retry' })" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><ArrowPathIcon class="h-4 w-4" /></button>
-                            <button v-if="['pending', 'failed'].includes(f.status)" type="button" title="استبعد" @click="post('admin.ocr.file', { file: f.id, action: 'skip' })" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><NoSymbolIcon class="h-4 w-4" /></button>
+                            <button v-if="f.status === 'pending'" type="button" :title="t('ocr.prioritize', 'عالجه أولاً')" @click="post('admin.ocr.file', { file: f.id, action: 'prioritize' })" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><ForwardIcon class="h-4 w-4" /></button>
+                            <button v-if="['failed', 'skipped', 'done'].includes(f.status)" type="button" :title="t('ocr.retry', 'أعد المعالجة')" @click="post('admin.ocr.file', { file: f.id, action: 'retry' })" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><ArrowPathIcon class="h-4 w-4" /></button>
+                            <button v-if="['pending', 'failed'].includes(f.status)" type="button" :title="t('ocr.skip', 'استبعد')" @click="post('admin.ocr.file', { file: f.id, action: 'skip' })" class="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"><NoSymbolIcon class="h-4 w-4" /></button>
                         </div>
                     </li>
                 </ul>
@@ -269,62 +269,62 @@ const STATUS_LABEL = { pending: 'بالانتظار', processing: 'قيد الم
 
             <!-- Settings -->
             <form @submit.prevent="submit" class="space-y-6">
-                <SettingsSection :icon="ClockIcon" title="وقت العمل" description="يعمل التعرف ملفاً بعد ملف خلال هذه الأوقات فقط (بتوقيت بغداد)، ويتوقف وحده عند نهايتها." tone="accent">
-                    <SettingToggle v-model="form.ocr_enabled" description="عند الإيقاف لا يُعالج أي ملف، ويبقى الجرد محفوظاً.">تفعيل التعرف على النصوص</SettingToggle>
+                <SettingsSection :icon="ClockIcon" :title="t('ocr.hours_title', 'وقت العمل')" :description="t('ocr.hours_desc', 'يعمل التعرف ملفاً بعد ملف خلال هذه الأوقات فقط (بتوقيت بغداد)، ويتوقف وحده عند نهايتها.')" tone="accent">
+                    <SettingToggle v-model="form.ocr_enabled" :description="t('ocr.enabled_desc', 'عند الإيقاف لا يُعالج أي ملف، ويبقى الجرد محفوظاً.')">{{ t('ocr.enabled', 'تفعيل التعرف على النصوص') }}</SettingToggle>
                     <div class="mt-4 grid grid-cols-2 gap-4 sm:max-w-sm">
-                        <label class="text-sm text-gray-700 dark:text-gray-200">من الساعة
+                        <label class="text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.from_hour', 'من الساعة') }}
                             <input v-model="form.ocr_start" type="time" class="mt-1 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
                         </label>
-                        <label class="text-sm text-gray-700 dark:text-gray-200">إلى الساعة
+                        <label class="text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.to_hour', 'إلى الساعة') }}
                             <input v-model="form.ocr_end" type="time" class="mt-1 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
                         </label>
                     </div>
-                    <p class="mt-1 text-xs text-gray-500">إذا كانت النهاية قبل البداية فالوقت يمتد لصباح اليوم التالي. نفس الساعة للبداية والنهاية تعني اليوم كله.</p>
-                    <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">الأيام</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ t('ocr.hours_hint', 'إذا كانت النهاية قبل البداية فالوقت يمتد لصباح اليوم التالي. نفس الساعة للبداية والنهاية تعني اليوم كله.') }}</p>
+                    <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('ocr.days', 'الأيام') }}</p>
                     <div class="mt-2 flex flex-wrap gap-2">
                         <button v-for="d in DAYS" :key="'d' + d[0]" type="button" @click="toggleDay('ocr_days', d[0])" class="rounded-full px-3 py-1.5 text-sm" :class="form.ocr_days.includes(d[0]) ? 'bg-[var(--accent-600)] text-white' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'">{{ d[1] }}</button>
                     </div>
-                    <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">أيام العطل (يعمل طوال اليوم)</p>
+                    <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('ocr.all_day_days', 'أيام العطل (يعمل طوال اليوم)') }}</p>
                     <div class="mt-2 flex flex-wrap gap-2">
                         <button v-for="d in DAYS" :key="'a' + d[0]" type="button" @click="toggleDay('ocr_all_day_days', d[0])" class="rounded-full px-3 py-1.5 text-sm" :class="form.ocr_all_day_days.includes(d[0]) ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'">{{ d[1] }}</button>
                     </div>
                     <p v-if="form.errors.ocr_start || form.errors.ocr_end" class="mt-2 text-sm text-red-600">{{ form.errors.ocr_start || form.errors.ocr_end }}</p>
                 </SettingsSection>
 
-                <SettingsSection :icon="CpuChipIcon" title="حماية الحاسوب" description="قبل كل ملف يُفحص الحمل، وإذا تجاوز أي حد يتوقف التعرف مؤقتاً ويعود لوحده عندما يهدأ الحاسوب. صفر يعني بلا حد." tone="amber">
+                <SettingsSection :icon="CpuChipIcon" :title="t('ocr.protect_title', 'حماية الحاسوب')" :description="t('ocr.protect_desc', 'قبل كل ملف يُفحص الحمل، وإذا تجاوز أي حد يتوقف التعرف مؤقتاً ويعود لوحده عندما يهدأ الحاسوب. صفر يعني بلا حد.')" tone="amber">
                     <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">أقصى استخدام للمعالج</p><NumberStepper v-model="form.ocr_max_cpu" :min="0" :max="100" :step="5" unit="%" /></div>
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">أقل ذاكرة حرة</p><NumberStepper v-model="form.ocr_min_ram_mb" :min="0" :max="65536" :step="256" unit="ميغا" /></div>
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">أقل مساحة حرة على القرص</p><NumberStepper v-model="form.ocr_min_disk_gb" :min="0" :max="10000" unit="غيغا" /></div>
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">أقصى عدد مستخدمين متصلين</p><NumberStepper v-model="form.ocr_max_users" :min="0" :max="10000" unit="مستخدم" /></div>
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.max_cpu', 'أقصى استخدام للمعالج') }}</p><NumberStepper v-model="form.ocr_max_cpu" :min="0" :max="100" :step="5" unit="%" /></div>
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.min_ram', 'أقل ذاكرة حرة') }}</p><NumberStepper v-model="form.ocr_min_ram_mb" :min="0" :max="65536" :step="256" :unit="t('ocr.u_mb', 'ميغا')" /></div>
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.min_disk', 'أقل مساحة حرة على القرص') }}</p><NumberStepper v-model="form.ocr_min_disk_gb" :min="0" :max="10000" :unit="t('ocr.u_gb', 'غيغا')" /></div>
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.max_users', 'أقصى عدد مستخدمين متصلين') }}</p><NumberStepper v-model="form.ocr_max_users" :min="0" :max="10000" :unit="t('ocr.u_users', 'مستخدم')" /></div>
                     </div>
                 </SettingsSection>
 
-                <SettingsSection :icon="AdjustmentsHorizontalIcon" title="طريقة المعالجة" tone="green">
+                <SettingsSection :icon="AdjustmentsHorizontalIcon" :title="t('ocr.method_title', 'طريقة المعالجة')" tone="green">
                     <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">ملفات في كل دفعة</p><NumberStepper v-model="form.ocr_batch" :min="1" :max="500" unit="ملف" /></div>
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">أقصى وقت للملف الواحد</p><NumberStepper v-model="form.ocr_timeout_minutes" :min="1" :max="120" unit="دقيقة" /></div>
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">أقصى عدد صفحات من كل PDF</p><NumberStepper v-model="form.ocr_max_pages" :min="1" :max="5000" :step="50" unit="صفحة" /></div>
-                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">أقصى حجم للملف</p><NumberStepper v-model="form.ocr_max_mb" :min="1" :max="5000" :step="10" unit="ميغا" /></div>
-                        <label class="text-sm text-gray-700 dark:text-gray-200">لغة النصوص
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.batch', 'ملفات في كل دفعة') }}</p><NumberStepper v-model="form.ocr_batch" :min="1" :max="500" :unit="t('ocr.u_files', 'ملف')" /></div>
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.timeout', 'أقصى وقت للملف الواحد') }}</p><NumberStepper v-model="form.ocr_timeout_minutes" :min="1" :max="120" :unit="t('ocr.u_min', 'دقيقة')" /></div>
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.max_pages', 'أقصى عدد صفحات من كل PDF') }}</p><NumberStepper v-model="form.ocr_max_pages" :min="1" :max="5000" :step="50" :unit="t('ocr.u_pages', 'صفحة')" /></div>
+                        <div><p class="mb-1 text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.max_mb', 'أقصى حجم للملف') }}</p><NumberStepper v-model="form.ocr_max_mb" :min="1" :max="5000" :step="10" :unit="t('ocr.u_mb', 'ميغا')" /></div>
+                        <label class="text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.lang', 'لغة النصوص') }}
                             <select v-model="form.ocr_languages" class="mt-1 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                                <option value="ara+eng">العربية والإنكليزية</option>
-                                <option value="ara">العربية فقط</option>
-                                <option value="eng">الإنكليزية فقط</option>
+                                <option value="ara+eng">{{ t('ocr.lang_both', 'العربية والإنكليزية') }}</option>
+                                <option value="ara">{{ t('ocr.lang_ar', 'العربية فقط') }}</option>
+                                <option value="eng">{{ t('ocr.lang_en', 'الإنكليزية فقط') }}</option>
                             </select>
                         </label>
-                        <label class="text-sm text-gray-700 dark:text-gray-200">الدقة
+                        <label class="text-sm text-gray-700 dark:text-gray-200">{{ t('ocr.quality', 'الدقة') }}
                             <select v-model="form.ocr_quality" class="mt-1 block w-full rounded-xl border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100">
-                                <option value="best">عالية — نموذج العربي الدقيق و300 نقطة (أبطأ)</option>
-                                <option value="fast">سريعة — النموذج العادي و200 نقطة</option>
+                                <option value="best">{{ t('ocr.q_best', 'عالية — نموذج العربي الدقيق و300 نقطة (أبطأ)') }}</option>
+                                <option value="fast">{{ t('ocr.q_fast', 'سريعة — النموذج العادي و200 نقطة') }}</option>
                             </select>
-                            <span v-if="form.ocr_quality === 'best' && !engine.best" class="mt-1 block text-xs text-amber-600">النموذج الدقيق غير مثبت هنا، فتُستخدم السريعة.</span>
+                            <span v-if="form.ocr_quality === 'best' && !engine.best" class="mt-1 block text-xs text-amber-600">{{ t('ocr.q_missing', 'النموذج الدقيق غير مثبت هنا، فتُستخدم السريعة.') }}</span>
                         </label>
                     </div>
-                    <div class="mt-4"><SettingToggle v-model="form.ocr_report" description="إشعار للمدراء كل صباح الساعة 7:30 بعدد ما أُنجز وما تبقى.">تقرير الصباح</SettingToggle></div>
+                    <div class="mt-4"><SettingToggle v-model="form.ocr_report" :description="t('ocr.report_desc', 'إشعار للمدراء كل صباح الساعة 7:30 بعدد ما أُنجز وما تبقى.')">{{ t('ocr.report', 'تقرير الصباح') }}</SettingToggle></div>
                 </SettingsSection>
 
-                <StickySaveBar :form="form" label="حفظ إعدادات التعرف" @save="submit" @reset="form.reset()" />
+                <StickySaveBar :form="form" :label="t('ocr.save', 'حفظ إعدادات التعرف')" @save="submit" @reset="form.reset()" />
             </form>
         </div>
     </AdminLayout>

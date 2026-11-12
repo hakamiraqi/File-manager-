@@ -1,4 +1,7 @@
 <script setup>
+import { useTrans } from '@/Composables/useTrans';
+
+const { t } = useTrans();
 defineProps({ oauth: { type: Object, default: () => ({}) } });
 
 const providers = [
@@ -13,7 +16,7 @@ const providers = [
         <div class="relative">
             <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200" /></div>
             <div class="relative flex justify-center text-xs">
-                <span class="bg-white px-2 text-gray-400">أو تابع عبر</span>
+                <span class="bg-white px-2 text-gray-400">{{ t('auth.or_continue_with', 'أو تابع عبر') }}</span>
             </div>
         </div>
 
