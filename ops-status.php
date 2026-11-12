@@ -1,30 +1,28 @@
 <?php
-// One-off (2026-11-12): fast vs accurate OCR on the same pages (plain text output), with a short sample.
+// Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
+// Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
-$f = File::find(205);
-$pdf = $f->disk()->path($f->path);
-exec('pdftoppm -r 300 -f 3 -l 6 -png '.escapeshellarg($pdf).' /tmp/cmp');
-$pages = glob('/tmp/cmp*.png');
-echo "COMPARE: file #205, ".count($pages)." pages at 300 dpi\n";
-$clean = function (string $text): array {
-    $tokens = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY);
-    $ok = 0;
-    foreach ($tokens as $t) {
-        if (preg_match('/^[(«"]?(\p{Arabic}{2,}|[A-Za-z]{2,}|[0-9٠-٩]+)[.,،:؛)»"]?$/u', $t) && ! str_contains($t, '�')) $ok++;
-    }
-    return [count($tokens), count($tokens) ? round(100 * $ok / count($tokens), 1) : 0];
-};
-foreach (['FAST' => '', 'ACCURATE' => '--tessdata-dir /usr/share/tessdata-best '] as $label => $flag) {
-    $t = microtime(true);
-    $all = '';
-    $first = null;
-    foreach ($pages as $png) {
-        $txt = shell_exec('tesseract '.$flag.escapeshellarg($png).' - -l ara+eng 2>/dev/null') ?? '';
-        $first ??= $txt;
-        $all .= "\n".$txt;
-    }
-    [$words, $pct] = $clean($all);
-    echo "$label: $words words, clean words $pct%, ".round((microtime(true) - $t) / max(1, count($pages)), 1)."s/page\n";
-    echo "$label SAMPLE: ".mb_substr(preg_replace('/\s+/u', ' ', trim($first)), 0, 160)."\n";
-}
-array_map('unlink', $pages);
+use App\Models\Folder;
+use Illuminate\Support\Facades\DB;
+$root = Folder::where('name', 'like', 'المكتبة الإلكترونية (الرقمية)%')->whereNull('parent_id')->first();
+$ids = [$root->id]; $frontier = [$root->id];
+while ($frontier) { $frontier = Folder::whereIn('parent_id', $frontier)->pluck('id')->all(); $ids = array_merge($ids, $frontier); }
+$q = fn () => File::whereIn('folder_id', $ids);
+echo 'FILES: '.$q()->count()."\n";
+echo 'TEXT INDEXED: '.$q()->whereNotNull('content_indexed_at')->count()."\n";
+echo 'WITH TEXT: '.$q()->whereRaw('length(content_text) > 100')->count()."\n";
+echo 'OCR DONE LAST HOUR: '.$q()->where('ocr_status', 'done')->where('updated_at', '>=', now()->subHour())->count()."\n";
+echo 'OCR: '.json_encode($q()->selectRaw('coalesce(ocr_status, "none") s, count(*) n')->groupBy('s')->pluck('n', 's'))."\n";
+echo 'JOBS WAITING: '.DB::table('jobs')->count().'  FAILED: '.DB::table('failed_jobs')->count()."\n";
+echo 'APP TIME: '.now()->toDateTimeString().' '.config('app.timezone')."\n";
+$s = app(App\Services\Ocr\OcrSettings::class)->all();
+echo 'OCR LAST: '.json_encode(DB::table('ocr_load_samples')->latest('id')->limit(4)->get(['state','reason','processed','cpu','created_at']))."
+";
+$p = $q()->where('ocr_status', 'processing')->first(['id','extension','size','updated_at','ocr_attempts']);
+echo 'PROCESSING: '.json_encode($p)."
+";
+echo 'PENDING SIZE MB: '.round($q()->where('ocr_status', 'pending')->sum('size') / 1e6).'  BY TYPE: '.json_encode($q()->where('ocr_status', 'pending')->selectRaw('extension, count(*) n')->groupBy('extension')->pluck('n', 'extension'))."
+";
+echo 'DONE DETAIL: '.json_encode($q()->where('ocr_status', 'done')->orderByDesc('ocr_done_at')->limit(5)->get(['id', 'size', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error'])->map->only(['id', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error']))."\n";
+echo 'DONE ALL: '.$q()->where('ocr_status', 'done')->count().' FAILED: '.$q()->where('ocr_status', 'failed')->count()."
+";
