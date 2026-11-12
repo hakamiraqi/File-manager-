@@ -180,7 +180,7 @@ class OfficeController extends Controller
         $keep = 'versions/'.$file->id;
         $local = Storage::disk('local');
         if ($disk->exists($file->path)) {
-            $local->put($keep.'/'.now()->format('Ymd_His').'.'.$file->extension, $disk->get($file->path));
+            $local->put($keep.'/'.now()->format('Ymd_His').'-'.substr(md5(uniqid('', true)), 0, 6).'.'.$file->extension, $disk->get($file->path));
             $copies = collect($local->files($keep))->sort()->values();
             foreach ($copies->slice(0, max(0, $copies->count() - self::VERSIONS_KEPT)) as $stale) {
                 $local->delete($stale);
