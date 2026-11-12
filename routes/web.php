@@ -115,6 +115,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/editor/new', [\App\Http\Controllers\OfficeController::class, 'create'])->name('office.create');
     // The PDF reader: full screen, with each reader's own place, bookmarks and notes.
     // PDF tools: merge, split, organise, compress, protect, watermark, numbers, conversions.
+    // A book's cover: search and pick, upload, or a page of the file.
+    Route::get('/files/{file}/cover/search', [\App\Http\Controllers\FileCoverController::class, 'search'])->middleware('throttle:30,1')->name('files.cover.search');
+    Route::post('/files/{file}/cover', [\App\Http\Controllers\FileCoverController::class, 'store'])->name('files.cover.store');
+    Route::delete('/files/{file}/cover', [\App\Http\Controllers\FileCoverController::class, 'destroy'])->name('files.cover.destroy');
     Route::get('/pdf-tools', [\App\Http\Controllers\PdfToolController::class, 'index'])->name('pdf-tools.index');
     Route::get('/pdf-tools/files', [\App\Http\Controllers\PdfToolController::class, 'files'])->name('pdf-tools.files');
     Route::post('/pdf-tools/{tool}', [\App\Http\Controllers\PdfToolController::class, 'run'])->name('pdf-tools.run');

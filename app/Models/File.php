@@ -26,6 +26,7 @@ class File extends Model
         return [
             'content_indexed_at' => 'datetime',
             'ocr_done_at' => 'datetime',
+            'cover_checked_at' => 'datetime',
         ];
     }
 

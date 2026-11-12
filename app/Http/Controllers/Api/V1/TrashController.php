@@ -60,6 +60,9 @@ class TrashController extends Controller
             if ($file->thumbnail_path) {
                 $file->disk()->delete($file->thumbnail_path);
             }
+            if ($file->auto_thumbnail_path) {
+                $file->disk()->delete($file->auto_thumbnail_path);
+            }
             $quota->decrement($user, $file->size);
             $file->forceDelete();
         } else {

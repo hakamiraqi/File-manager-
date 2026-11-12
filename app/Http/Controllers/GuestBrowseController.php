@@ -100,10 +100,13 @@ class GuestBrowseController extends Controller
             throw new NotFoundHttpException;
         }
 
-        return response()->file($file->disk()->path($file->thumbnail_path), [
-            'Content-Type' => 'image/jpeg',
-            'Cache-Control' => 'private, max-age=604800',
-        ]);
+        // Revalidated each time (cheap: 304), so a new picture or book cover shows at once.
+        $response = response()->file($file->disk()->path($file->thumbnail_path), ['Content-Type' => 'image/jpeg']);
+        $response->setEtag(md5((string) $file->thumbnail_path));
+        $response->headers->set('Cache-Control', 'private, no-cache');
+        $response->isNotModified(request());
+
+        return $response;
     }
 
     private function render(?Folder $folder): Response

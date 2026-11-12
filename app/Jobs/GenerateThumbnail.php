@@ -39,6 +39,16 @@ class GenerateThumbnail implements ShouldQueue
         $thumbnailPath = $generator->randomThumbnailPath($file->user_id);
         $file->disk()->put($thumbnailPath, $jpeg);
 
+        // A book with a cover keeps showing the cover; the new picture is kept aside.
+        if ($file->cover_source) {
+            if ($file->auto_thumbnail_path) {
+                $file->disk()->delete($file->auto_thumbnail_path);
+            }
+            $file->forceFill(['auto_thumbnail_path' => $thumbnailPath])->save();
+
+            return;
+        }
+
         $file->forceFill(['thumbnail_path' => $thumbnailPath])->save();
     }
 }

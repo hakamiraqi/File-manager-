@@ -27,7 +27,8 @@ class FileResource extends JsonResource
             'content_snippet' => $this->content_snippet ?? null,
             'download_url' => route('api.v1.files.download', $this->id),
             'preview_url' => route('api.v1.files.preview', $this->id),
-            'thumbnail_url' => $this->thumbnail_path ? route('api.v1.files.thumbnail', $this->id) : null,
+            // ?v= changes with the picture (a new book cover), so the app does not keep the old one.
+            'thumbnail_url' => $this->thumbnail_path ? route('api.v1.files.thumbnail', ['file' => $this->id, 'v' => substr(md5((string) $this->thumbnail_path), 0, 8)]) : null,
             // Alternate-resolution renditions from VideoTranscoder, sorted
             // highest-first — [] for non-video files or when the `qualities`
             // relation wasn't eager-loaded by the caller. The File model's

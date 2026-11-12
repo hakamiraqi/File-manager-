@@ -11,11 +11,12 @@ import MoveModal from '@/Components/MoveModal.vue';
 import ShareModal from '@/Components/ShareModal.vue';
 import AddToPlaylistModal from '@/Components/AddToPlaylistModal.vue';
 import PreviewModal from '@/Components/PreviewModal.vue';
+import CoverPicker from '@/Components/CoverPicker.vue';
 import SaveButton from '@/Components/SaveButton.vue';
 import TagInput from '@/Components/TagInput.vue';
 import { useChunkedUpload } from '@/Composables/useChunkedUpload';
 import { useTrans } from '@/Composables/useTrans';
-import { BookOpenIcon, WrenchScrewdriverIcon,
+import { PhotoIcon, BookOpenIcon, WrenchScrewdriverIcon,
     FolderIcon,
     FolderPlusIcon,
     DocumentPlusIcon,
@@ -77,6 +78,7 @@ const moveTarget = ref(null);
 const shareTarget = ref(null);
 const playlistTarget = ref(null);
 const previewFile = ref(null);
+const coverTarget = ref(null);
 
 function isMediaFile(file) {
     return /^(video|audio)\//.test(file.mime_type ?? '');
@@ -937,6 +939,9 @@ function uploadFromUrl() {
                                 >
                                     <WrenchScrewdriverIcon class="me-2 inline h-4 w-4" /> {{ t('nav.pdf_tools', 'أدوات PDF') }}
                                 </DropdownLink>
+                                <DropdownLink v-if="['pdf', 'epub', 'djvu', 'docx'].includes((file.extension || '').toLowerCase())" as="button" @click="coverTarget = file">
+                                    <PhotoIcon class="me-2 inline h-4 w-4" /> {{ t('covers.menu', 'غلاف الكتاب…') }}
+                                </DropdownLink>
                                 <DropdownLink v-if="isOfficeFile(file)" :href="route('office.edit', file.id)">
                                     <PencilSquareIcon class="me-2 inline h-4 w-4" /> {{ t('office.open', 'فتح في المحرر') }}
                                 </DropdownLink>
@@ -1003,6 +1008,7 @@ function uploadFromUrl() {
         <MoveModal :show="!!moveTarget" :item="moveTarget" @close="moveTarget = null" />
         <ShareModal :show="!!shareTarget" :item="shareTarget" @close="shareTarget = null" />
         <AddToPlaylistModal :show="!!playlistTarget" :item="playlistTarget" @close="playlistTarget = null" />
+        <CoverPicker v-if="coverTarget" :file="coverTarget" @close="coverTarget = null" @changed="router.reload({ preserveScroll: true })" />
         <PreviewModal :show="!!previewFile" :file="previewFile" :files="props.files" @close="previewFile = null" @change="previewFile = $event" />
     </AppLayout>
 </template>

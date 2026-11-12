@@ -45,6 +45,11 @@ Route::middleware(['auth', 'verified', 'admin'])->prefix('admin')->name('admin.'
         Route::post('/mail', [MailController::class, 'update'])->name('mail.update');
         Route::post('/mail/test', [MailController::class, 'sendTest'])->name('mail.test');
 
+        Route::get('/covers', [\App\Http\Controllers\Admin\CoverController::class, 'index'])->name('covers.index');
+        Route::post('/covers', [\App\Http\Controllers\Admin\CoverController::class, 'update'])->name('covers.update');
+        Route::post('/covers/run', [\App\Http\Controllers\Admin\CoverController::class, 'runNow'])->name('covers.run');
+        Route::post('/covers/retry', [\App\Http\Controllers\Admin\CoverController::class, 'retry'])->name('covers.retry');
+        Route::delete('/covers/files/{file}', [\App\Http\Controllers\Admin\CoverController::class, 'remove'])->name('covers.remove');
         Route::get('/ocr', [OcrController::class, 'index'])->name('ocr.index');
         Route::post('/ocr', [OcrController::class, 'update'])->name('ocr.update');
         Route::post('/ocr/queue', [OcrController::class, 'queue'])->name('ocr.queue');

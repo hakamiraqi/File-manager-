@@ -25,7 +25,7 @@ class Setting extends Model
     }
 
     /** Settings that never leave the server (encrypted keys); only whether they are set is shown. */
-    public const SECRET = ['ai_api_key'];
+    public const SECRET = ['ai_api_key', 'covers_google_key'];
 
     /** Every setting except the secret ones, for admin pages and the admin API. */
     public static function visibleSettings(): array

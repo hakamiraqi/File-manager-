@@ -22,3 +22,5 @@ Schedule::command('backup:run')->hourly();
 // computer by itself), and a morning report for the admins.
 Schedule::command('ocr:run')->everyMinute()->withoutOverlapping(120)->runInBackground();
 Schedule::command('ocr:report')->dailyAt('07:30')->timezone('Asia/Baghdad');
+// Book covers: every 10 minutes inside their hours (20:00–06:00 by default).
+Schedule::command('covers:run')->everyTenMinutes()->withoutOverlapping(60)->runInBackground();
