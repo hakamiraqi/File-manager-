@@ -173,7 +173,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen> {
         note = null;
       }
     }
-    await sel.clearTextSelection();
+    await _controller.textSelectionDelegate.clearTextSelection();
     _hasSelection.value = false;
     _touch();
   }
