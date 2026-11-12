@@ -360,7 +360,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
     await offline.ensureLoaded();
     final saved = offline.recordFor(file.id);
     if (saved != null && await File(saved.localPath).exists() && await File(saved.localPath).length() > 0) {
-      if (mounted) await openLocalFile(context, saved.localPath, file.name);
+      if (mounted) await openLocalFile(context, saved.localPath, file.name, fileId: file.id);
       return;
     }
 
@@ -417,7 +417,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       if (navigator.canPop()) navigator.pop();
       progress.dispose();
     }
-    if (path != null && mounted) await openLocalFile(context, path, file.name);
+    if (path != null && mounted) await openLocalFile(context, path, file.name, fileId: file.id);
   }
 
   /// Shows the full text DocumentTextExtractor pulled from this document —

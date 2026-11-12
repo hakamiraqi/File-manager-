@@ -114,7 +114,7 @@ class _OfflineFileTile extends StatelessWidget {
 
   void _open(BuildContext context) {
     if (!record.isVideo) {
-      openLocalFile(context, record.localPath, record.name);
+      openLocalFile(context, record.localPath, record.name, fileId: record.fileId);
       return;
     }
 

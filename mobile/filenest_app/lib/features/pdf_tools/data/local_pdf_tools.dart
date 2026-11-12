@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -94,6 +95,43 @@ class LocalPdfTools {
         d.dispose();
       }
     }
+  }
+
+  /// The pages with nothing printed on them (each is drawn small and its pixels are looked at).
+  static Future<List<int>> blankPages(String path) async {
+    final doc = await PdfDocument.openFile(path);
+    try {
+      final blank = <int>[];
+      for (final page in doc.pages) {
+        const w = 64;
+        final h = math.max(1, (w * page.height / page.width).round());
+        final image = await page.render(width: w, height: h, fullWidth: w.toDouble(), fullHeight: h.toDouble(), backgroundColor: 0xffffffff);
+        if (image == null) continue;
+        final px = image.pixels;
+        var dark = 0;
+        for (var i = 0; i + 2 < px.length; i += 4) {
+          if (px[i] < 235 || px[i + 1] < 235 || px[i + 2] < 235) dark++;
+        }
+        image.dispose();
+        // A few specks (scanner dust) still count as blank.
+        if (dark < math.max(3, (w * h * 0.002).round())) blank.add(page.pageNumber);
+      }
+      return blank;
+    } catch (e) {
+      throw LocalPdfException(_explain(e));
+    } finally {
+      doc.dispose();
+    }
+  }
+
+  /// A copy without the blank pages. Throws when there are none (or nothing else).
+  static Future<({File file, List<int> removed})> removeBlank(String path, String name) async {
+    final blank = await blankPages(path);
+    final count = await pageCount(path);
+    if (blank.isEmpty) throw const LocalPdfException('لا توجد صفحات فارغة في الملف.');
+    if (blank.length >= count) throw const LocalPdfException('كل صفحات الملف فارغة.');
+    final keep = [for (var p = 1; p <= count; p++) if (!blank.contains(p)) PageRef(0, p)];
+    return (file: await assemble([path], keep, name), removed: blank);
   }
 
   /// Pictures (phone photos, scans) as pages, each fitted to an A4-wide page, in order.

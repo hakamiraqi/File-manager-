@@ -50,6 +50,17 @@ void main() {
     ]);
     expect(() => LocalPdfTools.parseRanges('4', 3), throwsA(isA<LocalPdfException>()));
 
+    // Blank pages: a white picture between two coloured ones is found and removed.
+    final white = img.Image(width: 300, height: 400);
+    img.fill(white, color: img.ColorRgb8(255, 255, 255));
+    final whitePath = '${dir.path}/white.jpg';
+    await File(whitePath).writeAsBytes(img.encodeJpg(white));
+    final withBlank = await LocalPdfTools.imagesToPdf([await picture('d.jpg', 300, 400), whitePath, await picture('e.jpg', 300, 400)], 'with-blank');
+    expect(await LocalPdfTools.blankPages(withBlank.path), [2]);
+    final cleaned = await LocalPdfTools.removeBlank(withBlank.path, 'cleaned');
+    expect(cleaned.removed, [2]);
+    expect(await LocalPdfTools.pageCount(cleaned.file.path), 2);
+
     // Saving never overwrites: a second «merged» is «merged (2)».
     final again = await LocalPdfTools.merge([a.path, b.path], 'merged');
     expect(again.path.endsWith('merged (2).pdf'), isTrue);

@@ -56,7 +56,7 @@ class DownloadStatusIcon extends StatelessWidget {
           tooltip: isDownloaded ? context.tr('downloads.available_offline_tap') : context.tr('downloads.download_for_offline'),
           onPressed: () {
             final record = isDownloaded ? OfflineDownloadService.instance.recordFor(file.id) : null;
-            record != null ? openLocalFile(context, record.localPath, file.name) : downloads.download(file);
+            record != null ? openLocalFile(context, record.localPath, file.name, fileId: file.id) : downloads.download(file);
           },
         );
       },

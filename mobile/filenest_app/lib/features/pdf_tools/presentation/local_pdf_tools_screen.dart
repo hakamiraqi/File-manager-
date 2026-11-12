@@ -220,6 +220,13 @@ class _LocalPdfToolsScreenState extends State<LocalPdfToolsScreen> {
     });
   }
 
+  Future<void> _removeBlank() async {
+    final src = await _pick(images: false, multiple: false);
+    if (src.isEmpty || !mounted) return;
+    final s = src.first;
+    await _run(() async => [(await LocalPdfTools.removeBlank(s.path, '${_base(s.name)} (بدون الصفحات الفارغة)')).file]);
+  }
+
   Future<void> _rotate() async {
     final src = await _pick(images: false, multiple: false);
     if (src.isEmpty || !mounted) return;
@@ -279,6 +286,7 @@ class _LocalPdfToolsScreenState extends State<LocalPdfToolsScreen> {
       (Icons.grid_view_rounded, const Color(0xFFF59E0B), context.l('تنظيم الصفحات', 'Organise pages'), context.l('ترتيب، تدوير، حذف، إدراج من ملف', 'Reorder, rotate, delete, insert'), _organize),
       (Icons.content_cut_rounded, const Color(0xFFF97316), context.l('تقسيم واستخراج', 'Split & extract'), context.l('صفحات محددة أو كل صفحة ملف', 'Chosen pages or each page'), _split),
       (Icons.rotate_right_rounded, const Color(0xFFEAB308), context.l('تدوير', 'Rotate'), context.l('كل الصفحات أو الفردية أو الزوجية', 'All, odd or even pages'), _rotate),
+      (Icons.layers_clear_outlined, const Color(0xFF78716C), context.l('حذف الصفحات الفارغة', 'Remove blank pages'), context.l('يجد الصفحات البيضاء ويحذفها', 'Finds white pages and removes them'), _removeBlank),
       (Icons.add_photo_alternate_outlined, const Color(0xFF65A30D), context.l('صور إلى PDF', 'Images to PDF'), context.l('صور الهاتف والمسح في ملف واحد', 'Photos and scans in one file'), _images),
     ];
     return Scaffold(
