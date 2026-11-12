@@ -1,50 +1,28 @@
 <?php
-// One-off (2026-11-12): does cleaning the page image before OCR help? Same 4 pages of file #205, accurate model.
+// Until the e-library is read (2026-11-10, by request): every day all day, and room for long scanned books.
+// Counts only: how far text extraction and recognition have got on the e-library.
 use App\Models\File;
-echo 'TOOLS: '.trim(shell_exec('for t in convert magick unpaper; do command -v $t >/dev/null && printf "%s " $t; done') ?? '')."\n";
-$clean = function (string $text): array {
-    $tokens = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY);
-    $ok = 0;
-    foreach ($tokens as $t) {
-        if (preg_match('/^[(«"]?(\p{Arabic}{2,}|[A-Za-z]{2,}|[0-9٠-٩]+)[.,،:؛)»"]?$/u', $t) && ! str_contains($t, '�')) $ok++;
-    }
-    return [count($tokens), $ok, count($tokens) ? round(100 * $ok / count($tokens), 1) : 0];
-};
-$best = '--tessdata-dir /usr/share/tessdata-best';
-$hasMagick = trim(shell_exec('command -v magick || command -v convert') ?? '');
-$variants = [
-    'A current' => ['dpi' => 300, 'prep' => null, 'opts' => ''],
-    'D psm 6' => ['dpi' => 300, 'prep' => null, 'opts' => '--psm 6'],
-    'H psm 6 + Sauvola' => ['dpi' => 300, 'prep' => null, 'opts' => '--psm 6 -c thresholding_method=2'],
-];
-foreach ([[205, 20, 23], [226, 3, 6], [226, 30, 33]] as [$fileId, $from, $to]) {
-    $f = File::find($fileId);
-    $pdf = $f->disk()->path($f->path);
-    echo "FILE #$fileId pages $from-$to\n";
-$rendered = [];
-    foreach ($variants as $name => $v) {
-        $key = $v['dpi'];
-        if (! isset($rendered[$key])) {
-            exec("pdftoppm -r $key -f $from -l $to -png ".escapeshellarg($pdf)." /tmp/pp$key");
-            $rendered[$key] = glob("/tmp/pp$key*.png");
-        }
-        $t = microtime(true);
-        $all = '';
-        $first = null;
-        foreach ($rendered[$key] as $png) {
-            $in = $png;
-            if ($v['prep']) {
-                $in = $png.'.prep.png';
-                exec(escapeshellcmd($hasMagick).' '.escapeshellarg($png).' '.$v['prep'].' '.escapeshellarg($in));
-            }
-            $txt = shell_exec("tesseract $best ".escapeshellarg($in)." - -l ara+eng {$v['opts']} 2>/dev/null") ?? '';
-            $first ??= $txt;
-            $all .= "\n".$txt;
-            if ($in !== $png) @unlink($in);
-        }
-        [$words, $ok, $pct] = $clean($all);
-        echo "VARIANT $name: $words words, $ok clean ($pct%), ".round((microtime(true) - $t) / 4, 1)."s/page\n";
-    }
-    
-    foreach ($rendered as $files) array_map('unlink', $files);
-}
+use App\Models\Folder;
+use Illuminate\Support\Facades\DB;
+$root = Folder::where('name', 'like', 'المكتبة الإلكترونية (الرقمية)%')->whereNull('parent_id')->first();
+$ids = [$root->id]; $frontier = [$root->id];
+while ($frontier) { $frontier = Folder::whereIn('parent_id', $frontier)->pluck('id')->all(); $ids = array_merge($ids, $frontier); }
+$q = fn () => File::whereIn('folder_id', $ids);
+echo 'FILES: '.$q()->count()."\n";
+echo 'TEXT INDEXED: '.$q()->whereNotNull('content_indexed_at')->count()."\n";
+echo 'WITH TEXT: '.$q()->whereRaw('length(content_text) > 100')->count()."\n";
+echo 'OCR DONE LAST HOUR: '.$q()->where('ocr_status', 'done')->where('updated_at', '>=', now()->subHour())->count()."\n";
+echo 'OCR: '.json_encode($q()->selectRaw('coalesce(ocr_status, "none") s, count(*) n')->groupBy('s')->pluck('n', 's'))."\n";
+echo 'JOBS WAITING: '.DB::table('jobs')->count().'  FAILED: '.DB::table('failed_jobs')->count()."\n";
+echo 'APP TIME: '.now()->toDateTimeString().' '.config('app.timezone')."\n";
+$s = app(App\Services\Ocr\OcrSettings::class)->all();
+echo 'OCR LAST: '.json_encode(DB::table('ocr_load_samples')->latest('id')->limit(4)->get(['state','reason','processed','cpu','created_at']))."
+";
+$p = $q()->where('ocr_status', 'processing')->first(['id','extension','size','updated_at','ocr_attempts']);
+echo 'PROCESSING: '.json_encode($p)."
+";
+echo 'PENDING SIZE MB: '.round($q()->where('ocr_status', 'pending')->sum('size') / 1e6).'  BY TYPE: '.json_encode($q()->where('ocr_status', 'pending')->selectRaw('extension, count(*) n')->groupBy('extension')->pluck('n', 'extension'))."
+";
+echo 'DONE DETAIL: '.json_encode($q()->where('ocr_status', 'done')->orderByDesc('ocr_done_at')->limit(5)->get(['id', 'size', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error'])->map->only(['id', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error']))."\n";
+echo 'DONE ALL: '.$q()->where('ocr_status', 'done')->count().' FAILED: '.$q()->where('ocr_status', 'failed')->count()."
+";
