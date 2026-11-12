@@ -28,6 +28,8 @@ class PdfTools
         'watermark', 'numbers', 'to_images', 'images_to_pdf', 'office_to_pdf', 'to_word', 'to_text',
         // Phase 3 (2026-11-12)
         'header_footer', 'crop', 'redact', 'repair', 'remove_blank', 'extract_images',
+        // Phase 4
+        'to_excel', 'to_pptx',
     ];
 
     public const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tif', 'tiff', 'heic'];
@@ -113,6 +115,8 @@ class PdfTools
             'repair' => $qpdf,
             'remove_blank' => $qpdf && $this->pdftoppm() !== null,
             'extract_images' => $this->poppler('pdfimages') !== null,
+            'to_excel' => $this->poppler('pdftotext') !== null,
+            'to_pptx' => $this->pdftoppm() !== null,
             // Inputs other than PDF in «merge».
             'merge_images' => $magick,
             'merge_office' => $officeConvert,
@@ -864,6 +868,86 @@ class PdfTools
         $this->run($args, 900, [0, 3]);
 
         return count($replaced);
+    }
+
+    /**
+     * PDF to Excel: each page's text laid out as on the page (pdftotext -layout), cut into
+     * columns where there are wide gaps, one sheet per page; numbers stay numbers. Arabic
+     * tables keep their right-to-left column order.
+     *
+     * @return int sheets
+     */
+    public function toExcel(string $pdf, string $out): int
+    {
+        $text = $this->run([$this->need($this->poppler('pdftotext'), 'pdftotext'), '-layout', '-enc', 'UTF-8', $pdf, '-'], 900);
+        $pages = explode("\f", rtrim($text, "\f"));
+        $sheets = [];
+        $all = [];
+        foreach ($pages as $i => $page) {
+            $rows = [];
+            foreach (preg_split('/\R/u', $page) as $line) {
+                if (trim($line) === '') {
+                    continue;
+                }
+                $cells = preg_split('/\s{2,}/u', trim($line));
+                if (preg_match('/\p{Arabic}/u', $line)) {
+                    $cells = array_reverse($cells);
+                }
+                $rows[] = array_map(fn ($c) => self::cellValue($c), $cells);
+            }
+            if (! $rows) {
+                continue;
+            }
+            $sheets['صفحة '.($i + 1)] = $rows;
+            array_push($all, ...$rows);
+            $all[] = [];
+        }
+        if (! $sheets) {
+            throw new PdfToolException('لا يوجد نص أو جداول في الملف؛ إن كان صوراً ممسوحة فانتظر حتى يقرأه التعرف على النصوص.');
+        }
+        // Very long files: one sheet with every page, one after the other.
+        OfficeWriter::xlsx(count($sheets) > 200 ? ['الكل' => $all] : $sheets, $out);
+
+        return min(count($sheets), 200);
+    }
+
+    private static function cellValue(string $c): string|int|float
+    {
+        $c = trim($c);
+        $plain = str_replace([',', '٬'], '', strtr($c, ['٠' => '0', '١' => '1', '٢' => '2', '٣' => '3', '٤' => '4', '٥' => '5', '٦' => '6', '٧' => '7', '٨' => '8', '٩' => '9', '٫' => '.']));
+        if (preg_match('/^-?\d{1,15}$/', $plain)) {
+            return (int) $plain;
+        }
+        if (preg_match('/^-?\d+\.\d+$/', $plain)) {
+            return (float) $plain;
+        }
+
+        return $c;
+    }
+
+    /** PDF to PowerPoint: each page a slide (a sharp picture of the page), its text kept with it. */
+    public function toPptx(string $pdf, string $out, string $dir): int
+    {
+        $count = $this->pageCount($pdf);
+        if ($count > 300) {
+            throw new PdfToolException('الملف أكثر من 300 صفحة؛ قسّمه أولاً.');
+        }
+        $prefix = $dir.'/slide';
+        $this->run([$this->need($this->pdftoppm(), 'pdftoppm'), '-r', '144', '-jpeg', '-jpegopt', 'quality=85', $pdf, $prefix], 1800);
+        $images = glob($prefix.'*.jpg') ?: [];
+        natsort($images);
+        $images = array_values($images);
+        if (! $images) {
+            throw new PdfToolException('تعذّر رسم صفحات الملف.');
+        }
+        [$w, $h] = getimagesize($images[0]) ?: [1, 1.414];
+        $notes = [];
+        if ($this->poppler('pdftotext')) {
+            $notes = explode("\f", $this->toTextString($pdf));
+        }
+        OfficeWriter::pptx($images, $h / max(1, $w), $out, $notes);
+
+        return count($images);
     }
 
     /** A small real PDF with one line of text per page (self-test and tests). */

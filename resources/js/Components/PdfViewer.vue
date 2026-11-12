@@ -17,6 +17,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import { useTrans } from '@/Composables/useTrans';
+import { usePage } from '@inertiajs/vue3';
 import SignaturePad from '@/Components/Reader/SignaturePad.vue';
 import './Reader/annotation-layer.css';
 import {
@@ -56,6 +57,10 @@ import {
     StopCircleIcon,
     EyeSlashIcon,
     XMarkIcon,
+    SparklesIcon,
+    PaperAirplaneIcon,
+    ClipboardDocumentIcon,
+    LanguageIcon,
 } from '@heroicons/vue/24/outline';
 import { BookmarkIcon as BookmarkSolidIcon } from '@heroicons/vue/24/solid';
 
@@ -1229,6 +1234,66 @@ async function applyRedactions() {
     }
 }
 
+// ---- The assistant (2026-11-12, phase 4): summaries, translation, explanations, questions.
+const pageProps = usePage().props;
+const aiOn = computed(() => !!(props.fileId && pageProps?.appSettings?.ai));
+const ai = reactive({ messages: [], busy: false, input: '' }); // { role: 'user'|'assistant', text, quote? }
+const aiList = ref(null);
+async function aiRun(payload, userText, quote = null) {
+    if (!aiOn.value || ai.busy) return;
+    sidebar.value = true;
+    tab.value = 'ai';
+    ai.messages.push({ role: 'user', text: userText, quote });
+    ai.busy = true;
+    await nextTick();
+    aiList.value?.scrollTo({ top: aiList.value.scrollHeight, behavior: 'smooth' });
+    try {
+        const { data } = await window.axios.post(route('reader.ai', props.fileId), payload, { timeout: 180000 });
+        ai.messages.push({ role: 'assistant', text: data.text });
+    } catch (e) {
+        ai.messages.push({ role: 'assistant', text: e.response?.data?.message || t('reader.ai_failed', 'تعذّر الحصول على رد.'), error: true });
+    } finally {
+        ai.busy = false;
+        await nextTick();
+        aiList.value?.scrollTo({ top: aiList.value.scrollHeight, behavior: 'smooth' });
+    }
+}
+const aiSummarizeFile = () => aiRun({ action: 'summarize', scope: 'file' }, t('reader.ai_sum_file', 'لخّص الملف'));
+async function aiSummarizePage() {
+    const n = current.value;
+    const text = doc ? await pageText(n) : '';
+    aiRun({ action: 'summarize', scope: 'page', page: n, text }, t('reader.ai_sum_page', 'لخّص الصفحة') + ' ' + n);
+}
+function aiAsk() {
+    const q = ai.input.trim();
+    if (!q) return;
+    ai.input = '';
+    const history = ai.messages.filter((m) => !m.error && !m.quote).slice(-10).map((m) => ({ role: m.role, content: m.text }));
+    aiRun({ action: 'ask', question: q, history }, q);
+}
+function aiOnSelection(action) {
+    const text = selPop.value?.text;
+    selPop.value = null;
+    window.getSelection()?.removeAllRanges();
+    if (!text) return;
+    if (action === 'translate') {
+        const target = /[\u0600-\u06FF]/.test(text) ? 'en' : 'ar';
+        aiRun({ action: 'translate', scope: 'selection', text, target }, t('reader.ai_translate', 'ترجم'), text);
+    } else aiRun({ action: 'explain', scope: 'selection', text }, t('reader.ai_explain', 'اشرح'), text);
+}
+async function aiCopy(m) {
+    try {
+        await navigator.clipboard.writeText(m.text);
+        flash(t('reader.copied', 'نُسخ النص'));
+    } catch {
+        /* no clipboard */
+    }
+}
+function aiAsNote(m) {
+    addAnn({ id: uid(), type: 'note', page: current.value, x: 30, y: 30, text: m.text.slice(0, 4000), color: '#c4b5fd' });
+    flash(t('reader.ai_noted', 'أُضيف ملاحظةً على الصفحة'));
+}
+
 // ---- Reading aloud (the browser's own voices; Arabic when the device has one).
 const ttsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
 const tts = reactive({ on: false, paused: false, page: 1, list: [], i: 0, sentence: '' });
@@ -1651,7 +1716,7 @@ watch(
         <div class="relative flex min-h-0 flex-1">
             <!-- Sidebar -->
             <div v-if="sidebar" class="absolute inset-0 z-20 bg-black/30 md:hidden" @click="sidebar = false" />
-            <aside v-if="sidebar && pages" class="fn-side absolute inset-y-0 start-0 z-30 flex w-60 flex-col border-e md:static md:z-auto">
+            <aside v-if="sidebar && pages" class="fn-side absolute inset-y-0 start-0 z-30 flex flex-col border-e md:static md:z-auto" :class="tab === 'ai' ? 'w-80 max-w-[90%]' : 'w-60'">
                 <div class="flex shrink-0 items-center gap-0.5 border-b p-1">
                     <button type="button" class="fn-tab" :class="{ 'fn-tab-on': tab === 'thumbs' }" :title="t('reader.thumbs', 'الصفحات')" @click="tab = 'thumbs'"><Squares2X2Icon class="h-5 w-5" /></button>
                     <button type="button" class="fn-tab" :class="{ 'fn-tab-on': tab === 'outline' }" :title="t('reader.outline', 'الفهرس')" @click="tab = 'outline'"><ListBulletIcon class="h-5 w-5" /></button>
@@ -1659,6 +1724,7 @@ watch(
                     <button type="button" class="fn-tab" :class="{ 'fn-tab-on': tab === 'notes' }" :title="t('reader.my_notes', 'ملاحظاتي')" @click="tab = 'notes'">
                         <ChatBubbleLeftEllipsisIcon class="h-5 w-5" />
                     </button>
+                    <button v-if="aiOn" type="button" class="fn-tab" :class="{ 'fn-tab-on': tab === 'ai' }" :title="t('reader.ai', 'المساعد الذكي')" @click="tab = 'ai'"><SparklesIcon class="h-5 w-5" /></button>
                     <button type="button" class="fn-btn ms-auto md:hidden" @click="sidebar = false"><XMarkIcon class="h-5 w-5" /></button>
                 </div>
                 <div v-if="tab === 'thumbs'" ref="thumbList" class="min-h-0 flex-1 overflow-y-auto p-2">
@@ -1710,6 +1776,42 @@ watch(
                         </button>
                         <button type="button" class="fn-muted opacity-60 hover:text-red-600 group-hover:opacity-100" @click="toggleBookmark(b.page)"><TrashIcon class="h-4 w-4" /></button>
                     </div>
+                </div>
+                <div v-else-if="tab === 'ai'" class="flex min-h-0 flex-1 flex-col text-sm">
+                    <div class="flex shrink-0 flex-wrap gap-1 border-b p-2 fn-line">
+                        <button type="button" class="fn-chip" :disabled="ai.busy" @click="aiSummarizeFile">{{ t('reader.ai_sum_file', 'لخّص الملف') }}</button>
+                        <button type="button" class="fn-chip" :disabled="ai.busy" @click="aiSummarizePage">{{ t('reader.ai_sum_page', 'لخّص الصفحة') }} {{ current }}</button>
+                    </div>
+                    <div ref="aiList" class="min-h-0 flex-1 space-y-2 overflow-y-auto p-2">
+                        <p v-if="!ai.messages.length" class="fn-muted p-2 text-center text-xs leading-5">
+                            {{ t('reader.ai_hint', 'اطلب ملخصاً، أو اسأل عن أي شيء في الملف. حدّد نصاً في الصفحة لترجمته أو شرحه.') }}
+                        </p>
+                        <div v-for="(m, i) in ai.messages" :key="i" :class="m.role === 'user' ? 'ms-6' : 'me-2'">
+                            <div
+                                class="rounded-xl px-3 py-2 text-[13px] leading-6"
+                                :class="m.role === 'user' ? 'bg-[var(--accent-600)] text-white' : m.error ? 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300' : 'fn-ai-bubble'"
+                            >
+                                <p v-if="m.quote" class="mb-1 line-clamp-3 border-s-2 border-white/60 ps-2 text-[11px] opacity-90" dir="auto">{{ m.quote }}</p>
+                                <p class="whitespace-pre-wrap" dir="auto">{{ m.text }}</p>
+                            </div>
+                            <div v-if="m.role === 'assistant' && !m.error" class="mt-0.5 flex gap-2 px-1 text-[11px] fn-muted">
+                                <button type="button" class="inline-flex items-center gap-0.5 hover:underline" @click="aiCopy(m)"><ClipboardDocumentIcon class="h-3.5 w-3.5" />{{ t('reader.copy', 'نسخ') }}</button>
+                                <button type="button" class="inline-flex items-center gap-0.5 hover:underline" @click="aiAsNote(m)"><ChatBubbleLeftEllipsisIcon class="h-3.5 w-3.5" />{{ t('reader.ai_save_note', 'ملاحظة على الصفحة') }}</button>
+                            </div>
+                        </div>
+                        <p v-if="ai.busy" class="fn-muted flex items-center gap-2 px-2 text-xs"><span class="h-3 w-3 animate-spin rounded-full border-2 border-[var(--accent-600)] border-t-transparent" />{{ t('reader.ai_thinking', 'يفكّر…') }}</p>
+                    </div>
+                    <form class="flex shrink-0 items-end gap-1 border-t p-2 fn-line" @submit.prevent="aiAsk">
+                        <textarea
+                            v-model="ai.input"
+                            rows="2"
+                            dir="auto"
+                            class="fn-input min-w-0 flex-1 resize-none rounded-lg px-2 py-1 text-xs"
+                            :placeholder="t('reader.ai_ask', 'اسأل عن الملف…')"
+                            @keydown.enter.exact.prevent="aiAsk"
+                        />
+                        <button type="submit" class="fn-btn fn-on" :disabled="ai.busy || !ai.input.trim()"><PaperAirplaneIcon class="h-5 w-5 rtl:-scale-x-100" /></button>
+                    </form>
                 </div>
                 <div v-else class="min-h-0 flex-1 overflow-y-auto py-1 text-sm">
                     <p v-if="!notesList.length" class="fn-muted p-4 text-center text-xs">{{ t('reader.no_notes', 'ظلّل نصاً أو أضف ملاحظة من زر القلم، وتظهر هنا.') }}</p>
@@ -1970,6 +2072,11 @@ watch(
             <button type="button" class="fn-btn font-semibold underline decoration-wavy decoration-2 underline-offset-2" :title="t('reader.squiggly', 'خط متموج')" @click="markSelection('squiggly', '#e11d48')">W</button>
             <button type="button" class="fn-btn" :title="t('reader.note', 'ملاحظة')" @click="noteOnSelection"><ChatBubbleLeftEllipsisIcon class="h-5 w-5" /></button>
             <button type="button" class="fn-btn text-xs" @click="copySelection">{{ t('reader.copy', 'نسخ') }}</button>
+            <template v-if="aiOn">
+                <span class="fn-sep" />
+                <button type="button" class="fn-btn gap-1 px-2 text-xs" :title="t('reader.ai_translate', 'ترجم')" @click="aiOnSelection('translate')"><LanguageIcon class="h-4 w-4" />{{ t('reader.ai_translate', 'ترجم') }}</button>
+                <button type="button" class="fn-btn gap-1 px-2 text-xs" :title="t('reader.ai_explain', 'اشرح')" @click="aiOnSelection('explain')"><SparklesIcon class="h-4 w-4" />{{ t('reader.ai_explain', 'اشرح') }}</button>
+            </template>
         </div>
 
         <!-- Text / note editor -->
@@ -2147,6 +2254,9 @@ watch(
     border-radius: 0.5rem;
     padding: 0.375rem;
     color: var(--fn-muted);
+}
+.fn-ai-bubble {
+    background: color-mix(in srgb, var(--fn-text) 6%, transparent);
 }
 .fn-tab-on {
     background: color-mix(in srgb, var(--accent-600) 14%, transparent);

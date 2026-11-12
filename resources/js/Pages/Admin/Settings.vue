@@ -57,12 +57,15 @@ const form = useForm({
     thesis_subjects: props.settings.thesis_subjects ?? '',
     oai_enabled: props.settings.oai_enabled === '1',
     work_day_start: props.settings.work_day_start ?? '08:00',
+    ai_api_key: '',
+    ai_model: props.settings.ai_model ?? 'claude-sonnet-5-5',
+    ai_clear: false,
     logo: null,
     header_image: null,
 });
 
 function submit() {
-    form.post(route('admin.settings.update'), { preserveScroll: true, onSuccess: () => { form.logo = null; form.header_image = null; form.defaults(); } });
+    form.post(route('admin.settings.update'), { preserveScroll: true, onSuccess: () => { form.logo = null; form.header_image = null; form.ai_api_key = ''; form.ai_clear = false; form.defaults(); } });
 }
 </script>
 
@@ -191,6 +194,31 @@ function submit() {
                     </div>
                     <SettingToggle v-model="form.oai_enabled" class="mt-4">{{ t('settings.oai_enabled', 'إتاحة بيانات الرسائل العامة عبر OAI-PMH (Dublin Core) لحصادها من المستودعات') }}
                         <code class="text-xs text-gray-400" dir="ltr">/oai</code></SettingToggle>
+                </section>
+
+                <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">
+                    <h3 class="mb-2 font-semibold text-gray-800 dark:text-gray-100">{{ t('settings.ai', 'المساعد الذكي في قارئ PDF') }}</h3>
+                    <p class="mb-4 text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('settings.ai_hint', 'التلخيص والترجمة وشرح المصطلحات والسؤال عن الملف، بنموذج Claude من Anthropic. يحتاج مفتاح Anthropic API واتصال الخادم بالإنترنت (السيرفر المحلي يستعمله متى كان متصلاً). يُرسل نص الجزء المسؤول عنه فقط، دون اسم المستخدم.') }}
+                    </p>
+                    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                            <InputLabel :value="t('settings.ai_key', 'مفتاح API') + (settings.ai_api_key_set ? ' (' + t('settings.saved', 'محفوظ') + ')' : '')" />
+                            <input
+                                v-model="form.ai_api_key"
+                                type="password"
+                                dir="ltr"
+                                autocomplete="off"
+                                class="mt-1 block w-full rounded-xl border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+                                :placeholder="settings.ai_api_key_set ? t('settings.ai_key_kept', 'محفوظ؛ اتركه فارغاً لإبقائه') : 'sk-ant-…'"
+                            />
+                            <label v-if="settings.ai_api_key_set" class="mt-1 flex items-center gap-2 text-xs"><input v-model="form.ai_clear" type="checkbox" class="rounded" /> {{ t('settings.ai_clear', 'حذف المفتاح') }}</label>
+                        </div>
+                        <div>
+                            <InputLabel :value="t('settings.ai_model', 'النموذج')" />
+                            <input v-model="form.ai_model" dir="ltr" class="mt-1 block w-full rounded-xl border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" />
+                        </div>
+                    </div>
                 </section>
 
                 <section class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6 dark:border-gray-700 dark:bg-gray-800">

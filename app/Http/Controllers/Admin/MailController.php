@@ -31,7 +31,7 @@ class MailController extends Controller
 
     public function index(): Response
     {
-        $settings = array_merge(self::DEFAULTS, Setting::all_settings());
+        $settings = array_merge(self::DEFAULTS, Setting::visibleSettings());
         unset($settings['mail_password']);
 
         return Inertia::render('Admin/Mail', ['settings' => $settings]);

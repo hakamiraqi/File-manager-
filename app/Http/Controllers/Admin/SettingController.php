@@ -42,11 +42,15 @@ class SettingController extends Controller
         'thesis_subjects' => '',
         'oai_enabled' => '1',
         'work_day_start' => '08:00',
+        'ai_model' => \App\Services\Ai\AiClient::DEFAULT_MODEL,
     ];
 
     public function index(): Response
     {
         $settings = array_merge(self::DEFAULTS, Setting::all_settings());
+        // The AI key never goes back to the browser: only whether one is saved.
+        $settings['ai_api_key_set'] = filled($settings['ai_api_key'] ?? null);
+        unset($settings['ai_api_key']);
 
         return Inertia::render('Admin/Settings', [
             'settings' => $settings,
@@ -87,7 +91,22 @@ class SettingController extends Controller
             'work_day_start' => ['nullable', 'regex:/^([01]\d|2[0-3]):[0-5]\d$/'],
             'logo' => ['nullable', 'image', 'max:1024'],
             'header_image' => ['nullable', 'image', 'max:2048'],
+            'ai_api_key' => ['nullable', 'string', 'max:300'],
+            'ai_model' => ['nullable', 'string', 'max:100', 'regex:/^[a-z0-9.\-]+$/'],
+            'ai_clear' => ['nullable', 'boolean'],
         ]);
+        // Kept encrypted; an empty field keeps the saved key.
+        if ($request->boolean('ai_clear')) {
+            $data['ai_api_key'] = '';
+        } elseif (filled($data['ai_api_key'] ?? null)) {
+            $data['ai_api_key'] = \Illuminate\Support\Facades\Crypt::encryptString(trim($data['ai_api_key']));
+        } else {
+            unset($data['ai_api_key']);
+        }
+        unset($data['ai_clear']);
+        if (blank($data['ai_model'] ?? null)) {
+            unset($data['ai_model']);
+        }
 
         $user = $request->user();
         $canAppearance = $user->hasAdminCapability('can_manage_appearance');

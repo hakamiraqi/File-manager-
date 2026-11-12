@@ -41,6 +41,9 @@ import {
     DocumentMinusIcon,
     PhotoIcon as ImagesIcon,
     Bars3BottomLeftIcon,
+    TableCellsIcon,
+    PresentationChartBarIcon,
+    RectangleStackIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -75,6 +78,8 @@ const TOOLS = computed(() => [
     ] },
     { group: t('pdft.g_convert', 'تحويل'), items: [
         { id: 'to_word', icon: DocumentTextIcon, color: 'bg-blue-600', name: t('pdft.to_word', 'PDF إلى Word'), desc: t('pdft.to_word_d', 'حوّل الملف إلى مستند Word قابل للتعديل.'), kinds: ['pdf'] },
+        { id: 'to_excel', icon: TableCellsIcon, color: 'bg-green-700', name: t('pdft.to_excel', 'PDF إلى Excel'), desc: t('pdft.to_excel_d', 'الجداول والنصوص في ورقة Excel لكل صفحة، والأرقام تبقى أرقاماً.'), kinds: ['pdf'] },
+        { id: 'to_pptx', icon: PresentationChartBarIcon, color: 'bg-orange-600', name: t('pdft.to_pptx', 'PDF إلى PowerPoint'), desc: t('pdft.to_pptx_d', 'كل صفحة شريحة واضحة، لعرض المحاضرة مباشرة.'), kinds: ['pdf'] },
         { id: 'to_images', icon: PhotoIcon, color: 'bg-teal-600', name: t('pdft.to_images', 'PDF إلى صور'), desc: t('pdft.to_images_d', 'كل صفحة صورة PNG أو JPG، في ملف مضغوط واحد.'), kinds: ['pdf'] },
         { id: 'extract_images', icon: ImagesIcon, color: 'bg-emerald-700', name: t('pdft.extract_images', 'استخراج الصور'), desc: t('pdft.extract_images_d', 'كل الصور الموجودة داخل الملف بجودتها الأصلية، في ملف مضغوط.'), kinds: ['pdf'] },
         { id: 'to_text', icon: QueueListIcon, color: 'bg-slate-600', name: t('pdft.to_text', 'PDF إلى نص'), desc: t('pdft.to_text_d', 'استخرج النص كله في ملف نصي.'), kinds: ['pdf'] },
@@ -82,13 +87,17 @@ const TOOLS = computed(() => [
         { id: 'office_to_pdf', icon: SparklesIcon, color: 'bg-indigo-600', name: t('pdft.office_to_pdf', 'Word / Excel / PowerPoint إلى PDF'), desc: t('pdft.office_to_pdf_d', 'حوّل المستندات المكتبية إلى PDF.'), kinds: ['office'], multiple: true },
     ] },
 ]);
-const toolById = computed(() => Object.fromEntries(TOOLS.value.flatMap((g) => g.items).map((i) => [i.id, i])));
+// Tools that run on many files at once (one result each) — batch conversion (2026-11-12).
+const BATCH = ['compress', 'rotate', 'protect', 'watermark', 'numbers', 'header_footer', 'crop', 'repair', 'remove_blank', 'extract_images', 'to_images', 'to_word', 'to_text', 'to_excel', 'to_pptx'];
+const toolById = computed(() =>
+    Object.fromEntries(TOOLS.value.flatMap((g) => g.items).map((i) => [i.id, BATCH.includes(i.id) ? { ...i, multiple: true, batch: true } : i])),
+);
 
 const active = ref(props.tool);
 const files = ref([...props.files]);
 // Opened with files but no tool: suggest the tools that fit them.
 const current = computed(() => (active.value ? toolById.value[active.value] : null));
-const fits = (tool) => !files.value.length || files.value.every((f) => tool.kinds.includes(f.kind)) && (tool.multiple || files.value.length === 1);
+const fits = (tool) => { const tl = toolById.value[tool.id] || tool; return !files.value.length || (files.value.every((f) => tl.kinds.includes(f.kind)) && (tl.multiple || files.value.length === 1)); };
 
 function choose(id) {
     if (!props.capabilities[id]) return;
@@ -249,7 +258,9 @@ const isPdf = (f) => (f.extension || '').toLowerCase() === 'pdf';
                         >
                             <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm" :class="tl.color"><component :is="tl.icon" class="h-6 w-6" /></span>
                             <span class="min-w-0">
-                                <span class="block font-semibold text-gray-900 dark:text-gray-100">{{ tl.name }}</span>
+                                <span class="flex items-center gap-1.5 font-semibold text-gray-900 dark:text-gray-100">{{ tl.name }}
+                                    <RectangleStackIcon v-if="BATCH.includes(tl.id)" class="h-3.5 w-3.5 text-gray-400" :title="t('pdft.batch', 'يعمل على عدة ملفات دفعة واحدة')" />
+                                </span>
                                 <span class="mt-0.5 block text-xs leading-5 text-gray-500 dark:text-gray-400">{{ tl.desc }}</span>
                                 <span v-if="!capabilities[tl.id]" class="mt-1 block text-[11px] text-amber-600">{{ t('pdft.unavailable', 'غير متوفرة على هذا الخادم') }}</span>
                             </span>
@@ -288,7 +299,8 @@ const isPdf = (f) => (f.extension || '').toLowerCase() === 'pdf';
                             <button type="button" class="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600 dark:hover:bg-gray-700" @click="removeFile(i)"><XMarkIcon class="h-4 w-4" /></button>
                         </li>
                     </ul>
-                    <p v-if="current.multiple && files.length > 1" class="mt-1 flex items-center gap-1 text-[11px] text-gray-400"><ArrowsUpDownIcon class="h-3.5 w-3.5" />{{ t('pdft.order_hint', 'الترتيب هنا هو ترتيب النتيجة.') }}</p>
+                    <p v-if="current.batch && files.length > 1" class="mt-1 flex items-center gap-1 text-[11px] text-gray-500"><RectangleStackIcon class="h-3.5 w-3.5" />{{ t('pdft.batch_hint', 'دفعة واحدة: تُطبّق الأداة على كل ملف، ولكل ملف نتيجته.') }}</p>
+                    <p v-else-if="current.multiple && files.length > 1" class="mt-1 flex items-center gap-1 text-[11px] text-gray-400"><ArrowsUpDownIcon class="h-3.5 w-3.5" />{{ t('pdft.order_hint', 'الترتيب هنا هو ترتيب النتيجة.') }}</p>
                 </div>
 
                 <!-- Options -->
@@ -463,7 +475,7 @@ const isPdf = (f) => (f.extension || '').toLowerCase() === 'pdf';
                 <!-- Result -->
                 <div v-if="result" class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-500/30 dark:bg-emerald-500/10">
                     <p class="mb-2 font-semibold text-emerald-800 dark:text-emerald-300">{{ t('pdft.done_msg', 'تم! حُفظت النتيجة في ملفاتك:') }}</p>
-                    <p v-if="result.message" class="mb-2 text-sm text-emerald-800 dark:text-emerald-300">{{ result.message }}</p>
+                    <p v-if="result.message" class="mb-2 whitespace-pre-line text-sm text-emerald-800 dark:text-emerald-300">{{ result.message }}</p>
                     <ul class="space-y-1.5">
                         <li v-for="f in result.files" :key="f.id" class="flex flex-wrap items-center gap-2 rounded-xl bg-white p-2 text-sm shadow-sm dark:bg-gray-800">
                             <span class="min-w-0 flex-1 truncate"><bdi>{{ f.name }}</bdi> <span class="text-xs text-gray-400">· {{ f.human_size }}</span></span>

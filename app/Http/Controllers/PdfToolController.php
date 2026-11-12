@@ -34,6 +34,10 @@ class PdfToolController extends Controller
     /** Inputs bigger than this together are refused (a tool runs while the page waits). */
     private const MAX_INPUT_BYTES = 600 * 1024 * 1024;
 
+    /** Tools that also run on many files at once (one result per file). */
+    public const BATCH = ['compress', 'rotate', 'protect', 'watermark', 'numbers', 'header_footer', 'crop', 'repair', 'remove_blank',
+        'extract_images', 'to_images', 'to_word', 'to_text', 'to_excel', 'to_pptx'];
+
     public function __construct(private readonly PdfTools $tools) {}
 
     public function index(Request $request): Response
@@ -96,7 +100,26 @@ class PdfToolController extends Controller
         $dir = storage_path('app/tmp/pdf-tools/'.Str::uuid());
         Fs::ensureDirectoryExists($dir);
         try {
-            [$outputs, $message] = $this->make($tool, $files, $o, $dir, $request);
+            if ($files->count() > 1 && in_array($tool, self::BATCH, true)) {
+                // Batch: the same tool on every chosen file, each to its own result; a file the
+                // tool cannot handle is reported and the others still go through.
+                $outputs = [];
+                $notes = [];
+                foreach ($files as $f) {
+                    try {
+                        [$made, $msg] = $this->make($tool, collect([$f]), $o, $dir, $request);
+                        array_push($outputs, ...$made);
+                    } catch (PdfToolException $e) {
+                        $notes[] = '«'.$f->name.'»: '.$e->getMessage();
+                    }
+                }
+                if (! $outputs) {
+                    throw new PdfToolException(implode("\n", $notes) ?: 'لم يُنتج أي ملف.');
+                }
+                $message = count($outputs).' ملف ناتج من '.$files->count().' ملفات.'.($notes ? "\n".implode("\n", $notes) : '');
+            } else {
+                [$outputs, $message] = $this->make($tool, $files, $o, $dir, $request);
+            }
             $quota->assertHasSpace($user, (int) array_sum(array_map(fn ($x) => filesize($x['path']), $outputs)));
             $folderId = $this->targetFolder($user, $files->first());
             $made = array_map(fn ($x) => $this->store($user, $folderId, $x['path'], $x['name'], $tool, $quota), $outputs);
@@ -159,7 +182,9 @@ class PdfToolController extends Controller
 
             case 'header_footer':
                 $png = $dir.'/mark.png';
-                $request->file('mark')->move($dir, 'mark.png');
+                if (! is_file($png)) {
+                    $request->file('mark')->move($dir, 'mark.png');
+                }
                 $r = $out('ترويسة');
                 $t->watermark($t->pdfPath($first), $png, false, $o['pages'] ?? 'all', $r['path'], $dir);
                 if (! empty($o['numbers'])) {
@@ -208,6 +233,18 @@ class PdfToolController extends Controller
 
                 return [[$r], 'حُذفت '.count($blank).' صفحة فارغة: '.PdfTools::compactRange($blank).'.'];
 
+            case 'to_excel':
+                $r = $out('', 'xlsx');
+                $n = $t->toExcel($t->pdfPath($first), $r['path']);
+
+                return [[$r], "{$n} ورقة، ورقة لكل صفحة. الجداول تُقسم أعمدةً حسب المسافات بين الكلمات؛ راجعها قبل الاستعمال."];
+
+            case 'to_pptx':
+                $r = $out('', 'pptx');
+                $n = $t->toPptx($t->pdfPath($first), $r['path'], $dir);
+
+                return [[$r], "{$n} شريحة، كل صفحة شريحة."];
+
             case 'extract_images':
                 $r = $out('الصور', 'zip');
                 $n = $t->extractImages($t->pdfPath($first), $r['path'], $dir);
@@ -246,7 +283,9 @@ class PdfToolController extends Controller
 
             case 'watermark':
                 $png = $dir.'/mark.png';
-                $request->file('mark')->move($dir, 'mark.png');
+                if (! is_file($png)) {
+                    $request->file('mark')->move($dir, 'mark.png');
+                }
                 $r = $out('علامة مائية');
                 $t->watermark($t->pdfPath($first), $png, (bool) ($o['under'] ?? false), $o['pages'] ?? 'all', $r['path'], $dir);
 
@@ -332,8 +371,8 @@ class PdfToolController extends Controller
 
     private function rules(string $tool): array
     {
-        $one = ['files' => ['required', 'array', 'size:1'], 'files.*' => ['integer']];
         $many = fn (int $min, int $max) => ['files' => ['required', 'array', "min:$min", "max:$max"], 'files.*' => ['integer']];
+        $one = in_array($tool, self::BATCH, true) ? $many(1, 50) : ['files' => ['required', 'array', 'size:1'], 'files.*' => ['integer']];
 
         return match ($tool) {
             'merge' => $many(2, 50),
@@ -349,7 +388,7 @@ class PdfToolController extends Controller
                 'auto' => ['nullable', 'boolean'], 'which' => ['nullable', 'in:all,odd,even,first']],
             'redact' => $one + ['boxes' => ['required', 'array', 'min:1', 'max:2000'], 'boxes.*.page' => ['required', 'integer', 'min:1'],
                 'boxes.*.x' => ['required', 'numeric', 'between:0,1'], 'boxes.*.y' => ['required', 'numeric', 'between:0,1'], 'boxes.*.w' => ['required', 'numeric', 'between:0,1'], 'boxes.*.h' => ['required', 'numeric', 'between:0,1']],
-            'repair', 'remove_blank', 'extract_images' => $one,
+            'repair', 'remove_blank', 'extract_images', 'to_excel', 'to_pptx' => $one,
             'rotate' => $one + ['degrees' => ['required', 'in:90,180,270'], 'which' => ['nullable', 'in:all,odd,even']],
             'compress' => $one + ['level' => ['nullable', 'in:low,medium,high']],
             'protect' => $one + ['password' => ['required', 'string', 'min:1', 'max:128'], 'deny' => ['nullable', 'array'], 'deny.*' => ['in:print,copy,modify']],
@@ -495,13 +534,15 @@ class PdfToolController extends Controller
             'path' => $relative,
             'extension' => $ext,
             'mime_type' => ['pdf' => 'application/pdf', 'zip' => 'application/zip', 'txt' => 'text/plain',
+                'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
                 'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'][$ext]
                 ?? (mime_content_type($disk->path($relative)) ?: 'application/octet-stream'),
             'size' => $size,
         ]);
         $quota->increment($user, $size);
         ActivityLog::record('file.uploaded', "أنشأ الملف \"{$file->name}\" بأدوات PDF", $file);
-        if (in_array($ext, ['pdf', 'docx', 'txt'], true)) {
+        if (in_array($ext, ['pdf', 'docx', 'txt', 'xlsx', 'pptx'], true)) {
             ExtractFileText::dispatch($file->id);
             GenerateThumbnail::dispatch($file->id);
         }

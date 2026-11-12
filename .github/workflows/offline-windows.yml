@@ -305,7 +305,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'qpdf does not start.' }
           Write-Host 'PDF tools:'
           Push-Location "$root\app"
-          & "$root\php\php.exe" -c "$root\php\php.ini" artisan pdf:selftest --require=merge,split,organize,rotate,compress,protect,unlock,numbers,to_images,to_text,watermark,images_to_pdf,crop,redact,repair,remove_blank,extract_images,header_footer 2>&1 | Write-Host
+          & "$root\php\php.exe" -c "$root\php\php.ini" artisan pdf:selftest --require=merge,split,organize,rotate,compress,protect,unlock,numbers,to_images,to_text,watermark,images_to_pdf,crop,redact,repair,remove_blank,extract_images,header_footer,to_excel,to_pptx 2>&1 | Write-Host
           $pdfOk = $LASTEXITCODE
           Pop-Location
           if ($pdfOk -ne 0) { throw 'A PDF tool does not work on Windows.' }

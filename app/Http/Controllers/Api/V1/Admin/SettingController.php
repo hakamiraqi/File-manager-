@@ -38,7 +38,7 @@ class SettingController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'settings' => array_merge(self::DEFAULTS, Setting::all_settings()),
+            'settings' => array_merge(self::DEFAULTS, Setting::visibleSettings()),
             'skins' => config('filenest.skins'),
             'locales' => \App\Support\Locales::active(),
             'roles' => \App\Models\User::ROLES,
@@ -101,6 +101,6 @@ class SettingController extends Controller
 
         ActivityLog::record('admin.settings_updated', 'حدّث إعدادات النظام العامة');
 
-        return response()->json(['settings' => array_merge(self::DEFAULTS, Setting::all_settings())]);
+        return response()->json(['settings' => array_merge(self::DEFAULTS, Setting::visibleSettings())]);
     }
 }

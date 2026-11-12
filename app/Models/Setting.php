@@ -24,6 +24,21 @@ class Setting extends Model
         });
     }
 
+    /** Settings that never leave the server (encrypted keys); only whether they are set is shown. */
+    public const SECRET = ['ai_api_key'];
+
+    /** Every setting except the secret ones, for admin pages and the admin API. */
+    public static function visibleSettings(): array
+    {
+        $all = static::all_settings();
+        foreach (self::SECRET as $k) {
+            $all[$k.'_set'] = filled($all[$k] ?? null);
+            unset($all[$k]);
+        }
+
+        return $all;
+    }
+
     public static function get(string $key, mixed $default = null): mixed
     {
         return self::all_settings()[$key] ?? $default;

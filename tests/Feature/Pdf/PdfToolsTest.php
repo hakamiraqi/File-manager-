@@ -231,4 +231,38 @@ class PdfToolsTest extends TestCase
         $junk = UploadedFile::fake()->createWithContent('x.pdf', 'not a pdf');
         $this->post(route('reader.copy', $f), ['pdf' => $junk], ['Accept' => 'application/json'])->assertStatus(422);
     }
+
+    public function test_excel_powerpoint_and_batch_conversion(): void
+    {
+        $tools = app(PdfTools::class);
+        if (! $tools->pdftoppm() || ! $tools->poppler('pdftotext')) {
+            $this->markTestSkipped('Poppler is not installed here.');
+        }
+        $a = $this->pdf(2, 'a.pdf');
+        $b = $this->pdf(3, 'b.pdf');
+        $this->actingAs($this->owner);
+
+        $r = $this->postJson(route('pdf-tools.run', 'to_excel'), ['files' => [$a->id]])->assertOk();
+        $x = File::findOrFail($r->json('files.0.id'));
+        $this->assertSame('xlsx', $x->extension);
+        $zip = new \ZipArchive;
+        $zip->open($x->disk()->path($x->path));
+        $this->assertStringContainsString('Hello page 2', (string) $zip->getFromName('xl/worksheets/sheet2.xml'));
+        $zip->close();
+
+        $r = $this->postJson(route('pdf-tools.run', 'to_pptx'), ['files' => [$b->id]])->assertOk();
+        $p = File::findOrFail($r->json('files.0.id'));
+        $zip->open($p->disk()->path($p->path));
+        $this->assertNotFalse($zip->getFromName('ppt/slides/slide3.xml'));
+        $this->assertFalse($zip->getFromName('ppt/slides/slide4.xml'));
+        $this->assertStringContainsString('slides/slide3.xml', (string) $zip->getFromName('ppt/_rels/presentation.xml.rels'));
+        $zip->close();
+
+        // Batch: one tool, several files, one result each.
+        $r = $this->postJson(route('pdf-tools.run', 'to_text'), ['files' => [$a->id, $b->id]])->assertOk();
+        $this->assertCount(2, $r->json('files'));
+        $this->assertSame(['a.txt', 'b.txt'], array_column($r->json('files'), 'name'));
+        // A tool that is not a batch tool still takes one file.
+        $this->postJson(route('pdf-tools.run', 'unlock'), ['files' => [$a->id, $b->id]])->assertStatus(422);
+    }
 }

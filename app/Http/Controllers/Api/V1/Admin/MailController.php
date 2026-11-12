@@ -29,7 +29,7 @@ class MailController extends Controller
 
     public function index(): JsonResponse
     {
-        $settings = array_merge(self::DEFAULTS, Setting::all_settings());
+        $settings = array_merge(self::DEFAULTS, Setting::visibleSettings());
         unset($settings['mail_password']);
 
         return response()->json(['settings' => $settings]);
@@ -64,7 +64,7 @@ class MailController extends Controller
 
         ActivityLog::record('admin.mail_settings_updated', 'حدّث إعدادات البريد الإلكتروني (SMTP) والإشعارات');
 
-        $settings = array_merge(self::DEFAULTS, Setting::all_settings());
+        $settings = array_merge(self::DEFAULTS, Setting::visibleSettings());
         unset($settings['mail_password']);
 
         return response()->json(['settings' => $settings]);

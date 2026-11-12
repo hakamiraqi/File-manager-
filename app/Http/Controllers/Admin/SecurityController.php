@@ -40,7 +40,7 @@ class SecurityController extends Controller
     public function index(): Response
     {
         return Inertia::render('Admin/Security', [
-            'settings' => array_merge(self::DEFAULTS, Setting::all_settings()),
+            'settings' => array_merge(self::DEFAULTS, Setting::visibleSettings()),
             'ipRules' => IpRule::orderBy('type')->orderBy('id')->get(),
             'appUrl' => config('app.url'),
         ]);

@@ -126,6 +126,8 @@ class PdfSelfTest extends Command
 
             return $t->repair($broken, "$dir/fixed.pdf");
         });
+        $check('to_excel', fn () => $t->toExcel($in, "$dir/x.xlsx").' sheets');
+        $check('to_pptx', fn () => $t->toPptx($in, "$dir/x.pptx", $dir).' slides');
         $check('extract_images', function () use ($t, $dir) {
             if (! is_file("$dir/ip.pdf")) {
                 return 'skipped (no sample with images)';

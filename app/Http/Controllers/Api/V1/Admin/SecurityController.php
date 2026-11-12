@@ -39,7 +39,7 @@ class SecurityController extends Controller
     public function index(): JsonResponse
     {
         return response()->json([
-            'settings' => array_merge(self::DEFAULTS, Setting::all_settings()),
+            'settings' => array_merge(self::DEFAULTS, Setting::visibleSettings()),
             'ip_rules' => IpRule::orderBy('type')->orderBy('id')->get(),
             'app_url' => config('app.url'),
         ]);
@@ -85,7 +85,7 @@ class SecurityController extends Controller
 
         ActivityLog::record('admin.security_updated', 'حدّث إعدادات الأمان وتسجيل الدخول الخارجي');
 
-        return response()->json(['settings' => array_merge(self::DEFAULTS, Setting::all_settings())]);
+        return response()->json(['settings' => array_merge(self::DEFAULTS, Setting::visibleSettings())]);
     }
 
     public function storeIpRule(Request $request): JsonResponse

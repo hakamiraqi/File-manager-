@@ -119,6 +119,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/pdf-tools/files', [\App\Http\Controllers\PdfToolController::class, 'files'])->name('pdf-tools.files');
     Route::post('/pdf-tools/{tool}', [\App\Http\Controllers\PdfToolController::class, 'run'])->name('pdf-tools.run');
     Route::post('/reader/files/{file}/copy', [\App\Http\Controllers\PdfToolController::class, 'saveCopy'])->name('reader.copy');
+    Route::post('/reader/files/{file}/ai', [\App\Http\Controllers\ReaderAiController::class, 'ask'])->middleware('throttle:30,1')->name('reader.ai');
     Route::get('/reader/files/{file}', [\App\Http\Controllers\ReaderController::class, 'show'])->name('reader.show');
     Route::get('/reader/files/{file}/state', [\App\Http\Controllers\ReaderController::class, 'state'])->name('reader.state');
     Route::put('/reader/files/{file}/state', [\App\Http\Controllers\ReaderController::class, 'save'])->name('reader.state.save');
