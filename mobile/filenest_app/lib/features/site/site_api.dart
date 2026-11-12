@@ -70,6 +70,7 @@ class SiteApi {
 
   // Saved
   Future<Json> saved() => _get('/saved');
+  Future<Json> lectures() => _get('/lectures');
   Future<bool> toggleSaved(String type, int id) async => (await _send('POST', '/saved/toggle', {'type': type, 'id': id}))['saved'] == true;
   Future<void> forgetDownload([int? fileId]) => _send('POST', '/saved/forget-download', {'id': fileId});
 
