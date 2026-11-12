@@ -266,7 +266,11 @@ function observeAll() {
 // Anything that changes the pages' size redraws them, keeping the page being read in place.
 let relayoutTimer = null;
 let keepPage = null; // the page being read when the layout started changing
-const layoutSig = computed(() => [Math.round(box.w), Math.round(box.h), zoom.value, fit.value, mode.value, rotation.value].join('|'));
+// The height only matters when whole pages must fit; widths are rounded so a scrollbar coming
+// and going cannot start a redraw loop.
+const layoutSig = computed(() =>
+    [Math.round(box.w / 8), fit.value === 'page' || mode.value === 'paged' ? Math.round(box.h / 8) : 0, zoom.value, fit.value, mode.value, rotation.value].join('|'),
+);
 watch(layoutSig, () => {
     if (!pages.value) return;
     // Taken before the pages change size: the scroll position is meaningless after that.
@@ -1752,7 +1756,7 @@ watch(
                         <div
                             :ref="(el) => (pageEls[n - 1] = el)"
                             :data-page="n"
-                            class="fn-page relative shrink-0 bg-white shadow-md"
+                            class="fn-page relative shrink-0 overflow-hidden bg-white shadow-md"
                             :style="{ width: pw(n) + 'px', height: ph(n) + 'px' }"
                             @click="pageTap"
                             @dblclick="pageDouble"
