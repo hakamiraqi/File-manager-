@@ -1604,5 +1604,12 @@
     "ocr.q_missing": "The accurate model is not installed here, so the fast one is used.",
     "ocr.report_desc": "A notification to admins every morning at 7:30 with how much was done and how much is left.",
     "ocr.report": "Morning report",
-    "ocr.save": "Save recognition settings"
+    "ocr.save": "Save recognition settings",
+    "pdf.search": "Search in the file",
+    "pdf.searching": "Searching…",
+    "pdf.prev": "Previous",
+    "pdf.next": "Next",
+    "pdf.no_hits": "No results",
+    "pdf.find": "Find",
+    "pdf.no_text": "This file is images with no text yet; it becomes copyable and searchable once text recognition reads it."
 }
