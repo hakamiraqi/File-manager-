@@ -58,6 +58,8 @@ class OfficeEditorTest extends TestCase
         // A reader of the folder (role without upload rights) gets the viewer.
         \App\Models\RolePermission::updateOrCreate(['role' => 'user', 'action' => 'view'], ['allowed' => true]);
         \App\Models\RolePermission::updateOrCreate(['role' => 'user', 'action' => 'download'], ['allowed' => true]);
+        \App\Models\RolePermission::updateOrCreate(['role' => 'user', 'action' => 'upload'], ['allowed' => false]);
+        \Illuminate\Support\Facades\Cache::flush();
         $reader = User::factory()->create(['role' => 'user']);
         $reader->assignedFolders()->sync([$folder->id]);
         $this->actingAs($reader)->get(route('office.edit', $file))->assertOk()
