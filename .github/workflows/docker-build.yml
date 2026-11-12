@@ -60,7 +60,7 @@ jobs:
         # skip themselves instead of blocking every other test.
         run: |
           for i in 1 2 3; do
-            sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ara poppler-utils >/dev/null && exit 0
+            sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr tesseract-ocr-ara poppler-utils qpdf >/dev/null && exit 0
             echo "apt attempt $i failed"; sleep 20
           done
           echo "::warning::Tesseract could not be installed; the real-engine OCR tests will be skipped.
