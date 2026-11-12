@@ -65,6 +65,8 @@ jobs:
           echo "::add-mask::$pass"
           printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=filenest\nstoreFile=release.jks\n' "$pass" "$pass" > android/key.properties
       - run: flutter pub get
+      # The on-device PDF tools with the real PDFium (merge, organise, rotate, images to PDF).
+      - run: flutter test test/local_pdf_tools_test.dart
       - run: flutter build apk --release $BUILD_FLAGS --dart-define=API_BASE_URL=$API_BASE_URL
       - run: cp build/app/outputs/flutter-apk/app-release.apk ../../FileNest-android.apk
       - name: Check the APK installs (signature and package)

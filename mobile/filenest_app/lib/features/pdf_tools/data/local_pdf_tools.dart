@@ -25,7 +25,12 @@ class PageRef {
 class LocalPdfTools {
   LocalPdfTools._();
 
+  /// Tests write here instead of the app's documents folder.
+  @visibleForTesting
+  static Directory? debugOutputDir;
+
   static Future<Directory> outputDir() async {
+    if (debugOutputDir != null) return debugOutputDir!;
     final docs = await getApplicationDocumentsDirectory();
     final dir = Directory('${docs.path}/pdf_tools');
     if (!await dir.exists()) await dir.create(recursive: true);
