@@ -27,6 +27,8 @@ class File extends Model
             'content_indexed_at' => 'datetime',
             'ocr_done_at' => 'datetime',
             'cover_checked_at' => 'datetime',
+            'video_checked_at' => 'datetime',
+            'video_height' => 'integer',
         ];
     }
 

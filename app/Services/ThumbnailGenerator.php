@@ -99,7 +99,7 @@ class ThumbnailGenerator
         $tmpFrame = tempnam(sys_get_temp_dir(), 'thumb').'.jpg';
 
         $result = Process::timeout(30)->run([
-            'ffmpeg', '-y', '-ss', '00:00:01', '-i', $path,
+            \App\Support\Ffmpeg::binary() ?? 'ffmpeg', '-y', '-ss', '00:00:01', '-i', $path,
             '-frames:v', '1', '-vf', 'scale=640:-1', $tmpFrame,
         ]);
 
@@ -203,9 +203,7 @@ class ThumbnailGenerator
 
     public function ffmpegAvailable(): bool
     {
-        static $cached = null;
-
-        return $cached ??= Process::run(['which', 'ffmpeg'])->successful();
+        return \App\Support\Ffmpeg::available();
     }
 
     public function pdftoppmAvailable(): bool

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\File;
 use App\Models\Setting;
 use App\Models\VideoQuality;
+use App\Support\Ffmpeg;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 use Throwable;
@@ -43,9 +44,7 @@ class VideoTranscoder
 
     public function ffmpegAvailable(): bool
     {
-        static $cached = null;
-
-        return $cached ??= Process::run(['which', 'ffmpeg'])->successful();
+        return Ffmpeg::available();
     }
 
     /**
@@ -66,14 +65,18 @@ class VideoTranscoder
         }
 
         $existingHeights = $file->qualities()->pluck('height')->all();
+        $source = $file->video_height ?: Ffmpeg::height($absolutePath);
 
         foreach ($this->targetHeights() as $height) {
-            if (in_array($height, $existingHeights, true)) {
+            // Only smaller than the original: the original itself is always offered as «الأصلية».
+            if (in_array($height, $existingHeights, true) || ($source && $height >= $source)) {
                 continue;
             }
 
             $this->transcodeOne($file, $absolutePath, $height);
         }
+
+        $file->forceFill(['video_height' => $source, 'video_checked_at' => now()])->saveQuietly();
     }
 
     private function transcodeOne(File $file, string $absolutePath, int $height): void
@@ -84,8 +87,8 @@ class VideoTranscoder
         try {
             // scale=-2:'min(ih,HEIGHT)' never upscales a source smaller than
             // the target — it just re-encodes at its native size instead.
-            $result = Process::timeout(600)->run([
-                'ffmpeg', '-y', '-i', $absolutePath,
+            $result = Process::timeout(1800)->run([
+                Ffmpeg::binary(), '-y', '-i', $absolutePath,
                 '-vf', "scale=-2:'min(ih,{$height})'",
                 '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
                 '-c:a', 'aac', '-b:a', '128k',

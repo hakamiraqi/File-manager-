@@ -82,6 +82,21 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
   // one-off viewing fix, not a property of the file itself.
   int _rotationQuarterTurns = 0;
 
+  // Zoom (2026-11-13): a ratio from the settings sheet, or two fingers on the picture;
+  // once zoomed in, one finger moves the picture around.
+  double _zoom = 1;
+  bool _zoomFill = false;
+  Offset _pan = Offset.zero;
+  Size _fitSize = Size.zero; // the picture's size at 100%
+  Size _stageSize = Size.zero;
+  final Map<int, Offset> _touches = {};
+  bool _pinching = false;
+  double _pinchStartDist = 0;
+  double _pinchStartZoom = 1;
+  Offset _pinchStartFocal = Offset.zero;
+  Offset _pinchStartPan = Offset.zero;
+  static const _zoomPresets = [1.0, 1.25, 1.5, 2.0, 3.0];
+
   // YouTube-style gesture controls: vertical drag on the left/right half of
   // the video adjusts brightness/volume, double-tap seeks ±10s. Overlay
   // values are 0..1 (brightness/volume) shown briefly while dragging/after a
@@ -215,7 +230,10 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
       _scrubMs = null;
       _controlsVisible = true;
       _rotationQuarterTurns = 0;
-      _selectedQualityHeight = file.videoQualities.isNotEmpty ? file.videoQualities.first.height : null;
+      _zoom = 1;
+      _zoomFill = false;
+      _pan = Offset.zero;
+      _selectedQualityHeight = null;
       _selectedSubtitleTrack = null;
       _subtitleTracks = [];
       _cues = [];
@@ -251,8 +269,10 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     if (_isOffline) {
       await _initializePlayer(widget.offlineRecord!.localPath, autoplay: autoplay, isLocalFile: true);
     } else {
-      final source = file.videoQualities.isNotEmpty ? file.videoQualities.first.src : file.previewUrl;
-      await _initializePlayer(source, autoplay: autoplay);
+      final quality = await _preferredQuality(file);
+      if (!mounted) return;
+      setState(() => _selectedQualityHeight = quality.height);
+      await _initializePlayer(quality.src, autoplay: autoplay);
     }
     if (!mounted) return;
     await _offerResume(file);
@@ -788,9 +808,38 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     await _controller?.setPlaybackSpeed(speed);
   }
 
+  // ---- Quality: the original («الأصلية») plus the smaller copies the server made ----
+  static const _unknownOriginal = 100000;
+
+  int _originalHeightOf(FileItem f) => f.videoHeight ?? _unknownOriginal;
+
+  List<VideoQualityOption> _qualityOptionsFor(FileItem f) {
+    final orig = _originalHeightOf(f);
+    final smaller = f.videoQualities.where((q) => q.height < orig).toList()..sort((a, b) => b.height.compareTo(a.height));
+    return [VideoQualityOption(height: orig, src: f.previewUrl), ...smaller];
+  }
+
+  String _qualityLabel(BuildContext ctx, VideoQualityOption q) {
+    if (q.height != _originalHeightOf(_currentFile)) return '${q.height}p';
+    final name = ctx.tr('player.original');
+    return _currentFile.videoHeight == null ? name : '$name · ${q.height}p';
+  }
+
+  /// The remembered choice («original» or a height); else the largest copy up to 720p.
+  Future<VideoQualityOption> _preferredQuality(FileItem f) async {
+    final options = _qualityOptionsFor(f);
+    final saved = await _PlayerPrefs.get('quality');
+    if (saved == 'original' || options.length == 1) return options.first;
+    final want = int.tryParse(saved ?? '') ?? 720;
+    final fit = options.skip(1).where((q) => q.height <= want).toList();
+    if (fit.isNotEmpty) return fit.first;
+    return saved == null ? options.first : options.last;
+  }
+
   Future<void> _switchQuality(VideoQualityOption quality) async {
     final position = _controller?.value.position ?? Duration.zero;
     final wasPlaying = _controller?.value.isPlaying ?? true;
+    _PlayerPrefs.put('quality', quality.height == _originalHeightOf(_currentFile) ? 'original' : '${quality.height}');
     setState(() => _selectedQualityHeight = quality.height);
     await _initializePlayer(quality.src, seekTo: position, autoplay: wasPlaying);
   }
@@ -829,7 +878,12 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
   }
 
   void _rotateVideo() {
-    setState(() => _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4);
+    setState(() {
+      _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4;
+      _zoom = 1;
+      _zoomFill = false;
+      _pan = Offset.zero;
+    });
   }
 
   void _scheduleOverlayHide() {
@@ -1641,12 +1695,26 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
     } else if (!_currentFile.isVideo) {
       content = _buildAudioArt(context);
     } else {
-      content = Center(
-        child: RotatedBox(
-          quarterTurns: _rotationQuarterTurns,
-          child: AspectRatio(aspectRatio: videoRatio, child: VideoPlayer(controller!)),
-        ),
-      );
+      content = LayoutBuilder(builder: (context, c) {
+        final ratio = _rotationQuarterTurns.isOdd ? 1 / videoRatio : videoRatio;
+        final fitW = math.min(c.maxWidth, c.maxHeight * ratio);
+        final fitH = fitW / ratio;
+        _fitSize = Size(fitW, fitH);
+        _stageSize = c.biggest;
+        final scale = _zoomFill ? _coverScale : _zoom;
+        return ClipRect(
+          child: Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.translationValues(_pan.dx, _pan.dy, 0)..multiply(Matrix4.diagonal3Values(scale, scale, 1)),
+            child: Center(
+              child: RotatedBox(
+                quarterTurns: _rotationQuarterTurns,
+                child: AspectRatio(aspectRatio: videoRatio, child: VideoPlayer(controller!)),
+              ),
+            ),
+          ),
+        );
+      });
     }
 
     final stage = ColoredBox(
@@ -1677,6 +1745,24 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
           if (_showVolumeOverlay)
             _buildLevelPill(_volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded, _volume, left: false),
           if (_seekFeedback != null) _buildSeekFeedback(_seekFeedback!),
+          if (ready && _currentFile.isVideo && (_zoom != 1 || _zoomFill) && (_controlsVisible || _pinching))
+            Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: EdgeInsets.only(top: _isFullscreen ? 60 : 52),
+                child: GestureDetector(
+                  onTap: _resetZoom,
+                  child: _pill(Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.zoom_in_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 6),
+                    Text(_zoomFill ? context.tr('player.zoom_fill') : '${(_zoom * 100).round()}%',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.close_rounded, color: Colors.white70, size: 16),
+                  ])),
+                ),
+              ),
+            ),
           if (_boostingSpeed)
             Align(
               alignment: Alignment.topCenter,
@@ -1735,6 +1821,7 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
   /// them): tap shows/hides the controls, double-tap seeks ±10s, vertical
   /// drag sets brightness (left) or volume (right), long-press plays at 2×.
   Widget _buildGestureLayer(double areaHeight) {
+    final zoomed = _zoom > 1 || _zoomFill;
     Widget zone(int side) => Expanded(
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
@@ -1742,15 +1829,116 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
             onDoubleTap: () => _seekRelative(side * 10),
             onLongPressStart: (_) => _startSpeedBoost(),
             onLongPressEnd: (_) => _stopSpeedBoost(),
-            onVerticalDragStart: side < 0 ? _onBrightnessDragStart : _onVolumeDragStart,
-            onVerticalDragUpdate: (d) => side < 0 ? _onBrightnessDragUpdate(d, areaHeight) : _onVolumeDragUpdate(d, areaHeight),
-            onVerticalDragEnd: _onGestureDragEnd,
+            // Zoomed in, one finger moves the picture instead of brightness / volume.
+            onVerticalDragStart: zoomed
+                ? null
+                : (d) {
+                    if (_pinching) return;
+                    side < 0 ? _onBrightnessDragStart(d) : _onVolumeDragStart(d);
+                  },
+            onVerticalDragUpdate: zoomed
+                ? null
+                : (d) {
+                    if (_pinching || _touches.length > 1) return;
+                    side < 0 ? _onBrightnessDragUpdate(d, areaHeight) : _onVolumeDragUpdate(d, areaHeight);
+                  },
+            onVerticalDragEnd: zoomed ? null : _onGestureDragEnd,
+            onPanUpdate: zoomed
+                ? (d) {
+                    if (_pinching || _touches.length > 1) return;
+                    setState(() => _pan = _clampPan(_pan + d.delta, _zoomFill ? _coverScale : _zoom));
+                  }
+                : null,
           ),
         );
 
     return Positioned.fill(
-      child: Directionality(textDirection: TextDirection.ltr, child: Row(children: [zone(-1), zone(1)])),
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: _onTouchDown,
+        onPointerMove: _onTouchMove,
+        onPointerUp: _onTouchEnd,
+        onPointerCancel: _onTouchEnd,
+        child: Directionality(textDirection: TextDirection.ltr, child: Row(children: [zone(-1), zone(1)])),
+      ),
     );
+  }
+
+  // ---- Zoom ----
+  /// How much bigger the picture must be to fill the whole screen (cutting the edges).
+  double get _coverScale {
+    if (_fitSize.isEmpty || _stageSize.isEmpty) return 1;
+    return math.max(_stageSize.width / _fitSize.width, _stageSize.height / _fitSize.height).clamp(1.0, 5.0);
+  }
+
+  Offset _clampPan(Offset p, double scale) {
+    final mx = math.max(0.0, (_fitSize.width * scale - _stageSize.width) / 2);
+    final my = math.max(0.0, (_fitSize.height * scale - _stageSize.height) / 2);
+    return Offset(p.dx.clamp(-mx, mx), p.dy.clamp(-my, my));
+  }
+
+  void _setZoom(double z) {
+    setState(() {
+      _zoomFill = false;
+      _zoom = z.clamp(1.0, 5.0);
+      _pan = _clampPan(_pan, _zoom);
+      if (_zoom == 1) _pan = Offset.zero;
+    });
+  }
+
+  void _setZoomFill() => setState(() {
+        _zoom = 1;
+        _pan = Offset.zero;
+        _zoomFill = true;
+      });
+
+  void _resetZoom() => setState(() {
+        _zoom = 1;
+        _zoomFill = false;
+        _pan = Offset.zero;
+      });
+
+  void _onTouchDown(PointerDownEvent e) {
+    _touches[e.pointer] = e.localPosition;
+    if (_touches.length == 2) {
+      final pts = _touches.values.toList();
+      _stopSpeedBoost();
+      setState(() {
+        _pinching = true;
+        _pinchStartDist = (pts[0] - pts[1]).distance;
+        _pinchStartZoom = _zoomFill ? _coverScale : _zoom;
+        _zoomFill = false;
+        _zoom = _pinchStartZoom;
+        _pinchStartFocal = (pts[0] + pts[1]) / 2;
+        _pinchStartPan = _pan;
+      });
+    }
+  }
+
+  void _onTouchMove(PointerMoveEvent e) {
+    if (!_touches.containsKey(e.pointer)) return;
+    _touches[e.pointer] = e.localPosition;
+    if (!_pinching || _touches.length < 2 || _pinchStartDist <= 0) return;
+    final pts = _touches.values.take(2).toList();
+    final z = (_pinchStartZoom * (pts[0] - pts[1]).distance / _pinchStartDist).clamp(1.0, 5.0);
+    final focal = (pts[0] + pts[1]) / 2;
+    setState(() {
+      _zoom = z;
+      _pan = _clampPan(_pinchStartPan + (focal - _pinchStartFocal), z);
+    });
+  }
+
+  void _onTouchEnd(PointerEvent e) {
+    _touches.remove(e.pointer);
+    if (_touches.isEmpty && _pinching) {
+      setState(() {
+        _pinching = false;
+        if (_zoom < 1.05) {
+          _zoom = 1;
+          _pan = Offset.zero;
+        }
+      });
+    }
   }
 
   Widget _buildControlsOverlay(BuildContext context) {
@@ -2211,13 +2399,34 @@ class _MediaPlayerScreenState extends State<MediaPlayerScreen> {
                       onSelected: (_) => apply(() => _setSpeed(speed)),
                     ),
                 ]),
-                if (_currentFile.videoQualities.length > 1) ...[
+                if (_currentFile.isVideo) ...[
+                  const SizedBox(height: 18),
+                  label(Icons.zoom_in_rounded, ctx.tr('player.zoom')),
+                  Wrap(spacing: 8, runSpacing: 8, children: [
+                    for (final z in _zoomPresets)
+                      ChoiceChip(
+                        label: Text(z == 1 ? ctx.tr('player.zoom_fit') : '${(z * 100).round()}%'),
+                        selected: !_zoomFill && _zoom == z,
+                        onSelected: (_) => apply(() => _setZoom(z)),
+                      ),
+                    ChoiceChip(
+                      label: Text(ctx.tr('player.zoom_fill')),
+                      selected: _zoomFill,
+                      onSelected: (_) => apply(_setZoomFill),
+                    ),
+                  ]),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(ctx.tr('player.zoom_hint'), style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  ),
+                ],
+                if (_qualityOptionsFor(_currentFile).length > 1 && !_isOffline) ...[
                   const SizedBox(height: 18),
                   label(Icons.high_quality_outlined, ctx.tr('player.quality')),
                   Wrap(spacing: 8, runSpacing: 8, children: [
-                    for (final q in _currentFile.videoQualities)
+                    for (final q in _qualityOptionsFor(_currentFile))
                       ChoiceChip(
-                        label: Text('${q.height}p'),
+                        label: Text(_qualityLabel(ctx, q)),
                         selected: q.height == _selectedQualityHeight,
                         onSelected: (_) {
                           Navigator.of(sheetContext).pop();
@@ -2679,6 +2888,35 @@ class _PlaybackMemory {
         map.remove(map.keys.first);
       }
     }
+    try {
+      await (await _file()).writeAsString(jsonEncode(map));
+    } catch (_) {}
+  }
+}
+
+/// Small player choices kept on the device (the chosen quality), 2026-11-13.
+class _PlayerPrefs {
+  static Map<String, String>? _cache;
+
+  static Future<File> _file() async => File('${(await getApplicationSupportDirectory()).path}/player_prefs.json');
+
+  static Future<Map<String, String>> _load() async {
+    if (_cache != null) return _cache!;
+    try {
+      final file = await _file();
+      if (await file.exists()) {
+        final decoded = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+        _cache = decoded.map((k, v) => MapEntry(k, '$v'));
+      }
+    } catch (_) {}
+    return _cache ??= {};
+  }
+
+  static Future<String?> get(String key) async => (await _load())[key];
+
+  static Future<void> put(String key, String value) async {
+    final map = await _load();
+    map[key] = value;
     try {
       await (await _file()).writeAsString(jsonEncode(map));
     } catch (_) {}

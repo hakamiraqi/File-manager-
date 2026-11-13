@@ -24,3 +24,6 @@ Schedule::command('ocr:run')->everyMinute()->withoutOverlapping(120)->runInBackg
 Schedule::command('ocr:report')->dailyAt('07:30')->timezone('Asia/Baghdad');
 // Book covers: every 10 minutes inside their hours (20:00–06:00 by default).
 Schedule::command('covers:run')->everyTenMinutes()->withoutOverlapping(60)->runInBackground();
+
+// Videos uploaded any way (app, folders, lectures, older uploads) get their lower qualities too.
+Schedule::command('videos:qualities')->everyFifteenMinutes()->withoutOverlapping(30);
