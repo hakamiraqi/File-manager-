@@ -30,7 +30,10 @@ import { BookOpenIcon,
     SparklesIcon,
     LightBulbIcon,
     PencilSquareIcon,
+    MagnifyingGlassPlusIcon,
+    MagnifyingGlassMinusIcon,
 } from '@heroicons/vue/24/outline';
+import { useVideoZoom, ZOOM_PRESETS } from '@/Composables/useVideoZoom';
 import Plyr from 'plyr';
 import 'plyr/dist/plyr.css';
 // Plyr's own dist/plyr.svg isn't in its package "exports" map so Vite can't
@@ -475,20 +478,60 @@ function seekTo(seconds) {
 
 // ---- Video player (Plyr): speed, volume, fullscreen, PiP, captions, quality ----
 const videoEl = ref(null);
+const playerBox = ref(null);
 let player = null;
 
+// Zoom (2026-11-13): a ratio from the menu, two-finger pinch, Ctrl + wheel, drag to move.
+const vz = useVideoZoom(playerBox, videoEl);
+const zoomMenu = ref(false);
+const zoomPresets = ZOOM_PRESETS;
+
+// Quality (2026-11-13): the original is always one of the choices («الأصلية»), beside the
+// smaller copies the server made; the last choice is remembered in this browser.
+const ORIGINAL_UNKNOWN = 10000;
+const QUALITY_KEY = 'filenest:video-quality';
+const originalSize = (file) => file.video_height || ORIGINAL_UNKNOWN;
+
 function videoSources(file) {
-    const qualities = file.video_qualities || [];
+    const orig = originalSize(file);
+    const smaller = (file.video_qualities || []).filter((q) => q.height < orig);
 
-    if (qualities.length > 1) {
-        return qualities.map((q) => ({ src: q.src, type: file.mime_type, size: q.height }));
+    return [
+        { src: route('files.preview', file.id), type: file.mime_type, size: orig },
+        ...smaller.map((q) => ({ src: q.src, type: 'video/mp4', size: q.height })),
+    ];
+}
+
+function preferredQuality(file) {
+    const sizes = videoSources(file).map((s) => s.size);
+    let saved = null;
+    try {
+        saved = window.localStorage.getItem(QUALITY_KEY);
+    } catch {
+        // nothing remembered
     }
+    if (saved === 'original') return sizes[0];
+    const want = Number(saved) || 720;
+    // The largest copy not above the wanted height; else the smallest there is.
+    const fit = sizes.slice(1).filter((h) => h <= want).sort((a, b) => b - a)[0];
+    if (fit) return fit;
+    if (!saved) return sizes[0];
 
-    return [{ src: route('files.preview', file.id), type: file.mime_type }];
+    return sizes.length > 1 ? Math.min(...sizes.slice(1)) : sizes[0];
+}
+
+function rememberQuality(size) {
+    try {
+        window.localStorage.setItem(QUALITY_KEY, size === originalSize(props.file) ? 'original' : String(size));
+    } catch {
+        // nothing to remember with
+    }
 }
 
 function destroyPlyr() {
     rememberPosition();
+    vz.forget();
+    zoomMenu.value = false;
     clearUpNext();
     resumedFrom.value = null;
     if (player) {
@@ -608,8 +651,9 @@ function mountPlyr() {
         if (!videoEl.value || !props.file || kind(props.file) !== 'video') return;
 
         const settings = ['captions', 'speed'];
-        const qualities = props.file.video_qualities || [];
-        if (qualities.length > 1) settings.splice(1, 0, 'quality');
+        const sources = videoSources(props.file);
+        if (sources.length > 1) settings.splice(1, 0, 'quality');
+        const orig = originalSize(props.file);
 
         player = new Plyr(videoEl.value, {
             iconUrl: plyrIconUrl,
@@ -628,7 +672,12 @@ function mountPlyr() {
             keyboard: { focused: true, global: false },
             tooltips: { controls: true, seek: true },
             speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] },
-            i18n: plyrLabels(),
+            i18n: {
+                ...plyrLabels(),
+                qualityLabel: { [orig]: orig === ORIGINAL_UNKNOWN ? t('player.original', 'الأصلية') : `${t('player.original', 'الأصلية')} · ${orig}p` },
+            },
+            // Fullscreen takes the whole frame, so the zoom button and our notes stay visible.
+            fullscreen: { enabled: true, fallback: true, iosNative: false, container: '.fn-player' },
             // Interactive questions shown as marks on the timeline.
             markers: {
                 enabled: questions.value.length > 0 || comments.value.some((c) => c.timestamp_seconds != null),
@@ -641,8 +690,8 @@ function mountPlyr() {
             },
             settings,
             captions: { active: subtitles.value.length > 0, update: true },
-            ...(qualities.length > 1
-                ? { quality: { default: qualities[0].height, options: qualities.map((q) => q.height) } }
+            ...(sources.length > 1
+                ? { quality: { default: preferredQuality(props.file), options: sources.map((q) => q.size) } }
                 : {}),
         });
 
@@ -660,6 +709,9 @@ function mountPlyr() {
             videoTime.value = player?.currentTime ?? 0;
         });
         player.on('play', clearUpNext);
+        player.on('qualitychange', (e) => {
+            if (e.detail?.quality) rememberQuality(e.detail.quality);
+        });
 
         player.on('timeupdate', enforceQuestionGate);
         player.on('seeked', enforceQuestionGate);
@@ -846,7 +898,65 @@ onBeforeUnmount(() => {
                         <img v-if="kind(file) === 'image'" :src="route('files.preview', file.id)" class="max-h-[65vh] rounded" />
 
                         <!-- Media controls stay left-to-right in Arabic too, like every major player. -->
-                        <div v-else-if="kind(file) === 'video'" dir="ltr" class="fn-player relative w-full max-h-[65vh] overflow-hidden rounded-xl bg-black shadow-lg ring-1 ring-black/10">
+                        <div
+                            v-else-if="kind(file) === 'video'"
+                            ref="playerBox"
+                            dir="ltr"
+                            class="fn-player relative w-full max-h-[65vh] overflow-hidden rounded-xl bg-black shadow-lg ring-1 ring-black/10"
+                            style="touch-action: pan-x pan-y"
+                            @pointerdown="vz.onPointerDown"
+                            @pointermove="vz.onPointerMove"
+                            @pointerup="vz.onPointerUp"
+                            @pointercancel="vz.onPointerUp"
+                            @click.capture="vz.onClickCapture"
+                            @wheel="vz.onWheel"
+                        >
+                            <!-- Zoom: a ratio, or pinch / Ctrl + wheel; drag to move around once zoomed. -->
+                            <div class="fn-zoom absolute right-2 top-2 z-[6] flex flex-col items-end gap-1.5" @click.stop>
+                                <button
+                                    type="button"
+                                    class="flex items-center gap-1 rounded-full bg-black/60 px-2.5 py-1.5 text-xs font-semibold text-white backdrop-blur transition hover:bg-black/80"
+                                    :title="t('player.zoom', 'تكبير وتصغير')"
+                                    @click="zoomMenu = !zoomMenu"
+                                >
+                                    <MagnifyingGlassPlusIcon class="h-4 w-4" />
+                                    <span v-if="vz.fill.value">{{ t('player.zoom_fill', 'ملء') }}</span>
+                                    <span v-else-if="vz.zoom.value !== 1">{{ vz.percent.value }}%</span>
+                                </button>
+                                <div v-if="zoomMenu" class="w-44 rounded-xl bg-gray-900/95 p-2 text-sm text-white shadow-xl ring-1 ring-white/10">
+                                    <div class="mb-2 flex items-center justify-between gap-1">
+                                        <button type="button" class="rounded-lg p-1.5 hover:bg-white/10 disabled:opacity-40" :disabled="vz.zoom.value <= 1" :title="t('player.zoom_out', 'تصغير')" @click="vz.step(-1)">
+                                            <MagnifyingGlassMinusIcon class="h-5 w-5" />
+                                        </button>
+                                        <span class="text-xs tabular-nums">{{ vz.fill.value ? t('player.zoom_fill', 'ملء') : vz.percent.value + '%' }}</span>
+                                        <button type="button" class="rounded-lg p-1.5 hover:bg-white/10 disabled:opacity-40" :disabled="vz.zoom.value >= 5" :title="t('player.zoom_in', 'تكبير')" @click="vz.step(1)">
+                                            <MagnifyingGlassPlusIcon class="h-5 w-5" />
+                                        </button>
+                                    </div>
+                                    <div class="grid grid-cols-3 gap-1">
+                                        <button
+                                            v-for="z in zoomPresets"
+                                            :key="z"
+                                            type="button"
+                                            class="rounded-lg px-1 py-1 text-xs"
+                                            :class="!vz.fill.value && vz.zoom.value === z ? 'bg-[var(--accent-600)]' : 'bg-white/5 hover:bg-white/15'"
+                                            @click="vz.setZoom(z)"
+                                        >
+                                            {{ z === 1 ? t('player.zoom_fit', 'ملائمة') : Math.round(z * 100) + '%' }}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            class="rounded-lg px-1 py-1 text-xs"
+                                            :class="vz.fill.value ? 'bg-[var(--accent-600)]' : 'bg-white/5 hover:bg-white/15'"
+                                            :title="t('player.zoom_fill_hint', 'يملأ الإطار ويقصّ الأطراف')"
+                                            @click="vz.setFill()"
+                                        >
+                                            {{ t('player.zoom_fill', 'ملء') }}
+                                        </button>
+                                    </div>
+                                    <p class="mt-2 text-[11px] leading-snug text-white/60" dir="auto">{{ t('player.zoom_hint', 'أو بإصبعين على الشاشة، أو Ctrl مع عجلة الفأرة. اسحب لتحريك الصورة بعد التكبير.') }}</p>
+                                </div>
+                            </div>
                             <video
                                 ref="videoEl"
                                 :poster="file.thumbnail_path ? route('files.thumbnail', file.id) : undefined"
@@ -1380,6 +1490,33 @@ onBeforeUnmount(() => {
 </template>
 
 <style>
+/* Zoom button fades with Plyr's controls; fullscreen takes the whole frame. */
+.fn-player:has(.plyr--hide-controls) .fn-zoom {
+    opacity: 0;
+    pointer-events: none;
+}
+.fn-zoom {
+    transition: opacity 0.25s;
+}
+.fn-player:fullscreen,
+.fn-player.plyr--fullscreen-fallback {
+    max-height: none;
+    border-radius: 0;
+}
+.fn-player:fullscreen .plyr,
+.fn-player.plyr--fullscreen-fallback .plyr,
+.fn-player:fullscreen video,
+.fn-player.plyr--fullscreen-fallback video {
+    max-height: 100% !important;
+    height: 100%;
+    border-radius: 0;
+}
+.fn-player.plyr--fullscreen-fallback {
+    position: fixed;
+    inset: 0;
+    z-index: 10000000;
+}
+
 /* Player look: accent-coloured timeline, glassy big play button, rounded menus. */
 .fn-player .plyr {
     --plyr-color-main: var(--accent-500, #3b82f6);

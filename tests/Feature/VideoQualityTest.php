@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Models\VideoQuality;
 use App\Services\VideoTranscoder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -138,5 +140,62 @@ class VideoQualityTest extends TestCase
 
         $this->assertFalse($disk->exists('sub.vtt'));
         $this->assertFalse($disk->exists('q.mp4'));
+    }
+
+    public function test_only_qualities_smaller_than_the_original_are_made_and_its_height_is_kept(): void
+    {
+        config(['services.video.ffmpeg' => base_path('artisan')]); // any existing file stands in for ffmpeg
+        Storage::fake(config('filenest.disk'));
+        $user = User::factory()->create();
+        $file = File::factory()->create(['user_id' => $user->id, 'mime_type' => 'video/mp4', 'extension' => 'mp4']);
+        Storage::disk(config('filenest.disk'))->put($file->path, 'video');
+        Process::fake(fn ($p) => is_array($p->command) && count($p->command) === 4
+            ? Process::result('', "Input #0, mov\n  Stream #0:0[0x1](und): Video: h264 (High), yuv420p(tv), 854x480 [SAR 1:1], 25 fps\n", 1)
+            : Process::result(''));
+
+        app(VideoTranscoder::class)->transcode($file);
+
+        Process::assertRan(fn ($p) => is_array($p->command) && in_array("scale=-2:'min(ih,360)'", $p->command, true));
+        Process::assertNotRan(fn ($p) => is_array($p->command) && in_array("scale=-2:'min(ih,480)'", $p->command, true));
+        Process::assertNotRan(fn ($p) => is_array($p->command) && in_array("scale=-2:'min(ih,720)'", $p->command, true));
+        $this->assertSame(480, $file->fresh()->video_height);
+        $this->assertNotNull($file->fresh()->video_checked_at);
+    }
+
+    public function test_upright_phone_videos_count_their_real_height(): void
+    {
+        config(['services.video.ffmpeg' => base_path('artisan')]);
+        Process::fake(fn () => Process::result('', "  Stream #0:0: Video: hevc, yuv420p, 1920x1080, 30 fps\n    Side data:\n      displaymatrix: rotation of -90.00 degrees\n", 1));
+
+        $this->assertSame(1920, \App\Support\Ffmpeg::height('/x.mov'));
+    }
+
+    public function test_videos_without_qualities_are_queued_a_few_at_a_time(): void
+    {
+        config(['services.video.ffmpeg' => base_path('artisan')]);
+        Queue::fake();
+        $user = User::factory()->create();
+        $videos = File::factory()->count(3)->create(['user_id' => $user->id, 'mime_type' => 'video/mp4', 'extension' => 'mp4']);
+        File::factory()->create(['user_id' => $user->id, 'mime_type' => 'application/pdf', 'extension' => 'pdf']);
+
+        $this->artisan('videos:qualities', ['--limit' => 2])->assertSuccessful();
+        Queue::assertPushed(TranscodeVideoQualities::class, 2);
+        $this->assertSame(1, File::where('mime_type', 'video/mp4')->whereNull('video_checked_at')->count());
+
+        $this->artisan('videos:qualities', ['--limit' => 2])->assertSuccessful();
+        Queue::assertPushed(TranscodeVideoQualities::class, 3);
+        $this->artisan('videos:qualities')->assertSuccessful();
+        Queue::assertPushed(TranscodeVideoQualities::class, 3);
+    }
+
+    public function test_the_app_gets_the_original_height(): void
+    {
+        $user = User::factory()->create();
+        $file = File::factory()->create(['user_id' => $user->id, 'mime_type' => 'video/mp4', 'extension' => 'mp4', 'video_height' => 1080]);
+        VideoQuality::create(['file_id' => $file->id, 'height' => 480, 'path' => 'x.mp4', 'size' => 100]);
+
+        $json = (new \App\Http\Resources\FileResource($file->load('qualities')))->toArray(request());
+        $this->assertSame(1080, $json['video_height']);
+        $this->assertSame(480, $json['video_qualities'][0]['height']);
     }
 }

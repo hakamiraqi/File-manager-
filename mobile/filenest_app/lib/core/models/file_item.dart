@@ -32,6 +32,9 @@ class FileItem {
   final List<VideoQualityOption> videoQualities;
   final String? subtitlesUrl;
 
+  /// The original's picture height (offered as «الأصلية» beside the smaller copies).
+  final int? videoHeight;
+
   FileItem({
     required this.id,
     required this.name,
@@ -49,6 +52,7 @@ class FileItem {
     required this.thumbnailUrl,
     this.videoQualities = const [],
     this.subtitlesUrl,
+    this.videoHeight,
   });
 
   bool get isVideo => mimeType?.startsWith('video/') ?? false;
@@ -78,6 +82,7 @@ class FileItem {
               .toList() ??
           const [],
       subtitlesUrl: json['subtitles_url'] as String?,
+      videoHeight: (json['video_height'] as num?)?.toInt(),
     );
   }
 

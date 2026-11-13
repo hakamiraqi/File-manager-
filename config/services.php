@@ -28,6 +28,9 @@ return [
     // Ghostscript for «ضغط PDF» (found on PATH or next to the offline app when not set).
     'pdf' => ['gs' => env('PDF_GHOSTSCRIPT')],
 
+    // ffmpeg for video pictures and the lower qualities (found on PATH or next to the offline app when not set).
+    'video' => ['ffmpeg' => env('FFMPEG_BIN')],
+
     'onlyoffice' => [
         'secret' => env('ONLYOFFICE_JWT_SECRET'),
         // Where browsers load the editor from (a path on this site, or a full URL).

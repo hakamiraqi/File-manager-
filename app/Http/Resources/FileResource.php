@@ -34,6 +34,8 @@ class FileResource extends JsonResource
             // relation wasn't eager-loaded by the caller. The File model's
             // own accessor points `src` at the web route (session auth), so
             // it's rebuilt here against the Bearer-token API route instead.
+            // The original's picture height, offered as «الأصلية» beside the smaller qualities.
+            'video_height' => $this->video_height,
             'video_qualities' => collect($this->video_qualities)->map(fn (array $q) => [
                 'height' => $q['height'],
                 'src' => route('api.v1.files.preview-quality', [$this->id, $q['height']]),

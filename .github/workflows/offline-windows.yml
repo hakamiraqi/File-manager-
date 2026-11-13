@@ -248,6 +248,19 @@ jobs:
             echo "::warning::No Ghostscript release found; «compress» uses qpdf only on the offline server."
           fi
           du -sh $OUT/ghostscript 2>/dev/null || true
+          # ffmpeg (2026-11-13): video pictures and the lower qualities («الجودة» in the player).
+          # Found by the app at ..\ffmpeg\bin\ffmpeg.exe; only ffmpeg.exe and its DLLs are kept.
+          F=$(gh release view latest -R BtbN/FFmpeg-Builds --json assets --jq '.assets[] | select(.name|test("^ffmpeg-n[0-9.]+-latest-win64-gpl-shared-[0-9.]+\\.zip$")) | .url' | sort -V | tail -1 || true)
+          if [ -n "$F" ]; then
+            curl -fsSL --retry 5 --retry-delay 10 --retry-all-errors -o ffmpeg.zip "$F"
+            unzip -q ffmpeg.zip -d ffmpeg-x
+            FB=$(find ffmpeg-x -iname ffmpeg.exe | head -1)
+            mkdir -p $OUT/ffmpeg/bin && cp "$FB" "$(dirname "$FB")"/*.dll $OUT/ffmpeg/bin/
+            test -f $OUT/ffmpeg/bin/ffmpeg.exe
+          else
+            echo "::warning::No ffmpeg build found; videos play in their original quality only on the offline server."
+          fi
+          du -sh $OUT/ffmpeg 2>/dev/null || true
 
       - name: Zip
         run: |
@@ -312,6 +325,15 @@ jobs:
           if (Test-Path "$root\imagemagick\magick.exe") {
             & "$root\imagemagick\magick.exe" -version 2>&1 | Select-Object -First 1 | Write-Host
             if ($LASTEXITCODE -ne 0) { throw 'ImageMagick does not start.' }
+          }
+          if (Test-Path "$root\ffmpeg\bin\ffmpeg.exe") {
+            & "$root\ffmpeg\bin\ffmpeg.exe" -hide_banner -version 2>&1 | Select-Object -First 1 | Write-Host
+            if ($LASTEXITCODE -ne 0) { throw 'ffmpeg does not start.' }
+            Push-Location "$root\app"
+            $found = & "$root\php\php.exe" -c "$root\php\php.ini" -r "require 'vendor/autoload.php'; `$a = require 'bootstrap/app.php'; `$a->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo App\Support\Ffmpeg::binary() ?: 'none';"
+            Pop-Location
+            Write-Host "ffmpeg for the app: $found"
+            if ("$found" -notmatch 'ffmpeg\.exe') { throw 'The app does not find ffmpeg.' }
           }
           Push-Location "$root\app"
           & "$root\php\php.exe" -c "$root\php\php.ini" artisan ocr:run --force --batch=1 2>&1 | Write-Host
