@@ -53,6 +53,11 @@ class CoverController extends Controller
                 'error' => (int) ($counts['error'] ?? 0),
                 'due' => CoversRun::candidates()->count(),
             ],
+            'books' => [
+                'with' => \App\Models\Library\Book::whereNotNull('cover_path')->count(),
+                'without' => \App\Models\Library\Book::whereNull('cover_path')->count(),
+                'due' => CoversRun::bookCandidates()->count(),
+            ],
             'state' => [
                 'in_window' => CoverSettings::inWindow(),
                 'next_start' => CoverSettings::nextStart()?->toIso8601String(),
@@ -70,6 +75,7 @@ class CoverController extends Controller
         $data = $request->validate([
             'covers_enabled' => ['boolean'],
             'covers_title_search' => ['boolean'],
+            'covers_library' => ['boolean'],
             'covers_openlibrary' => ['boolean'],
             'covers_google' => ['boolean'],
             'covers_days' => ['array'], 'covers_days.*' => ['integer', 'between:0,6'],
@@ -82,7 +88,7 @@ class CoverController extends Controller
             'covers_google_key' => ['nullable', 'string', 'max:200'],
             'covers_google_clear' => ['nullable', 'boolean'],
         ]);
-        foreach (['covers_enabled', 'covers_title_search', 'covers_openlibrary', 'covers_google'] as $k) {
+        foreach (['covers_enabled', 'covers_title_search', 'covers_library', 'covers_openlibrary', 'covers_google'] as $k) {
             $data[$k] = $request->boolean($k) ? '1' : '0';
         }
         $data['covers_days'] = implode(',', collect($data['covers_days'] ?? [])->unique()->sort()->all());
@@ -114,6 +120,7 @@ class CoverController extends Controller
     {
         $which = $request->boolean('small') ? ['none', 'error', 'small'] : ['none', 'error'];
         $n = File::whereIn('cover_status', $which)->update(['cover_status' => null]);
+        $n += \App\Models\Library\Book::whereNull('cover_path')->whereIn('cover_status', ['none', 'error'])->update(['cover_status' => null]);
 
         return back()->with('success', "أُعيد {$n} ملف إلى قائمة البحث.");
     }

@@ -201,7 +201,23 @@ class BookController extends Controller
 
         if ($new || ! empty($data['remove_cover'])) {
             $this->covers->delete($book->cover_path);
-            $book->forceFill(['cover_path' => $new])->save();
+            // A removed cover keeps the automatic search away; a chosen one is the librarian's.
+            $book->forceFill(['cover_path' => $new, 'cover_status' => $new ? 'manual' : 'removed',
+                'cover_source' => $new ? 'upload' : null, 'cover_checked_at' => now()])->save();
+
+            return;
+        }
+
+        // No cover but a PDF of it in the drive: its picture straight away.
+        if (! $book->cover_path && $book->file_id && $book->cover_status !== 'removed') {
+            try {
+                $covers = app(\App\Services\Covers\LibraryCovers::class);
+                if ($hit = $covers->localFor($book)) {
+                    $covers->apply($book, $hit[1], 'drive');
+                }
+            } catch (\Throwable) {
+                // the nightly search tries again
+            }
         }
     }
 

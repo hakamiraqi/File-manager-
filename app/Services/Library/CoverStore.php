@@ -42,6 +42,12 @@ class CoverStore
         return $this->store($response->body());
     }
 
+    /** A cover from picture bytes already in hand (a PDF's picture, a found cover). */
+    public function fromBytes(string $bytes): string
+    {
+        return $this->store($bytes);
+    }
+
     public function delete(?string $path): void
     {
         if ($path) {
