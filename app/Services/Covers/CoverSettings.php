@@ -24,6 +24,7 @@ class CoverSettings
         'covers_openlibrary' => '1',
         'covers_google' => '0',
         'covers_retry_days' => '30',
+        'covers_library' => '1',          // the books on the shelves too (2026-11-13)
     ];
 
     public static function get(string $key): string

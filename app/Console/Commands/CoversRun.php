@@ -3,10 +3,12 @@
 namespace App\Console\Commands;
 
 use App\Models\File;
+use App\Models\Library\Book;
 use App\Models\Setting;
 use App\Services\Covers\CoverFinder;
 use App\Services\Covers\CoverSettings;
 use App\Services\Covers\CoverStore;
+use App\Services\Covers\LibraryCovers;
 use App\Services\Pdf\PdfTools;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,7 +25,7 @@ class CoversRun extends Command
 
     protected $description = 'Look for book covers online (Open Library, Google Books)';
 
-    public function handle(CoverFinder $finder, PdfTools $pdf): int
+    public function handle(CoverFinder $finder, PdfTools $pdf, LibraryCovers $library): int
     {
         if (! CoverSettings::on('covers_enabled') && ! $this->option('force')) {
             return self::SUCCESS;
@@ -80,10 +82,73 @@ class CoversRun extends Command
                 sleep(2);
             }
         }
-        $this->record($done, $found, $error);
-        $this->info("checked {$done}, found {$found}".($error ? " ({$error})" : ''));
+        [$bDone, $bFound] = CoverSettings::on('covers_library') ? $this->books($library, $limit, $error === null) : [0, 0];
+        $this->record($done, $found, $error, $bDone, $bFound);
+        $this->info("checked {$done}, found {$found}; shelf books checked {$bDone}, found {$bFound}".($error ? " ({$error})" : ''));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * The books on the shelves without a cover: the matching PDF in the drive first (offline
+     * too), then online while the internet answers. @return array{0: int, 1: int}
+     */
+    private function books(LibraryCovers $library, int $limit, bool $online): array
+    {
+        $done = 0;
+        $found = 0;
+        foreach (self::bookCandidates()->limit($limit)->get() as $book) {
+            if (! $this->option('force') && ! CoverSettings::inWindow()) {
+                break;
+            }
+            try {
+                if ($hit = $library->localFor($book)) {
+                    $library->apply($book, $hit[1], 'drive');
+                    $found++;
+                    $done++;
+                    $this->line("book #{$book->id} {$book->title}: drive → #{$hit[0]->id}");
+
+                    continue;
+                }
+                if (! $online) {
+                    continue; // looked at again when the internet is back
+                }
+                $hit = $library->onlineFor($book);
+                if ($hit) {
+                    $library->apply($book, $hit[0], $hit[1]);
+                    $found++;
+                    $this->line("book #{$book->id} {$book->title}: {$hit[1]}");
+                } else {
+                    $book->forceFill(['cover_status' => 'none', 'cover_checked_at' => now()])->save();
+                }
+                $done++;
+            } catch (Throwable $e) {
+                if (CoverFinder::offline($e)) {
+                    $online = false;
+
+                    continue;
+                }
+                $book->forceFill(['cover_status' => 'error', 'cover_checked_at' => now()])->save();
+                $done++;
+            }
+            if ($online && ! app()->runningUnitTests()) {
+                sleep(2);
+            }
+        }
+
+        return [$done, $found];
+    }
+
+    /** Shelf books with no cover, never looked at first; the not-found ones again after a while. */
+    public static function bookCandidates(): Builder
+    {
+        $retry = now()->subDays(max(1, CoverSettings::int('covers_retry_days')));
+
+        return Book::query()->whereNull('cover_path')
+            ->where(fn (Builder $q) => $q->whereNull('cover_status')
+                ->orWhere(fn (Builder $w) => $w->whereIn('cover_status', ['none', 'error'])->where('cover_checked_at', '<', $retry)))
+            ->orderByRaw('cover_status is not null')
+            ->orderBy('id');
     }
 
     /** Books never looked at, then those not found a while ago (the services keep growing). */
@@ -100,8 +165,9 @@ class CoversRun extends Command
             ->orderByDesc('id');
     }
 
-    private function record(int $done, int $found, ?string $error): void
+    private function record(int $done, int $found, ?string $error, int $bDone = 0, int $bFound = 0): void
     {
-        Setting::set('covers_last_run', json_encode(['at' => now()->toIso8601String(), 'checked' => $done, 'found' => $found, 'error' => $error], JSON_UNESCAPED_UNICODE));
+        Setting::set('covers_last_run', json_encode(['at' => now()->toIso8601String(), 'checked' => $done, 'found' => $found,
+            'books_checked' => $bDone, 'books_found' => $bFound, 'error' => $error], JSON_UNESCAPED_UNICODE));
     }
 }

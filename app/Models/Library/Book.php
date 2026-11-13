@@ -21,7 +21,7 @@ class Book extends Model
 
     protected function casts(): array
     {
-        return ['reference_only' => 'boolean', 'pages' => 'integer'];
+        return ['reference_only' => 'boolean', 'pages' => 'integer', 'cover_checked_at' => 'datetime'];
     }
 
     public function section(): BelongsTo

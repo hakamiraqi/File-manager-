@@ -16,7 +16,7 @@ import {
 
 const { t } = useTrans();
 const props = defineProps({
-    settings: Object, googleKeySet: Boolean, counts: Object, state: Object, files: Object, filter: String, q: String,
+    settings: Object, googleKeySet: Boolean, counts: Object, books: Object, state: Object, files: Object, filter: String, q: String,
 });
 const DAYS = [
     [6, t('ocr.day_sat', 'السبت')], [0, t('ocr.day_sun', 'الأحد')], [1, t('ocr.day_mon', 'الاثنين')], [2, t('ocr.day_tue', 'الثلاثاء')], [3, t('ocr.day_wed', 'الأربعاء')], [4, t('ocr.day_thu', 'الخميس')], [5, t('ocr.day_fri', 'الجمعة')],
@@ -31,6 +31,7 @@ const form = useForm({
     covers_min_pages: Number(props.settings.covers_min_pages),
     covers_retry_days: Number(props.settings.covers_retry_days),
     covers_title_search: props.settings.covers_title_search === '1',
+    covers_library: props.settings.covers_library === '1',
     covers_openlibrary: props.settings.covers_openlibrary === '1',
     covers_google: props.settings.covers_google === '1',
     covers_kinds: props.settings.covers_kinds.split(',').filter(Boolean),
@@ -110,9 +111,13 @@ const SOURCE = { openlibrary: 'Open Library', google: 'Google Books', upload: t(
                             <template v-if="last"> {{ t('covers.last', 'آخر تشغيل :when: فُحص :n ووُجد :f غلاف.', { when: ago(last.at), n: last.checked, f: last.found }) }}</template>
                         </p>
                         <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('covers.due', 'بانتظار البحث: :n ملف.', { n: counts.due }) }}</p>
+                        <p v-if="books" class="text-sm text-gray-500 dark:text-gray-400">
+                            {{ t('covers.books_line', 'كتب الرفوف: لها غلاف :with، بلا غلاف :without، بانتظار البحث :due.', { with: books.with, without: books.without, due: books.due }) }}
+                            <template v-if="last && last.books_checked != null"> {{ t('covers.books_last', 'آخر تشغيل وجد :f غلافاً لكتب الرفوف.', { f: last.books_found }) }}</template>
+                        </p>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <button type="button" :disabled="!counts.due" class="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-600)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-700)] disabled:opacity-40" @click="post('admin.covers.run')">
+                        <button type="button" :disabled="!counts.due && !books?.due" class="inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent-600)] px-3 py-2 text-sm font-semibold text-white hover:bg-[var(--accent-700)] disabled:opacity-40" @click="post('admin.covers.run')">
                             <BoltIcon class="h-4 w-4" /> {{ t('covers.run_now', 'ابحث الآن') }}
                         </button>
                         <button type="button" class="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100" @click="post('admin.covers.retry')">
@@ -171,6 +176,7 @@ const SOURCE = { openlibrary: 'Open Library', google: 'Google Books', upload: t(
                 </SettingsSection>
 
                 <SettingsSection :icon="AdjustmentsHorizontalIcon" :title="t('covers.rules_title', 'ما يُبحث عن غلافه')" tone="amber">
+                    <SettingToggle v-model="form.covers_library" :description="t('covers.library_desc', 'الكتب الورقية في الفهرس: تأخذ أولاً صورة ملف PDF المطابق لها في المكتبة الرقمية (برقم ISBN أو العنوان، ويعمل بدون إنترنت)، ثم يُبحث عن غلافها على الإنترنت.')">{{ t('covers.library', 'أغلفة كتب الرفوف أيضاً') }}</SettingToggle>
                     <SettingToggle v-model="form.covers_title_search" :description="t('covers.title_desc', 'عند عدم وجود ISBN: يبحث باسم الملف، ويقبل الغلاف فقط إذا تطابق العنوان تطابقاً واضحاً.')">{{ t('covers.title_search', 'البحث باسم الملف') }}</SettingToggle>
                     <p class="mt-4 text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('covers.kinds', 'أنواع الملفات') }}</p>
                     <div class="mt-2 flex flex-wrap gap-2">
