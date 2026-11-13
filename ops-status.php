@@ -26,10 +26,3 @@ echo 'PENDING SIZE MB: '.round($q()->where('ocr_status', 'pending')->sum('size')
 echo 'DONE DETAIL: '.json_encode($q()->where('ocr_status', 'done')->orderByDesc('ocr_done_at')->limit(5)->get(['id', 'size', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error'])->map->only(['id', 'extension', 'ocr_pages', 'ocr_seconds', 'ocr_error']))."\n";
 echo 'DONE ALL: '.$q()->where('ocr_status', 'done')->count().' FAILED: '.$q()->where('ocr_status', 'failed')->count()."
 ";
-
-echo "LAST: ".App\Models\Setting::where('key','covers_last_run')->value('value')."\n";
-echo "BY STATUS: ".json_encode(App\Models\File::query()->selectRaw('coalesce(cover_status,\'-\') s, count(*) c')->groupBy('s')->pluck('c','s'))."\n";
-echo "ELIGIBLE LEFT: ".App\Models\File::whereIn('extension',['pdf','epub'])->whereNull('cover_status')->count()."\n";
-foreach (App\Models\File::whereIn('cover_status',['found','manual'])->where('cover_checked_at','>','2026-11-12 18:13:00')->orderBy('cover_checked_at')->get() as $f) {
-  echo "COVER #{$f->id} | {$f->name} | ".($f->cover_isbn?:'title')."\n";
-}
