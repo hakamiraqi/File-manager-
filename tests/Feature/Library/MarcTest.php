@@ -21,12 +21,12 @@ class MarcTest extends TestCase
     use RefreshDatabase;
 
     /** A Koha-style MARC21 record with two items. */
-    private function kohaRecord(string $control = 'KOHA-1', string $title = 'جراحة الفم والفكين', array $barcodes = ['B001', 'B002']): MarcRecord
+    private function kohaRecord(string $control = 'KOHA-1', string $title = 'جراحة الفم والفكين', array $barcodes = ['B001', 'B002'], string $isbn = '978-0-323-41492-0'): MarcRecord
     {
         $r = new MarcRecord;
         $r->addControl('001', $control);
         $r->addControl('008', '180101s2018    iq            000 0 ara d');
-        $r->addField('020', ' ', ' ', [['a', '978-0-323-41492-0 (hardback)']]);
+        $r->addField('020', ' ', ' ', [['a', $isbn.' (hardback)']]);
         $r->addField('100', '1', ' ', [['a', 'أحمد، علي،']]);
         $r->addField('245', '1', '0', [['a', $title.' :'], ['b', 'دليل عملي /'], ['c', 'علي أحمد.']]);
         $r->addField('264', ' ', '1', [['a', 'بغداد :'], ['b', 'دار المعرفة،'], ['c', '2018.']]);
@@ -105,7 +105,7 @@ class MarcTest extends TestCase
     public function test_a_koha_export_is_imported_with_its_items_once(): void
     {
         $librarian = $this->librarian();
-        $file = MarcWriter::iso($this->kohaRecord()).MarcWriter::iso($this->kohaRecord('KOHA-2', 'Oral Pathology', ['B003']));
+        $file = MarcWriter::iso($this->kohaRecord()).MarcWriter::iso($this->kohaRecord('KOHA-2', 'Oral Pathology', ['B003'], '9780132350884'));
         $upload = fn () => UploadedFile::fake()->createWithContent('koha.mrc', $file);
 
         $this->actingAs($librarian)->post(route('library.manage.import.marc'), ['file' => $upload()])
