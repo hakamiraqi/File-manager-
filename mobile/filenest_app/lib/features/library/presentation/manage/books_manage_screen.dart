@@ -1,8 +1,8 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/widgets/empty_state.dart';
+import '../../../../core/scan/cover_scanner_screen.dart';
 import '../../../../core/widgets/ui_kit.dart';
 import '../../data/library_manage_api.dart';
 import '../library_widgets.dart';
@@ -186,13 +186,19 @@ class _BookEditScreenState extends State<BookEditScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// The picture goes through the scanner: edges, straightening, light, and the cover's text.
   Future<void> _pickCover() async {
-    final r = await FilePicker.platform.pickFiles(type: FileType.image);
-    final path = r?.files.single.path;
-    if (path != null) setState(() {
-      _cover = path;
+    final r = await scanCover(context, readText: LibraryManageApi.instance.coverText);
+    if (r == null || !mounted) return;
+    setState(() {
+      _cover = r.path;
       _removeCover = false;
+      for (final f in ['title', 'authors', 'publisher']) {
+        if (r.fields[f] != null) _c[f]!.text = r.fields[f]!;
+      }
+      if (r.fields['isbn'] != null && _c['isbn']!.text.trim().isEmpty) _c['isbn']!.text = r.fields['isbn']!;
     });
+    if (r.fields.isNotEmpty) context.toast(context.l('مُلئت حقول من نص الغلاف، راجعها.', 'Fields were filled from the cover; check them.'));
   }
 
   Future<void> _save() async {

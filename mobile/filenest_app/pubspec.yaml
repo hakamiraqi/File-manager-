@@ -35,6 +35,8 @@ dependencies:
   # «أدوات PDF على الجهاز»: merge, organise, split, rotate and images to PDF without internet (PDFium).
   pdfrx: ^2.4.6
   image: ^4.2.0
+  # The cover scanner takes a photo with the phone's camera (Android, iPhone).
+  image_picker: ^1.1.2
   # Reading a PDF aloud in the app's reader, with the device's own voices (works offline).
   flutter_tts: ^4.2.0
 

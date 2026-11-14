@@ -22,7 +22,7 @@ class OfficeEditorTest extends TestCase
         parent::setUp();
         Storage::fake(config('filenest.disk'));
         Storage::fake('local');
-        config(['services.onlyoffice.secret' => 'test-secret-123', 'services.onlyoffice.app_internal_url' => 'http://filenest-web']);
+        config(['services.onlyoffice.secret' => 'test-secret-123', 'services.onlyoffice.app_internal_url' => 'http://filenest-web', 'services.onlyoffice.internal_url' => 'http://onlyoffice']);
     }
 
     private function doc(User $owner, ?Folder $folder = null, string $ext = 'docx'): File

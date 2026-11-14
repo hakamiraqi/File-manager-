@@ -53,7 +53,8 @@ done
 compose restart queue scheduler >/dev/null
 
 # The office editor runs on its own: a failure here is reported, never stops the deploy.
-compose --profile office up -d onlyoffice || echo "Office editor (ONLYOFFICE) did not start; the site works without it." >&2
+sudo docker rm -f filenest-onlyoffice >/dev/null 2>&1 || true   # the editor used before 2026-11-14
+compose --profile office up -d office || echo "Office editor did not start; the site works without it." >&2
 
 if [ "$first_run" = yes ] || [ ! -f "$HOME/filenest-admin-password.txt" ]; then
     pw="$(rand 16)"

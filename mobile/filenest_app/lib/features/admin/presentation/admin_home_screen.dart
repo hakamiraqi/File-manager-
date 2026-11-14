@@ -6,6 +6,7 @@ import '../../../core/widgets/ui_kit.dart';
 import '../../auth/state/auth_provider.dart';
 import 'activity_log_screen.dart';
 import 'analytics_screen.dart';
+import 'covers_screen.dart';
 import 'dashboard_screen.dart';
 import 'mail_screen.dart';
 import 'ocr_screen.dart';
@@ -77,6 +78,12 @@ class AdminHomeScreen extends StatelessWidget {
         icon: Icons.document_scanner_outlined,
         label: context.l('التعرف على النصوص', 'Text recognition'),
         builder: (_) => const OcrScreen(),
+        enabled: admin.settings,
+      ),
+      _AdminSection(
+        icon: Icons.auto_stories_outlined,
+        label: context.l('أغلفة الكتب', 'Book covers'),
+        builder: (_) => const CoversScreen(),
         enabled: admin.settings,
       ),
       _AdminSection(

@@ -77,7 +77,7 @@ jobs:
           mkdir -p /tmp/pdfium && tar -xzf /tmp/pdfium.tgz -C /tmp/pdfium
           mkdir -p "$FLUTTER_ROOT/bin/cache/artifacts/engine/linux-x64/lib"
           cp /tmp/pdfium/lib/libpdfium.so "$FLUTTER_ROOT/bin/cache/artifacts/engine/linux-x64/lib/"
-      - run: flutter test test/local_pdf_tools_test.dart
+      - run: flutter test test/local_pdf_tools_test.dart test/docscan_test.dart
       - run: flutter build apk --release $BUILD_FLAGS --dart-define=API_BASE_URL=$API_BASE_URL
       - run: cp build/app/outputs/flutter-apk/app-release.apk ../../FileNest-android.apk
       - name: Check the APK installs (signature and package)

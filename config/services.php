@@ -24,7 +24,7 @@ return [
         'magick' => env('OCR_MAGICK'),
     ],
 
-    // The office editor (ONLYOFFICE Docs). Off while no secret is set.
+    // The office editor (Euro-Office Document Server; the keys keep their first name). Off while no secret is set.
     // Ghostscript for «ضغط PDF» (found on PATH or next to the offline app when not set).
     'pdf' => ['gs' => env('PDF_GHOSTSCRIPT')],
 
@@ -38,7 +38,7 @@ return [
         // How the editor reaches this site for the file and the save callback, and how this
         // site reaches the editor to fetch the saved file (container names on the server).
         'app_internal_url' => env('ONLYOFFICE_APP_INTERNAL_URL', 'http://filenest-web'),
-        'internal_url' => env('ONLYOFFICE_INTERNAL_URL', 'http://onlyoffice'),
+        'internal_url' => env('ONLYOFFICE_INTERNAL_URL', 'http://office-editor'),
     ],
 
 
