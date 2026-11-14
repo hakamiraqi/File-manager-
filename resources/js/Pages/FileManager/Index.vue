@@ -100,7 +100,7 @@ function makeFolderInfoForm(folder) {
     });
 }
 
-// The office editor (ONLYOFFICE on the server): open Word/Excel/PowerPoint/PDF files to edit, and new documents.
+// The office editor (on the server): open Word/Excel/PowerPoint/PDF files to edit, and new documents.
 const officeEditor = computed(() => !!page.props.appSettings?.officeEditor);
 const OFFICE_EXT = ['docx', 'odt', 'rtf', 'txt', 'doc', 'docm', 'dotx', 'xlsx', 'ods', 'csv', 'xls', 'xlsm', 'pptx', 'odp', 'ppt', 'ppsx', 'pdf'];
 const isOfficeFile = (f) => officeEditor.value && OFFICE_EXT.includes((f.extension || f.name?.split('.').pop() || '').toLowerCase());

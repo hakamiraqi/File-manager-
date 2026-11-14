@@ -1,5 +1,5 @@
 <script setup>
-// The office editor (ONLYOFFICE Docs): Word, Excel, PowerPoint and PDF, full screen.
+// The office editor (Euro-Office Document Server, under the site's own name): Word, Excel, PowerPoint and PDF, full screen.
 // Saving is automatic: the editor sends the file back when everyone closes it, and
 // «حفظ الآن» (force save) inside it saves a copy straight away.
 import { onBeforeUnmount, onMounted, ref } from 'vue';

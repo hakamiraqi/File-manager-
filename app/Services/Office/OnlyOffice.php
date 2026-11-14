@@ -101,6 +101,9 @@ class OnlyOffice
                     'hideRightMenu' => false,
                     'uiTheme' => 'theme-system',
                     'feedback' => false,
+                    // No links to the editor's own project in the menus: the editor is the site's.
+                    'suggestFeature' => false,
+                    'about' => false,
                     'help' => false,
                     'plugins' => false,
                     'goback' => false,
