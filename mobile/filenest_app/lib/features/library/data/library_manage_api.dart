@@ -53,6 +53,25 @@ class LibraryManageApi {
   Future<String> deleteCopy(int id) => _send('DELETE', '/copies/$id');
   Future<String> importBooks(String path) async => _send('POST', '/import', FormData.fromMap({'file': await MultipartFile.fromFile(path)}));
 
+  /// Copy cataloguing: the world catalogues (SRU / Z39.50) set up on the website.
+  /// {results: [{server, book: {title, authors, …}, marc_xml}], errors: [server names]}
+  Future<Json> catalogSearch({String? isbn, String? title, String? author}) async {
+    final r = await _dio.get('$_base/catalog-search',
+        queryParameters: {'isbn': isbn, 'title': title, 'author': author}..removeWhere((_, v) => v == null || v == ''),
+        options: Options(receiveTimeout: const Duration(seconds: 45)));
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
+  /// A MARC file from Koha or any library system (.mrc or MARCXML); [update] refreshes books already here.
+  Future<String> importMarc(String path, {bool update = false}) async => _send(
+      'POST', '/import/marc', FormData.fromMap({'file': await MultipartFile.fromFile(path), 'existing': update ? 'update' : 'skip'}));
+
+  /// The whole catalogue as MARC21 for Koha, saved to [target].
+  Future<void> exportMarc(String target, {String format = 'mrc'}) async {
+    await _dio.download('$_base/export/marc', target,
+        queryParameters: {'format': format}, options: Options(receiveTimeout: const Duration(minutes: 5)));
+  }
+
   // Sections
   Future<List<Json>> sections() async => ((await _get('/sections'))['sections'] as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
   Future<String> saveSection(Json data, {int? id, String? cover, bool removeCover = false}) async {
