@@ -15,7 +15,7 @@ class Hold extends Model
 
     protected $table = 'library_holds';
 
-    protected $fillable = ['book_id', 'member_id', 'copy_id', 'status', 'ready_at', 'expires_at'];
+    protected $fillable = ['book_id', 'member_id', 'copy_id', 'status', 'ready_at', 'expires_at', 'koha_hold_id'];
 
     protected function casts(): array
     {

@@ -21,7 +21,7 @@ class BookCopy extends Model
         'condition' => 'good',
     ];
 
-    protected $fillable = ['book_id', 'barcode', 'rfid_tag', 'shelf', 'status', 'condition', 'notes'];
+    protected $fillable = ['book_id', 'barcode', 'rfid_tag', 'shelf', 'status', 'condition', 'notes', 'koha_item_id'];
 
     protected static function booted(): void
     {
@@ -30,12 +30,21 @@ class BookCopy extends Model
             if (str_starts_with($copy->barcode, 'tmp-')) {
                 $copy->forceFill(['barcode' => sprintf('LIB%06d', $copy->id)])->saveQuietly();
             }
+            if (! $copy->koha_item_id && $copy->book) {
+                \App\Jobs\KohaPushBook::afterSave($copy->book); // the new copy goes to Koha too
+            }
         });
     }
 
     public static function newBarcodePlaceholder(): string
     {
         return 'tmp-'.\Illuminate\Support\Str::uuid();
+    }
+
+    /** The loan this copy is out on, if any. */
+    public function openLoan(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Loan::class, 'copy_id')->whereNull('returned_at');
     }
 
     public function book(): BelongsTo

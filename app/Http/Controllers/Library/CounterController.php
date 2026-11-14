@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Library\BookCopy;
 use App\Models\Library\LibraryMember;
 use App\Models\User;
+use App\Services\Library\Koha\KohaSync;
 use App\Services\Library\LoanService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,6 +38,8 @@ class CounterController extends Controller
         $code = trim($data['code']);
 
         if ($member = LibraryMember::where('card_number', $code)->first()) {
+            KohaSync::quietly(fn (KohaSync $sync) => $sync->member($member));
+
             return response()->json(['kind' => 'member', 'member' => $this->summary($member)]);
         }
 
@@ -44,6 +47,11 @@ class CounterController extends Controller
         if (! $copy) {
             return response()->json(['message' => "الرمز \"{$code}\" غير معروف (لا نسخة ولا بطاقة قارئ)."], 422);
         }
+        // Lent or returned in Koha's own pages since the last sync? Ask before deciding.
+        KohaSync::quietly(function (KohaSync $sync) use ($copy) {
+            $sync->copy($copy->loadMissing('book'));
+            $copy->refresh();
+        });
 
         if ($copy->status === BookCopy::LOANED) {
             $loan = $this->loans->receive($copy, $request->user(), $data['condition'] ?? 'good');
@@ -98,6 +106,7 @@ class CounterController extends Controller
         $member = ! empty($data['member_id'])
             ? LibraryMember::findOrFail($data['member_id'])
             : LibraryMember::forUser(User::findOrFail($data['user_id']));
+        KohaSync::quietly(fn (KohaSync $sync) => $sync->member($member));
 
         return response()->json(['member' => $this->summary($member)]);
     }

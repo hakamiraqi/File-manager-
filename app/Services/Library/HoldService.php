@@ -2,12 +2,15 @@
 
 namespace App\Services\Library;
 
-use App\Services\Notify;
 use App\Models\ActivityLog;
 use App\Models\Library\Book;
 use App\Models\Library\BookCopy;
 use App\Models\Library\Hold;
 use App\Models\Library\LibraryMember;
+use App\Services\Library\Koha\KohaBridge;
+use App\Services\Library\Koha\KohaClient;
+use App\Services\Library\Koha\KohaSettings;
+use App\Services\Notify;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -22,6 +25,10 @@ class HoldService
 
     public function place(LibraryMember $member, Book $book): Hold
     {
+        if (KohaSettings::enabled()) {
+            return $this->placeInKoha($member, $book);
+        }
+
         return DB::transaction(function () use ($member, $book) {
             $fail = fn (string $m) => throw ValidationException::withMessages(['code' => $m]);
             $book->reference_only && $fail('هذا الكتاب للقراءة داخل المكتبة فقط.');
@@ -45,8 +52,40 @@ class HoldService
         });
     }
 
+    /** «الخيار ب»: Koha takes the hold (its queue, its rules); it is mirrored here. */
+    protected function placeInKoha(LibraryMember $member, Book $book): Hold
+    {
+        $fail = fn (string $m) => throw ValidationException::withMessages(['code' => $m]);
+        ! $member->active && $fail('حساب القارئ موقوف.');
+        Hold::open()->where('book_id', $book->id)->where('member_id', $member->id)->exists() && $fail('لديك حجز على هذا الكتاب بالفعل.');
+        $h = app(KohaBridge::class)->placeHold($member, $book);
+        $ready = ($h['status'] ?? null) === 'W';
+        $hold = Hold::create([
+            'book_id' => $book->id,
+            'member_id' => $member->id,
+            'status' => $ready ? Hold::READY : Hold::WAITING,
+            'ready_at' => $ready ? now() : null,
+            'expires_at' => $ready && ! empty($h['expiration_date']) ? KohaClient::date($h['expiration_date']) : null,
+            'koha_hold_id' => $h['hold_id'] ?? null,
+        ]);
+        ActivityLog::record('library.hold', "{$member->name} حجز \"{$book->title}\" (Koha)");
+        Notify::to(Notify::libraryStaff(), 'library', 'hold_placed', "حجز جديد: «{$book->title}»",
+            "القارئ: {$member->name} — سُجّل الحجز في Koha.", route('library.manage.counter', [], false), $member->user);
+
+        return $hold;
+    }
+
     public function cancel(Hold $hold): void
     {
+        if (KohaSettings::enabled()) {
+            app(KohaBridge::class)->cancelHold($hold);
+            $hold->update(['status' => Hold::CANCELLED]);
+            if ($hold->copy?->status === BookCopy::ON_HOLD) {
+                $hold->copy->update(['status' => BookCopy::AVAILABLE]); // Koha passes it on; the next sync shows to whom
+            }
+
+            return;
+        }
         DB::transaction(function () use ($hold) {
             $copy = $hold->status === Hold::READY ? $hold->copy : null;
             $hold->update(['status' => Hold::CANCELLED]);
@@ -72,6 +111,9 @@ class HoldService
     /** Ready holds whose time ran out pass the copy to the next reader. */
     public function expireOverdue(): int
     {
+        if (KohaSettings::enabled()) {
+            return 0; // Koha expires its own holds
+        }
         $count = 0;
         Hold::where('status', Hold::READY)->where('expires_at', '<', now())->with('copy', 'member', 'book')->each(function (Hold $hold) use (&$count) {
             $hold->update(['status' => Hold::EXPIRED]);

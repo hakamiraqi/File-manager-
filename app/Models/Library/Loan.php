@@ -13,7 +13,7 @@ class Loan extends Model
 
     protected $fillable = [
         'copy_id', 'member_id', 'issued_by', 'received_by', 'issued_at', 'due_at', 'returned_at', 'renewals',
-        'fine_amount', 'fine_paid_at', 'fine_waived', 'return_condition', 'last_reminder_at',
+        'fine_amount', 'fine_paid_at', 'fine_waived', 'return_condition', 'last_reminder_at', 'koha_checkout_id',
     ];
 
     protected $appends = ['is_overdue', 'days_overdue'];
@@ -69,6 +69,10 @@ class Loan extends Model
     {
         if ($this->returned_at) {
             return $this->fine_waived || $this->fine_paid_at ? 0 : (int) $this->fine_amount;
+        }
+
+        if (\App\Services\Library\Koha\KohaSettings::enabled()) {
+            return 0; // Koha keeps the fines
         }
 
         return $this->days_overdue * app(LibraryRules::class)->for($this->member?->type ?? 'student')['fine_per_day'];

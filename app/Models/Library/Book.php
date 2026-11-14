@@ -15,7 +15,7 @@ class Book extends Model
     protected $fillable = [
         'section_id', 'title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language',
         'edition', 'pages', 'description', 'cover_path', 'file_id', 'reference_only', 'created_by',
-        'call_number', 'subjects', 'marc_control', 'marc_xml',
+        'call_number', 'subjects', 'marc_control', 'marc_xml', 'koha_biblio_id',
     ];
 
     /** The full MARC record is for export only, never sent to pages or the app. */
@@ -26,6 +26,20 @@ class Book extends Model
     protected function casts(): array
     {
         return ['reference_only' => 'boolean', 'pages' => 'integer', 'cover_checked_at' => 'datetime'];
+    }
+
+    /** What a catalogue record is made of: a change here is sent to Koha when Koha runs the library. */
+    public const CATALOGUE_FIELDS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'description', 'call_number', 'subjects', 'marc_xml'];
+
+    protected static function booted(): void
+    {
+        static::saved(function (self $book) {
+            if ($book->wasRecentlyCreated) {
+                \App\Jobs\KohaPushBook::afterSave($book);
+            } elseif ($book->koha_biblio_id && $book->wasChanged(self::CATALOGUE_FIELDS)) {
+                \App\Jobs\KohaPushBook::afterSave($book, true);
+            }
+        });
     }
 
     public function section(): BelongsTo
