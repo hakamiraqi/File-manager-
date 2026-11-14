@@ -89,6 +89,20 @@ class BookController extends Controller
         return $found ? response()->json($found) : response()->json(['message' => 'لم يُعثر على بيانات لهذا الرقم (أو لا يوجد إنترنت).'], 404);
     }
 
+    /** The text printed on a photographed cover: its lines, the likely title and an ISBN if one shows. */
+    public function coverText(Request $request, \App\Services\Library\CoverText $reader): JsonResponse
+    {
+        $request->validate(['image' => ['required', 'image', 'max:8192']]);
+        if (! $reader->available()) {
+            return response()->json(['message' => 'برنامج التعرف على النصوص غير مثبت على الخادم.'], 422);
+        }
+        try {
+            return response()->json($reader->read($request->file('image')->getRealPath()));
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e instanceof \RuntimeException ? $e->getMessage() : 'تعذّر استخراج النص من الصورة.'], 422);
+        }
+    }
+
     public function addCopies(Request $request, Book $book): RedirectResponse
     {
         $data = $request->validate([
