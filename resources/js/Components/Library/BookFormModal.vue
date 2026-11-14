@@ -8,6 +8,7 @@ import InputError from '@/Components/InputError.vue';
 import PrimaryButton from '@/Components/PrimaryButton.vue';
 import SecondaryButton from '@/Components/SecondaryButton.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
+import CoverScanner from '@/Components/Library/CoverScanner.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { CameraIcon, PhotoIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
 
@@ -22,6 +23,9 @@ const blank = {
 const form = useForm({ ...blank });
 const preview = ref(null);
 const lookup = ref({ busy: false, error: '' });
+// A picked photo goes through the scanner first: edges, straightening, light, text.
+const scan = ref({ show: false, file: null });
+const scanned = ref([]); // the fields the cover's text filled in
 
 watch(() => props.show, (show) => {
     if (!show) return;
@@ -29,6 +33,8 @@ watch(() => props.show, (show) => {
     form.defaults({ ...blank });
     form.reset();
     lookup.value = { busy: false, error: '' };
+    scan.value = { show: false, file: null };
+    scanned.value = [];
     if (props.book) {
         Object.keys(blank).forEach((k) => { if (k in props.book && props.book[k] !== null) form[k] = props.book[k]; });
         form.copies = null;
@@ -43,11 +49,29 @@ const previewBook = computed(() => ({ title: form.title, cover_url: preview.valu
 
 function pickCover(e) {
     const file = e.target.files?.[0];
+    e.target.value = ''; // the same photo can be picked again
     if (!file) return;
+    scan.value = { show: true, file };
+}
+
+function coverScanned({ file, fields }) {
+    scan.value = { show: false, file: null };
     form.cover = file;
     form.cover_url = '';
     form.remove_cover = false;
     preview.value = URL.createObjectURL(file);
+    // What the librarian picked from the cover's text; an ISBN only fills an empty field.
+    scanned.value = [];
+    ['title', 'authors', 'publisher'].forEach((k) => {
+        if (fields[k]) {
+            form[k] = fields[k];
+            scanned.value.push(k);
+        }
+    });
+    if (fields.isbn && !form.isbn) {
+        form.isbn = fields.isbn;
+        scanned.value.push('isbn');
+    }
 }
 
 function removeCover() {
@@ -102,6 +126,7 @@ function submit() {
                         </label>
                     </div>
                     <button v-if="preview" type="button" class="text-xs text-red-600 hover:underline" @click="removeCover">{{ t('library.remove_cover', 'إزالة الغلاف') }}</button>
+                    <p v-if="scanned.length" class="text-center text-[11px] text-emerald-600 dark:text-emerald-400">{{ t('scan.filled', 'مُلئت حقول من نص الغلاف، راجعها.') }}</p>
                     <InputError :message="form.errors.cover" />
                 </div>
 
@@ -181,5 +206,6 @@ function submit() {
                 <PrimaryButton :disabled="form.processing">{{ t('action.save', 'حفظ') }}</PrimaryButton>
             </div>
         </form>
+        <CoverScanner :show="scan.show" :file="scan.file" @close="scan = { show: false, file: null }" @done="coverScanned" />
     </Modal>
 </template>

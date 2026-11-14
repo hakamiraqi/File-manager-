@@ -42,6 +42,7 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::put('/books/{book}', [BookController::class, 'update'])->name('books.update');
         Route::delete('/books/{book}', [BookController::class, 'destroy'])->name('books.destroy');
         Route::get('/isbn/{isbn}', [BookController::class, 'isbn'])->name('isbn');
+        Route::post('/cover-text', [BookController::class, 'coverText'])->middleware('throttle:30,1')->name('cover-text');
         Route::post('/books/{book}/copies', [BookController::class, 'addCopies'])->name('copies.store');
         Route::put('/copies/{copy}', [BookController::class, 'updateCopy'])->name('copies.update');
         Route::delete('/copies/{copy}', [BookController::class, 'destroyCopy'])->name('copies.destroy');
