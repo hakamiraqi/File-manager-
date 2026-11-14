@@ -1,4 +1,6 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme/app_colors.dart';
@@ -47,6 +49,48 @@ class LibraryManageScreen extends StatelessWidget {
     }
   }
 
+  /// A MARC file from Koha or another library system; asks whether books already here are refreshed.
+  Future<void> _importMarc(BuildContext context) async {
+    final picked = await FilePicker.platform.pickFiles(type: FileType.any);
+    final path = picked?.files.single.path;
+    if (path == null || !context.mounted) return;
+    final update = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(context.l('الكتب الموجودة مسبقاً', 'Books already here')),
+        content: Text(context.l(
+          'إذا كان الكتاب في المكتبة (نفس رقم السجل أو ISBN): هل تُحدَّث بياناته من الملف؟ النسخ الجديدة تُضاف في الحالتين.',
+          'When a book is already here (same record id or ISBN), update it from the file? New copies are added either way.',
+        )),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: Text(context.l('تبقى كما هي', 'Keep'))),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(context.l('تُحدَّث', 'Update'))),
+        ],
+      ),
+    );
+    if (update == null || !context.mounted) return;
+    context.toast(context.l('جارٍ الاستيراد…', 'Importing…'));
+    try {
+      final msg = await LibraryManageApi.instance.importMarc(path, update: update);
+      if (context.mounted) context.toast(msg);
+    } catch (e) {
+      if (context.mounted) context.toastError(e);
+    }
+  }
+
+  Future<void> _exportMarc(BuildContext context) async {
+    context.toast(context.l('جارٍ تجهيز ملف MARC…', 'Preparing the MARC file…'));
+    try {
+      final dir = await getTemporaryDirectory();
+      final day = DateTime.now().toIso8601String().substring(0, 10);
+      final target = '${dir.path}/library-$day.mrc';
+      await LibraryManageApi.instance.exportMarc(target);
+      await Share.shareXFiles([XFile(target)]);
+    } catch (e) {
+      if (context.mounted) context.toastError(e);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -80,6 +124,20 @@ class LibraryManageScreen extends StatelessWidget {
             label: context.l('استيراد كتب من Excel', 'Import books from Excel'),
             subtitle: context.l('أعمدة: العنوان، المؤلف، ISBN، القسم، النسخ…', 'Columns: title, author, ISBN, section, copies…'),
             onTap: () => _import(context, members: false),
+          ),
+          NavRow(
+            icon: Icons.move_to_inbox_outlined,
+            color: const Color(0xFF5C6BC0),
+            label: context.l('استيراد MARC (Koha)', 'Import MARC (Koha)'),
+            subtitle: context.l('ملف .mrc أو MARCXML مع نسخه وباركوداتها', '.mrc or MARCXML, with its copies and barcodes'),
+            onTap: () => _importMarc(context),
+          ),
+          NavRow(
+            icon: Icons.ios_share_rounded,
+            color: const Color(0xFF6D4C41),
+            label: context.l('تصدير الفهرس MARC', 'Export catalogue as MARC'),
+            subtitle: context.l('MARC21 تستورده Koha أو أي نظام مكتبات', 'MARC21 for Koha or any library system'),
+            onTap: () => _exportMarc(context),
           ),
         ]),
         GroupCard(title: context.l('القرّاء', 'Readers'), children: [

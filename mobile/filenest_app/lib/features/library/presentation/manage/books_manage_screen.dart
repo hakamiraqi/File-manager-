@@ -140,7 +140,7 @@ class BookEditScreen extends StatefulWidget {
 }
 
 class _BookEditScreenState extends State<BookEditScreen> {
-  static const _fields = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'description'];
+  static const _fields = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'call_number', 'subjects', 'description'];
 
   late final Map<String, TextEditingController> _c = {
     for (final f in _fields) f: TextEditingController(text: widget.book?[f]?.toString() ?? ''),
@@ -151,6 +151,7 @@ class _BookEditScreenState extends State<BookEditScreen> {
   late bool _referenceOnly = widget.book?['reference_only'] == true;
   late List<Json> _copies = ((widget.book?['copies'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
   String? _cover;
+  String? _marcXml; // the record picked from a world catalogue, kept with the book
   String? _coverUrl;
   bool _removeCover = false;
   bool _busy = false;
@@ -186,6 +187,32 @@ class _BookEditScreenState extends State<BookEditScreen> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// Copy cataloguing: search the world catalogues by ISBN, or by title and author.
+  Future<void> _searchWorld() async {
+    final isbn = _c['isbn']!.text.trim();
+    final title = _c['title']!.text.trim();
+    if (isbn.isEmpty && title.isEmpty) {
+      context.toast(context.l('اكتب رقم ISBN أو العنوان أولاً.', 'Enter an ISBN or a title first.'), error: true);
+      return;
+    }
+    final picked = await showModalBottomSheet<Json>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _WorldCatalogueSheet(isbn: isbn, title: title, author: _c['authors']!.text.trim()),
+    );
+    if (picked == null || !mounted) return;
+    final b = Map<String, dynamic>.from(picked['book'] as Map);
+    setState(() {
+      for (final f in _fields) {
+        final v = b[f];
+        if (v != null && '$v'.isNotEmpty) _c[f]!.text = '$v';
+      }
+      _marcXml = picked['marc_xml'] as String?;
+    });
+    context.toast(context.l('عُبّئت البيانات من ${picked['server']}، راجعها ثم احفظ.', 'Filled in from ${picked['server']}; check and save.'));
+  }
+
   /// The picture goes through the scanner: edges, straightening, light, and the cover's text.
   Future<void> _pickCover() async {
     final r = await scanCover(context, readText: LibraryManageApi.instance.coverText);
@@ -214,6 +241,7 @@ class _BookEditScreenState extends State<BookEditScreen> {
         'reference_only': _referenceOnly,
         if (_coverUrl != null && _cover == null) 'cover_url': _coverUrl,
         if (_removeCover) 'remove_cover': true,
+        if (_marcXml != null) 'marc_xml': _marcXml,
         if (_isNew) 'copies': int.tryParse(_copiesCount.text.trim()) ?? 1,
         if (_isNew) 'shelf': _shelf.text.trim(),
       };
@@ -336,6 +364,14 @@ class _BookEditScreenState extends State<BookEditScreen> {
                   Expanded(child: _field('isbn', 'ISBN', 'ISBN', type: TextInputType.number)),
                   IconButton(tooltip: context.l('جلب البيانات', 'Look up'), icon: const Icon(Icons.travel_explore_rounded), onPressed: _busy ? null : _lookupIsbn),
                 ]),
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: TextButton.icon(
+                    onPressed: _busy ? null : _searchWorld,
+                    icon: const Icon(Icons.public_rounded, size: 18),
+                    label: Text(context.l('فهرسة منقولة', 'Copy cataloguing')),
+                  ),
+                ),
               ]),
             ),
           ]),
@@ -353,7 +389,7 @@ class _BookEditScreenState extends State<BookEditScreen> {
               ),
             ),
           _field('subtitle', 'العنوان الفرعي', 'Subtitle'),
-          _field('authors', 'المؤلفون', 'Authors'),
+          _field('authors', 'المؤلفون (افصل بـ ؛)', 'Authors (separate with ;)'),
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 6),
             child: SectionPicker(
@@ -375,6 +411,11 @@ class _BookEditScreenState extends State<BookEditScreen> {
             Expanded(child: _field('language', 'اللغة', 'Language')),
             const SizedBox(width: 10),
             SizedBox(width: 90, child: _field('pages', 'الصفحات', 'Pages', type: TextInputType.number)),
+          ]),
+          Row(children: [
+            SizedBox(width: 140, child: _field('call_number', 'رقم الاستدعاء', 'Call number')),
+            const SizedBox(width: 10),
+            Expanded(child: _field('subjects', 'الموضوعات (افصل بـ ؛)', 'Subjects (separate with ;)')),
           ]),
           _field('description', 'الوصف', 'Description', lines: 3),
           SwitchListTile(
@@ -573,6 +614,103 @@ class _CopySheetState extends State<_CopySheet> {
           ]),
         ]),
       ),
+    );
+  }
+}
+
+
+/// Results from the world catalogues; picking one returns it ({server, book, marc_xml}).
+class _WorldCatalogueSheet extends StatefulWidget {
+  const _WorldCatalogueSheet({required this.isbn, required this.title, required this.author});
+  final String isbn;
+  final String title;
+  final String author;
+
+  @override
+  State<_WorldCatalogueSheet> createState() => _WorldCatalogueSheetState();
+}
+
+class _WorldCatalogueSheetState extends State<_WorldCatalogueSheet> {
+  late Future<Json> _search = _run();
+
+  Future<Json> _run() => LibraryManageApi.instance.catalogSearch(
+        isbn: widget.isbn.isNotEmpty ? widget.isbn : null,
+        title: widget.isbn.isEmpty ? widget.title : null,
+        author: widget.isbn.isEmpty ? widget.author : null,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final by = widget.isbn.isNotEmpty ? 'ISBN ${widget.isbn}' : widget.title;
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.8),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(context.l('الفهارس العالمية', 'World catalogues'), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+              Text(by, style: TextStyle(color: Theme.of(context).hintColor), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ]),
+          ),
+          Flexible(
+            child: FutureBuilder<Json>(
+              future: _search,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 12),
+                      Text(context.l('يبحث في مكتبة الكونغرس والفهارس الأخرى…', 'Searching the Library of Congress and others…')),
+                    ]),
+                  );
+                }
+                if (snap.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text(context.l('تعذّر البحث.', 'The search failed.')),
+                      TextButton(onPressed: () => setState(() => _search = _run()), child: Text(context.l('إعادة المحاولة', 'Retry'))),
+                    ]),
+                  );
+                }
+                final results = ((snap.data!['results'] as List?) ?? []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                final errors = ((snap.data!['errors'] as List?) ?? []).join('، ');
+                return ListView(shrinkWrap: true, padding: const EdgeInsets.only(bottom: 16), children: [
+                  if (results.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(
+                        context.l('لا نتائج. جرّب العنوان والمؤلف بدل ISBN، أو أدخل البيانات يدوياً.', 'No results. Try title and author instead of the ISBN, or type the details.'),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  for (final r in results) _result(context, r),
+                  if (errors.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      child: Text(context.l('لم يستجب: $errors', 'Did not answer: $errors'), style: TextStyle(fontSize: 12, color: Theme.of(context).hintColor)),
+                    ),
+                ]);
+              },
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _result(BuildContext context, Json r) {
+    final b = Map<String, dynamic>.from(r['book'] as Map);
+    final line = [b['authors'], b['publisher'], b['year'], b['isbn']].where((v) => v != null && '$v'.isNotEmpty).join(' · ');
+    return ListTile(
+      leading: const Icon(Icons.library_books_outlined),
+      title: Text([b['title'], if ((b['subtitle'] ?? '').toString().isNotEmpty) b['subtitle']].join(': '), maxLines: 2, overflow: TextOverflow.ellipsis),
+      subtitle: Text([line, if ((b['call_number'] ?? '').toString().isNotEmpty) '${b['call_number']}', '${r['server']}'].where((v) => v.isNotEmpty).join('\n')),
+      isThreeLine: true,
+      onTap: () => Navigator.of(context).pop(r),
     );
   }
 }
