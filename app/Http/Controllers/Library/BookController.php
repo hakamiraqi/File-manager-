@@ -8,8 +8,15 @@ use App\Models\File;
 use App\Models\Library\Book;
 use App\Models\Library\BookCopy;
 use App\Models\Library\LibrarySection;
+use App\Models\Library\LibraryShelf;
+use App\Services\Covers\LibraryCovers;
 use App\Services\Library\CoverStore;
+use App\Services\Library\CoverText;
 use App\Services\Library\IsbnLookup;
+use App\Services\Library\Marc\MarcMapper;
+use App\Services\Library\Marc\MarcReader;
+use App\Services\Library\Marc\MarcWriter;
+use App\Services\Library\Marc\SruClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -43,7 +50,7 @@ class BookController extends Controller
             'filters' => ['q' => $q, 'section' => $sectionId],
             'statuses' => BookCopy::STATUSES,
             // Bookcase codes from «ترتيب الرفوف», suggested in every «الرف» box.
-            'shelfCodes' => \App\Models\Library\LibraryShelf::where('kind', 'shelf')->orderBy('code')->pluck('code'),
+            'shelfCodes' => LibraryShelf::where('kind', 'shelf')->orderBy('code')->pluck('code'),
         ]);
     }
 
@@ -89,8 +96,22 @@ class BookController extends Controller
         return $found ? response()->json($found) : response()->json(['message' => 'لم يُعثر على بيانات لهذا الرقم (أو لا يوجد إنترنت).'], 404);
     }
 
+    /** Copy cataloguing: the book's MARC record in the world's catalogues (SRU / Z39.50). */
+    public function catalogSearch(Request $request, SruClient $sru): JsonResponse
+    {
+        $data = $request->validate([
+            'isbn' => ['nullable', 'string', 'max:20'],
+            'title' => ['nullable', 'string', 'max:255'],
+            'author' => ['nullable', 'string', 'max:255'],
+        ]);
+        $isbn = preg_replace('/[^0-9Xx]/', '', (string) ($data['isbn'] ?? '')) ?: null;
+        abort_unless($isbn || ! empty($data['title']), 422, 'اكتب رقم ISBN أو العنوان.');
+
+        return response()->json($sru->search($isbn, $isbn ? null : ($data['title'] ?? null), $isbn ? null : ($data['author'] ?? null)));
+    }
+
     /** The text printed on a photographed cover: its lines, the likely title and an ISBN if one shows. */
-    public function coverText(Request $request, \App\Services\Library\CoverText $reader): JsonResponse
+    public function coverText(Request $request, CoverText $reader): JsonResponse
     {
         $request->validate(['image' => ['required', 'image', 'max:8192']]);
         if (! $reader->available()) {
@@ -178,6 +199,10 @@ class BookController extends Controller
             'edition' => ['nullable', 'string', 'max:50'],
             'pages' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'description' => ['nullable', 'string', 'max:5000'],
+            'call_number' => ['nullable', 'string', 'max:64'],
+            'subjects' => ['nullable', 'string', 'max:2000'],
+            // The record picked from a world catalogue, kept whole for export.
+            'marc_xml' => ['nullable', 'string', 'max:300000'],
             'section_id' => ['nullable', 'integer', 'exists:library_sections,id'],
             'file_id' => ['nullable', 'integer', 'exists:files,id'],
             'reference_only' => ['boolean'],
@@ -197,10 +222,19 @@ class BookController extends Controller
         if (! empty($data['file_id']) && ! request()->user()->can('view', File::find($data['file_id']))) {
             $data['file_id'] = null;
         }
+        if (array_key_exists('marc_xml', $data)) {
+            $record = $data['marc_xml'] ? (MarcReader::xmlString($data['marc_xml'])[0] ?? null) : null;
+            if ($record) {
+                $data['marc_xml'] = MarcWriter::xml($record, true);
+                $data['marc_control'] = MarcMapper::toBook($record)['book']['marc_control'];
+            } else {
+                unset($data['marc_xml']); // nothing picked: the record kept so far stays
+            }
+        }
 
         return array_intersect_key($data, array_flip([
             'title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages',
-            'description', 'section_id', 'file_id', 'reference_only',
+            'description', 'section_id', 'file_id', 'reference_only', 'call_number', 'subjects', 'marc_xml', 'marc_control',
         ]));
     }
 
@@ -225,7 +259,7 @@ class BookController extends Controller
         // No cover but a PDF of it in the drive: its picture straight away.
         if (! $book->cover_path && $book->file_id && $book->cover_status !== 'removed') {
             try {
-                $covers = app(\App\Services\Covers\LibraryCovers::class);
+                $covers = app(LibraryCovers::class);
                 if ($hit = $covers->localFor($book)) {
                     $covers->apply($book, $hit[1], 'drive');
                 }

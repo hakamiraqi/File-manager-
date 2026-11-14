@@ -7,16 +7,22 @@ import NumberStepper from '@/Components/NumberStepper.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
     AcademicCapIcon, ArrowPathIcon, BanknotesIcon, BellAlertIcon, BellIcon, BookmarkIcon, BookOpenIcon, BriefcaseIcon,
-    CalendarDaysIcon, CalendarIcon, ClockIcon, ExclamationTriangleIcon, InformationCircleIcon, PlusIcon, Squares2X2Icon,
+    CalendarDaysIcon, CalendarIcon, GlobeAltIcon, TrashIcon, ClockIcon, ExclamationTriangleIcon, InformationCircleIcon, PlusIcon, Squares2X2Icon,
     UserGroupIcon, XMarkIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ rules: Object, holidays: Array });
+const props = defineProps({ rules: Object, holidays: Array, sruServers: { type: Array, default: () => [] }, sruDefaults: { type: Array, default: () => [] } });
 
 const form = useForm(JSON.parse(JSON.stringify(props.rules)));
 const save = () => form.post(route('library.manage.settings.update'), { preserveScroll: true, onSuccess: () => form.defaults() });
 const undo = () => form.reset();
+
+// World catalogues (SRU / Z39.50) used by "copy cataloguing" in the book form.
+const sru = useForm({ servers: JSON.parse(JSON.stringify(props.sruServers)) });
+const saveSru = () => sru.post(route('library.manage.sru.save'), { preserveScroll: true, onSuccess: () => sru.defaults() });
+const addSru = () => sru.servers.push({ name: '', url: 'https://', isbn: 'bath.isbn', title: 'dc.title', author: 'dc.creator', schema: 'marcxml', on: true });
+const resetSru = () => { sru.servers = JSON.parse(JSON.stringify(props.sruDefaults)); };
 
 const holiday = useForm({ from: '', to: '', name: '' });
 const addHoliday = () => holiday.post(route('library.manage.holidays.store'), { preserveScroll: true, onSuccess: () => holiday.reset() });
@@ -124,6 +130,42 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                 <p class="flex items-center gap-2 border-t border-gray-100 p-4 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
                     <CalendarIcon class="h-4 w-4" /> {{ t('library.rule.friday', 'أيام الجمعة لا تُحسب في الغرامة ولا يقع فيها موعد الإرجاع.') }}
                 </p>
+            </section>
+
+            <!-- World catalogues (SRU) -->
+            <section class="rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                <div class="flex items-start gap-2 border-b border-gray-100 p-4 dark:border-gray-700">
+                    <GlobeAltIcon class="mt-0.5 h-5 w-5 text-[var(--accent-600)]" />
+                    <div>
+                        <h3 class="font-semibold text-gray-900 dark:text-white">{{ t('library.sru.title', 'الفهارس العالمية (Z39.50 / SRU)') }}</h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('library.sru.hint', 'عند إضافة كتاب، زر «فهرسة منقولة» يبحث في هذه الفهارس ويملأ بيانات الكتاب بسجل MARC جاهز.') }}</p>
+                    </div>
+                </div>
+                <div class="space-y-3 p-4">
+                    <div v-for="(s, i) in sru.servers" :key="i" class="grid gap-2 rounded-xl border border-gray-200 p-3 sm:grid-cols-[auto_1fr_2fr_auto] sm:items-center dark:border-gray-700">
+                        <input type="checkbox" v-model="s.on" class="rounded" :title="t('library.sru.enabled', 'مفعّل')" />
+                        <input v-model="s.name" :placeholder="t('library.sru.name', 'الاسم')" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <input v-model="s.url" dir="ltr" placeholder="https://…" class="rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <button type="button" @click="sru.servers.splice(i, 1)" class="justify-self-end rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600"><TrashIcon class="h-5 w-5" /></button>
+                        <details class="sm:col-span-4">
+                            <summary class="cursor-pointer text-xs text-gray-500">{{ t('library.sru.advanced', 'فهارس البحث والصيغة') }}</summary>
+                            <div class="mt-2 grid gap-2 sm:grid-cols-4" dir="ltr">
+                                <label class="text-xs text-gray-500">ISBN<input v-model="s.isbn" class="mt-1 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                                <label class="text-xs text-gray-500">Title<input v-model="s.title" class="mt-1 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                                <label class="text-xs text-gray-500">Author<input v-model="s.author" class="mt-1 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                                <label class="text-xs text-gray-500">recordSchema<input v-model="s.schema" class="mt-1 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" /></label>
+                            </div>
+                        </details>
+                    </div>
+                    <p v-if="Object.keys(sru.errors).length" class="text-sm text-red-600">{{ Object.values(sru.errors)[0] }}</p>
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="flex gap-2">
+                            <button type="button" @click="addSru" class="flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-gray-600"><PlusIcon class="h-4 w-4" /> {{ t('library.sru.add', 'إضافة فهرس') }}</button>
+                            <button type="button" @click="resetSru" class="flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-2 text-sm dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('library.sru.reset', 'الافتراضي') }}</button>
+                        </div>
+                        <button type="button" @click="saveSru" :disabled="sru.processing || !sru.isDirty" class="rounded-xl bg-[var(--accent-600)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">{{ t('action.save', 'حفظ') }}</button>
+                    </div>
+                </div>
             </section>
 
             <!-- Holidays -->

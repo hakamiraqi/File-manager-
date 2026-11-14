@@ -3,10 +3,13 @@
 namespace App\Http\Controllers\Library;
 
 use App\Http\Controllers\Controller;
+use App\Models\Library\Holiday;
 use App\Models\Setting;
 use App\Services\Library\LibraryRules;
+use App\Services\Library\Marc\SruClient;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -17,7 +20,9 @@ class SettingsController extends Controller
     {
         return Inertia::render('Library/Manage/Settings', [
             'rules' => $rules->all(),
-            'holidays' => \App\Models\Library\Holiday::where('date', '>=', now()->subMonths(1)->toDateString())->orderBy('date')->get(['id', 'date', 'name']),
+            'holidays' => Holiday::where('date', '>=', now()->subMonths(1)->toDateString())->orderBy('date')->get(['id', 'date', 'name']),
+            'sruServers' => SruClient::servers(),
+            'sruDefaults' => SruClient::DEFAULT_SERVERS,
         ]);
     }
 
@@ -28,16 +33,16 @@ class SettingsController extends Controller
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'name' => ['nullable', 'string', 'max:255'],
         ]);
-        $day = \Illuminate\Support\Carbon::parse($data['from']);
-        $end = \Illuminate\Support\Carbon::parse($data['to'] ?? $data['from']);
+        $day = Carbon::parse($data['from']);
+        $end = Carbon::parse($data['to'] ?? $data['from']);
         for ($i = 0; $day->lte($end) && $i < 120; $i++, $day = $day->addDay()) {
-            \App\Models\Library\Holiday::updateOrCreate(['date' => $day->toDateString()], ['name' => $data['name'] ?? null]);
+            Holiday::updateOrCreate(['date' => $day->toDateString()], ['name' => $data['name'] ?? null]);
         }
 
         return back()->with('success', 'تمت إضافة العطلة.');
     }
 
-    public function removeHoliday(\App\Models\Library\Holiday $holiday): RedirectResponse
+    public function removeHoliday(Holiday $holiday): RedirectResponse
     {
         $holiday->delete();
 
@@ -69,5 +74,25 @@ class SettingsController extends Controller
         Setting::setMany($values);
 
         return back()->with('success', 'تم حفظ قواعد الإعارة.');
+    }
+
+    /** The world catalogues searched when cataloguing a book (SRU / Z39.50), 2026-11-14. */
+    public function saveSruServers(Request $request): RedirectResponse
+    {
+        $index = ['required', 'string', 'max:40', 'regex:/^[A-Za-z0-9._-]+$/'];
+        $data = $request->validate([
+            'servers' => ['present', 'array', 'max:15'],
+            'servers.*.name' => ['required', 'string', 'max:80'],
+            'servers.*.url' => ['required', 'url:http,https', 'max:300'],
+            'servers.*.isbn' => $index,
+            'servers.*.title' => $index,
+            'servers.*.author' => $index,
+            'servers.*.schema' => ['required', 'string', 'max:40', 'regex:/^[A-Za-z0-9._-]+$/'],
+            'servers.*.on' => ['boolean'],
+        ]);
+        $servers = array_map(fn ($s) => [...$s, 'on' => (bool) ($s['on'] ?? true)], $data['servers']);
+        Setting::set('library_sru_servers', $servers ? json_encode(array_values($servers), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null);
+
+        return back()->with('success', 'تم حفظ الفهارس العالمية.');
     }
 }

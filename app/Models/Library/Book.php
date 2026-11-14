@@ -15,7 +15,11 @@ class Book extends Model
     protected $fillable = [
         'section_id', 'title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language',
         'edition', 'pages', 'description', 'cover_path', 'file_id', 'reference_only', 'created_by',
+        'call_number', 'subjects', 'marc_control', 'marc_xml',
     ];
+
+    /** The full MARC record is for export only, never sent to pages or the app. */
+    protected $hidden = ['marc_xml'];
 
     protected $appends = ['cover_url'];
 

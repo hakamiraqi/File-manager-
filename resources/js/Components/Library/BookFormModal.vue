@@ -10,7 +10,7 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import CoverScanner from '@/Components/Library/CoverScanner.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { CameraIcon, PhotoIcon, ArrowPathIcon } from '@heroicons/vue/24/outline';
+import { CameraIcon, PhotoIcon, ArrowPathIcon, GlobeAltIcon, CheckCircleIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const props = defineProps({ show: Boolean, book: { type: Object, default: null }, sections: Array, defaultSection: { type: Number, default: null } });
@@ -19,7 +19,10 @@ const emit = defineEmits(['close']);
 const blank = {
     title: '', subtitle: '', authors: '', isbn: '', publisher: '', year: '', language: '', edition: '', pages: '',
     description: '', section_id: null, reference_only: false, cover: null, cover_url: '', remove_cover: false, copies: 1, shelf: '',
+    call_number: '', subjects: '', marc_xml: '',
 };
+// Copy cataloguing from the world's catalogues (SRU / Z39.50): the picked record fills the form.
+const world = ref({ busy: false, error: '', results: null, failed: [], picked: null });
 const form = useForm({ ...blank });
 const preview = ref(null);
 const lookup = ref({ busy: false, error: '' });
@@ -35,6 +38,7 @@ watch(() => props.show, (show) => {
     lookup.value = { busy: false, error: '' };
     scan.value = { show: false, file: null };
     scanned.value = [];
+    world.value = { busy: false, error: '', results: null, failed: [], picked: null };
     if (props.book) {
         Object.keys(blank).forEach((k) => { if (k in props.book && props.book[k] !== null) form[k] = props.book[k]; });
         form.copies = null;
@@ -96,6 +100,35 @@ async function fetchIsbn() {
     }
 }
 
+async function searchWorld() {
+    const isbn = (form.isbn || '').replace(/[^0-9Xx]/g, '');
+    if (!isbn && !form.title) {
+        world.value.error = t('library.world_need', 'اكتب رقم ISBN أو العنوان أولاً.');
+        return;
+    }
+    world.value = { busy: true, error: '', results: null, failed: [], picked: null };
+    try {
+        const res = await window.axios.get(route('library.manage.catalog-search'), { params: isbn ? { isbn } : { title: form.title, author: form.authors } });
+        world.value.results = res.data.results || [];
+        world.value.failed = res.data.errors || [];
+        if (!world.value.results.length) world.value.error = t('library.world_none', 'لم يُعثر على الكتاب في الفهارس العالمية.');
+    } catch (e) {
+        world.value.error = e.response?.data?.message || t('library.world_failed', 'تعذّر الاتصال بالفهارس (يحتاج إنترنت).');
+    } finally {
+        world.value.busy = false;
+    }
+}
+
+function pickWorld(r, i) {
+    const b = r.book;
+    ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'call_number', 'subjects'].forEach((k) => {
+        if (b[k]) form[k] = String(b[k]);
+    });
+    if (b.description && !form.description) form.description = b.description;
+    form.marc_xml = r.marc_xml;
+    world.value.picked = i;
+}
+
 function submit() {
     const opts = { preserveScroll: true, forceFormData: true, onSuccess: () => emit('close') };
     if (props.book) {
@@ -140,6 +173,28 @@ function submit() {
                             </button>
                         </div>
                         <p v-if="lookup.error" class="mt-1 text-xs text-amber-600">{{ lookup.error }}</p>
+                        <button type="button" :disabled="world.busy" @click="searchWorld" class="mt-2 flex items-center gap-1.5 text-xs font-medium text-[var(--accent-600)] hover:underline disabled:opacity-50">
+                            <GlobeAltIcon class="h-4 w-4" :class="{ 'animate-pulse': world.busy }" />
+                            {{ world.busy ? t('library.world_busy', 'يبحث في الفهارس العالمية…') : t('library.world_search', 'فهرسة منقولة: ابحث في فهارس المكتبات العالمية (MARC)') }}
+                        </button>
+                        <p v-if="world.error" class="mt-1 text-xs text-amber-600">{{ world.error }}</p>
+                        <div v-if="world.results && world.results.length" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto rounded-lg border border-gray-200 p-1.5 dark:border-gray-700">
+                            <button
+                                v-for="(r, i) in world.results" :key="i" type="button"
+                                class="flex w-full items-start gap-2 rounded-md p-2 text-start text-xs hover:bg-gray-50 dark:hover:bg-gray-700/60"
+                                :class="world.picked === i ? 'bg-emerald-50 ring-1 ring-emerald-400 dark:bg-emerald-900/20' : ''"
+                                @click="pickWorld(r, i)"
+                            >
+                                <CheckCircleIcon class="mt-0.5 h-4 w-4 shrink-0" :class="world.picked === i ? 'text-emerald-600' : 'text-gray-300'" />
+                                <span class="min-w-0 flex-1">
+                                    <span class="block font-medium text-gray-800 dark:text-gray-100" dir="auto">{{ r.book.title }}<template v-if="r.book.subtitle">: {{ r.book.subtitle }}</template></span>
+                                    <span class="block text-gray-500" dir="auto">{{ [r.book.authors, r.book.publisher, r.book.year, r.book.edition].filter(Boolean).join(' · ') }}</span>
+                                    <span class="block text-gray-400" dir="ltr">{{ r.server }}<template v-if="r.book.isbn"> · ISBN {{ r.book.isbn }}</template><template v-if="r.book.call_number"> · {{ r.book.call_number }}</template></span>
+                                </span>
+                            </button>
+                            <p v-if="world.failed.length" class="px-2 text-[11px] text-gray-400">{{ t('library.world_failed_some', 'لم يُجب:') }} {{ world.failed.join('، ') }}</p>
+                        </div>
+                        <p v-if="world.picked !== null" class="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">{{ t('library.world_picked', 'مُلئت الحقول من السجل المختار، ويُحفظ سجل MARC كاملاً مع الكتاب.') }}</p>
                     </div>
                     <div class="col-span-2">
                         <InputLabel :value="t('library.field.title', 'العنوان') + ' *'" />
@@ -147,8 +202,13 @@ function submit() {
                         <InputError :message="form.errors.title" class="mt-1" />
                     </div>
                     <div class="col-span-2">
+                        <InputLabel :value="t('library.field.subtitle', 'العنوان الفرعي')" />
+                        <TextInput v-model="form.subtitle" dir="auto" class="mt-1 block w-full" />
+                    </div>
+                    <div class="col-span-2">
                         <InputLabel :value="t('library.field.authors', 'المؤلف')" />
                         <TextInput v-model="form.authors" dir="auto" class="mt-1 block w-full" />
+                        <p class="mt-0.5 text-[11px] text-gray-400">{{ t('library.authors_hint', 'عدة مؤلفين: افصل بينهم بفاصلة منقوطة ؛') }}</p>
                     </div>
                     <div class="col-span-2">
                         <InputLabel :value="t('library.field.section', 'القسم')" />
@@ -176,6 +236,14 @@ function submit() {
                     <div>
                         <InputLabel :value="t('library.field.pages', 'عدد الصفحات')" />
                         <TextInput v-model="form.pages" type="number" min="1" class="mt-1 block w-full" />
+                    </div>
+                    <div>
+                        <InputLabel :value="t('library.field.call_number', 'رقم الاستدعاء (التصنيف)')" />
+                        <TextInput v-model="form.call_number" dir="ltr" class="mt-1 block w-full" />
+                    </div>
+                    <div class="col-span-2">
+                        <InputLabel :value="t('library.field.subjects', 'رؤوس الموضوعات')" />
+                        <TextInput v-model="form.subjects" dir="auto" class="mt-1 block w-full" />
                     </div>
                     <div class="flex items-end pb-2">
                         <label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
