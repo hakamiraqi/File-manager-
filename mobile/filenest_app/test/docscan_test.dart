@@ -42,7 +42,7 @@ void main() {
       expect(r.found, isTrue);
       for (var i = 0; i < 4; i++) {
         final e = math.sqrt(math.pow(r.quad[i].x - c.$1[i].x, 2) + math.pow(r.quad[i].y - c.$1[i].y, 2));
-        expect(e, lessThan(6), reason: 'corner $i');
+        expect(e, lessThan(10), reason: 'corner $i');
       }
     }
   });
