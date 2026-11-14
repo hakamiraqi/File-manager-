@@ -155,6 +155,20 @@ require __DIR__.'/auth.php';
 Route::get('/activate', [\App\Http\Controllers\Offline\ActivationController::class, 'show']);
 Route::post('/activate', [\App\Http\Controllers\Offline\ActivationController::class, 'store'])->middleware('throttle:10,1');
 
+// The office editor shows this site's own logo (2026-11-14): the web server answers the
+// editor's logo pictures from here — the uploaded logo, or the site's name drawn as a picture.
+Route::get('/office-brand/logo', function () {
+    $logo = \App\Models\Setting::get('logo_path');
+    if ($logo && \Illuminate\Support\Facades\Storage::disk('public')->exists($logo)) {
+        return response()->file(\Illuminate\Support\Facades\Storage::disk('public')->path($logo), ['Cache-Control' => 'public, max-age=3600']);
+    }
+    $name = e(\App\Models\Setting::get('site_name') ?: config('app.name'));
+    $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="172" height="40" viewBox="0 0 172 40">'
+        .'<text x="86" y="26" text-anchor="middle" font-family="Tahoma, Arial, sans-serif" font-size="17" font-weight="700" fill="#888">'.$name.'</text></svg>';
+
+    return response($svg, 200, ['Content-Type' => 'image/svg+xml', 'Cache-Control' => 'public, max-age=3600']);
+})->name('office.brand.logo');
+
 // The site name and logo for the offline server's Wi-Fi pages (/setup).
 Route::get('/brand.json', function () {
     $logo = \App\Models\Setting::get('logo_path');

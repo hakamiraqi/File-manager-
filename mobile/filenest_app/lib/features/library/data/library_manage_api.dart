@@ -42,6 +42,12 @@ class LibraryManageApi {
 
   Future<String> deleteBook(int id) => _send('DELETE', '/books/$id');
   Future<Json> isbn(String isbn) => _get('/isbn/${Uri.encodeComponent(isbn)}');
+  /// The text printed on a photographed cover: {lines: [{text, size}], title, isbn}.
+  Future<Json> coverText(String imagePath) async {
+    final r = await _dio.post('$_base/cover-text', data: FormData.fromMap({'image': await MultipartFile.fromFile(imagePath)}));
+    return Map<String, dynamic>.from(r.data as Map);
+  }
+
   Future<String> addCopies(int bookId, int count, {String? shelf}) => _send('POST', '/books/$bookId/copies', {'count': count, 'shelf': shelf});
   Future<String> updateCopy(int id, Json data) => _send('PUT', '/copies/$id', data);
   Future<String> deleteCopy(int id) => _send('DELETE', '/copies/$id');

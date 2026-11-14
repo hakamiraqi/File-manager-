@@ -23,6 +23,7 @@ import '../../site/site_api.dart';
 import '../../media_player/presentation/media_player_screen.dart';
 import '../../playlists/presentation/widgets/add_to_playlist_sheet.dart';
 import '../data/file_repository.dart';
+import 'widgets/file_cover_sheet.dart';
 import 'widgets/folder_picker_dialog.dart';
 import 'widgets/item_tiles.dart';
 import 'widgets/upload_fab.dart';
@@ -707,6 +708,16 @@ class _BrowseScreenState extends State<BrowseScreen> {
             ListTile(leading: const Icon(Icons.edit_document), title: Text(context.l('فتح في المحرر', 'Open in editor')), onTap: () {
               Navigator.of(sheetContext).pop();
               _openInEditor(file.id, file.name);
+            }),
+          if (const {'pdf', 'epub'}.contains(file.name.split('.').last.toLowerCase()))
+            ListTile(leading: const Icon(Icons.auto_stories_outlined), title: Text(context.l('غلاف الكتاب…', 'Book cover…')), onTap: () async {
+              Navigator.of(sheetContext).pop();
+              if (await showFileCoverSheet(context, file)) {
+                // The picture's address is the same; the old one must not be shown from memory.
+                PaintingBinding.instance.imageCache.clear();
+                PaintingBinding.instance.imageCache.clearLiveImages();
+                _load();
+              }
             }),
           ListTile(leading: const Icon(Icons.ios_share_rounded), title: Text(context.tr('action.share')), onTap: () {
             Navigator.of(sheetContext).pop();

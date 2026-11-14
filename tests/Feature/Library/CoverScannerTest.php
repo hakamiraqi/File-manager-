@@ -58,4 +58,42 @@ class CoverScannerTest extends TestCase
             ->assertJsonPath('lines.3.text', 'Peterson Ellis');
         Process::assertRan(fn ($p) => in_array('tsv', (array) $p->command, true) && in_array('ara+eng', (array) $p->command, true));
     }
+
+    public function test_the_apps_reach_the_cover_text_the_file_cover_and_the_covers_page(): void
+    {
+        config(['services.ocr.tesseract' => base_path('artisan')]);
+        Cache::flush();
+        Process::fake(fn ($p) => in_array('--list-langs', (array) $p->command, true) ? Process::result("ara\neng\n") : Process::result($this->tsv()));
+        \Illuminate\Support\Facades\Storage::fake(config('filenest.disk'));
+
+        $staff = User::factory()->create(['is_librarian' => true]);
+        $this->actingAs($staff, 'sanctum')->post('/api/v1/library/manage/cover-text', ['image' => UploadedFile::fake()->image('c.jpg', 300, 450)])
+            ->assertOk()->assertJsonPath('title', 'Contemporary Oral Surgery');
+
+        // A file's cover from an uploaded picture, then removed again.
+        $owner = User::factory()->create();
+        $file = \App\Models\File::factory()->create(['user_id' => $owner->id, 'name' => 'book.pdf', 'extension' => 'pdf', 'mime_type' => 'application/pdf']);
+        $this->actingAs($owner, 'sanctum')->post("/api/v1/files/{$file->id}/cover", ['image' => UploadedFile::fake()->image('c.jpg', 300, 450)])->assertOk();
+        $this->assertSame('manual', $file->fresh()->cover_status);
+        $this->actingAs(User::factory()->create(), 'sanctum')->deleteJson("/api/v1/files/{$file->id}/cover")->assertForbidden();
+        $this->actingAs($owner, 'sanctum')->deleteJson("/api/v1/files/{$file->id}/cover")->assertOk();
+        $this->assertSame('removed', $file->fresh()->cover_status);
+
+        // The admin page as JSON, and saving its settings.
+        $admin = User::factory()->create(['role' => 'admin', 'is_master_admin' => true]);
+        $this->actingAs($admin, 'sanctum')->getJson('/api/v1/admin/covers')->assertOk()
+            ->assertJsonStructure(['settings', 'googleKeySet', 'counts' => ['found', 'due'], 'books', 'state', 'files' => ['data']]);
+        $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/covers', [
+            'covers_enabled' => true, 'covers_start' => '21:00', 'covers_end' => '05:00', 'covers_batch' => 25,
+            'covers_min_pages' => 30, 'covers_retry_days' => 30, 'covers_kinds' => ['pdf'], 'covers_days' => [0, 1],
+        ])->assertOk()->assertJsonStructure(['message']);
+        $this->assertSame('21:00', \App\Models\Setting::get('covers_start'));
+        $this->actingAs($owner, 'sanctum')->getJson('/api/v1/admin/covers')->assertForbidden();
+    }
+
+    public function test_the_editor_logo_is_the_sites_own(): void
+    {
+        \App\Models\Setting::set('site_name', 'مكتبة الكلية');
+        $this->get('/office-brand/logo')->assertOk()->assertHeader('Content-Type', 'image/svg+xml')->assertSee('مكتبة الكلية', false);
+    }
 }

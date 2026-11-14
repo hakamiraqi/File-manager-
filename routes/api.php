@@ -166,6 +166,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         // The reader's own place, bookmarks and notes on a file, for the app's reader (kept offline, synced here).
         Route::get('/files/{file}/reader-state', [\App\Http\Controllers\ReaderController::class, 'state'])->name('api.v1.files.reader-state');
         Route::put('/files/{file}/reader-state', [\App\Http\Controllers\ReaderController::class, 'save'])->name('api.v1.files.reader-state.save');
+        // A book's cover on a file, for the apps (2026-11-14): search and pick, upload, or a page of the file.
+        Route::get('/files/{file}/cover/search', [\App\Http\Controllers\FileCoverController::class, 'search'])->middleware('throttle:30,1')->name('api.v1.files.cover.search');
+        Route::post('/files/{file}/cover', [\App\Http\Controllers\FileCoverController::class, 'store'])->name('api.v1.files.cover.store');
+        Route::delete('/files/{file}/cover', [\App\Http\Controllers\FileCoverController::class, 'destroy'])->name('api.v1.files.cover.destroy');
         Route::post('/saved/toggle', [\App\Http\Controllers\Api\V1\MobileController::class, 'toggleSaved'])->name('saved.toggle');
         Route::post('/saved/forget-download', [\App\Http\Controllers\Api\V1\MobileController::class, 'forgetDownload'])->name('saved.forget');
         Route::get('/library/mine', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mine'])->name('library.mine');
@@ -192,6 +196,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 Route::put('/books/{book}', [$books, 'update'])->name('books.update');
                 Route::delete('/books/{book}', [$books, 'destroy'])->name('books.destroy');
                 Route::get('/isbn/{isbn}', [$books, 'isbn'])->name('isbn');
+                Route::post('/cover-text', [$books, 'coverText'])->middleware('throttle:30,1')->name('cover-text');
                 Route::post('/books/{book}/copies', [$books, 'addCopies'])->name('copies.store');
                 Route::put('/copies/{copy}', [$books, 'updateCopy'])->name('copies.update');
                 Route::delete('/copies/{copy}', [$books, 'destroyCopy'])->name('copies.destroy');
@@ -275,6 +280,14 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                     Route::post('/ocr/run', [$ocr, 'runNow'])->name('ocr.run');
                     Route::post('/ocr/retry-failed', [$ocr, 'retryFailed'])->name('ocr.retry-failed');
                     Route::post('/ocr/files/{file}/{action}', [$ocr, 'file'])->whereIn('action', ['retry', 'skip', 'prioritize'])->name('ocr.file');
+
+                    // «أغلفة الكتب» (2026-11-14): the website page's controller, as JSON.
+                    $covers = \App\Http\Controllers\Admin\CoverController::class;
+                    Route::get('/covers', [$covers, 'index'])->name('covers.index');
+                    Route::post('/covers', [$covers, 'update'])->name('covers.update');
+                    Route::post('/covers/run', [$covers, 'runNow'])->name('covers.run');
+                    Route::post('/covers/retry', [$covers, 'retry'])->name('covers.retry');
+                    Route::delete('/covers/files/{file}', [$covers, 'remove'])->name('covers.remove');
                 });
             });
 

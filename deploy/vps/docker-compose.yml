@@ -81,13 +81,14 @@ services:
       - ../../public/downloads:/var/www/html/public/downloads:ro
     networks: [default, edge]
 
-  # The office editor (2026-11-12): ONLYOFFICE Docs Community, free, opens Word, Excel, PowerPoint
-  # and PDF files for editing in the site and the apps. Reached at /office through filenest-web, and
-  # reaches back to filenest-web for the file and to save it, every request signed with the shared
-  # secret. In its own profile so that a failed start never holds up the site's deploy.
-  onlyoffice:
-    image: onlyoffice/documentserver:latest
-    container_name: filenest-onlyoffice
+  # The office editor: Euro-Office Document Server (AGPL, 2026-11-14; it replaced ONLYOFFICE),
+  # opens Word, Excel, PowerPoint and PDF files for editing in the site and the apps. Reached
+  # at /office through filenest-web, and reaches back to filenest-web for the file and to save
+  # it, every request signed with the shared secret. The site shows it under its own name and
+  # logo (see nginx). In its own profile so that a failed start never holds up the site's deploy.
+  office:
+    image: ghcr.io/euro-office/documentserver:v9.3.7
+    container_name: filenest-office
     restart: unless-stopped
     profiles: [office]
     environment:
@@ -99,17 +100,17 @@ services:
       ALLOW_META_IP_ADDRESS: "false"
     mem_limit: 5g
     volumes:
-      - filenest_office_data:/var/www/onlyoffice/Data
-      - filenest_office_cache:/var/lib/onlyoffice
+      - filenest_editor_data:/var/www/euro-office/Data
+      - filenest_editor_lib:/var/lib/euro-office/documentserver
     networks:
       default:
-        aliases: [onlyoffice]
+        aliases: [office-editor, onlyoffice]
 
 volumes:
   filenest_db:
   filenest_storage:
-  filenest_office_data:
-  filenest_office_cache:
+  filenest_editor_data:
+  filenest_editor_lib:
 
 networks:
   edge:
