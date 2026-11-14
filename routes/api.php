@@ -202,6 +202,9 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 Route::delete('/copies/{copy}', [$books, 'destroyCopy'])->name('copies.destroy');
                 Route::get('/import/template', [\App\Http\Controllers\Library\ImportController::class, 'template'])->name('import.template');
                 Route::post('/import', [\App\Http\Controllers\Library\ImportController::class, 'store'])->name('import');
+                Route::post('/import/marc', [\App\Http\Controllers\Library\ImportController::class, 'marc'])->name('import.marc');
+                Route::get('/export/marc', [\App\Http\Controllers\Library\ImportController::class, 'exportMarc'])->name('export.marc');
+                Route::get('/catalog-search', [$books, 'catalogSearch'])->middleware('throttle:30,1')->name('catalog-search');
 
                 $sections = \App\Http\Controllers\Library\SectionController::class;
                 Route::get('/sections', [$sections, 'index'])->name('sections');

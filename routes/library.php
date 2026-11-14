@@ -95,5 +95,9 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
 
         Route::get('/import/template', [ImportController::class, 'template'])->name('import.template');
         Route::post('/import', [ImportController::class, 'store'])->name('import');
+        Route::post('/import/marc', [ImportController::class, 'marc'])->name('import.marc');
+        Route::get('/export/marc', [ImportController::class, 'exportMarc'])->name('export.marc');
+        Route::get('/catalog-search', [BookController::class, 'catalogSearch'])->middleware('throttle:30,1')->name('catalog-search');
+        Route::post('/sru-servers', [SettingsController::class, 'saveSruServers'])->name('sru.save');
     });
 });

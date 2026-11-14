@@ -11,7 +11,7 @@ import BookFormModal from '@/Components/Library/BookFormModal.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { useLibrary } from '@/Composables/useLibrary';
 import {
-    PlusIcon, ArrowUpTrayIcon, PrinterIcon, PencilSquareIcon, TrashIcon, ChevronDownIcon, MagnifyingGlassIcon, CheckIcon,
+    PlusIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, PrinterIcon, PencilSquareIcon, TrashIcon, ChevronDownIcon, MagnifyingGlassIcon, CheckIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
@@ -68,8 +68,20 @@ function addCopies(book) {
 // Import
 const importOpen = ref(false);
 const importForm = useForm({ file: null });
+const importKind = ref('excel'); // excel | marc
+const marcForm = useForm({ file: null, existing: 'skip', section_id: null });
 function runImport() {
-    importForm.post(route('library.manage.import'), { forceFormData: true, preserveScroll: true, onSuccess: () => { importOpen.value = false; importForm.reset(); } });
+    const done = { forceFormData: true, preserveScroll: true, onSuccess: () => { importOpen.value = false; importForm.reset(); marcForm.reset(); } };
+    if (importKind.value === 'marc') marcForm.post(route('library.manage.import.marc'), done);
+    else importForm.post(route('library.manage.import'), done);
+}
+
+// MARC export, for Koha or any library system.
+const exportOpen = ref(false);
+const exp = reactive({ format: 'mrc', section: '', item_type: 'BK', branch: '' });
+function exportUrl() {
+    const params = Object.fromEntries(Object.entries(exp).filter(([, v]) => v !== '' && v !== null));
+    return route('library.manage.export.marc', params);
 }
 </script>
 
@@ -82,7 +94,10 @@ function runImport() {
                 <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ t('library.tab.books', 'إدارة الكتب') }}</h2>
                 <div class="ms-auto flex gap-2">
                     <button @click="importOpen = true" class="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
-                        <ArrowUpTrayIcon class="h-5 w-5" /> <span class="hidden sm:inline">{{ t('library.import', 'استيراد Excel') }}</span>
+                        <ArrowUpTrayIcon class="h-5 w-5" /> <span class="hidden sm:inline">{{ t('library.import_any', 'استيراد') }}</span>
+                    </button>
+                    <button @click="exportOpen = true" class="flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
+                        <ArrowDownTrayIcon class="h-5 w-5" /> <span class="hidden sm:inline">{{ t('library.export_marc', 'تصدير MARC') }}</span>
                     </button>
                     <button @click="openNew" class="flex items-center gap-1.5 rounded-lg bg-[var(--accent-600)] px-3 py-2 text-sm font-medium text-white hover:bg-[var(--accent-700)]">
                         <PlusIcon class="h-5 w-5" /> {{ t('library.new_book', 'كتاب جديد') }}
@@ -179,18 +194,83 @@ function runImport() {
 
         <Modal :show="importOpen" @close="importOpen = false">
             <form @submit.prevent="runImport" class="space-y-4 p-6">
-                <h2 class="text-lg font-medium">{{ t('library.import', 'استيراد Excel') }}</h2>
-                <p class="text-sm text-gray-600 dark:text-gray-300">
-                    {{ t('library.import_hint', 'ملف Excel (.xlsx) أو CSV. الصف الأول أسماء الأعمدة: العنوان، المؤلف، ISBN، الناشر، السنة، اللغة، القسم (مثل: الدراسات الأولية / جراحة الفم)، عدد النسخ، الرف، الباركود (اختياري). الأقسام غير الموجودة تُنشأ تلقائياً.') }}
-                </p>
-                <a :href="route('library.manage.import.template')" class="inline-block text-sm text-[var(--accent-600)] hover:underline">{{ t('library.import_template', 'تنزيل نموذج جاهز') }}</a>
-                <input type="file" accept=".xlsx,.csv" @change="importForm.file = $event.target.files[0]" class="block w-full text-sm" />
-                <InputError :message="importForm.errors.file" />
+                <h2 class="text-lg font-medium">{{ t('library.import_any', 'استيراد') }}</h2>
+                <div class="flex gap-1 rounded-lg bg-gray-100 p-1 text-sm dark:bg-gray-700/50">
+                    <button type="button" class="flex-1 rounded-md px-3 py-1.5" :class="importKind === 'excel' ? 'bg-white shadow dark:bg-gray-800' : 'text-gray-500'" @click="importKind = 'excel'">Excel / CSV</button>
+                    <button type="button" class="flex-1 rounded-md px-3 py-1.5" :class="importKind === 'marc' ? 'bg-white shadow dark:bg-gray-800' : 'text-gray-500'" @click="importKind = 'marc'">MARC (Koha)</button>
+                </div>
+                <template v-if="importKind === 'excel'">
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        {{ t('library.import_hint', 'ملف Excel (.xlsx) أو CSV. الصف الأول أسماء الأعمدة: العنوان، المؤلف، ISBN، الناشر، السنة، اللغة، القسم (مثل: الدراسات الأولية / جراحة الفم)، عدد النسخ، الرف، الباركود (اختياري). الأقسام غير الموجودة تُنشأ تلقائياً.') }}
+                    </p>
+                    <a :href="route('library.manage.import.template')" class="inline-block text-sm text-[var(--accent-600)] hover:underline">{{ t('library.import_template', 'تنزيل نموذج جاهز') }}</a>
+                    <input type="file" accept=".xlsx,.csv" @change="importForm.file = $event.target.files[0]" class="block w-full text-sm" />
+                    <InputError :message="importForm.errors.file" />
+                </template>
+                <template v-else>
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        {{ t('library.import_marc_hint', 'ملف MARC من Koha أو أي نظام مكتبات: ISO 2709 (.mrc) أو MARCXML، بصيغة MARC21 أو UNIMARC. نسخ Koha (الحقل 952 أو 995) تُضاف نسخاً بباركودها. يُعرف الكتاب الموجود مسبقاً من رقم السجل أو ISBN.') }}
+                    </p>
+                    <input type="file" accept=".mrc,.marc,.iso,.xml,.dat" @change="marcForm.file = $event.target.files[0]" class="block w-full text-sm" />
+                    <InputError :message="marcForm.errors.file" />
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label class="text-sm">
+                            <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.marc_existing', 'الكتاب الموجود مسبقاً') }}</span>
+                            <select v-model="marcForm.existing" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option value="skip">{{ t('library.marc_skip', 'يبقى كما هو (تُضاف نسخه الجديدة فقط)') }}</option>
+                                <option value="update">{{ t('library.marc_update', 'تُحدّث بياناته من الملف') }}</option>
+                            </select>
+                        </label>
+                        <label class="text-sm">
+                            <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.marc_section', 'قسم الكتب الجديدة') }}</span>
+                            <select v-model="marcForm.section_id" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                                <option :value="null">{{ t('library.no_section', 'بدون قسم') }}</option>
+                                <option v-for="s in sections" :key="s.id" :value="s.id">{{ s.path }}</option>
+                            </select>
+                        </label>
+                    </div>
+                </template>
                 <div class="flex justify-end gap-2">
                     <button type="button" @click="importOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
-                    <button :disabled="!importForm.file || importForm.processing" class="rounded-md bg-[var(--accent-600)] px-4 py-2 text-sm text-white disabled:opacity-50">{{ t('library.import_run', 'استيراد') }}</button>
+                    <button :disabled="(importKind === 'marc' ? !marcForm.file || marcForm.processing : !importForm.file || importForm.processing)" class="rounded-md bg-[var(--accent-600)] px-4 py-2 text-sm text-white disabled:opacity-50">{{ t('library.import_run', 'استيراد') }}</button>
                 </div>
             </form>
+        </Modal>
+        <Modal :show="exportOpen" @close="exportOpen = false">
+            <div class="space-y-4 p-6">
+                <h2 class="text-lg font-medium">{{ t('library.export_marc', 'تصدير MARC') }}</h2>
+                <p class="text-sm text-gray-600 dark:text-gray-300">
+                    {{ t('library.export_marc_hint', 'الفهرس كاملاً بصيغة MARC21، تستورده Koha أو أي نظام مكتبات. كل نسخة تُكتب حقل 952 بباركودها ورقم استدعائها. الكتب المستوردة من MARC تحتفظ بسجلها الأصلي كاملاً.') }}
+                </p>
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.export_format', 'الصيغة') }}</span>
+                        <select v-model="exp.format" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option value="mrc">ISO 2709 (.mrc)</option>
+                            <option value="xml">MARCXML (.xml)</option>
+                        </select>
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.field.section', 'القسم') }}</span>
+                        <select v-model="exp.section" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option value="">{{ t('library.all_sections', 'كل الأقسام') }}</option>
+                            <option v-for="s in sections" :key="s.id" :value="s.id">{{ s.path }}</option>
+                        </select>
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha_itemtype', 'نوع المادة في Koha (952$y)') }}</span>
+                        <input v-model="exp.item_type" dir="ltr" maxlength="10" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha_branch', 'رمز المكتبة في Koha (952$a/$b)') }}</span>
+                        <input v-model="exp.branch" dir="ltr" maxlength="10" class="w-full rounded-md border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    </label>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" @click="exportOpen = false" class="rounded-md border border-gray-300 px-4 py-2 text-sm dark:border-gray-600">{{ t('action.cancel', 'إلغاء') }}</button>
+                    <a :href="exportUrl()" @click="exportOpen = false" class="rounded-md bg-[var(--accent-600)] px-4 py-2 text-sm text-white">{{ t('library.export_run', 'تنزيل') }}</a>
+                </div>
+            </div>
         </Modal>
         <datalist id="shelf-codes">
             <option v-for="code in shelfCodes" :key="code" :value="code" />
