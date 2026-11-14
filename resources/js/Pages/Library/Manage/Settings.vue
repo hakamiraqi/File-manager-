@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
@@ -7,12 +7,67 @@ import NumberStepper from '@/Components/NumberStepper.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
     AcademicCapIcon, ArrowPathIcon, BanknotesIcon, BellAlertIcon, BellIcon, BookmarkIcon, BookOpenIcon, BriefcaseIcon,
-    CalendarDaysIcon, CalendarIcon, GlobeAltIcon, TrashIcon, ClockIcon, ExclamationTriangleIcon, InformationCircleIcon, PlusIcon, Squares2X2Icon,
+    CalendarDaysIcon, CalendarIcon, GlobeAltIcon, TrashIcon, LinkIcon, CheckCircleIcon, ClockIcon, ExclamationTriangleIcon, InformationCircleIcon, PlusIcon, Squares2X2Icon,
     UserGroupIcon, XMarkIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
-const props = defineProps({ rules: Object, holidays: Array, sruServers: { type: Array, default: () => [] }, sruDefaults: { type: Array, default: () => [] } });
+const props = defineProps({
+    rules: Object, holidays: Array, sruServers: { type: Array, default: () => [] }, sruDefaults: { type: Array, default: () => [] },
+    koha: { type: Object, default: () => ({}) }, canEditKoha: { type: Boolean, default: false },
+});
+
+// «الربط مع Koha» (الخيار ب): Koha lends, FileNest is the front.
+const kohaOn = computed(() => props.koha.koha_enabled === '1');
+const kohaForm = useForm({
+    koha_enabled: props.koha.koha_enabled === '1',
+    koha_url: props.koha.koha_url ?? '',
+    koha_client_id: props.koha.koha_client_id ?? '',
+    koha_client_secret: '',
+    koha_library: props.koha.koha_library ?? '',
+    koha_match: props.koha.koha_match ?? 'cardnumber',
+    koha_create_patrons: props.koha.koha_create_patrons === '1',
+    koha_categories: { student: 'ST', teacher: 'T', staff: 'S', ...(props.koha.koha_categories ?? {}) },
+    koha_item_type: props.koha.koha_item_type ?? 'BK',
+    koha_push: props.koha.koha_push !== '0',
+});
+const saveKoha = () => kohaForm.post(route('library.manage.koha.save'), { preserveScroll: true, onSuccess: () => { kohaForm.koha_client_secret = ''; kohaForm.defaults(); } });
+const kohaTest = ref(null);
+const kohaBusy = ref(false);
+const kohaSync = ref(props.koha.last_sync ?? {});
+async function testKoha() {
+    kohaBusy.value = true;
+    kohaTest.value = null;
+    try {
+        kohaTest.value = (await window.axios.post(route('library.manage.koha.test'))).data;
+    } catch (e) {
+        kohaTest.value = { ok: false, message: e.response?.data?.message ?? 'تعذّر الاتصال.' };
+    } finally {
+        kohaBusy.value = false;
+    }
+}
+async function syncKoha(full = false) {
+    kohaBusy.value = true;
+    try {
+        kohaTest.value = { ok: true, message: (await window.axios.post(route('library.manage.koha.sync'), { full })).data.message };
+        setTimeout(refreshKohaStatus, 15000);
+    } catch (e) {
+        kohaTest.value = { ok: false, message: e.response?.data?.message ?? 'تعذّرت المزامنة.' };
+    } finally {
+        kohaBusy.value = false;
+    }
+}
+async function refreshKohaStatus() {
+    try { kohaSync.value = (await window.axios.get(route('library.manage.koha.status'))).data.last_sync ?? {}; } catch { /* the page still works */ }
+}
+const syncLine = computed(() => {
+    const s = kohaSync.value;
+    if (!s?.at) return 'لم تجرِ مزامنة بعد.';
+    const when = new Date(s.at).toLocaleString('ar-IQ', { dateStyle: 'medium', timeStyle: 'short' });
+    if (s.error) return `آخر محاولة ${when}: فشلت — ${s.error}`;
+    const c = s.counts ?? {};
+    return `آخر مزامنة ${when}: ${c.books ?? 0} كتاب، ${c.copies ?? 0} نسخة، ${c.loans ?? 0} إعارة، ${c.returned ?? 0} إرجاع، ${c.holds ?? 0} حجز، ${c.readers ?? 0} قارئ جديد.`;
+});
 
 const form = useForm(JSON.parse(JSON.stringify(props.rules)));
 const save = () => form.post(route('library.manage.settings.update'), { preserveScroll: true, onSuccess: () => form.defaults() });
@@ -72,6 +127,106 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
 
         <div class="space-y-6 p-4 pb-0 sm:p-6 sm:pb-0">
             <LibraryTabs />
+
+            <!-- Koha link (option B) -->
+            <section class="rounded-2xl border bg-white shadow-sm dark:bg-gray-800" :class="kohaOn ? 'border-[var(--accent-500)]' : 'border-gray-200 dark:border-gray-700'">
+                <div class="flex items-start gap-2 border-b border-gray-100 p-4 dark:border-gray-700">
+                    <LinkIcon class="mt-0.5 h-5 w-5 text-[var(--accent-600)]" />
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">
+                            {{ t('library.koha.title', 'الربط مع Koha') }}
+                            <span v-if="kohaOn" class="ms-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('library.koha.on', 'يعمل') }}</span>
+                        </h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            {{ t('library.koha.hint', 'عند التشغيل تتم الإعارة والإرجاع والتجديد والحجز في Koha وبقواعده وغراماته، ويبقى FileNest الواجهة: الموقع والتطبيق والمكتب وRFID والخريطة. الكتب والنسخ والإعارات تتزامن من Koha كل 10 دقائق، والكتب المفهرسة هنا تُرسل إلى Koha.') }}
+                        </p>
+                    </div>
+                </div>
+                <div v-if="kohaOn" class="mx-4 mt-4 flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                    <InformationCircleIcon class="mt-0.5 h-5 w-5 shrink-0" />
+                    {{ t('library.koha.rules_note', 'قواعد الإعارة والغرامات أدناه لا تُطبَّق الآن: Koha هو من يقرر المدة والحدود والغرامات.') }}
+                </div>
+                <details v-if="canEditKoha" class="mx-4 mt-4 rounded-xl border border-gray-200 p-3 text-sm dark:border-gray-700">
+                    <summary class="cursor-pointer font-medium text-gray-700 dark:text-gray-200">{{ t('library.koha.needs', 'ما تحتاجه من Koha') }}</summary>
+                    <ol class="mt-2 list-decimal space-y-1 ps-5 text-gray-600 dark:text-gray-300">
+                        <li>{{ t('library.koha.need1', 'Koha إصدار 23.11 أو أحدث (الإرجاع عبر الواجهة يحتاج إصداراً أحدث، وإلا يُرجَع الكتاب من واجهة Koha).') }}</li>
+                        <li>{{ t('library.koha.need2', 'تفعيل التفضيلات RESTOAuth2ClientCredentials و RESTPublicAPI من: الإدارة ← تفضيلات النظام ← Web services.') }}</li>
+                        <li>{{ t('library.koha.need3', 'حساب موظف للربط بصلاحيات: circulate، catalogue، editcatalogue، borrowers، reserveforothers.') }}</li>
+                        <li>{{ t('library.koha.need4', 'من صفحة ذلك الموظف: More ← Manage API keys ← Generate a new client id/secret pair، ثم ألصق المفتاحين هنا.') }}</li>
+                        <li>{{ t('library.koha.need5', 'أرقام بطاقات القراء في Koha مطابقة لأرقام البطاقات هنا (أو اختر المطابقة بالبريد).') }}</li>
+                    </ol>
+                </details>
+                <form v-if="canEditKoha" @submit.prevent="saveKoha" class="grid gap-4 p-4 sm:grid-cols-2">
+                    <label class="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+                        <input type="checkbox" v-model="kohaForm.koha_enabled" class="rounded" />
+                        {{ t('library.koha.enable', 'تشغيل الربط: Koha يدير الإعارة') }}
+                    </label>
+                    <label class="text-sm sm:col-span-2">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.url', 'عنوان Koha (واجهة الموظفين)') }}</span>
+                        <input v-model="kohaForm.koha_url" dir="ltr" placeholder="https://koha.university.edu.iq" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <span v-if="kohaForm.errors.koha_url" class="mt-1 block text-xs text-red-600">{{ kohaForm.errors.koha_url }}</span>
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">Client ID</span>
+                        <input v-model="kohaForm.koha_client_id" dir="ltr" autocomplete="off" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">Client Secret</span>
+                        <input v-model="kohaForm.koha_client_secret" type="password" dir="ltr" autocomplete="new-password" :placeholder="koha.has_secret ? t('library.koha.secret_saved', 'محفوظ — اتركه فارغاً للإبقاء عليه') : ''" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.library', 'رمز المكتبة (الفرع) في Koha') }}</span>
+                        <input v-model="kohaForm.koha_library" dir="ltr" list="koha-libraries" placeholder="DENT" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        <datalist id="koha-libraries"><option v-for="l in kohaTest?.libraries ?? []" :key="l.code" :value="l.code">{{ l.name }}</option></datalist>
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.match', 'يُعرف القارئ في Koha من') }}</span>
+                        <select v-model="kohaForm.koha_match" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700">
+                            <option value="cardnumber">{{ t('library.koha.match_card', 'رقم البطاقة') }}</option>
+                            <option value="email">{{ t('library.koha.match_email', 'البريد الإلكتروني') }}</option>
+                        </select>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm sm:col-span-2">
+                        <input type="checkbox" v-model="kohaForm.koha_create_patrons" class="rounded" />
+                        {{ t('library.koha.create_patrons', 'القارئ غير الموجود في Koha يُضاف إليه تلقائياً بهذه الفئات:') }}
+                    </label>
+                    <div class="grid grid-cols-3 gap-2 sm:col-span-2" dir="ltr">
+                        <label v-for="(info, type) in TYPES" :key="type" class="text-xs text-gray-500">
+                            {{ info.label }}
+                            <input v-model="kohaForm.koha_categories[type]" class="mt-1 block w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        </label>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="checkbox" v-model="kohaForm.koha_push" class="rounded" />
+                        {{ t('library.koha.push', 'الكتب المفهرسة في FileNest تُرسل إلى Koha') }}
+                    </label>
+                    <label class="text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.item_type', 'نوع المادة للنسخ المرسلة') }}</span>
+                        <input v-model="kohaForm.koha_item_type" dir="ltr" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    </label>
+                    <div class="flex flex-wrap items-center justify-end gap-2 sm:col-span-2">
+                        <button type="button" :disabled="kohaBusy" @click="testKoha" class="rounded-xl border border-gray-300 px-4 py-2 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('library.koha.test', 'اختبار الاتصال') }}</button>
+                        <button :disabled="kohaForm.processing || !kohaForm.isDirty" class="rounded-xl bg-[var(--accent-600)] px-5 py-2 text-sm font-semibold text-white disabled:opacity-40">{{ t('action.save', 'حفظ') }}</button>
+                    </div>
+                </form>
+                <div class="space-y-2 p-4 pt-0 text-sm" :class="{ 'pt-4': !canEditKoha }">
+                    <p v-if="!canEditKoha && !kohaOn" class="text-gray-500">{{ t('library.koha.admin_only', 'يضبط مدير النظام هذا الربط.') }}</p>
+                    <div v-if="kohaTest" class="flex items-start gap-2 rounded-xl p-3" :class="kohaTest.ok ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-200' : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-300'">
+                        <component :is="kohaTest.ok ? CheckCircleIcon : ExclamationTriangleIcon" class="mt-0.5 h-5 w-5 shrink-0" />
+                        <div>
+                            {{ kohaTest.message }}
+                            <div v-if="kohaTest.missing?.length" class="mt-1 text-xs">{{ t('library.koha.missing', 'غير متوفر في إصدار Koha لديكم (يُنجز من واجهة Koha):') }} <span dir="ltr">{{ kohaTest.missing.join(', ') }}</span></div>
+                        </div>
+                    </div>
+                    <div v-if="kohaOn" class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-50 p-3 dark:bg-gray-700/40">
+                        <span :class="kohaSync?.error ? 'text-red-600' : 'text-gray-600 dark:text-gray-300'">{{ syncLine }}</span>
+                        <div class="flex gap-2">
+                            <button type="button" :disabled="kohaBusy" @click="syncKoha(false)" class="flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('library.koha.sync', 'زامن الآن') }}</button>
+                            <button type="button" :disabled="kohaBusy" @click="syncKoha(true)" class="rounded-xl border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('library.koha.sync_full', 'مزامنة كاملة') }}</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
 
             <!-- Rules per reader type -->
             <section>

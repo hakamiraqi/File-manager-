@@ -165,6 +165,9 @@ class LibraryController extends Controller
     {
         $user = $request->user();
         $member = LibraryMember::where('user_id', $user->id)->first();
+        if ($member) {
+            \App\Services\Library\Koha\KohaSync::quietly(fn ($sync) => $sync->member($member));
+        }
         $loans = $member
             ? $member->loans()->with('copy.book:id,title,authors,cover_path,updated_at')->latest('issued_at')->limit(100)->get()
             : collect();

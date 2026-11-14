@@ -23,6 +23,8 @@ class SettingsController extends Controller
             'holidays' => Holiday::where('date', '>=', now()->subMonths(1)->toDateString())->orderBy('date')->get(['id', 'date', 'name']),
             'sruServers' => SruClient::servers(),
             'sruDefaults' => SruClient::DEFAULT_SERVERS,
+            'koha' => \App\Services\Library\Koha\KohaSettings::forPage(),
+            'canEditKoha' => request()->user()?->isAdmin() ?? false,
         ]);
     }
 

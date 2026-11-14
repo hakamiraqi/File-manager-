@@ -14,6 +14,9 @@ Schedule::command('filenest:purge-stale-uploads')->hourly();
 // Library: reminders at 09:00 Baghdad time; set-aside copies not collected in time move on.
 Schedule::command('library:remind')->dailyAt('09:00')->timezone('Asia/Baghdad');
 Schedule::command('library:expire-holds')->everyFifteenMinutes();
+// «الربط مع Koha»: what changed in Koha every 10 minutes, everything once a night.
+Schedule::command('library:koha-sync')->everyTenMinutes()->withoutOverlapping(30)->runInBackground();
+Schedule::command('library:koha-sync --full')->dailyAt('03:20')->timezone('Asia/Baghdad')->withoutOverlapping(120)->runInBackground();
 
 // Offline server: a daily backup (does nothing unless BACKUP_DAILY is on).
 Schedule::command('backup:run')->hourly();

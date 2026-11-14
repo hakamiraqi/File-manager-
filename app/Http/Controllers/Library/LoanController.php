@@ -83,6 +83,9 @@ class LoanController extends Controller
     public function mine(Request $request): Response
     {
         $member = LibraryMember::where('user_id', $request->user()->id)->first();
+        if ($member) {
+            \App\Services\Library\Koha\KohaSync::quietly(fn ($sync) => $sync->member($member));
+        }
         $loans = $member
             ? $member->loans()->with('copy.book:id,title,authors,cover_path,updated_at')->latest('issued_at')->limit(100)->get()
             : collect();

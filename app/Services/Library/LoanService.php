@@ -2,13 +2,17 @@
 
 namespace App\Services\Library;
 
-use App\Services\Notify;
 use App\Models\ActivityLog;
 use App\Models\Library\BookCopy;
 use App\Models\Library\Hold;
 use App\Models\Library\LibraryMember;
 use App\Models\Library\Loan;
 use App\Models\User;
+use App\Services\Library\Koha\KohaBridge;
+use App\Services\Library\Koha\KohaClient;
+use App\Services\Library\Koha\KohaSettings;
+use App\Services\Library\Koha\KohaSync;
+use App\Services\Notify;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -19,6 +23,10 @@ class LoanService
 
     public function issue(LibraryMember $member, BookCopy $copy, User $by): Loan
     {
+        if (KohaSettings::enabled()) {
+            return $this->issueInKoha($member, $copy, $by);
+        }
+
         return DB::transaction(function () use ($member, $copy, $by) {
             $copy = BookCopy::lockForUpdate()->with('book')->findOrFail($copy->id);
             $rules = $this->rules->for($member->type);
@@ -40,27 +48,61 @@ class LoanService
                 'issued_at' => now(),
                 'due_at' => $this->rules->dueDate($member->type),
             ]);
-            $copy->update(['status' => BookCopy::LOANED]);
-            $this->afterIssue($copy, $member);
 
-            ActivityLog::record('library.loan', "أعار \"{$copy->book?->title}\" ({$copy->barcode}) إلى {$member->name}");
-            Notify::to($member->user, 'library', 'loan_issued', "استعرت «{$copy->book?->title}»",
-                'موعد الإرجاع: '.$loan->due_at->timezone('Asia/Baghdad')->format('Y-m-d'), route('library.my-loans', [], false));
-
-            return $loan->load('copy.book', 'member');
+            return $this->afterLoan($loan, $copy, $member);
         });
+    }
+
+    /** «الخيار ب»: Koha lends (its own rules, limits and fines); the loan is mirrored here. */
+    protected function issueInKoha(LibraryMember $member, BookCopy $copy, User $by): Loan
+    {
+        $copy = BookCopy::with('book')->findOrFail($copy->id);
+        $this->fail(! $member->active, 'حساب القارئ موقوف.');
+        $this->fail($copy->status === BookCopy::LOANED, 'هذه النسخة مُعارة حالياً.');
+        $checkout = app(KohaBridge::class)->checkout($member, $copy);
+
+        return DB::transaction(function () use ($checkout, $member, $copy, $by) {
+            $loan = Loan::create([
+                'copy_id' => $copy->id,
+                'member_id' => $member->id,
+                'issued_by' => $by->id,
+                'issued_at' => now(),
+                'due_at' => isset($checkout['due_date']) ? KohaClient::date($checkout['due_date']) : $this->rules->dueDate($member->type),
+                'koha_checkout_id' => $checkout['checkout_id'] ?? null,
+            ]);
+
+            return $this->afterLoan($loan, $copy, $member);
+        });
+    }
+
+    private function afterLoan(Loan $loan, BookCopy $copy, LibraryMember $member): Loan
+    {
+        $copy->update(['status' => BookCopy::LOANED]);
+        $this->afterIssue($copy, $member);
+
+        ActivityLog::record('library.loan', "أعار \"{$copy->book?->title}\" ({$copy->barcode}) إلى {$member->name}");
+        Notify::to($member->user, 'library', 'loan_issued', "استعرت «{$copy->book?->title}»",
+            'موعد الإرجاع: '.$loan->due_at->timezone('Asia/Baghdad')->format('Y-m-d'), route('library.my-loans', [], false));
+
+        return $loan->load('copy.book', 'member');
     }
 
     public function receive(BookCopy $copy, User $by, string $condition = 'good'): Loan
     {
-        return DB::transaction(function () use ($copy, $by, $condition) {
+        $koha = KohaSettings::enabled();
+        if ($koha) {
+            $this->fail(! Loan::where('copy_id', $copy->id)->whereNull('returned_at')->exists(), 'هذه النسخة ليست مُعارة.');
+            app(KohaBridge::class)->checkin($copy); // Koha works out the fine and any hold waiting for it
+        }
+
+        $loan = DB::transaction(function () use ($copy, $by, $condition, $koha) {
             $loan = Loan::where('copy_id', $copy->id)->whereNull('returned_at')->lockForUpdate()->first();
             $this->fail(! $loan, 'هذه النسخة ليست مُعارة.');
 
             $loan->load('member');
             $now = now();
             $days = $this->rules->lateDays($loan->due_at, $now->copy()->startOfDay());
-            $fine = $days * $this->rules->for($loan->member->type)['fine_per_day'];
+            $fine = $koha ? 0 : $days * $this->rules->for($loan->member->type)['fine_per_day'];
 
             $loan->update([
                 'returned_at' => $now,
@@ -69,7 +111,7 @@ class LoanService
                 'return_condition' => $condition,
             ]);
 
-            $status = $condition === 'damaged' ? BookCopy::DAMAGED : $this->statusAfterReturn($copy);
+            $status = $condition === 'damaged' ? BookCopy::DAMAGED : ($koha ? BookCopy::AVAILABLE : $this->statusAfterReturn($copy));
             $copy->update(['status' => $status, 'condition' => $condition === 'damaged' ? 'damaged' : $copy->condition]);
 
             ActivityLog::record('library.return', "استلم \"{$copy->book?->title}\" ({$copy->barcode}) من {$loan->member->name}");
@@ -78,11 +120,27 @@ class LoanService
 
             return $loan->fresh(['copy.book', 'member']);
         });
+        if ($koha) {
+            KohaSync::quietly(fn (KohaSync $sync) => $sync->copy($copy->fresh('book'))); // a hold Koha set it aside for
+        }
+
+        return $loan;
     }
 
     public function renew(Loan $loan): Loan
     {
         $loan->load('member', 'copy');
+        if (KohaSettings::enabled() && $loan->koha_checkout_id) {
+            $this->fail($loan->returned_at !== null, 'الكتاب أُرجع بالفعل.');
+            $checkout = app(KohaBridge::class)->renew($loan);
+            $loan->update([
+                'due_at' => isset($checkout['due_date']) ? KohaClient::date($checkout['due_date']) : $loan->due_at,
+                'renewals' => (int) ($checkout['renewals_count'] ?? $loan->renewals + 1),
+                'last_reminder_at' => null,
+            ]);
+
+            return $this->afterRenew($loan);
+        }
         $rules = $this->rules->for($loan->member->type);
 
         $this->fail($loan->returned_at !== null, 'الكتاب أُرجع بالفعل.');
@@ -96,6 +154,11 @@ class LoanService
             'last_reminder_at' => null,
         ]);
 
+        return $this->afterRenew($loan);
+    }
+
+    private function afterRenew(Loan $loan): Loan
+    {
         ActivityLog::record('library.renew', "جدّد إعارة {$loan->copy->barcode} لـ {$loan->member->name}");
         Notify::to($loan->member->user, 'library', 'renewed', 'تم تجديد إعارة كتاب',
             'موعد الإرجاع الجديد: '.$loan->due_at->timezone('Asia/Baghdad')->format('Y-m-d'), route('library.my-loans', [], false));

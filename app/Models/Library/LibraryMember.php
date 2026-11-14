@@ -11,7 +11,7 @@ class LibraryMember extends Model
 {
     public const TYPES = ['student', 'teacher', 'staff'];
 
-    protected $fillable = ['user_id', 'name', 'card_number', 'type', 'stage', 'phone', 'email', 'active', 'notes'];
+    protected $fillable = ['user_id', 'name', 'card_number', 'type', 'stage', 'phone', 'email', 'active', 'notes', 'koha_patron_id'];
 
     /** Defaults mirrored from the migration so a freshly created member is usable before a refresh. */
     protected $attributes = [

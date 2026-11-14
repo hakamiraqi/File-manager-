@@ -99,5 +99,10 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::get('/export/marc', [ImportController::class, 'exportMarc'])->name('export.marc');
         Route::get('/catalog-search', [BookController::class, 'catalogSearch'])->middleware('throttle:30,1')->name('catalog-search');
         Route::post('/sru-servers', [SettingsController::class, 'saveSruServers'])->name('sru.save');
+        // «الربط مع Koha»: Koha lends, FileNest is the front (admins set the key).
+        Route::post('/koha', [\App\Http\Controllers\Library\KohaController::class, 'save'])->name('koha.save');
+        Route::post('/koha/test', [\App\Http\Controllers\Library\KohaController::class, 'test'])->middleware('throttle:10,1')->name('koha.test');
+        Route::post('/koha/sync', [\App\Http\Controllers\Library\KohaController::class, 'sync'])->middleware('throttle:6,1')->name('koha.sync');
+        Route::get('/koha/status', [\App\Http\Controllers\Library\KohaController::class, 'status'])->name('koha.status');
     });
 });
