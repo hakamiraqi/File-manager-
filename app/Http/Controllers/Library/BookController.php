@@ -12,6 +12,7 @@ use App\Models\Library\LibraryShelf;
 use App\Services\Covers\LibraryCovers;
 use App\Services\Library\CoverStore;
 use App\Services\Library\CoverText;
+use App\Services\Library\DoiLookup;
 use App\Services\Library\IsbnLookup;
 use App\Services\Library\Marc\MarcMapper;
 use App\Services\Library\Marc\MarcReader;
@@ -94,6 +95,19 @@ class BookController extends Controller
         $found = $lookup->find($isbn);
 
         return $found ? response()->json($found) : response()->json(['message' => 'لم يُعثر على بيانات لهذا الرقم (أو لا يوجد إنترنت).'], 404);
+    }
+
+    /** An article or e-book by its DOI: the fields, ready for the form. */
+    public function doi(Request $request, DoiLookup $lookup): JsonResponse
+    {
+        $doi = DoiLookup::normalize($request->string('doi'));
+        abort_unless($doi, 422, 'هذا ليس DOI صحيحاً. مثال: 10.1016/j.joms.2018.01.001');
+        $found = $lookup->find($doi);
+        $existing = Book::where('doi', $doi)->first(['id', 'title']);
+
+        return $found
+            ? response()->json($found + ['existing' => $existing])
+            : response()->json(['message' => 'لم يُعثر على هذا الـ DOI (أو لا يوجد إنترنت).', 'existing' => $existing], 404);
     }
 
     /** Copy cataloguing: the book's MARC record in the world's catalogues (SRU / Z39.50). */
@@ -200,6 +214,11 @@ class BookController extends Controller
             'pages' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'description' => ['nullable', 'string', 'max:5000'],
             'call_number' => ['nullable', 'string', 'max:64'],
+            'doi' => ['nullable', 'string', 'max:255'],
+            'journal' => ['nullable', 'string', 'max:255'],
+            'volume' => ['nullable', 'string', 'max:20'],
+            'issue' => ['nullable', 'string', 'max:20'],
+            'page_range' => ['nullable', 'string', 'max:30'],
             'subjects' => ['nullable', 'string', 'max:2000'],
             // The record picked from a world catalogue, kept whole for export.
             'marc_xml' => ['nullable', 'string', 'max:300000'],
@@ -219,6 +238,9 @@ class BookController extends Controller
         if (! empty($data['isbn'])) {
             $data['isbn'] = preg_replace('/[^0-9Xx]/', '', $data['isbn']);
         }
+        if (array_key_exists('doi', $data)) {
+            $data['doi'] = DoiLookup::normalize($data['doi']);
+        }
         if (! empty($data['file_id']) && ! request()->user()->can('view', File::find($data['file_id']))) {
             $data['file_id'] = null;
         }
@@ -235,6 +257,7 @@ class BookController extends Controller
         return array_intersect_key($data, array_flip([
             'title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages',
             'description', 'section_id', 'file_id', 'reference_only', 'call_number', 'subjects', 'marc_xml', 'marc_control',
+            'doi', 'journal', 'volume', 'issue', 'page_range',
         ]));
     }
 

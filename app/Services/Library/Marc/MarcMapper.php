@@ -5,6 +5,7 @@ namespace App\Services\Library\Marc;
 use App\Models\Library\Book;
 use App\Models\Setting;
 use App\Services\Covers\CoverFinder;
+use App\Services\Library\DoiLookup;
 
 /**
  * Between MARC records and the library's books (2026-11-14). Reads MARC21 and UNIMARC
@@ -27,7 +28,43 @@ class MarcMapper
         'title' => ['245'], 'authors' => ['100', '110', '700', '710'], 'isbn' => ['020'], 'edition' => ['250'],
         'publication' => ['260', '264'], 'pages' => ['300'], 'description' => ['520'],
         'subjects' => ['600', '610', '650', '651', '653'], 'language' => ['041'], 'call_number' => ['090'],
+        'doi' => [], 'journal' => ['773'], // the DOI's own 024 and 856 are replaced field by field
     ];
+
+    /** The DOI among a record's identifiers (024 $2 doi) or links (856 $u https://doi.org/…). */
+    private static function doi(MarcRecord $r): ?string
+    {
+        foreach ($r->all('024') as $f) {
+            if (strtolower((string) self::subOf($f, '2')) === 'doi' && ($d = DoiLookup::normalize(self::subOf($f, 'a')))) {
+                return $d;
+            }
+        }
+        foreach ($r->all('856') as $f) {
+            if (str_contains((string) self::subOf($f, 'u'), 'doi.org/') && ($d = DoiLookup::normalize(self::subOf($f, 'u')))) {
+                return $d;
+            }
+        }
+
+        return null;
+    }
+
+    /** The host journal (773): its title, and volume, issue and pages from $g. */
+    private static function host(MarcRecord $r): array
+    {
+        $f = $r->all('773')[0] ?? null;
+        if (! $f) {
+            return [];
+        }
+        $g = (string) self::subOf($f, 'g');
+        $num = fn (string $re) => preg_match($re, $g, $m) ? $m[1] : null;
+
+        return array_filter([
+            'journal' => self::clean(self::subOf($f, 't')),
+            'volume' => $num('/(?:vol(?:ume)?\.?|المجلد)\s*([\w-]+)/iu'),
+            'issue' => $num('/(?:no\.?|number|issue|العدد)\s*([\w-]+)/iu'),
+            'page_range' => $num('/(?:p(?:ages?)?\.?|الصفحات)\s*([\d]+(?:\s*[-–]\s*[\d]+)?)/iu'),
+        ]);
+    }
 
     /**
      * @return array{book: array<string, mixed>, copies: list<array{barcode: ?string, shelf: ?string}>}
@@ -150,7 +187,8 @@ class MarcMapper
             'subjects' => $subjects ? implode('؛ ', $subjects) : null,
             'call_number' => self::clean($call),
             'marc_control' => self::clean($r->control('001')),
-        ], 'copies' => $copies];
+            'doi' => self::doi($r),
+        ] + self::host($r), 'copies' => $copies];
     }
 
     private static function fromUnimarc(MarcRecord $r): array
@@ -267,7 +305,12 @@ class MarcMapper
                 ['b', ($book->publisher ?: $say('[publisher not identified]', '[الناشر غير معروف]')).$comma],
                 ['c', $book->year ?: $say('[date of publication not identified]', '[تاريخ النشر غير معروف]')],
             ])],
-            'pages' => [['pages'], fn () => $r->addField('300', ' ', ' ', [['a', $book->pages ? $book->pages.' '.$say('pages', 'صفحة') : $say('1 volume', 'مجلد واحد')]])],
+            'pages' => [['pages', 'page_range'], fn () => $r->addField('300', ' ', ' ', [['a', match (true) {
+                (bool) $book->pages => $book->pages.' '.$say('pages', 'صفحة'),
+                $book->journal && $book->page_range => $say('pages', 'الصفحات').' '.$book->page_range,
+                (bool) $book->journal => $say('1 article', 'مقالة واحدة'),
+                default => $say('1 volume', 'مجلد واحد'),
+            }]])],
             'description' => [['description'], fn () => $r->addField('520', ' ', ' ', [['a', $book->description]])],
             'subjects' => [['subjects'], function () use ($r, $book) {
                 foreach (array_filter(array_map('trim', preg_split('/\s*[;؛]\s*/u', (string) $book->subjects))) as $s) {
@@ -281,6 +324,24 @@ class MarcMapper
                 }
             }],
             'call_number' => [['call_number'], fn () => $r->addField('090', ' ', ' ', [['a', $book->call_number]])],
+            'doi' => [['doi'], function () use ($r, $book) {
+                $r->removeWhere('024', fn ($f) => strtolower((string) self::subOf($f, '2')) === 'doi');
+                $r->removeWhere('856', fn ($f) => str_contains((string) self::subOf($f, 'u'), 'doi.org/'));
+                if ($book->doi) {
+                    $r->addField('024', '7', ' ', [['a', $book->doi], ['2', 'doi']]);
+                    $r->addField('856', '4', '0', [['u', DoiLookup::url($book->doi)], ['z', 'DOI']]);
+                }
+            }],
+            'journal' => [['journal', 'volume', 'issue', 'page_range', 'year'], function () use ($r, $book, $say) {
+                if (! $book->journal) {
+                    return;
+                }
+                $g = implode(', ', array_filter([
+                    $book->volume ? $say('volume', 'المجلد').' '.$book->volume : null,
+                    $book->issue ? $say('issue', 'العدد').' '.$book->issue : null,
+                ])).($book->year ? ' ('.$book->year.')' : '').($book->page_range ? ', '.$say('pages', 'الصفحات').' '.$book->page_range : '');
+                $r->addField('773', '0', ' ', [['t', $book->journal], ['g', trim($g, ', ') ?: null]]);
+            }],
         ];
         foreach ($set as $element => [$keys, $write]) {
             if ($changed($element, $keys)) {

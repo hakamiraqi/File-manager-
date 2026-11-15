@@ -128,6 +128,7 @@ class LibraryController extends Controller
                 'subtitle' => $book->subtitle, 'publisher' => $book->publisher, 'edition' => $book->edition,
                 'pages' => $book->pages, 'language' => $book->language, 'isbn' => $book->isbn,
                 'description' => $book->description, 'section_path' => $book->section?->path(),
+                'doi' => $book->doi, 'journal' => $book->journal, 'volume' => $book->volume, 'issue' => $book->issue, 'page_range' => $book->page_range,
             ],
             'copies' => $book->copies->map(fn ($c) => ['id' => $c->id, 'barcode' => $c->barcode, 'shelf' => $c->shelf, 'status' => $c->status]),
             'my_hold' => $hold ? ['id' => $hold->id, 'status' => $hold->status, 'expires_at' => $hold->expires_at?->toIso8601String()] : null,

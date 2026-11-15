@@ -42,6 +42,8 @@ class LibraryManageApi {
 
   Future<String> deleteBook(int id) => _send('DELETE', '/books/$id');
   Future<Json> isbn(String isbn) => _get('/isbn/${Uri.encodeComponent(isbn)}');
+  /// The fields of an article or e-book from its DOI (any doi.org link works too).
+  Future<Json> doi(String doi) => _get('/doi', {'doi': doi});
   /// The text printed on a photographed cover: {lines: [{text, size}], title, isbn}.
   Future<Json> coverText(String imagePath) async {
     final r = await _dio.post('$_base/cover-text', data: FormData.fromMap({'image': await MultipartFile.fromFile(imagePath)}));

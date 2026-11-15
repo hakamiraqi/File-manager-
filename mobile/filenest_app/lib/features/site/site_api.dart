@@ -42,6 +42,8 @@ class SiteApi {
   Future<Json> books({String? q, int? section, bool available = false, String? sort, int page = 1}) =>
       _get('/public/library', {'q': q, 'section': section, 'available': available ? 1 : null, 'sort': sort, 'page': page});
   Future<Json> book(int id) => _get('/public/library/books/$id');
+  /// «استشهاد»: {apa: {text, html}, vancouver: {text, html}, bibtex, ris, doi_url}.
+  Future<Json> cite(int id) => _get('/public/library/books/$id/cite');
   Future<Json> hold(int bookId) => _send('POST', '/library/books/$bookId/hold');
   Future<Json> cancelHold(int holdId) => _send('DELETE', '/library/holds/$holdId');
   Future<Json> myLoans() => _get('/library/mine');

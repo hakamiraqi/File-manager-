@@ -71,6 +71,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('/site', [\App\Http\Controllers\Api\V1\MobileController::class, 'site'])->name('site');
         Route::get('/library', [\App\Http\Controllers\Api\V1\LibraryController::class, 'index'])->name('library.index');
         Route::get('/library/books/{book}', [\App\Http\Controllers\Api\V1\LibraryController::class, 'show'])->name('library.show');
+        Route::get('/library/books/{book}/cite', [\App\Http\Controllers\Library\CatalogController::class, 'cite'])->middleware('throttle:60,1')->name('library.cite');
         Route::get('/library/map-link', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mapLink'])->name('library.map-link');
         Route::get('/library/map-data', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mapData'])->name('library.map-data');
         Route::get('/library/map-bundle', [\App\Http\Controllers\Api\V1\LibraryController::class, 'mapBundle'])->name('library.map-bundle');
@@ -196,6 +197,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
                 Route::put('/books/{book}', [$books, 'update'])->name('books.update');
                 Route::delete('/books/{book}', [$books, 'destroy'])->name('books.destroy');
                 Route::get('/isbn/{isbn}', [$books, 'isbn'])->name('isbn');
+                Route::get('/doi', [$books, 'doi'])->middleware('throttle:30,1')->name('doi');
                 Route::post('/cover-text', [$books, 'coverText'])->middleware('throttle:30,1')->name('cover-text');
                 Route::post('/books/{book}/copies', [$books, 'addCopies'])->name('copies.store');
                 Route::put('/copies/{copy}', [$books, 'updateCopy'])->name('copies.update');

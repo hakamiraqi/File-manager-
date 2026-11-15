@@ -4,12 +4,15 @@ namespace App\Http\Controllers\Library;
 
 use App\Http\Controllers\Controller;
 use App\Models\Library\Book;
+use App\Models\Library\Hold;
 use App\Models\Library\LibrarySection;
+use App\Services\Library\Citation;
 use App\Services\Library\LibraryMap;
 use App\Support\PublicSite;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
@@ -68,14 +71,32 @@ class CatalogController extends Controller
                 'rfid_tag' => $canManage ? $c->rfid_tag : null,
             ]),
             'contactEnabled' => PublicSite::contact(),
-            'spots' => app(\App\Services\Library\LibraryMap::class)->locate($book),
-            'myHold' => $user ? \App\Models\Library\Hold::open()->where('book_id', $book->id)
+            'spots' => app(LibraryMap::class)->locate($book),
+            'myHold' => $user ? Hold::open()->where('book_id', $book->id)
                 ->whereHas('member', fn ($m) => $m->where('user_id', $user->id))->first(['id', 'status', 'expires_at']) : null,
-            'queueLength' => \App\Models\Library\Hold::where('book_id', $book->id)->where('status', 'waiting')->count(),
+            'queueLength' => Hold::where('book_id', $book->id)->where('status', 'waiting')->count(),
             // The digital copy, when it is a file this reader may open.
             'digitalFile' => $book->file && $user && $user->can('view', $book->file)
                 ? ['id' => $book->file->id, 'name' => $book->file->name] : null,
         ]);
+    }
+
+    /** «استشهاد»: the book as a reference (APA, Vancouver, BibTeX, RIS); ?download=ris|bib gives the file. */
+    public function cite(Request $request, Book $book)
+    {
+        abort_unless($request->user() || $request->user('sanctum') || PublicSite::library(), 403);
+        $c = Citation::for($book);
+        if ($format = $request->query('download')) {
+            abort_unless(in_array($format, ['ris', 'bib'], true), 404);
+            $name = Str::slug(Str::ascii($book->title)) ?: 'reference-'.$book->id;
+
+            return response($format === 'ris' ? $c->ris() : $c->bibtex(), 200, [
+                'Content-Type' => $format === 'ris' ? 'application/x-research-info-systems; charset=utf-8' : 'application/x-bibtex; charset=utf-8',
+                'Content-Disposition' => 'attachment; filename="'.$name.'.'.$format.'"',
+            ]);
+        }
+
+        return response()->json($c->all());
     }
 
     public function cover(string $type, int $id): BinaryFileResponse

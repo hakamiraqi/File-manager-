@@ -94,6 +94,12 @@ class MarcRecord
         $this->fields = array_values(array_filter($this->fields, fn ($f) => ! in_array($f['tag'], $tags, true)));
     }
 
+    /** Drops the fields of a tag that match a test (e.g. only the DOI among the 024 identifiers). */
+    public function removeWhere(string $tag, callable $test): void
+    {
+        $this->fields = array_values(array_filter($this->fields, fn ($f) => $f['tag'] !== $tag || ! $test($f)));
+    }
+
     public function addControl(string $tag, string $data): void
     {
         $this->fields[] = ['tag' => $tag, 'data' => $data];
