@@ -200,13 +200,26 @@ class KohaTest extends TestCase
         $this->assertContains('POST /biblios/77/items', $this->calls);
     }
 
+    public function test_a_staff_username_and_password_work_when_koha_allows_basic_auth(): void
+    {
+        Setting::setMany(['koha_auth' => 'basic', 'koha_username' => 'dent_lib', 'koha_password' => Crypt::encryptString('pa55')]);
+        $member = LibraryMember::create(['name' => 'علي', 'card_number' => 'M1', 'type' => 'student']);
+        Book::create(['title' => 'Oral Surgery', 'koha_biblio_id' => 9])->copies()->create(['barcode' => 'LIB1', 'koha_item_id' => 55]);
+        $this->calls = [];
+
+        $this->actingAs($this->librarian())->postJson(route('library.manage.counter.scan'), ['code' => 'LIB1', 'member_id' => $member->id])
+            ->assertOk()->assertJsonPath('kind', 'issued');
+        $this->assertNotContains('POST /oauth/token', $this->calls);
+        Http::assertSent(fn (Request $r) => str_contains($r->url(), '/checkouts') && $r->hasHeader('Authorization', 'Basic '.base64_encode('dent_lib:pa55')));
+    }
+
     public function test_only_admins_set_the_key_and_it_never_reaches_the_page(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
         $this->actingAs($this->librarian())->post(route('library.manage.koha.save'), ['koha_enabled' => false])->assertForbidden();
 
         $this->actingAs($admin)->post(route('library.manage.koha.save'), [
-            'koha_enabled' => true, 'koha_url' => 'https://koha.uni.iq/', 'koha_client_id' => 'id2', 'koha_client_secret' => 'new-secret',
+            'koha_enabled' => true, 'koha_auth' => 'oauth', 'koha_url' => 'https://koha.uni.iq/', 'koha_client_id' => 'id2', 'koha_client_secret' => 'new-secret',
             'koha_library' => 'CEN', 'koha_match' => 'email', 'koha_create_patrons' => true,
             'koha_categories' => ['student' => 'UG', 'teacher' => 'FAC', 'staff' => 'STF'], 'koha_item_type' => 'BOOK', 'koha_push' => false,
         ])->assertSessionHasNoErrors();
@@ -216,5 +229,16 @@ class KohaTest extends TestCase
         $this->actingAs($admin)->get(route('library.manage.settings'))->assertOk()
             ->assertInertia(fn ($page) => $page->where('koha.has_secret', true)->where('koha.koha_library', 'CEN')->missing('koha.koha_client_secret'));
         $this->assertStringNotContainsString('new-secret', $this->actingAs($admin)->get(route('library.manage.settings'))->getContent());
+
+        // Username and password instead of a key: the password is kept encrypted too.
+        $this->actingAs($admin)->post(route('library.manage.koha.save'), [
+            'koha_enabled' => true, 'koha_auth' => 'basic', 'koha_url' => 'https://koha.uni.iq', 'koha_username' => 'dent_lib', 'koha_password' => 'pa55',
+            'koha_match' => 'cardnumber', 'koha_create_patrons' => false,
+            'koha_categories' => ['student' => 'ST', 'teacher' => 'T', 'staff' => 'S'], 'koha_push' => true,
+        ])->assertSessionHasNoErrors();
+        $this->assertTrue(KohaSettings::basic());
+        $this->assertSame('pa55', KohaSettings::password());
+        $this->assertNotSame('pa55', Setting::get('koha_password'));
+        $this->assertStringNotContainsString('pa55', $this->actingAs($admin)->get(route('library.manage.settings'))->getContent());
     }
 }

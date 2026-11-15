@@ -22,8 +22,11 @@ const kohaOn = computed(() => props.koha.koha_enabled === '1');
 const kohaForm = useForm({
     koha_enabled: props.koha.koha_enabled === '1',
     koha_url: props.koha.koha_url ?? '',
+    koha_auth: props.koha.koha_auth ?? 'oauth',
     koha_client_id: props.koha.koha_client_id ?? '',
     koha_client_secret: '',
+    koha_username: props.koha.koha_username ?? '',
+    koha_password: '',
     koha_library: props.koha.koha_library ?? '',
     koha_match: props.koha.koha_match ?? 'cardnumber',
     koha_create_patrons: props.koha.koha_create_patrons === '1',
@@ -31,7 +34,7 @@ const kohaForm = useForm({
     koha_item_type: props.koha.koha_item_type ?? 'BK',
     koha_push: props.koha.koha_push !== '0',
 });
-const saveKoha = () => kohaForm.post(route('library.manage.koha.save'), { preserveScroll: true, onSuccess: () => { kohaForm.koha_client_secret = ''; kohaForm.defaults(); } });
+const saveKoha = () => kohaForm.post(route('library.manage.koha.save'), { preserveScroll: true, onSuccess: () => { kohaForm.koha_client_secret = ''; kohaForm.koha_password = ''; kohaForm.defaults(); } });
 const kohaTest = ref(null);
 const kohaBusy = ref(false);
 const kohaSync = ref(props.koha.last_sync ?? {});
@@ -150,9 +153,9 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                     <summary class="cursor-pointer font-medium text-gray-700 dark:text-gray-200">{{ t('library.koha.needs', 'ما تحتاجه من Koha') }}</summary>
                     <ol class="mt-2 list-decimal space-y-1 ps-5 text-gray-600 dark:text-gray-300">
                         <li>{{ t('library.koha.need1', 'Koha إصدار 23.11 أو أحدث (الإرجاع عبر الواجهة يحتاج إصداراً أحدث، وإلا يُرجَع الكتاب من واجهة Koha).') }}</li>
-                        <li>{{ t('library.koha.need2', 'تفعيل التفضيلات RESTOAuth2ClientCredentials و RESTPublicAPI من: الإدارة ← تفضيلات النظام ← Web services.') }}</li>
-                        <li>{{ t('library.koha.need3', 'حساب موظف للربط بصلاحيات: circulate، catalogue، editcatalogue، borrowers، reserveforothers.') }}</li>
-                        <li>{{ t('library.koha.need4', 'من صفحة ذلك الموظف: More ← Manage API keys ← Generate a new client id/secret pair، ثم ألصق المفتاحين هنا.') }}</li>
+                        <li>{{ t('library.koha.need2', 'حساب موظف للربط بصلاحيات: circulate، catalogue، editcatalogue، borrowers، reserveforothers.') }}</li>
+                        <li>{{ t('library.koha.need3', 'إما مفتاح API: يفعّل المسؤول RESTOAuth2ClientCredentials، ثم من صفحة الموظف More ← Manage API keys ← Generate (يحتاج صلاحية edit_borrowers).') }}</li>
+                        <li>{{ t('library.koha.need4', 'أو اسم المستخدم وكلمة المرور: يفعّل المسؤول RESTBasicAuth من الإدارة ← تفضيلات النظام ← Web services.') }}</li>
                         <li>{{ t('library.koha.need5', 'أرقام بطاقات القراء في Koha مطابقة لأرقام البطاقات هنا (أو اختر المطابقة بالبريد).') }}</li>
                     </ol>
                 </details>
@@ -166,14 +169,34 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                         <input v-model="kohaForm.koha_url" dir="ltr" placeholder="https://koha.university.edu.iq" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
                         <span v-if="kohaForm.errors.koha_url" class="mt-1 block text-xs text-red-600">{{ kohaForm.errors.koha_url }}</span>
                     </label>
-                    <label class="text-sm">
-                        <span class="mb-1 block text-gray-600 dark:text-gray-300">Client ID</span>
-                        <input v-model="kohaForm.koha_client_id" dir="ltr" autocomplete="off" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
-                    </label>
-                    <label class="text-sm">
-                        <span class="mb-1 block text-gray-600 dark:text-gray-300">Client Secret</span>
-                        <input v-model="kohaForm.koha_client_secret" type="password" dir="ltr" autocomplete="new-password" :placeholder="koha.has_secret ? t('library.koha.secret_saved', 'محفوظ — اتركه فارغاً للإبقاء عليه') : ''" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
-                    </label>
+                    <div class="text-sm sm:col-span-2">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.auth', 'طريقة الدخول إلى Koha') }}</span>
+                        <div class="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-700/50">
+                            <button type="button" class="flex-1 rounded-md px-3 py-1.5" :class="kohaForm.koha_auth === 'oauth' ? 'bg-white shadow dark:bg-gray-800' : 'text-gray-500'" @click="kohaForm.koha_auth = 'oauth'">{{ t('library.koha.auth_key', 'مفتاح API') }}</button>
+                            <button type="button" class="flex-1 rounded-md px-3 py-1.5" :class="kohaForm.koha_auth === 'basic' ? 'bg-white shadow dark:bg-gray-800' : 'text-gray-500'" @click="kohaForm.koha_auth = 'basic'">{{ t('library.koha.auth_basic', 'اسم مستخدم وكلمة مرور') }}</button>
+                        </div>
+                        <span v-if="kohaForm.koha_auth === 'basic'" class="mt-1 block text-xs text-gray-500">{{ t('library.koha.basic_hint', 'حساب موظف في Koha. يتطلب أن يفعّل مسؤول Koha التفضيل RESTBasicAuth.') }}</span>
+                    </div>
+                    <template v-if="kohaForm.koha_auth === 'oauth'">
+                        <label class="text-sm">
+                            <span class="mb-1 block text-gray-600 dark:text-gray-300">Client ID</span>
+                            <input v-model="kohaForm.koha_client_id" dir="ltr" autocomplete="off" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        </label>
+                        <label class="text-sm">
+                            <span class="mb-1 block text-gray-600 dark:text-gray-300">Client Secret</span>
+                            <input v-model="kohaForm.koha_client_secret" type="password" dir="ltr" autocomplete="new-password" :placeholder="koha.has_secret ? t('library.koha.secret_saved', 'محفوظ — اتركه فارغاً للإبقاء عليه') : ''" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        </label>
+                    </template>
+                    <template v-else>
+                        <label class="text-sm">
+                            <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.username', 'اسم المستخدم في Koha') }}</span>
+                            <input v-model="kohaForm.koha_username" dir="ltr" autocomplete="off" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        </label>
+                        <label class="text-sm">
+                            <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.password', 'كلمة المرور') }}</span>
+                            <input v-model="kohaForm.koha_password" type="password" dir="ltr" autocomplete="new-password" :placeholder="koha.has_password ? t('library.koha.secret_saved', 'محفوظ — اتركه فارغاً للإبقاء عليه') : ''" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                        </label>
+                    </template>
                     <label class="text-sm">
                         <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.library', 'رمز المكتبة (الفرع) في Koha') }}</span>
                         <input v-model="kohaForm.koha_library" dir="ltr" list="koha-libraries" placeholder="DENT" class="w-full rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />

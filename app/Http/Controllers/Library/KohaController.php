@@ -27,7 +27,10 @@ class KohaController extends Controller
         $data = $request->validate([
             'koha_enabled' => ['required', 'boolean'],
             'koha_url' => ['nullable', 'url:http,https', 'max:255'],
+            'koha_auth' => ['required', 'in:oauth,basic'],
             'koha_client_id' => ['nullable', 'string', 'max:255'],
+            'koha_username' => ['nullable', 'string', 'max:255'],
+            'koha_password' => ['nullable', 'string', 'max:255'],
             'koha_client_secret' => ['nullable', 'string', 'max:255'],
             'koha_library' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9_-]*$/'],
             'koha_match' => ['required', 'in:cardnumber,email'],
@@ -39,8 +42,14 @@ class KohaController extends Controller
             'koha_item_type' => ['nullable', 'string', 'max:20'],
             'koha_push' => ['required', 'boolean'],
         ]);
-        if ($data['koha_enabled'] && (blank($data['koha_url']) || blank($data['koha_client_id']) || (blank($data['koha_client_secret']) && ! KohaSettings::secret()))) {
-            return back()->withErrors(['koha_url' => 'لتشغيل الربط أدخل عنوان Koha ومفتاح الربط (Client ID و Secret).']);
+        $basic = $data['koha_auth'] === 'basic';
+        $missing = $basic
+            ? blank($data['koha_username']) || (blank($data['koha_password'] ?? null) && ! KohaSettings::password())
+            : blank($data['koha_client_id']) || (blank($data['koha_client_secret'] ?? null) && ! KohaSettings::secret());
+        if ($data['koha_enabled'] && (blank($data['koha_url']) || $missing)) {
+            return back()->withErrors(['koha_url' => $basic
+                ? 'لتشغيل الربط أدخل عنوان Koha واسم المستخدم وكلمة المرور.'
+                : 'لتشغيل الربط أدخل عنوان Koha ومفتاح الربط (Client ID و Secret).']);
         }
 
         foreach (['koha_enabled', 'koha_create_patrons', 'koha_push'] as $k) {
@@ -51,7 +60,10 @@ class KohaController extends Controller
         if (filled($data['koha_client_secret'] ?? null)) {
             Setting::set('koha_client_secret', Crypt::encryptString($data['koha_client_secret']));
         }
-        unset($data['koha_client_secret']);
+        if (filled($data['koha_password'] ?? null)) {
+            Setting::set('koha_password', Crypt::encryptString($data['koha_password']));
+        }
+        unset($data['koha_client_secret'], $data['koha_password']);
         Setting::setMany(array_map(fn ($v) => (string) $v, $data));
 
         return back()->with('success', $data['koha_enabled'] === '1' ? 'تم حفظ الربط مع Koha وتشغيله.' : 'تم حفظ إعدادات Koha (الربط متوقف).');
@@ -61,11 +73,13 @@ class KohaController extends Controller
     public function test(Request $request, KohaClient $koha): JsonResponse
     {
         abort_unless($request->user()->isAdmin(), 403);
-        if (KohaSettings::url() === '' || KohaSettings::get('koha_client_id') === '' || ! KohaSettings::secret()) {
-            return response()->json(['ok' => false, 'message' => 'احفظ عنوان Koha ومفتاح الربط أولاً.'], 422);
+        if (KohaSettings::url() === '' || ! KohaSettings::hasCredentials()) {
+            return response()->json(['ok' => false, 'message' => 'احفظ عنوان Koha وبيانات الدخول أولاً.'], 422);
         }
         try {
-            $koha->token(true);
+            if (! KohaSettings::basic()) {
+                $koha->token(true);
+            }
             $libraries = collect($koha->get('/libraries', ['_per_page' => 200]))
                 ->map(fn ($l) => ['code' => $l['library_id'], 'name' => $l['name']])->values();
             $routes = [];
