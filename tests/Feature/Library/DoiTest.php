@@ -111,12 +111,14 @@ class DoiTest extends TestCase
     public function test_books_are_cited_too_with_arabic_names_as_written(): void
     {
         $c = Citation::for(Book::create(['title' => 'جراحة الفم والفكين', 'subtitle' => 'دليل عملي', 'authors' => 'علي حسن؛ سارة كريم', 'year' => '2020', 'publisher' => 'دار المعرفة', 'edition' => '2']));
-        $this->assertSame('علي حسن, & سارة كريم (2020). جراحة الفم والفكين: دليل عملي (2nd ed). دار المعرفة.', $c->apa()['text']);
+        $this->assertSame('علي حسن, & سارة كريم (2020). جراحة الفم والفكين: دليل عملي (2nd ed.). دار المعرفة.', $c->apa()['text']);
         $this->assertStringStartsWith("TY  - BOOK\r\nAU  - علي حسن\r\n", $c->ris());
 
         $en = Citation::for(Book::create(['title' => 'Oral Pathology', 'authors' => 'Joseph A. Regezi', 'year' => '2016', 'publisher' => 'Elsevier', 'edition' => '7']));
-        $this->assertSame('Regezi, J. A. (2016). Oral Pathology (7th ed). Elsevier.', $en->apa()['text']);
+        $this->assertSame('Regezi, J. A. (2016). Oral Pathology (7th ed.). Elsevier.', $en->apa()['text']);
         $this->assertSame('Regezi JA. Oral Pathology. 7th ed. Elsevier; 2016.', $en->vancouver()['text']);
+        $this->assertSame('Romanes, G. J. (1986). Cunningham\'s manual (5th ed.). Oxford University Press.',
+            Citation::for(Book::create(['title' => "Cunningham's manual", 'authors' => 'G. J. Romanes', 'year' => '1986', 'publisher' => 'Oxford University Press', 'edition' => '5th']))->apa()['text']);
     }
 
     public function test_the_cite_window_and_files_follow_the_public_catalogue(): void

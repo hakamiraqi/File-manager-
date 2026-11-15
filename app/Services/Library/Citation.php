@@ -174,13 +174,13 @@ class Citation
 
     private static function ordinalEdition(string $edition): string
     {
-        if (! preg_match('/^\s*(\d+)\s*$/', $edition, $m)) {
+        if (! preg_match('/^\s*(\d+)\s*(?:st|nd|rd|th)?\.?\s*(?:ed(?:ition)?\.?)?\s*$/i', $edition, $m)) {
             return trim($edition);
         }
         $n = (int) $m[1];
         $suffix = ($n % 100 >= 11 && $n % 100 <= 13) ? 'th' : (['th', 'st', 'nd', 'rd'][$n % 10] ?? 'th');
 
-        return $n.$suffix.' ed';
+        return $n.$suffix.' ed.';
     }
 
     private function link(string $url): string
