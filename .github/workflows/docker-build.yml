@@ -33,7 +33,7 @@ jobs:
           docker run --rm --entrypoint sh -v /tmp:/w filenest-app:ci -c 'cd /tmp && HOME=/tmp soffice --headless --convert-to pdf --outdir /tmp /w/t.txt >/dev/null && pdftotext -enc UTF-8 /tmp/t.pdf - | head -3'
 
   tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # 26.04 ships qpdf 12, which the PDF tools do not support yet
     steps:
       - uses: actions/checkout@v4
       - uses: shivammathur/setup-php@v2
