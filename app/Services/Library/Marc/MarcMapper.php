@@ -3,6 +3,7 @@
 namespace App\Services\Library\Marc;
 
 use App\Models\Library\Book;
+use App\Models\Setting;
 use App\Services\Covers\CoverFinder;
 
 /**
@@ -48,6 +49,12 @@ class MarcMapper
         $s = trim($s, " \t[]");
 
         return $s === '' ? null : $s;
+    }
+
+    /** RDA's "[publisher not identified]" (and the older [s.n.]) is no publisher. */
+    private static function known(?string $s): ?string
+    {
+        return $s && ! preg_match('/not identified|غير معروف|^s\.\s?n\.?$|^s\.\s?l\.?$/iu', $s) ? $s : null;
     }
 
     private static function year(?string $s): ?string
@@ -134,7 +141,7 @@ class MarcMapper
             'subtitle' => $title ? self::clean(MarcRecord::join($title, 'b')) : null,
             'authors' => $authors ? implode(self::AUTHORS_GLUE, $authors) : null,
             'isbn' => self::isbn($r->subs('020', 'a')),
-            'publisher' => $pub ? self::clean(self::subOf($pub, 'b')) : null,
+            'publisher' => $pub ? self::known(self::clean(self::subOf($pub, 'b'))) : null,
             'year' => self::year($pub ? self::subOf($pub, 'c') : null) ?? self::year(substr($fixed, 7, 4)),
             'language' => self::language($r->sub('041', 'a') ?? (strlen($fixed) >= 38 ? substr($fixed, 35, 3) : null)),
             'edition' => self::clean($r->sub('250', 'a')),
@@ -198,6 +205,12 @@ class MarcMapper
     }
 
     /** The MARC21 record for a book, its copies as Koha items (952). */
+    /** The library's MARC organization code (040 $a $c), set in the library settings. */
+    public static function cataloguingAgency(): string
+    {
+        return (string) (Setting::get('library_marc_org') ?: 'FileNest');
+    }
+
     public static function fromBook(Book $book, string $itemType = 'BK', ?string $branch = null): MarcRecord
     {
         $stored = $book->marc_xml ? (MarcReader::xmlString($book->marc_xml)[0] ?? null) : null;
@@ -233,20 +246,28 @@ class MarcMapper
         }
 
         $authors = array_values(array_filter(array_map('trim', preg_split('/\s*[;؛]\s*/u', (string) $book->authors))));
+        // RDA (2026-11-15): the record is described in the book's own script, with no abbreviations.
+        $ar = (bool) preg_match('/\p{Arabic}/u', $book->title.' '.$book->authors);
+        $say = fn (string $en, string $arabic) => $ar ? $arabic : $en;
+        $comma = $ar ? '،' : ',';
         $set = [
             'isbn' => [['isbn'], fn () => $r->addField('020', ' ', ' ', [['a', $book->isbn]])],
-            'authors' => [['authors'], function () use ($r, $authors) {
+            'authors' => [['authors'], function () use ($r, $authors, $comma, $say) {
                 foreach ($authors as $i => $name) {
-                    $r->addField($i === 0 ? '100' : '700', '1', ' ', [['a', $name]]);
+                    $r->addField($i === 0 ? '100' : '700', '1', ' ', [['a', $name.$comma], ['e', $say('author.', 'مؤلف.')]]);
                 }
             }],
             'title' => [['title', 'subtitle'], fn () => $r->addField('245', $authors ? '1' : '0', '0', [
                 ['a', $book->title.($book->subtitle ? ' :' : ($authors ? ' /' : ''))], ['b', $book->subtitle ? $book->subtitle.($authors ? ' /' : '') : null],
-                ['c', $authors ? implode(', ', $authors) : null],
+                ['c', $authors ? implode($comma.' ', $authors).'.' : null],
             ])],
             'edition' => [['edition'], fn () => $r->addField('250', ' ', ' ', [['a', $book->edition]])],
-            'publication' => [['publisher', 'year'], fn () => $r->addField('264', ' ', '1', [['b', $book->publisher.($book->year ? ',' : '')], ['c', $book->year]])],
-            'pages' => [['pages'], fn () => $r->addField('300', ' ', ' ', [['a', $book->pages ? $book->pages.' p.' : null]])],
+            'publication' => [['publisher', 'year'], fn () => $r->addField('264', ' ', '1', [
+                ['a', $say('[Place of publication not identified] :', '[مكان النشر غير معروف] :')],
+                ['b', ($book->publisher ?: $say('[publisher not identified]', '[الناشر غير معروف]')).$comma],
+                ['c', $book->year ?: $say('[date of publication not identified]', '[تاريخ النشر غير معروف]')],
+            ])],
+            'pages' => [['pages'], fn () => $r->addField('300', ' ', ' ', [['a', $book->pages ? $book->pages.' '.$say('pages', 'صفحة') : $say('1 volume', 'مجلد واحد')]])],
             'description' => [['description'], fn () => $r->addField('520', ' ', ' ', [['a', $book->description]])],
             'subjects' => [['subjects'], function () use ($r, $book) {
                 foreach (array_filter(array_map('trim', preg_split('/\s*[;؛]\s*/u', (string) $book->subjects))) as $s) {
@@ -269,6 +290,24 @@ class MarcMapper
                 }
                 $write();
             }
+        }
+
+        // RDA: who catalogued it and by which rules, and what kind of thing it is (content, media, carrier).
+        if (! $r->has('040')) {
+            $org = self::cataloguingAgency();
+            $r->addField('040', ' ', ' ', [['a', $org], ['b', $ar ? 'ara' : 'eng'], ['e', 'rda'], ['c', $org]]);
+        }
+        if (! $r->has('336')) {
+            $r->addField('336', ' ', ' ', [['a', $say('text', 'نص')], ['b', 'txt'], ['2', 'rdacontent']]);
+        }
+        if (! $r->has('337')) {
+            $r->addField('337', ' ', ' ', [['a', $say('unmediated', 'بدون وسيط')], ['b', 'n'], ['2', 'rdamedia']]);
+        }
+        if (! $r->has('338')) {
+            $r->addField('338', ' ', ' ', [['a', $say('volume', 'مجلد')], ['b', 'nc'], ['2', 'rdacarrier']]);
+        }
+        if (! $stored) {
+            $r->leader = substr($r->leader, 0, 18).'i'.substr($r->leader, 19); // descriptive form: ISBD punctuation (RDA)
         }
 
         // The copies, always as they are now.

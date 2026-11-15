@@ -179,6 +179,36 @@ class MarcTest extends TestCase
         $this->assertCount(2, MarcReader::xmlString($xml));
     }
 
+    public function test_books_catalogued_here_are_written_as_rda_records(): void
+    {
+        Setting::set('library_marc_org', 'IQ-BaUDent');
+        $ar = Book::create(['title' => 'أطلس التشريح', 'authors' => 'علي حسن؛ سارة كريم', 'pages' => 412]);
+        $en = Book::create(['title' => 'Oral Surgery', 'authors' => 'Peterson', 'publisher' => 'Elsevier', 'year' => '2018']);
+
+        $r = MarcMapper::fromBook($ar);
+        $this->assertSame('i', $r->leader[18]);
+        $this->assertSame(['IQ-BaUDent', 'ara', 'rda'], [$r->sub('040', 'a'), $r->sub('040', 'b'), $r->sub('040', 'e')]);
+        $this->assertSame(['نص', 'txt', 'rdacontent'], [$r->sub('336', 'a'), $r->sub('336', 'b'), $r->sub('336', '2')]);
+        $this->assertSame(['بدون وسيط', 'مجلد'], [$r->sub('337', 'a'), $r->sub('338', 'a')]);
+        $this->assertSame(['علي حسن،', 'مؤلف.'], [$r->sub('100', 'a'), $r->sub('100', 'e')]);
+        $this->assertSame('سارة كريم،', $r->sub('700', 'a'));
+        $this->assertSame('412 صفحة', $r->sub('300', 'a')); // no abbreviations
+        $this->assertSame(['[مكان النشر غير معروف] :', '[الناشر غير معروف]،', '[تاريخ النشر غير معروف]'], [$r->sub('264', 'a'), $r->sub('264', 'b'), $r->sub('264', 'c')]);
+
+        $e = MarcMapper::fromBook($en);
+        $this->assertSame(['eng', 'text', 'author.', '1 volume', 'Elsevier,', '2018'], [$e->sub('040', 'b'), $e->sub('336', 'a'), $e->sub('100', 'e'), $e->sub('300', 'a'), $e->sub('264', 'b'), $e->sub('264', 'c')]);
+
+        // Read back, the record gives the same book: no "[publisher not identified]" as a publisher.
+        $back = MarcMapper::toBook($r)['book'];
+        $this->assertSame(['أطلس التشريح', 'علي حسن; سارة كريم', null, 412], [$back['title'], $back['authors'], $back['publisher'], $back['pages']]);
+
+        // A record from another library keeps its own 040.
+        $loc = $this->kohaRecord();
+        $loc->addField('040', ' ', ' ', [['a', 'DLC'], ['e', 'rda']]);
+        $kept = Book::create(['title' => 'جراحة الفم والفكين', 'authors' => 'أحمد، علي', 'marc_xml' => MarcWriter::xml($loc, true)]);
+        $this->assertSame(['DLC'], MarcMapper::fromBook($kept)->subs('040', 'a'));
+    }
+
     public function test_copy_cataloguing_searches_the_world_catalogues(): void
     {
         $r = new MarcRecord;
