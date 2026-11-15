@@ -54,7 +54,11 @@ class KohaClient
 
     private function http(bool $fresh = false): PendingRequest
     {
-        return Http::withToken($this->token($fresh))->acceptJson()->connectTimeout(min(10, self::$timeout))->timeout(self::$timeout);
+        $http = KohaSettings::basic()
+            ? Http::withBasicAuth(KohaSettings::get('koha_username'), (string) KohaSettings::password())
+            : Http::withToken($this->token($fresh));
+
+        return $http->acceptJson()->connectTimeout(min(10, self::$timeout))->timeout(self::$timeout);
     }
 
     /** Sends a request; a stale token is renewed once. Koha's refusals become a KohaError. */
@@ -74,8 +78,13 @@ class KohaClient
             }
         };
         $r = $do(false);
-        if ($r->status() === 401) {
+        if ($r->status() === 401 && ! KohaSettings::basic()) {
             $r = $do(true);
+        }
+        if ($r->status() === 401) {
+            throw new KohaError(KohaSettings::basic()
+                ? 'رفض Koha اسم المستخدم أو كلمة المرور، أو أن RESTBasicAuth غير مفعّل في Koha.'
+                : 'رفض Koha مفتاح الربط.', 401, (array) $r->json());
         }
         if ($r->failed()) {
             $data = (array) $r->json();

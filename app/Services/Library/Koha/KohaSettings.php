@@ -15,7 +15,9 @@ class KohaSettings
     public const DEFAULTS = [
         'koha_enabled' => '0',
         'koha_url' => '',                 // https://koha.example.edu.iq (the staff interface's address)
+        'koha_auth' => 'oauth',           // oauth: an API key (client id + secret) · basic: a Koha staff username + password
         'koha_client_id' => '',
+        'koha_username' => '',
         'koha_library' => '',             // Koha library (branch) code: where lending and returns take place
         'koha_match' => 'cardnumber',     // how a FileNest reader is found in Koha: cardnumber | email
         'koha_create_patrons' => '0',     // add a reader missing from Koha instead of refusing
@@ -31,7 +33,20 @@ class KohaSettings
 
     public static function enabled(): bool
     {
-        return self::get('koha_enabled') === '1' && self::url() !== '' && self::get('koha_client_id') !== '' && self::secret() !== null;
+        return self::get('koha_enabled') === '1' && self::url() !== '' && self::hasCredentials();
+    }
+
+    /** The API key, or the username and password when Koha allows basic authentication (RESTBasicAuth). */
+    public static function hasCredentials(): bool
+    {
+        return self::basic()
+            ? self::get('koha_username') !== '' && self::password() !== null
+            : self::get('koha_client_id') !== '' && self::secret() !== null;
+    }
+
+    public static function basic(): bool
+    {
+        return self::get('koha_auth') === 'basic';
     }
 
     public static function url(): string
@@ -51,7 +66,17 @@ class KohaSettings
 
     public static function secret(): ?string
     {
-        $v = Setting::get('koha_client_secret');
+        return self::decrypted('koha_client_secret');
+    }
+
+    public static function password(): ?string
+    {
+        return self::decrypted('koha_password');
+    }
+
+    private static function decrypted(string $key): ?string
+    {
+        $v = Setting::get($key);
         if (blank($v)) {
             return null;
         }
@@ -100,6 +125,7 @@ class KohaSettings
         }
         $out['koha_categories'] = self::categories();
         $out['has_secret'] = self::secret() !== null;
+        $out['has_password'] = self::password() !== null;
         $out['caps'] = self::state('koha_caps');
         $out['last_sync'] = self::state('koha_last_sync');
 
