@@ -24,6 +24,7 @@ class SettingsController extends Controller
             'sruServers' => SruClient::servers(),
             'sruDefaults' => SruClient::DEFAULT_SERVERS,
             'koha' => \App\Services\Library\Koha\KohaSettings::forPage(),
+            'marcOrg' => (string) Setting::get('library_marc_org'),
             'canEditKoha' => request()->user()?->isAdmin() ?? false,
         ]);
     }
@@ -91,7 +92,11 @@ class SettingsController extends Controller
             'servers.*.author' => $index,
             'servers.*.schema' => ['required', 'string', 'max:40', 'regex:/^[A-Za-z0-9._-]+$/'],
             'servers.*.on' => ['boolean'],
+            'marc_org' => ['nullable', 'string', 'max:30', 'regex:/^[\pL0-9._:-]+$/u'],
         ]);
+        if ($request->has('marc_org')) {
+            Setting::set('library_marc_org', $data['marc_org'] ?: null);
+        }
         $servers = array_map(fn ($s) => [...$s, 'on' => (bool) ($s['on'] ?? true)], $data['servers']);
         Setting::set('library_sru_servers', $servers ? json_encode(array_values($servers), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : null);
 

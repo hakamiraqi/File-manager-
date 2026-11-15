@@ -14,7 +14,7 @@ import {
 const { t } = useTrans();
 const props = defineProps({
     rules: Object, holidays: Array, sruServers: { type: Array, default: () => [] }, sruDefaults: { type: Array, default: () => [] },
-    koha: { type: Object, default: () => ({}) }, canEditKoha: { type: Boolean, default: false },
+    koha: { type: Object, default: () => ({}) }, canEditKoha: { type: Boolean, default: false }, marcOrg: { type: String, default: '' },
 });
 
 // «الربط مع Koha» (الخيار ب): Koha lends, FileNest is the front.
@@ -77,7 +77,7 @@ const save = () => form.post(route('library.manage.settings.update'), { preserve
 const undo = () => form.reset();
 
 // World catalogues (SRU / Z39.50) used by "copy cataloguing" in the book form.
-const sru = useForm({ servers: JSON.parse(JSON.stringify(props.sruServers)) });
+const sru = useForm({ servers: JSON.parse(JSON.stringify(props.sruServers)), marc_org: props.marcOrg });
 const saveSru = () => sru.post(route('library.manage.sru.save'), { preserveScroll: true, onSuccess: () => sru.defaults() });
 const addSru = () => sru.servers.push({ name: '', url: 'https://', isbn: 'bath.isbn', title: 'dc.title', author: 'dc.creator', schema: 'marcxml', on: true });
 const resetSru = () => { sru.servers = JSON.parse(JSON.stringify(props.sruDefaults)); };
@@ -335,6 +335,10 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                             </div>
                         </details>
                     </div>
+                    <label class="block text-sm">
+                        <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.marc_org', 'رمز مكتبتكم في سجلات MARC (الحقل 040، فهرسة RDA)') }}</span>
+                        <input v-model="sru.marc_org" dir="ltr" maxlength="30" placeholder="IQ-BaUDent" class="w-full max-w-xs rounded-lg border-gray-300 text-sm dark:border-gray-600 dark:bg-gray-700" />
+                    </label>
                     <p v-if="Object.keys(sru.errors).length" class="text-sm text-red-600">{{ Object.values(sru.errors)[0] }}</p>
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="flex gap-2">
