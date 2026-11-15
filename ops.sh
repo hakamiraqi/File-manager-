@@ -1,1 +1,0 @@
-docker exec koha-test sh -c 'for f in /var/log/koha/kohadent/plack-error.log /var/log/koha/kohadent/intranet-error.log /var/log/koha/kohadent/plack-intranet-error.log /var/log/apache2/error.log; do echo "== $f"; tail -8 $f 2>/dev/null | cut -c1-300; done; ls /var/log/koha/kohadent/; ls -la /var/run/koha/kohadent/; apache2ctl -M 2>/dev/null | grep -E "itk|proxy|rewrite|cgi"'
