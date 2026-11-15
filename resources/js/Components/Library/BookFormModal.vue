@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, nextTick } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 import Modal from '@/Components/Modal.vue';
 import InputLabel from '@/Components/InputLabel.vue';
@@ -10,7 +10,7 @@ import SecondaryButton from '@/Components/SecondaryButton.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
 import CoverScanner from '@/Components/Library/CoverScanner.vue';
 import { useTrans } from '@/Composables/useTrans';
-import { CameraIcon, PhotoIcon, ArrowPathIcon, GlobeAltIcon, CheckCircleIcon } from '@heroicons/vue/24/outline';
+import { CameraIcon, PhotoIcon, ArrowPathIcon, GlobeAltIcon, CheckCircleIcon, NewspaperIcon, ExclamationTriangleIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const props = defineProps({ show: Boolean, book: { type: Object, default: null }, sections: Array, defaultSection: { type: Number, default: null } });
@@ -20,7 +20,13 @@ const blank = {
     title: '', subtitle: '', authors: '', isbn: '', publisher: '', year: '', language: '', edition: '', pages: '',
     description: '', section_id: null, reference_only: false, cover: null, cover_url: '', remove_cover: false, copies: 1, shelf: '',
     call_number: '', subjects: '', marc_xml: '',
+    doi: '', journal: '', volume: '', issue: '', page_range: '',
 };
+// DOI: research articles and e-books. Pasting a DOI (or a doi.org link) fills the form.
+const DOI_RE = /10\.\d{4,9}\/\S+/;
+const doiState = ref({ busy: false, error: '', filled: false, existing: null });
+const articleOpen = ref(false);
+const isArticle = computed(() => articleOpen.value || !!form.journal);
 // Copy cataloguing from the world's catalogues (SRU / Z39.50): the picked record fills the form.
 const world = ref({ busy: false, error: '', results: null, failed: [], picked: null });
 const form = useForm({ ...blank });
@@ -39,6 +45,8 @@ watch(() => props.show, (show) => {
     scan.value = { show: false, file: null };
     scanned.value = [];
     world.value = { busy: false, error: '', results: null, failed: [], picked: null };
+    doiState.value = { busy: false, error: '', filled: false, existing: null };
+    articleOpen.value = false;
     if (props.book) {
         Object.keys(blank).forEach((k) => { if (k in props.book && props.book[k] !== null) form[k] = props.book[k]; });
         form.copies = null;
@@ -99,6 +107,42 @@ async function fetchIsbn() {
         lookup.value.busy = false;
     }
 }
+
+async function fetchDoi() {
+    const m = (form.doi || '').match(DOI_RE);
+    if (!m) {
+        doiState.value = { busy: false, error: t('library.doi_invalid', 'هذا ليس DOI صحيحاً. مثال: 10.1016/j.joms.2018.01.001'), filled: false, existing: null };
+        return;
+    }
+    form.doi = m[0].replace(/[.,;)\]}]+$/, '').toLowerCase();
+    doiState.value = { busy: true, error: '', filled: false, existing: null };
+    try {
+        const d = (await window.axios.get(route('library.manage.doi'), { params: { doi: form.doi } })).data;
+        // A DOI's record is authoritative: it replaces what was typed, but keeps a description already written.
+        ['title', 'subtitle', 'authors', 'publisher', 'year', 'journal', 'volume', 'issue', 'page_range', 'pages', 'isbn', 'edition', 'language', 'subjects'].forEach((k) => {
+            if (d[k] !== undefined && d[k] !== null && d[k] !== '') form[k] = String(d[k]);
+        });
+        if (d.description && !form.description) form.description = d.description;
+        if (d.type === 'article') articleOpen.value = true;
+        doiState.value = { busy: false, error: '', filled: true, existing: props.book ? null : d.existing };
+    } catch (e) {
+        doiState.value = { busy: false, error: e.response?.data?.message || t('library.doi_failed', 'تعذّر جلب بيانات الـ DOI.'), filled: false, existing: e.response?.data?.existing ?? null };
+    }
+}
+
+// Pasted straight into the field: fetch at once.
+function doiPasted() {
+    nextTick(() => { if (DOI_RE.test(form.doi || '')) fetchDoi(); });
+}
+
+// A DOI typed or pasted into the ISBN field belongs in the DOI field.
+watch(() => form.isbn, (v) => {
+    if (v && DOI_RE.test(v)) {
+        form.doi = v;
+        form.isbn = '';
+        fetchDoi();
+    }
+});
 
 async function searchWorld() {
     const isbn = (form.isbn || '').replace(/[^0-9Xx]/g, '');
@@ -196,6 +240,52 @@ function submit() {
                         </div>
                         <p v-if="world.picked !== null" class="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">{{ t('library.world_picked', 'مُلئت الحقول من السجل المختار، ويُحفظ سجل MARC كاملاً مع الكتاب.') }}</p>
                     </div>
+                    <div class="col-span-2">
+                        <InputLabel value="DOI" />
+                        <div class="mt-1 flex gap-2">
+                            <div class="flex min-w-0 flex-1 items-center overflow-hidden rounded-md border border-gray-300 bg-white focus-within:border-[var(--accent-500)] focus-within:ring-1 focus-within:ring-[var(--accent-500)] dark:border-gray-600 dark:bg-gray-900" dir="ltr">
+                                <span class="select-none border-e border-gray-200 bg-gray-50 px-2.5 py-2 font-mono text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-800">doi.org/</span>
+                                <input v-model="form.doi" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="10.1016/j.joms.2018.01.001"
+                                    class="min-w-0 flex-1 border-0 bg-transparent px-2.5 py-2 font-mono text-sm focus:ring-0 dark:text-gray-100"
+                                    @paste="doiPasted" @keydown.enter.prevent="fetchDoi" />
+                            </div>
+                            <button type="button" :disabled="doiState.busy || !form.doi" @click="fetchDoi" class="flex shrink-0 items-center gap-1 rounded-md border border-gray-300 px-3 text-sm hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:hover:bg-gray-700">
+                                <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': doiState.busy }" /> {{ t('library.fetch_isbn', 'جلب البيانات') }}
+                            </button>
+                        </div>
+                        <p v-if="doiState.filled" class="mt-1 flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400"><CheckCircleIcon class="h-4 w-4" /> {{ t('library.doi_filled', 'عُبّئت الحقول من سجل الـ DOI، راجعها ثم احفظ.') }}</p>
+                        <p v-else-if="doiState.error" class="mt-1 text-xs text-amber-600">{{ doiState.error }}</p>
+                        <p v-else class="mt-1 text-[11px] text-gray-400">{{ t('library.doi_hint', 'للبحوث والمقالات والكتب الإلكترونية: الصق الـ DOI أو رابطه وتُعبّأ البيانات تلقائياً.') }}</p>
+                        <p v-if="doiState.existing" class="mt-1 flex items-center gap-1 text-xs text-amber-700 dark:text-amber-400">
+                            <ExclamationTriangleIcon class="h-4 w-4 shrink-0" />
+                            {{ t('library.doi_exists', 'هذا الـ DOI مفهرس مسبقاً:') }}
+                            <a :href="route('library.books.show', doiState.existing.id)" target="_blank" class="truncate font-medium underline" dir="auto">{{ doiState.existing.title }}</a>
+                        </p>
+                    </div>
+                    <div v-if="isArticle" class="col-span-2 rounded-xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/30">
+                        <p class="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700 dark:text-gray-200"><NewspaperIcon class="h-4 w-4" /> {{ t('library.article_details', 'بيانات المقالة') }}</p>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="col-span-3">
+                                <InputLabel :value="t('library.field.journal', 'المجلة')" />
+                                <TextInput v-model="form.journal" dir="auto" class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel :value="t('library.field.volume', 'المجلد')" />
+                                <TextInput v-model="form.volume" dir="ltr" class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel :value="t('library.field.issue', 'العدد')" />
+                                <TextInput v-model="form.issue" dir="ltr" class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel :value="t('library.field.page_range', 'الصفحات')" />
+                                <TextInput v-model="form.page_range" dir="ltr" placeholder="45-60" class="mt-1 block w-full" />
+                            </div>
+                        </div>
+                    </div>
+                    <button v-else type="button" class="col-span-2 -mt-1 flex items-center gap-1.5 justify-self-start text-xs font-medium text-gray-500 hover:text-[var(--accent-600)]" @click="articleOpen = true">
+                        <NewspaperIcon class="h-4 w-4" /> {{ t('library.is_article', 'هذه مقالة علمية؟ أضف المجلة والعدد') }}
+                    </button>
                     <div class="col-span-2">
                         <InputLabel :value="t('library.field.title', 'العنوان') + ' *'" />
                         <TextInput v-model="form.title" dir="auto" class="mt-1 block w-full" />

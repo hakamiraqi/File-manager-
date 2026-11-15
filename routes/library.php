@@ -21,6 +21,7 @@ Route::get('/library/cover/{type}/{id}', [CatalogController::class, 'cover'])
 // The catalogue: visitors may browse it too when the admin switches the public library on.
 Route::get('/library', [CatalogController::class, 'index'])->name('library.index');
 Route::get('/library/books/{book}', [CatalogController::class, 'show'])->whereNumber('book')->name('library.books.show');
+Route::get('/library/books/{book}/cite', [CatalogController::class, 'cite'])->whereNumber('book')->middleware('throttle:60,1')->name('library.books.cite');
 
 // «خريطة المكتبة»: the 3D room and the walk to a book's bookcase.
 Route::get('/library/map', [MapController::class, 'show'])->name('library.map');
@@ -42,6 +43,7 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::put('/books/{book}', [BookController::class, 'update'])->name('books.update');
         Route::delete('/books/{book}', [BookController::class, 'destroy'])->name('books.destroy');
         Route::get('/isbn/{isbn}', [BookController::class, 'isbn'])->name('isbn');
+        Route::get('/doi', [BookController::class, 'doi'])->middleware('throttle:30,1')->name('doi');
         Route::post('/cover-text', [BookController::class, 'coverText'])->middleware('throttle:30,1')->name('cover-text');
         Route::post('/books/{book}/copies', [BookController::class, 'addCopies'])->name('copies.store');
         Route::put('/copies/{copy}', [BookController::class, 'updateCopy'])->name('copies.update');

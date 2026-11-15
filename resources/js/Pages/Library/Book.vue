@@ -1,13 +1,14 @@
 <script setup>
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import GuestShell from '@/Components/GuestShell.vue';
 import LibraryTabs from '@/Components/Library/LibraryTabs.vue';
 import BookCover from '@/Components/Library/BookCover.vue';
+import CiteModal from '@/Components/Library/CiteModal.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { useLibrary } from '@/Composables/useLibrary';
-import { DocumentTextIcon, PencilSquareIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftRightIcon, ArrowLeftEndOnRectangleIcon, ChevronLeftIcon, MapPinIcon } from '@heroicons/vue/24/outline';
+import { DocumentTextIcon, PencilSquareIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ChatBubbleLeftRightIcon, ArrowLeftEndOnRectangleIcon, ChevronLeftIcon, MapPinIcon, AcademicCapIcon, ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
 const { statusLabel, statusClass } = useLibrary();
@@ -26,6 +27,14 @@ const errors = computed(() => usePage().props.errors);
 const placeHold = () => router.post(route('library.holds.store', props.book.id), {}, { preserveScroll: true });
 const cancelHold = () => router.delete(route('library.holds.destroy', props.myHold.id), { preserveScroll: true });
 const canManage = computed(() => usePage().props.permissions?.manage_library);
+
+const citeOpen = ref(false);
+// An article: «Journal, 12(3), 45–60».
+const hostLine = computed(() => {
+    const b = props.book;
+    if (!b.journal) return null;
+    return [b.journal, [b.volume, b.issue ? `(${b.issue})` : ''].join('') || null, b.page_range ? b.page_range.replace('-', '–') : null].filter(Boolean).join(', ');
+});
 
 const details = computed(() => [
     [t('library.field.authors', 'المؤلف'), props.book.authors],
@@ -61,6 +70,12 @@ const details = computed(() => [
                     <div>
                         <h1 class="text-xl font-bold text-gray-900 dark:text-gray-100" dir="auto">{{ book.title }}</h1>
                         <p v-if="book.subtitle" class="text-gray-500" dir="auto">{{ book.subtitle }}</p>
+                        <p v-if="hostLine" class="mt-1 text-sm italic text-gray-600 dark:text-gray-300" dir="ltr">{{ hostLine }}</p>
+                        <a v-if="book.doi" :href="`https://doi.org/${book.doi}`" target="_blank" rel="noopener" class="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--accent-200,#c7d2fe)] bg-[var(--accent-50,#eef2ff)] py-1 pe-3 ps-1 text-xs text-[var(--accent-700)] transition hover:bg-white dark:border-gray-600 dark:bg-gray-900/40 dark:text-gray-200" dir="ltr">
+                            <span class="rounded-full bg-[var(--accent-600)] px-2 py-0.5 text-[10px] font-bold tracking-wide text-white">DOI</span>
+                            <span class="truncate font-mono">{{ book.doi }}</span>
+                            <ArrowTopRightOnSquareIcon class="h-3.5 w-3.5 shrink-0" />
+                        </a>
                     </div>
                     <dl class="grid grid-cols-1 gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
                         <div v-for="[label, value] in details" :key="label" class="flex gap-2">
@@ -107,6 +122,9 @@ const details = computed(() => [
                         <ChevronLeftIcon class="h-5 w-5 shrink-0 ltr:rotate-180" />
                     </Link>
                     <div class="flex flex-wrap gap-2 pt-1">
+                        <button type="button" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700" @click="citeOpen = true">
+                            <AcademicCapIcon class="h-5 w-5" /> {{ t('library.cite.button', 'استشهاد') }}
+                        </button>
                         <a v-if="digitalFile" :href="route('files.preview', digitalFile.id)" target="_blank" class="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700">
                             <DocumentTextIcon class="h-5 w-5" /> {{ t('library.digital_copy', 'النسخة الرقمية') }}
                         </a>
@@ -130,5 +148,6 @@ const details = computed(() => [
                 </div>
             </section>
         </div>
+        <CiteModal :show="citeOpen" :book="book" @close="citeOpen = false" />
     </component>
 </template>

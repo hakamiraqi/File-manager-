@@ -140,7 +140,8 @@ class BookEditScreen extends StatefulWidget {
 }
 
 class _BookEditScreenState extends State<BookEditScreen> {
-  static const _fields = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'call_number', 'subjects', 'description'];
+  static const _fields = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'call_number', 'subjects', 'description', 'doi', 'journal', 'volume', 'issue', 'page_range'];
+  bool _article = false; // shows the journal fields
 
   late final Map<String, TextEditingController> _c = {
     for (final f in _fields) f: TextEditingController(text: widget.book?[f]?.toString() ?? ''),
@@ -181,6 +182,30 @@ class _BookEditScreenState extends State<BookEditScreen> {
       }
       _coverUrl = r['cover_url'] as String?;
       if (mounted) context.toast(context.l('عُبّئت البيانات من ISBN.', 'Filled in from the ISBN.'));
+    } catch (e) {
+      if (mounted) context.toastError(e);
+    }
+    if (mounted) setState(() => _busy = false);
+  }
+
+  /// An article or e-book by its DOI (or a doi.org link): the record fills the form.
+  Future<void> _lookupDoi() async {
+    final doi = _c['doi']!.text.trim();
+    if (doi.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final r = await LibraryManageApi.instance.doi(doi);
+      for (final f in ['doi', 'title', 'subtitle', 'authors', 'publisher', 'year', 'journal', 'volume', 'issue', 'page_range', 'pages', 'isbn', 'edition', 'language', 'subjects']) {
+        if (r[f] != null && '${r[f]}'.isNotEmpty) _c[f]!.text = '${r[f]}';
+      }
+      if (_c['description']!.text.isEmpty && r['description'] != null) _c['description']!.text = '${r['description']}';
+      if (r['type'] == 'article') _article = true;
+      if (mounted) {
+        final existing = r['existing'] as Map?;
+        context.toast(existing != null && widget.book == null
+            ? context.l('تنبيه: هذا الـ DOI مفهرس مسبقاً («${existing['title']}»).', 'Note: this DOI is already catalogued ("${existing['title']}").')
+            : context.l('عُبّئت البيانات من الـ DOI، راجعها ثم احفظ.', 'Filled in from the DOI; check and save.'));
+      }
     } catch (e) {
       if (mounted) context.toastError(e);
     }
@@ -364,6 +389,22 @@ class _BookEditScreenState extends State<BookEditScreen> {
                   Expanded(child: _field('isbn', 'ISBN', 'ISBN', type: TextInputType.number)),
                   IconButton(tooltip: context.l('جلب البيانات', 'Look up'), icon: const Icon(Icons.travel_explore_rounded), onPressed: _busy ? null : _lookupIsbn),
                 ]),
+                Row(children: [
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: TextField(
+                        controller: _c['doi'],
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        textDirection: TextDirection.ltr,
+                        onSubmitted: (_) => _lookupDoi(),
+                        decoration: InputDecoration(labelText: 'DOI', hintText: '10.1016/j.joms.2018.01.001', prefixText: 'doi.org/'),
+                      ),
+                    ),
+                  ),
+                  IconButton(tooltip: context.l('جلب من الـ DOI', 'Look up the DOI'), icon: const Icon(Icons.manage_search_rounded), onPressed: _busy ? null : _lookupDoi),
+                ]),
                 Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: TextButton.icon(
@@ -417,6 +458,24 @@ class _BookEditScreenState extends State<BookEditScreen> {
             const SizedBox(width: 10),
             Expanded(child: _field('subjects', 'الموضوعات (افصل بـ ؛)', 'Subjects (separate with ;)')),
           ]),
+          if (_article || _c['journal']!.text.isNotEmpty) ...[
+            _field('journal', 'المجلة', 'Journal'),
+            Row(children: [
+              Expanded(child: _field('volume', 'المجلد', 'Volume')),
+              const SizedBox(width: 10),
+              Expanded(child: _field('issue', 'العدد', 'Issue')),
+              const SizedBox(width: 10),
+              Expanded(child: _field('page_range', 'الصفحات', 'Pages')),
+            ]),
+          ] else
+            Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _article = true),
+                icon: const Icon(Icons.article_outlined, size: 18),
+                label: Text(context.l('مقالة علمية؟ أضف المجلة والعدد', 'An article? Add the journal and issue')),
+              ),
+            ),
           _field('description', 'الوصف', 'Description', lines: 3),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,

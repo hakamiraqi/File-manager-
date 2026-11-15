@@ -2,7 +2,9 @@
 
 namespace App\Models\Library;
 
+use App\Jobs\KohaPushBook;
 use App\Models\File;
+use App\Services\Library\DoiLookup;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,7 +17,7 @@ class Book extends Model
     protected $fillable = [
         'section_id', 'title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language',
         'edition', 'pages', 'description', 'cover_path', 'file_id', 'reference_only', 'created_by',
-        'call_number', 'subjects', 'marc_control', 'marc_xml', 'koha_biblio_id',
+        'call_number', 'subjects', 'marc_control', 'marc_xml', 'koha_biblio_id', 'doi', 'journal', 'volume', 'issue', 'page_range',
     ];
 
     /** The full MARC record is for export only, never sent to pages or the app. */
@@ -29,15 +31,15 @@ class Book extends Model
     }
 
     /** What a catalogue record is made of: a change here is sent to Koha when Koha runs the library. */
-    public const CATALOGUE_FIELDS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'description', 'call_number', 'subjects', 'marc_xml'];
+    public const CATALOGUE_FIELDS = ['title', 'subtitle', 'authors', 'isbn', 'publisher', 'year', 'language', 'edition', 'pages', 'description', 'call_number', 'subjects', 'marc_xml', 'doi', 'journal', 'volume', 'issue', 'page_range'];
 
     protected static function booted(): void
     {
         static::saved(function (self $book) {
             if ($book->wasRecentlyCreated) {
-                \App\Jobs\KohaPushBook::afterSave($book);
+                KohaPushBook::afterSave($book);
             } elseif ($book->koha_biblio_id && $book->wasChanged(self::CATALOGUE_FIELDS)) {
-                \App\Jobs\KohaPushBook::afterSave($book, true);
+                KohaPushBook::afterSave($book, true);
             }
         });
     }
@@ -78,8 +80,14 @@ class Book extends Model
             return $query;
         }
 
+        // A pasted DOI (or a doi.org link) finds its article.
+        if ($doi = DoiLookup::normalize($term)) {
+            return $query->where('doi', $doi);
+        }
+
         return $query->where(fn ($q) => $q
             ->where('title', 'like', "%{$term}%")
+            ->orWhere('journal', 'like', "%{$term}%")
             ->orWhere('subtitle', 'like', "%{$term}%")
             ->orWhere('authors', 'like', "%{$term}%")
             ->orWhere('publisher', 'like', "%{$term}%")

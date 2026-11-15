@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/network/api_client.dart';
 import 'package:provider/provider.dart';
@@ -156,6 +159,44 @@ class _BookScreenState extends State<BookScreen> {
                     Padding(padding: const EdgeInsets.only(top: 4), child: Text(book['subtitle'], style: TextStyle(color: scheme.onSurfaceVariant))),
                   if ((book['authors'] ?? '').toString().isNotEmpty)
                     Padding(padding: const EdgeInsets.only(top: 8), child: Text(book['authors'], style: const TextStyle(fontWeight: FontWeight.w500))),
+                  if ((book['journal'] ?? '').toString().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        [
+                          book['journal'],
+                          '${book['volume'] ?? ''}${(book['issue'] ?? '').toString().isNotEmpty ? '(${book['issue']})' : ''}',
+                          (book['page_range'] ?? '').toString(),
+                        ].where((s) => s.toString().isNotEmpty).join(', '),
+                        textDirection: TextDirection.ltr,
+                        style: TextStyle(fontStyle: FontStyle.italic, color: scheme.onSurfaceVariant, fontSize: 13),
+                      ),
+                    ),
+                  if ((book['doi'] ?? '').toString().isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(20),
+                        onTap: () => launchUrl(Uri.parse('https://doi.org/${book['doi']}'), mode: LaunchMode.externalApplication),
+                        child: Container(
+                          padding: const EdgeInsetsDirectional.fromSTEB(4, 4, 10, 4),
+                          decoration: BoxDecoration(color: scheme.primary.withOpacity(0.08), borderRadius: BorderRadius.circular(20)),
+                          child: Row(mainAxisSize: MainAxisSize.min, textDirection: TextDirection.ltr, children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(color: scheme.primary, borderRadius: BorderRadius.circular(12)),
+                              child: const Text('DOI', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(book['doi'], overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: scheme.primary)),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.open_in_new_rounded, size: 14, color: scheme.primary),
+                          ]),
+                        ),
+                      ),
+                    ),
                   if (book['reference_only'] == true)
                     Padding(padding: const EdgeInsets.only(top: 8), child: Pill(text: context.l('للقراءة داخل المكتبة', 'In-library reading'), color: Colors.blueGrey, icon: Icons.chair_alt_rounded)),
                 ]),
@@ -236,6 +277,19 @@ class _BookScreenState extends State<BookScreen> {
                 label: Text(copies.isEmpty ? context.l('اطلب هذا الكتاب', 'Request this book') : context.l('استفسر عن الكتاب', 'Ask about this book')),
               ),
             ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: OutlinedButton.icon(
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (_) => _CiteSheet(bookId: widget.bookId, title: book['title'] ?? ''),
+              ),
+              icon: const Icon(Icons.format_quote_rounded),
+              label: Text(context.l('استشهاد (APA · Vancouver)', 'Cite (APA · Vancouver)')),
+            ),
+          ),
           if (details.isNotEmpty)
             GroupCard(
               title: context.l('المعلومات', 'Details'),
@@ -269,6 +323,123 @@ class _BookScreenState extends State<BookScreen> {
                     .toList(),
           ),
         ]),
+      ),
+    );
+  }
+}
+
+/// «استشهاد»: the book as a reference, to copy into a thesis or send to EndNote / Zotero.
+class _CiteSheet extends StatefulWidget {
+  const _CiteSheet({required this.bookId, required this.title});
+  final int bookId;
+  final String title;
+
+  @override
+  State<_CiteSheet> createState() => _CiteSheetState();
+}
+
+class _CiteSheetState extends State<_CiteSheet> {
+  late final Future<Json> _cite = SiteApi.instance.cite(widget.bookId);
+  String _style = 'apa';
+  bool _copied = false;
+
+  static const _styles = {'apa': 'APA 7', 'vancouver': 'Vancouver', 'bibtex': 'BibTeX', 'ris': 'RIS'};
+
+  String _text(Json d) {
+    final v = d[_style];
+    return v is Map ? (v['text'] ?? '').toString() : (v ?? '').toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        child: FutureBuilder<Json>(
+          future: _cite,
+          builder: (context, snap) {
+            if (snap.hasError) {
+              return Padding(padding: const EdgeInsets.all(24), child: Text(ApiClient.messageFor(snap.error!)));
+            }
+            if (!snap.hasData) {
+              return const Padding(padding: EdgeInsets.all(32), child: Center(child: CircularProgressIndicator()));
+            }
+            final d = snap.data!;
+            final text = _text(d);
+            final code = _style == 'bibtex' || _style == 'ris';
+            return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Text(context.l('استشهاد', 'Cite'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: scheme.onSurfaceVariant)),
+              const SizedBox(height: 12),
+              Directionality(
+                textDirection: TextDirection.ltr,
+                child: SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  segments: [for (final e in _styles.entries) ButtonSegment(value: e.key, label: Text(e.value, style: const TextStyle(fontSize: 12.5)))],
+                  selected: {_style},
+                  onSelectionChanged: (s) => setState(() {
+                    _style = s.first;
+                    _copied = false;
+                  }),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                switch (_style) {
+                  'apa' => context.l('الأكثر استخداماً في الرسائل والبحوث', 'Most used in theses and papers'),
+                  'vancouver' => context.l('أسلوب المجلات الطبية وطب الأسنان', 'The style of medical and dental journals'),
+                  'bibtex' => context.l('لـ LaTeX و Overleaf', 'For LaTeX and Overleaf'),
+                  _ => context.l('لـ EndNote و Zotero و Mendeley', 'For EndNote, Zotero and Mendeley'),
+                },
+                style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 260),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(color: scheme.surfaceContainerHighest.withOpacity(0.5), borderRadius: BorderRadius.circular(14)),
+                child: SingleChildScrollView(
+                  child: SelectableText(
+                    text,
+                    textDirection: !code && RegExp(r'[؀-ۿ]').hasMatch(text) ? TextDirection.rtl : TextDirection.ltr,
+                    style: code
+                        ? const TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.5)
+                        : const TextStyle(fontFamily: 'serif', fontSize: 15, height: 1.6),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(
+                  child: FilledButton.icon(
+                    style: _copied ? FilledButton.styleFrom(backgroundColor: Colors.green.shade600) : null,
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: text));
+                      if (mounted) setState(() => _copied = true);
+                    },
+                    icon: Icon(_copied ? Icons.check_rounded : Icons.copy_rounded),
+                    label: Text(_copied ? context.l('تم النسخ', 'Copied') : context.l('نسخ', 'Copy')),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.outlined(
+                  tooltip: context.l('مشاركة', 'Share'),
+                  onPressed: () => Share.share(text, subject: widget.title),
+                  icon: const Icon(Icons.ios_share_rounded),
+                ),
+                if (d['doi_url'] != null) ...[
+                  const SizedBox(width: 8),
+                  IconButton.outlined(
+                    tooltip: context.l('المصدر الأصلي', 'Original source'),
+                    onPressed: () => launchUrl(Uri.parse(d['doi_url'] as String), mode: LaunchMode.externalApplication),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                  ),
+                ],
+              ]),
+            ]);
+          },
+        ),
       ),
     );
   }
