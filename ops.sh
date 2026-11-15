@@ -1,0 +1,11 @@
+cd /home/ubuntu/koha-test
+python3 - <<'PY'
+p='docker-compose.yml'; s=open(p).read()
+if 'filenest_default' not in s:
+    s=s.replace("    networks: [proxy]","    networks: [proxy, filenest]").replace("networks:\n  proxy:\n    name: headscale_default\n    external: true","networks:\n  proxy:\n    name: headscale_default\n    external: true\n  filenest:\n    name: filenest_default\n    external: true")
+    open(p,'w').write(s)
+print(open(p).read())
+PY
+echo 'PD9waHAKdXNlIEFwcFxNb2RlbHNcU2V0dGluZzsKdXNlIEFwcFxTZXJ2aWNlc1xMaWJyYXJ5XE1hcmNcU3J1Q2xpZW50Owokc2VydmVycyA9IGFycmF5X3ZhbHVlcyhhcnJheV9maWx0ZXIoU3J1Q2xpZW50OjpzZXJ2ZXJzKCksIGZuICgkcykgPT4gISBzdHJfY29udGFpbnMoJHNbJ3VybCddLCAna29oYS10ZXN0JykpKTsKYXJyYXlfdW5zaGlmdCgkc2VydmVycywgWyduYW1lJyA9PiAnS29oYSDYp9mE2YPZhNmK2KkgKNiq2KzYsdmK2KjZiiknLCAndXJsJyA9PiAnaHR0cDovL2tvaGEtdGVzdDo3MDkwL2JpYmxpb3MnLCAnaXNibicgPT4gJ2JhdGguaXNibicsICd0aXRsZScgPT4gJ2RjLnRpdGxlJywgJ2F1dGhvcicgPT4gJ2RjLmNyZWF0b3InLCAnc2NoZW1hJyA9PiAnbWFyY3htbCcsICdvbicgPT4gdHJ1ZV0pOwpTZXR0aW5nOjpzZXQoJ2xpYnJhcnlfc3J1X3NlcnZlcnMnLCBqc29uX2VuY29kZSgkc2VydmVycywgSlNPTl9VTkVTQ0FQRURfVU5JQ09ERSB8IEpTT05fVU5FU0NBUEVEX1NMQVNIRVMpKTsKJGlzYm4gPSBBcHBcTW9kZWxzXExpYnJhcnlcQm9vazo6d2hlcmVOb3ROdWxsKCdpc2JuJyktPnZhbHVlKCdpc2JuJyk7CiRyID0gYXBwKFNydUNsaWVudDo6Y2xhc3MpLT5zZWFyY2goJGlzYm4sIG51bGwsIG51bGwpOwokayA9IGFycmF5X3ZhbHVlcyhhcnJheV9maWx0ZXIoJHJbJ3Jlc3VsdHMnXSwgZm4gKCR4KSA9PiBzdHJfY29udGFpbnMoJHhbJ3NlcnZlciddLCAnS29oYScpKSk7CmVjaG8gImlzYm4geyRpc2JufToga29oYSByZXN1bHRzPSIuY291bnQoJGspLihpc3NldCgka1swXSkgPyAnIMKrJy4ka1swXVsnYm9vayddWyd0aXRsZSddLifCuycgOiAnJykuIiBlcnJvcnM9Ii5qc29uX2VuY29kZSgkclsnZXJyb3JzJ10sIEpTT05fVU5FU0NBUEVEX1VOSUNPREUpLiJcbiI7CiRyID0gYXBwKFNydUNsaWVudDo6Y2xhc3MpLT5zZWFyY2gobnVsbCwgJ3N1cmdlcnknLCBudWxsKTsKZWNobyAidGl0bGUgc3VyZ2VyeTogIi5jb3VudChhcnJheV9maWx0ZXIoJHJbJ3Jlc3VsdHMnXSwgZm4gKCR4KSA9PiBzdHJfY29udGFpbnMoJHhbJ3NlcnZlciddLCAnS29oYScpKSkuIiBmcm9tIEtvaGFcbiI7Cg==' | base64 -d > /tmp/ksru.php; docker cp /tmp/ksru.php filenest-app:/tmp/x.php; rm /tmp/ksru.php
+docker exec -u www-data -w /var/www/html filenest-app php -r "require 'vendor/autoload.php'; \$app = require 'bootstrap/app.php'; \$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); require '/tmp/x.php';" 2>&1 | head -6
+docker exec filenest-app rm -f /tmp/x.php
