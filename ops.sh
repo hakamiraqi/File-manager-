@@ -1,0 +1,2 @@
+curl -s -m 20 https://debian.koha-community.org/koha/dists/ | grep -oE 'href="[^"]+/"' | head -30
+for s in stable oldstable; do echo "== $s"; curl -s -m 20 https://debian.koha-community.org/koha/dists/$s/Release | grep -E "^(Version|Codename|Suite|Architectures|Date)"; curl -s -m 20 https://debian.koha-community.org/koha/dists/$s/main/binary-arm64/Packages 2>/dev/null | grep -A3 "^Package: koha-common$" | head -4; done
