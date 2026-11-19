@@ -8,13 +8,20 @@ import { useTrans } from '@/Composables/useTrans';
 import {
     AcademicCapIcon, ArrowPathIcon, BanknotesIcon, BellAlertIcon, BellIcon, BookmarkIcon, BookOpenIcon, BriefcaseIcon,
     CalendarDaysIcon, CalendarIcon, GlobeAltIcon, TrashIcon, LinkIcon, CheckCircleIcon, ClockIcon, ExclamationTriangleIcon, InformationCircleIcon, PlusIcon, Squares2X2Icon,
-    UserGroupIcon, XMarkIcon,
+    UserGroupIcon, XMarkIcon, KeyIcon, ClipboardDocumentIcon,
 } from '@heroicons/vue/24/outline';
 
 const { t } = useTrans();
+// «ربط نظام الطلبة»: SIS connects with a key issued here (shown once).
+const sisBusy = ref(false);
+const sisCopied = ref(false);
+const issueSisKey = () => { if (props.sisLink?.enabled && !confirm(t('library.sis.reissue_q', 'إصدار مفتاح جديد يوقف المفتاح الحالي فوراً. متابعة؟'))) return; sisBusy.value = true; router.post(route('library.manage.sis-link.issue'), {}, { preserveScroll: true, onFinish: () => (sisBusy.value = false) }); };
+const revokeSis = () => { if (!confirm(t('library.sis.revoke_q', 'إلغاء ربط نظام الطلبة؟ يتوقف وصوله فوراً.'))) return; sisBusy.value = true; router.delete(route('library.manage.sis-link.revoke'), { preserveScroll: true, onFinish: () => (sisBusy.value = false) }); };
+const copySisKey = async () => { try { await navigator.clipboard.writeText(props.sisKey); sisCopied.value = true; } catch { /* still selectable */ } };
 const props = defineProps({
     rules: Object, holidays: Array, sruServers: { type: Array, default: () => [] }, sruDefaults: { type: Array, default: () => [] },
-    koha: { type: Object, default: () => ({}) }, canEditKoha: { type: Boolean, default: false }, marcOrg: { type: String, default: '' },
+    koha: { type: Object, default: () => ({}) }, canEditKoha: { type: Boolean, default: false },
+    sisLink: { type: Object, default: () => ({}) }, sisKey: { type: String, default: null }, marcOrg: { type: String, default: '' },
 });
 
 // «الربط مع Koha» (الخيار ب): Koha lends, FileNest is the front.
@@ -268,6 +275,38 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                     <div v-if="kohaOn && kohaPending > 0" class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 p-3 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
                         <span>{{ t('library.koha.pending', 'كتب مفهرسة هنا ولم تصل إلى Koha بعد:') }} <b>{{ kohaPending }}</b></span>
                         <button type="button" :disabled="kohaBusy || koha.koha_push === '0'" :title="koha.koha_push === '0' ? t('library.koha.push_off', 'شغّل خيار إرسال الكتب إلى Koha أولاً') : ''" @click="pushPending" class="flex items-center gap-1 rounded-xl bg-[var(--accent-600)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"><ArrowPathIcon class="h-4 w-4" /> {{ t('library.koha.push_pending', 'إرسال الكتب غير المرسلة') }}</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SIS link: the students system connects to the library as a connector -->
+            <section v-if="canEditKoha" class="rounded-2xl border bg-white shadow-sm dark:bg-gray-800" :class="sisLink.enabled ? 'border-[var(--accent-500)]' : 'border-gray-200 dark:border-gray-700'">
+                <div class="flex items-start gap-2 border-b border-gray-100 p-4 dark:border-gray-700">
+                    <AcademicCapIcon class="mt-0.5 h-5 w-5 text-[var(--accent-600)]" />
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">
+                            {{ t('library.sis.title', 'ربط نظام الطلبة (SIS)') }}
+                            <span v-if="sisLink.enabled" class="ms-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('library.sis.on', 'مربوط') }}</span>
+                        </h3>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('library.sis.hint', 'يرسل نظام الطلبة الطلبةَ كقرّاء (رقم البطاقة = الرقم الجامعي)، ويقرأ الكتب غير المرجعة والغرامات لبراءة الذمة. أصدر مفتاحاً هنا وضعه في نظام الطلبة: الموصلات ← المكتبة ← ربط.') }}</p>
+                    </div>
+                </div>
+                <div class="space-y-3 p-4 text-sm">
+                    <div v-if="sisKey" class="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-900/20">
+                        <p class="mb-2 font-medium text-amber-900 dark:text-amber-200">{{ t('library.sis.copy_now', 'انسخ المفتاح الآن، فلن يظهر مرة أخرى:') }}</p>
+                        <div class="flex items-center gap-2">
+                            <code class="min-w-0 flex-1 select-all break-all rounded-lg bg-white px-2 py-1.5 text-xs dark:bg-gray-900" dir="ltr">{{ sisKey }}</code>
+                            <button type="button" @click="copySisKey" class="flex shrink-0 items-center gap-1 rounded-xl border border-gray-300 px-3 py-1.5 dark:border-gray-600"><ClipboardDocumentIcon class="h-4 w-4" /> {{ sisCopied ? t('library.sis.copied', 'نُسخ') : t('library.sis.copy', 'نسخ') }}</button>
+                        </div>
+                    </div>
+                    <dl v-if="sisLink.enabled" class="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-300">
+                        <dt>{{ t('library.sis.key', 'المفتاح') }}</dt><dd dir="ltr" class="font-mono">fnsis_…{{ sisLink.hint }}</dd>
+                        <dt>{{ t('library.sis.issued', 'صدر في') }}</dt><dd dir="ltr">{{ sisLink.issued_at }}</dd>
+                        <dt>{{ t('library.sis.last_seen', 'آخر اتصال من نظام الطلبة') }}</dt><dd dir="ltr">{{ sisLink.last_seen ?? '—' }}</dd>
+                    </dl>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" :disabled="sisBusy" @click="issueSisKey" class="flex items-center gap-1 rounded-xl bg-[var(--accent-600)] px-3 py-1.5 font-semibold text-white disabled:opacity-40"><KeyIcon class="h-4 w-4" /> {{ sisLink.enabled ? t('library.sis.reissue', 'مفتاح جديد') : t('library.sis.issue', 'إصدار مفتاح والربط') }}</button>
+                        <button v-if="sisLink.enabled" type="button" :disabled="sisBusy" @click="revokeSis" class="rounded-xl border border-red-300 px-3 py-1.5 text-red-700 disabled:opacity-40 dark:border-red-800 dark:text-red-300">{{ t('library.sis.revoke', 'إلغاء الربط') }}</button>
                     </div>
                 </div>
             </section>

@@ -312,3 +312,10 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         });
     });
 });
+
+// SIS (نظام الطلبة) as a connector: its own key, issued in library settings (see SisLink).
+Route::prefix('sis/v1')->middleware([\App\Http\Middleware\AuthenticateSis::class, 'throttle:120,1'])->group(function () {
+    Route::get('/manifest', [\App\Http\Controllers\Api\Sis\SisConnectorController::class, 'manifest']);
+    Route::post('/members', [\App\Http\Controllers\Api\Sis\SisConnectorController::class, 'members']);
+    Route::post('/clearance', [\App\Http\Controllers\Api\Sis\SisConnectorController::class, 'clearance']);
+});

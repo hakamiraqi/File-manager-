@@ -26,6 +26,8 @@ class SettingsController extends Controller
             'koha' => \App\Services\Library\Koha\KohaSettings::forPage(),
             'marcOrg' => (string) Setting::get('library_marc_org'),
             'canEditKoha' => request()->user()?->isAdmin() ?? false,
+            'sisLink' => \App\Services\Library\SisLink::forPage(),
+            'sisKey' => session('sis_key'),
         ]);
     }
 

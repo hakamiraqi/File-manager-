@@ -107,5 +107,8 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::post('/koha/sync', [\App\Http\Controllers\Library\KohaController::class, 'sync'])->middleware('throttle:6,1')->name('koha.sync');
         Route::post('/koha/push', [\App\Http\Controllers\Library\KohaController::class, 'push'])->middleware('throttle:3,1')->name('koha.push');
         Route::get('/koha/status', [\App\Http\Controllers\Library\KohaController::class, 'status'])->name('koha.status');
+        // «ربط نظام الطلبة»: the key SIS uses (admins only).
+        Route::post('/sis-link', [\App\Http\Controllers\Library\SisLinkController::class, 'issue'])->middleware('throttle:10,1')->name('sis-link.issue');
+        Route::delete('/sis-link', [\App\Http\Controllers\Library\SisLinkController::class, 'revoke'])->name('sis-link.revoke');
     });
 });
