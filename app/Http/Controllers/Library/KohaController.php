@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Library;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\KohaPushBook;
 use App\Jobs\KohaSyncNow;
 use App\Models\Setting;
 use App\Services\Library\Koha\KohaClient;
@@ -115,10 +116,28 @@ class KohaController extends Controller
         return response()->json(['message' => 'بدأت المزامنة مع Koha. تظهر النتيجة هنا خلال دقائق.']);
     }
 
+    /** «إرسال الكتب غير المرسلة»: books catalogued here before Koha accepted them, sent now. */
+    public function push(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->canManageLibrary(), 403);
+        abort_unless(KohaSettings::enabled(), 422, 'الربط مع Koha متوقف.');
+        abort_unless(KohaSettings::push(), 422, 'شغّل خيار «الكتب المفهرسة في FileNest تُرسل إلى Koha» واحفظ أولاً.');
+        $n = KohaPushBook::sendPending();
+
+        return response()->json([
+            'message' => $n ? "بدأ إرسال {$n} كتاب إلى Koha في الخلفية." : 'كل الكتب موجودة في Koha.',
+            'queued' => $n,
+        ]);
+    }
+
     public function status(Request $request): JsonResponse
     {
         abort_unless($request->user()->canManageLibrary(), 403);
 
-        return response()->json(['last_sync' => KohaSettings::state('koha_last_sync'), 'enabled' => KohaSettings::enabled()]);
+        return response()->json([
+            'last_sync' => KohaSettings::state('koha_last_sync'),
+            'enabled' => KohaSettings::enabled(),
+            'pending' => KohaPushBook::pending()->count(),
+        ]);
     }
 }

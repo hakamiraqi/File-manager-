@@ -105,6 +105,7 @@ Route::middleware(['auth', 'verified'])->prefix('library')->name('library.')->gr
         Route::post('/koha', [\App\Http\Controllers\Library\KohaController::class, 'save'])->name('koha.save');
         Route::post('/koha/test', [\App\Http\Controllers\Library\KohaController::class, 'test'])->middleware('throttle:10,1')->name('koha.test');
         Route::post('/koha/sync', [\App\Http\Controllers\Library\KohaController::class, 'sync'])->middleware('throttle:6,1')->name('koha.sync');
+        Route::post('/koha/push', [\App\Http\Controllers\Library\KohaController::class, 'push'])->middleware('throttle:3,1')->name('koha.push');
         Route::get('/koha/status', [\App\Http\Controllers\Library\KohaController::class, 'status'])->name('koha.status');
     });
 });

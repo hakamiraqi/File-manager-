@@ -7,6 +7,7 @@ use App\Services\Library\Koha\KohaBridge;
 use App\Services\Library\Koha\KohaSettings;
 use App\Services\Library\Koha\KohaSync;
 use Illuminate\Bus\Queueable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -42,6 +43,29 @@ class KohaPushBook implements ShouldQueue
             report($e);
             $this->fail($e);
         }
+    }
+
+    /** Books Koha has not received yet: the record, or one of its copies. */
+    public static function pending(): Builder
+    {
+        return Book::query()->where(fn (Builder $q) => $q->whereNull('koha_biblio_id')
+            ->orWhereHas('copies', fn (Builder $c) => $c->whereNull('koha_item_id')));
+    }
+
+    /**
+     * «إرسال الكتب غير المرسلة»: every pending book is queued, a few seconds apart so a slow
+     * Koha is not flooded. Returns how many were queued.
+     */
+    public static function sendPending(): int
+    {
+        $n = 0;
+        self::pending()->select('id')->orderBy('id')->chunkById(200, function ($books) use (&$n) {
+            foreach ($books as $book) {
+                self::dispatch($book)->delay(now()->addSeconds(3 * $n++));
+            }
+        });
+
+        return $n;
     }
 
     /** After a save in FileNest (not while pulling from Koha). */
