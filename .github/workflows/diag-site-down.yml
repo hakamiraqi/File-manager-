@@ -1,0 +1,37 @@
+name: Diagnostic - why is the site down (read-only)
+
+# Read-only: looks at the VPS and the site, changes nothing. Runs on pushes to this branch only.
+on:
+  push:
+    branches: [claude/project-thread-ag4frj]
+
+jobs:
+  look:
+    runs-on: ubuntu-latest
+    steps:
+      - name: From outside
+        run: |
+          getent hosts files.azoclinic.duckdns.org || echo "DNS: no answer"
+          for u in https://files.azoclinic.duckdns.org/login https://files.azoclinic.duckdns.org/; do
+            curl -s -o /dev/null -m 20 -w "$u -> %{http_code} in %{time_total}s\n" "$u" || echo "$u -> no connection"
+          done
+          curl -s -o /dev/null -m 10 -w "tcp 443 on IP -> %{http_code}\n" -k https://193.123.83.82/ || echo "443 on IP: no connection"
+          timeout 8 bash -c 'echo > /dev/tcp/193.123.83.82/22' && echo "ssh port open" || echo "ssh port closed/unreachable"
+      - name: On the VPS
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          mkdir -p ~/.ssh; printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/k; chmod 600 ~/.ssh/k
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o ConnectTimeout=20 -i ~/.ssh/k "$VPS_USER@$VPS_HOST" '
+            echo "== uptime"; uptime; echo "== memory"; free -m; echo "== disk"; df -h / | tail -1
+            echo "== containers"; sudo docker ps -a --format "{{.Names}}  {{.Status}}"
+            echo "== caddy"; for c in $(sudo docker ps -a --format "{{.Names}}" | grep -i caddy); do sudo docker logs --since 3h $c 2>&1 | tail -30 | cut -c1-400; done
+            echo "== app"; sudo docker logs --since 3h filenest-app 2>&1 | tail -40 | cut -c1-400
+            echo "== web"; sudo docker logs --since 3h filenest-web 2>&1 | grep -vE "\" 200 |\" 30[0-9] " | tail -30 | cut -c1-400
+            echo "== laravel.log"; sudo docker exec filenest-app sh -c "tail -n 40 storage/logs/laravel.log 2>/dev/null" | cut -c1-400
+            echo "== inside"; sudo docker exec filenest-web sh -c "wget -qO- -S http://127.0.0.1/login 2>&1 | head -3" || true
+            echo "== oom / kernel"; sudo dmesg -T 2>/dev/null | grep -iE "oom|killed process" | tail -10
+          ' || echo "SSH failed"
