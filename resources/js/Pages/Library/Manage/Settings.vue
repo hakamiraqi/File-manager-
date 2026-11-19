@@ -38,6 +38,7 @@ const saveKoha = () => kohaForm.post(route('library.manage.koha.save'), { preser
 const kohaTest = ref(null);
 const kohaBusy = ref(false);
 const kohaSync = ref(props.koha.last_sync ?? {});
+const kohaPending = ref(props.koha.pending ?? 0);
 async function testKoha() {
     kohaBusy.value = true;
     kohaTest.value = null;
@@ -61,7 +62,23 @@ async function syncKoha(full = false) {
     }
 }
 async function refreshKohaStatus() {
-    try { kohaSync.value = (await window.axios.get(route('library.manage.koha.status'))).data.last_sync ?? {}; } catch { /* the page still works */ }
+    try {
+        const d = (await window.axios.get(route('library.manage.koha.status'))).data;
+        kohaSync.value = d.last_sync ?? {};
+        kohaPending.value = d.pending ?? 0;
+    } catch { /* the page still works */ }
+}
+// «إرسال الكتب غير المرسلة»: books catalogued here before Koha accepted them.
+async function pushPending() {
+    kohaBusy.value = true;
+    try {
+        kohaTest.value = { ok: true, message: (await window.axios.post(route('library.manage.koha.push'))).data.message };
+        setTimeout(refreshKohaStatus, 30000);
+    } catch (e) {
+        kohaTest.value = { ok: false, message: e.response?.data?.message ?? 'تعذّر الإرسال.' };
+    } finally {
+        kohaBusy.value = false;
+    }
 }
 const syncLine = computed(() => {
     const s = kohaSync.value;
@@ -247,6 +264,10 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                             <button type="button" :disabled="kohaBusy" @click="syncKoha(false)" class="flex items-center gap-1 rounded-xl border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('library.koha.sync', 'زامن الآن') }}</button>
                             <button type="button" :disabled="kohaBusy" @click="syncKoha(true)" class="rounded-xl border border-gray-300 px-3 py-1.5 text-sm disabled:opacity-40 dark:border-gray-600">{{ t('library.koha.sync_full', 'مزامنة كاملة') }}</button>
                         </div>
+                    </div>
+                    <div v-if="kohaOn && kohaPending > 0" class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-amber-50 p-3 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">
+                        <span>{{ t('library.koha.pending', 'كتب مفهرسة هنا ولم تصل إلى Koha بعد:') }} <b>{{ kohaPending }}</b></span>
+                        <button type="button" :disabled="kohaBusy || koha.koha_push === '0'" :title="koha.koha_push === '0' ? t('library.koha.push_off', 'شغّل خيار إرسال الكتب إلى Koha أولاً') : ''" @click="pushPending" class="flex items-center gap-1 rounded-xl bg-[var(--accent-600)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-40"><ArrowPathIcon class="h-4 w-4" /> {{ t('library.koha.push_pending', 'إرسال الكتب غير المرسلة') }}</button>
                     </div>
                 </div>
             </section>

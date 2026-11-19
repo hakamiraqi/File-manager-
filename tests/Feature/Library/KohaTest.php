@@ -200,6 +200,28 @@ class KohaTest extends TestCase
         $this->assertContains('POST /biblios/77/items', $this->calls);
     }
 
+    public function test_books_catalogued_before_koha_accepted_them_are_sent_later(): void
+    {
+        Setting::set('koha_push', '0');
+        $this->actingAs($this->librarian())->post(route('library.manage.books.store'), [
+            'title' => 'Waiting Book', 'authors' => 'Ali', 'copies' => 1, 'shelf' => 'Z1',
+        ])->assertRedirect();
+        Book::create(['title' => 'From Koha', 'koha_biblio_id' => 9])->copies()->create(['barcode' => 'LIB1', 'koha_item_id' => 55]);
+        $this->assertNotContains('POST /biblios', $this->calls);
+
+        $this->actingAs($this->librarian())->getJson(route('library.manage.koha.status'))->assertOk()->assertJsonPath('pending', 1);
+        $this->actingAs($this->librarian())->postJson(route('library.manage.koha.push'))->assertStatus(422);
+
+        Setting::set('koha_push', '1');
+        $this->actingAs($this->librarian())->postJson(route('library.manage.koha.push'))->assertOk()->assertJsonPath('queued', 1);
+
+        $book = Book::where('title', 'Waiting Book')->firstOrFail();
+        $this->assertSame(77, $book->koha_biblio_id);
+        $this->assertSame(88, $book->copies()->first()->koha_item_id);
+        $this->actingAs($this->librarian())->getJson(route('library.manage.koha.status'))->assertJsonPath('pending', 0);
+        $this->actingAs($this->librarian())->postJson(route('library.manage.koha.push'))->assertOk()->assertJsonPath('queued', 0);
+    }
+
     public function test_a_staff_username_and_password_work_when_koha_allows_basic_auth(): void
     {
         Setting::setMany(['koha_auth' => 'basic', 'koha_username' => 'dent_lib', 'koha_password' => Crypt::encryptString('pa55')]);

@@ -128,6 +128,7 @@ class KohaSettings
         $out['has_password'] = self::password() !== null;
         $out['caps'] = self::state('koha_caps');
         $out['last_sync'] = self::state('koha_last_sync');
+        $out['pending'] = self::enabled() ? \App\Jobs\KohaPushBook::pending()->count() : 0;
 
         return $out;
     }
