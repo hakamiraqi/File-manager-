@@ -66,6 +66,7 @@ class ResultController extends Controller
                     'reply' => $ap->reply, 'created_at' => $ap->created_at->toIso8601String(),
                 ]),
             'can_manage' => $canManage,
+            'sis' => $canManage ? SisController::forResults($exam) : null,
             'ai_enabled' => \App\Services\Exams\AiMarker::enabled(),
             'messaging' => \App\Services\Exams\Messenger::enabled() && $canManage,
             'markers' => $exam->markers()->get(['users.id', 'name', 'email'])->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email]),

@@ -12,7 +12,7 @@ class Group extends Model
 {
     protected $table = 'exam_groups';
 
-    protected $fillable = ['user_id', 'name', 'stage', 'department'];
+    protected $fillable = ['user_id', 'name', 'stage', 'department', 'sis_offering_id'];
 
     public function owner(): BelongsTo
     {

@@ -7,13 +7,14 @@ import { computed, nextTick, ref, watch } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import Modal from '@/Components/Modal.vue';
+import SisImport from '@/Components/Exams/SisImport.vue';
 import { useTrans } from '@/Composables/useTrans';
 import {
     PlusIcon, TrashIcon, PencilSquareIcon, UserGroupIcon, ArrowUpTrayIcon, MagnifyingGlassIcon, UserPlusIcon, XMarkIcon,
     ChartBarIcon, IdentificationIcon, EllipsisVerticalIcon, CheckIcon, ArrowsRightLeftIcon, ArrowPathIcon, UsersIcon, AcademicCapIcon,
 } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ groups: Array, current: Number, members: Array, canImport: Boolean, unassigned: { type: Number, default: 0 } });
+const props = defineProps({ groups: Array, current: Number, members: Array, canImport: Boolean, unassigned: { type: Number, default: 0 }, sis: { type: Object, default: () => ({}) } });
 const { t } = useTrans();
 const group = computed(() => props.groups.find((g) => g.id === props.current) ?? null);
 const initial = (name) => (name || '?').trim().charAt(0);
@@ -152,7 +153,10 @@ const input = 'w-full rounded-xl border-gray-300 text-sm focus:border-[var(--acc
         <template #header>
             <div class="flex items-center justify-between gap-2">
                 <h2 class="flex items-center gap-2 text-lg font-semibold"><UserGroupIcon class="h-5 w-5 text-gray-500" /> {{ t('exam.groups', 'الصفوف والمجموعات') }}</h2>
+                <div class="flex items-center gap-2">
+                <SisImport v-if="sis.connected && sis.rosters" />
                 <button @click="openGroup()" class="flex items-center gap-1 rounded-xl bg-[var(--accent-600)] px-3 py-2 text-sm font-medium text-white shadow-sm hover:brightness-110"><PlusIcon class="h-4 w-4" /> {{ t('exam.new_group', 'مجموعة جديدة') }}</button>
+                </div>
             </div>
         </template>
 
