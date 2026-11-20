@@ -1,11 +1,12 @@
 <script setup>
+import SisSend from '@/Components/Exams/SisSend.vue';
 import { ref } from 'vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { ArrowRightIcon, ArrowDownTrayIcon, ArrowPathIcon, PencilSquareIcon, TrashIcon, EyeIcon, SparklesIcon, ArrowsRightLeftIcon, ClipboardDocumentListIcon, XMarkIcon, MapPinIcon, PrinterIcon, ChatBubbleLeftRightIcon, BellAlertIcon } from '@heroicons/vue/24/outline';
 
-const props = defineProps({ messaging: Boolean, ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array });
+const props = defineProps({ messaging: Boolean, ai_enabled: Boolean, by_tag: { type: Array, default: () => [] }, appeals: { type: Array, default: () => [] }, exam: Object, can_manage: Boolean, markers: { type: Array, default: () => [] }, summary: Object, stats: Object, questions: Array, attempts: Array, overrides: Array, sis: { type: Object, default: null } });
 const { t } = useTrans();
 const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElement.lang || 'ar', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const open = ref({});
@@ -107,6 +108,7 @@ const facilityClass = (f) => (f === null ? 'text-gray-400' : f < 30 ? 'text-red-
                 <Link :href="route('exams.manage.edit', exam.id)" class="text-gray-400 hover:text-gray-600"><ArrowRightIcon class="h-5 w-5 ltr:rotate-180" /></Link>
                 <h2 class="min-w-0 flex-1 truncate text-lg font-semibold" :dir="exam.dir">{{ t('exam.results', 'النتائج') }} · {{ exam.title }}</h2>
                 <Link v-if="exam.anonymous && can_manage" :href="route('exams.manage.results', { exam: exam.id, names: exam.names_shown ? undefined : 1 })" class="rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ exam.names_shown ? t('exam.hide_names', 'إخفاء الأسماء') : t('exam.show_names', 'إظهار الأسماء') }}</Link>
+                <SisSend v-if="sis" :exam-id="exam.id" :max-score="exam.max_score" :sis="sis" />
                 <button v-if="can_manage" @click="regrade" class="hidden items-center gap-1 rounded-lg border border-gray-300 px-3 py-1.5 text-sm sm:flex dark:border-gray-600"><ArrowPathIcon class="h-4 w-4" /> {{ t('exam.regrade', 'إعادة التصحيح') }}</button>
                 <a v-if="can_manage" :href="route('exams.manage.results-bundle', exam.id)" class="hidden rounded-lg border border-gray-300 px-3 py-1.5 text-sm md:block dark:border-gray-600" :title="t('exam.results_bundle_hint', 'نتائج هذا السيرفر في ملف، تُدخل في السيرفر المركزي')">{{ t('exam.results_bundle', 'ملف النتائج') }}</a>
                 <label v-if="can_manage" class="hidden cursor-pointer rounded-lg border border-gray-300 px-3 py-1.5 text-sm md:block dark:border-gray-600" :title="t('exam.results_import_hint', 'ملف نتائج من سيرفر قاعة لهذا الامتحان نفسه')">

@@ -28,13 +28,14 @@ class GroupController extends Controller
         return Inertia::render('Exams/Manage/Groups', [
             'groups' => $groups->map(fn (Group $g) => [
                 'id' => $g->id, 'name' => $g->name, 'stage' => $g->stage, 'department' => $g->department,
-                'members' => $g->members_count, 'exams' => $g->exams_count, 'owner' => $g->owner?->name,
+                'members' => $g->members_count, 'exams' => $g->exams_count, 'owner' => $g->owner?->name, 'sis' => $g->sis_offering_id !== null,
                 'editable' => $g->isEditableBy($user),
             ])->values(),
             'current' => $current?->id,
             'members' => $current ? $current->members()->orderBy('name')->get(['users.id', 'name', 'email', 'student_number'])
                 ->map(fn (User $u) => ['id' => $u->id, 'name' => $u->name, 'email' => str_ends_with((string) $u->email, '@students.invalid') ? null : $u->email, 'number' => $u->student_number]) : [],
             'canImport' => $user->hasAdminCapability('can_manage_users'),
+            'sis' => \App\Services\Exams\Sis\SisLink::forPage(),
             'unassigned' => self::students()->whereDoesntHave('examGroups')->count(),
         ]);
     }

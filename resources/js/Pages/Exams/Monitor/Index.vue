@@ -30,7 +30,8 @@ const fmt = (iso) => (iso ? new Date(iso).toLocaleString(document.documentElemen
         <template #header>
             <div class="flex items-center justify-between gap-2">
                 <h2 class="flex items-center gap-2 text-lg font-semibold"><EyeIcon class="h-5 w-5 text-gray-500" /> {{ t('exam.monitor', 'المراقبة') }}</h2>
-                <Link v-if="$page.props.auth?.user?.role === 'admin'" :href="route('exams.monitor.central')" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.central', 'السيرفر المركزي والقاعات') }}</Link>
+                <Link v-if="$page.props.auth?.user?.role === 'admin'" :href="route('exams.monitor.sis')" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.sis', 'ربط نظام الطلبة') }}</Link>
+                <Link v-if="$page.props.auth?.user?.role === 'admin'" :href="route('exams.monitor.central')" class=" rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.central', 'السيرفر المركزي والقاعات') }}</Link>
                 <Link v-if="$page.props.auth?.user?.role === 'admin'" :href="route('exams.monitor.mirror')" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.mirror', 'السيرفر الاحتياطي') }}</Link>
                 <Link :href="route('exams.monitor.osce')" class="ms-auto rounded-lg border border-gray-300 px-3 py-1.5 text-sm dark:border-gray-600">{{ t('exam.osce_assess', 'التقييم في المحطات') }}</Link>
                 <Link :href="route('exams.monitor.halls')" class="inline-flex items-center gap-1 rounded-lg bg-[var(--accent-600)] px-3 py-1.5 text-sm text-white"><MapIcon class="h-4 w-4" /> {{ t('hallmap.title', 'خريطة القاعات') }}</Link>

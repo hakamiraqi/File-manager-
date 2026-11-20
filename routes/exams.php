@@ -50,6 +50,11 @@ Route::middleware(['auth', 'verified'])->prefix('exams')->name('exams.')->group(
 
         $groups = \App\Http\Controllers\Exams\GroupController::class;
         Route::get('/groups', [$groups, 'index'])->name('groups');
+        // SIS course sections as groups, and an exam's marks to SIS (see SisController).
+        Route::get('/sis/offerings', [\App\Http\Controllers\Exams\SisController::class, 'offerings'])->middleware('throttle:30,1')->name('sis.offerings');
+        Route::post('/groups/from-sis', [\App\Http\Controllers\Exams\SisController::class, 'importGroup'])->middleware('throttle:20,1')->name('groups.from-sis');
+        Route::post('/{exam}/sis-marks', [\App\Http\Controllers\Exams\SisController::class, 'pushMarks'])->whereNumber('exam')->middleware('throttle:10,1')->name('sis.marks');
+        Route::post('/{exam}/sis-marks/status', [\App\Http\Controllers\Exams\SisController::class, 'pushStatus'])->whereNumber('exam')->middleware('throttle:10,1')->name('sis.marks.status');
         Route::post('/groups', [$groups, 'store'])->name('groups.store');
         Route::put('/groups/{group}', [$groups, 'update'])->name('groups.update');
         Route::delete('/groups/{group}', [$groups, 'destroy'])->name('groups.destroy');
@@ -149,6 +154,11 @@ Route::middleware(['auth', 'verified', 'can:invigilate'])->prefix('exams/monitor
     Route::get('/photos/{user}', [$m, 'photo'])->name('photo');
     Route::get('/health', [$m, 'health'])->name('health');
     Route::get('/central', [\App\Http\Controllers\Exams\CentralController::class, 'show'])->name('central');
+    // «ربط نظام الطلبة» (admins): SIS's address and the key its admin issued.
+    Route::get('/sis', [\App\Http\Controllers\Exams\SisController::class, 'show'])->name('sis');
+    Route::post('/sis', [\App\Http\Controllers\Exams\SisController::class, 'connect'])->middleware('throttle:10,1')->name('sis.connect');
+    Route::post('/sis/refresh', [\App\Http\Controllers\Exams\SisController::class, 'refresh'])->middleware('throttle:10,1')->name('sis.refresh');
+    Route::delete('/sis', [\App\Http\Controllers\Exams\SisController::class, 'disconnect'])->name('sis.disconnect');
     Route::post('/central/key', [\App\Http\Controllers\Exams\CentralController::class, 'key'])->name('central.key');
     Route::post('/central/amc', [\App\Http\Controllers\Exams\AmcServerController::class, 'settings'])->name('central.amc');
     Route::post('/central/messages', [\App\Http\Controllers\Exams\CentralController::class, 'messages'])->name('central.messages');
