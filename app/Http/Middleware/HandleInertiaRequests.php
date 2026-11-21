@@ -84,7 +84,7 @@ class HandleInertiaRequests extends Middleware
             'appSettings' => [
                 'siteName' => $settings['site_name'] ?? config('app.name'),
                 'logoUrl' => isset($settings['logo_path']) ? asset('storage/'.$settings['logo_path']) : null,
-                'activeSkin' => $settings['active_skin'] ?? 'indigo',
+                'activeSkin' => $settings['active_skin'] ?? 'clay',
                 'customCss' => $settings['custom_css'] ?? '',
                 'locale' => $locale,
                 'locales' => \App\Support\Locales::active(),
