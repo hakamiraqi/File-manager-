@@ -121,7 +121,7 @@ class KohaController extends Controller
     {
         abort_unless($request->user()->canManageLibrary(), 403);
         abort_unless(KohaSettings::enabled(), 422, 'الربط مع Koha متوقف.');
-        abort_unless(KohaSettings::push(), 422, 'شغّل خيار «الكتب المفهرسة في FileNest تُرسل إلى Koha» واحفظ أولاً.');
+        abort_unless(KohaSettings::push(), 422, 'شغّل خيار «الكتب المفهرسة في مسماري تُرسل إلى Koha» واحفظ أولاً.');
         $n = KohaPushBook::sendPending();
 
         return response()->json([

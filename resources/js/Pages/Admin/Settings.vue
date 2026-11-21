@@ -21,7 +21,7 @@ const canSettings = computed(() => page.props.permissions?.admin?.settings ?? fa
 const SKIN_COLORS = {
     indigo: '#4f46e5', slate: '#475569', emerald: '#059669', rose: '#e11d48',
     amber: '#d97706', sky: '#0284c7', violet: '#7c3aed', teal: '#0d9488',
-    orange: '#ea580c', zinc: '#52525b', cyan: '#0891b2', fuchsia: '#c026d3',
+    orange: '#ea580c', zinc: '#52525b', cyan: '#0891b2', fuchsia: '#c026d3', clay: '#b5532e',
 };
 
 const ROLE_LABELS = {

@@ -158,7 +158,7 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                             <span v-if="kohaOn" class="ms-2 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{{ t('library.koha.on', 'يعمل') }}</span>
                         </h3>
                         <p class="text-sm text-gray-500 dark:text-gray-400">
-                            {{ t('library.koha.hint', 'عند التشغيل تتم الإعارة والإرجاع والتجديد والحجز في Koha وبقواعده وغراماته، ويبقى FileNest الواجهة: الموقع والتطبيق والمكتب وRFID والخريطة. الكتب والنسخ والإعارات تتزامن من Koha كل 10 دقائق، والكتب المفهرسة هنا تُرسل إلى Koha.') }}
+                            {{ t('library.koha.hint', 'عند التشغيل تتم الإعارة والإرجاع والتجديد والحجز في Koha وبقواعده وغراماته، ويبقى مسماري الواجهة: الموقع والتطبيق والمكتب وRFID والخريطة. الكتب والنسخ والإعارات تتزامن من Koha كل 10 دقائق، والكتب المفهرسة هنا تُرسل إلى Koha.') }}
                         </p>
                     </div>
                 </div>
@@ -238,7 +238,7 @@ const monthLabel = (key) => `${MONTHS[Number(key.slice(5, 7)) - 1]} ${key.slice(
                     </div>
                     <label class="flex items-center gap-2 text-sm">
                         <input type="checkbox" v-model="kohaForm.koha_push" class="rounded" />
-                        {{ t('library.koha.push', 'الكتب المفهرسة في FileNest تُرسل إلى Koha') }}
+                        {{ t('library.koha.push', 'الكتب المفهرسة في مسماري تُرسل إلى Koha') }}
                     </label>
                     <label class="text-sm">
                         <span class="mb-1 block text-gray-600 dark:text-gray-300">{{ t('library.koha.item_type', 'نوع المادة للنسخ المرسلة') }}</span>

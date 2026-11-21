@@ -380,8 +380,8 @@ class AppStrings {
     'downloads.delete_local_copy': {'ar': 'حذف النسخة المحلية', 'en': 'Delete local copy'},
 
     'server_settings.description': {
-      'ar': 'اختر كيف يتصل التطبيق بخادم FileNest: عبر الشبكة المحلية مباشرة (بدون إنترنت، مثلاً في المنزل أو المكتب)، أو عبر الاستضافة على الإنترنت، أو تلقائياً بحيث يجرّب الشبكة المحلية أولاً وينتقل للاستضافة عند تعذّر الوصول إليها.',
-      'en': 'Choose how the app connects to the FileNest server: directly over the local network (no internet, e.g. at home or the office), over internet hosting, or automatically, trying the local network first and falling back to hosting when it can\'t be reached.',
+      'ar': 'اختر كيف يتصل التطبيق بخادم مسماري: عبر الشبكة المحلية مباشرة (بدون إنترنت، مثلاً في المنزل أو المكتب)، أو عبر الاستضافة على الإنترنت، أو تلقائياً بحيث يجرّب الشبكة المحلية أولاً وينتقل للاستضافة عند تعذّر الوصول إليها.',
+      'en': 'Choose how the app connects to the Masmari server: directly over the local network (no internet, e.g. at home or the office), over internet hosting, or automatically, trying the local network first and falling back to hosting when it can\'t be reached.',
     },
     'server_settings.connection_mode': {'ar': 'طريقة الاتصال', 'en': 'Connection mode'},
     'server_settings.mode_auto': {'ar': 'تلقائي', 'en': 'Automatic'},
@@ -389,8 +389,8 @@ class AppStrings {
     'server_settings.mode_hosted': {'ar': 'استضافة', 'en': 'Hosted'},
     'server_settings.local_address_title': {'ar': 'عنوان الشبكة المحلية (بدون إنترنت)', 'en': 'Local network address (offline)'},
     'server_settings.local_address_hint': {
-      'ar': 'مثال: http://192.168.1.10:8000 — عنوان الجهاز الذي يشغّل FileNest على نفس شبكة WiFi. اتركه فارغاً إن لم يكن لديك خادم محلي.',
-      'en': "Example: http://192.168.1.10:8000 — the address of the device running FileNest on the same WiFi network. Leave blank if you don't have a local server.",
+      'ar': 'مثال: http://192.168.1.10:8000 — عنوان الجهاز الذي يشغّل مسماري على نفس شبكة WiFi. اتركه فارغاً إن لم يكن لديك خادم محلي.',
+      'en': "Example: http://192.168.1.10:8000 — the address of the device running Masmari on the same WiFi network. Leave blank if you don't have a local server.",
     },
     'server_settings.local_address_label': {'ar': 'عنوان الشبكة المحلية', 'en': 'Local network address'},
     'server_settings.hosted_address_title': {'ar': 'عنوان الاستضافة (الإنترنت)', 'en': 'Hosted address (internet)'},

@@ -15,7 +15,7 @@ import { createApp, h } from 'vue';
 import { ZiggyVue } from '../../vendor/tightenco/ziggy';
 
 // The site name from the admin settings (meta tag in app.blade.php), never the framework's name.
-const appName = () => document.querySelector('meta[name="app-name"]')?.content || import.meta.env.VITE_APP_NAME || 'FileNest';
+const appName = () => document.querySelector('meta[name="app-name"]')?.content || import.meta.env.VITE_APP_NAME || 'مسماري';
 const RTL_LOCALES = ['ar'];
 
 function applyDirection(page) {

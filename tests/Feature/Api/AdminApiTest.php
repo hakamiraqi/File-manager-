@@ -181,7 +181,7 @@ class AdminApiTest extends TestCase
             ->assertJsonPath('settings.video_quality_targets', '360,480,720');
 
         $response = $this->actingAs($admin, 'sanctum')->postJson('/api/v1/admin/settings', [
-            'site_name' => 'FileNest',
+            'site_name' => 'مسماري',
             'registration_role' => 'user',
             'default_locale' => 'ar',
             'active_skin' => 'indigo',
