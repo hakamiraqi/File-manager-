@@ -46,14 +46,11 @@ t = time.time(); r = api('GET', '/libraries', params={'_per_page': 3})
 print(f'GET /libraries -> {r.status_code} in {time.time()-t:.1f}s: {r.text[:200]}')
 r = api('GET', '/item_types', params={'_per_page': 50})
 print('item types:', r.status_code, [i.get('item_type_id') for i in r.json()] if r.ok else r.text[:200])
-if cfg['mode'] == 'debug':
-    for m, path, kw in [('GET', '/biblios', {'params': {'_per_page': 1}}),
-                        ('POST', '/biblios', {'data': '<record xmlns="http://www.loc.gov/MARC21/slim"><leader>00000nam a2200000 a 4500</leader></record>', 'headers': {'Content-Type': 'application/marcxml+xml'}}),
-                        ('POST', '/biblios', {'json': {}})]:
-        r = s.request(m, f'{BASE}/api/v1{path}', timeout=120, allow_redirects=False, **kw)
-        title = re.search(r'<title>([^<]*)', r.text)
-        print(m, path, r.status_code, r.headers.get('Content-Type'), r.headers.get('Location'), title.group(1).strip() if title else r.text[:200])
-    print('cookies:', list(s.cookies.keys()), 'csrf header set:', bool(s.headers.get('CSRF-TOKEN')))
+if cfg['mode'] == 'list':
+    for bid in cfg['ids']:
+        r = api('GET', f'/biblios/{bid}')
+        j = r.json() if r.ok else {}
+        print('biblio', bid, r.status_code, j.get('title'), '|', j.get('author'), '| items:', len(api('GET', f'/biblios/{bid}/items').json() or []) if r.ok else '-')
     sys.exit(0)
 if cfg['mode'] == 'probe' or not r.ok:
     sys.exit(0)
@@ -61,6 +58,7 @@ if cfg['mode'] == 'probe' or not r.ok:
 books = list(MARCReader(open(os.path.join(os.path.dirname(__file__), 'books-for-koha-DENT.mrc'), 'rb'), to_unicode=True, force_utf8=True))
 start, limit = cfg.get('start', 0), cfg.get('limit', len(books))
 skip = set(cfg.get('skip', []))
+attach = {int(k): v for k, v in cfg.get('attach', {}).items()}
 todo = [x for x in list(enumerate(books))[start:start + limit] if x[0] not in skip]
 lock = threading.Lock()
 stats = {'books': 0, 'items': 0, 'failed': 0}
@@ -70,13 +68,19 @@ def push(arg):
     items = rec.get_fields('952')
     rec.remove_fields('952')
     xml = record_to_xml(rec, namespace=True)
-    r = api('POST', '/biblios', data=xml, headers={'Content-Type': 'application/marcxml+xml', 'x-framework-id': ''})
-    if r.status_code not in (200, 201):
+    bid = attach.get(i)
+    if bid is None:
+        r = api('POST', '/biblios', data=xml, headers={'Content-Type': 'application/marcxml+xml'}, allow_redirects=False)
+        loc = re.search(r'/biblios/(\d+)', r.headers.get('Location', ''))
+        if r.status_code in (200, 201):
+            bid = r.json().get('id') or r.json().get('biblio_id')
+        elif loc:
+            bid = int(loc.group(1))
+    if bid is None:
         with lock:
             stats['failed'] += 1
             print(f'FAIL book {i}: {r.status_code} {r.text[:300]}', flush=True)
         return
-    bid = r.json().get('id') or r.json().get('biblio_id')
     ok = 0
     for f in items:
         body = {'home_library_id': 'DENT', 'holding_library_id': 'DENT', 'item_type_id': f['y'] or 'BK'}
