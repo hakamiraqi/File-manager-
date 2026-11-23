@@ -10,3 +10,4 @@ r = s.get(f'{BASE}/api/v1/biblios', params={'q': json.dumps({'biblio_id': {'>': 
 print('new biblios since 2414:', r.status_code, r.headers.get('X-Total-Count'))
 r = s.get(f'{BASE}/api/v1/items', params={'q': json.dumps({'biblio_id': {'>': 2413}}), '_per_page': 1}, timeout=120)
 print('their items:', r.status_code, r.headers.get('X-Total-Count'))
+# 18:09:39
