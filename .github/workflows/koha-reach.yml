@@ -12,11 +12,8 @@ jobs:
       HOST: 167.86.66.47
     steps:
       - run: |
-          probe() { echo "== $1"; curl -s -o body.txt -D head.txt -w "%{http_code} total=%{time_total}s\n" --max-time 40 "$1" || echo FAILED; grep -i -E "^(www-authenticate|server|location):" head.txt || true; grep -o "<title>[^<]*" body.txt | head -1 || true; head -c 300 body.txt; echo; }
-          probe "http://$HOST:8080/cgi-bin/koha/mainpage.pl"
-          probe "http://$HOST/cgi-bin/koha/opac-main.pl"
-          probe "http://$HOST:8080/api/v1/"
-          probe "http://$HOST:8080/api/v1/libraries"
-          probe "http://$HOST/api/v1/public/libraries"
-          probe "http://$HOST:8080/api/v1/.html"
-          probe "http://$HOST/cgi-bin/koha/opac-search.pl?q=anatomy"
+          echo "== libraries"; curl -s --max-time 40 "http://$HOST/api/v1/public/libraries" | head -c 2000; echo
+          for q in anatomy dental "Cunninghams" thesis; do echo "== search $q"; curl -s --max-time 40 "http://$HOST/cgi-bin/koha/opac-search.pl?q=$q" | grep -o -E "(عدد النتائج|نتائج)[^<]{0,80}|[0-9]+ (نتيجة|نتائج)|class=\"title\"" | head -3; done
+          echo "== all records"; curl -s --max-time 40 "http://$HOST/cgi-bin/koha/opac-search.pl?q=*" | grep -o -E "[0-9,]+ *(نتيجة|نتائج|result)[^<]{0,40}" | head -3
+          echo "== basic auth hint"; curl -s -o /dev/null -w "%{http_code}\n" -u x:y --max-time 40 "http://$HOST:8080/api/v1/libraries"; curl -s --max-time 40 -u x:y "http://$HOST:8080/api/v1/libraries" | head -c 300; echo
+          echo "== oauth"; curl -s --max-time 40 -d grant_type=client_credentials -d client_id=x -d client_secret=y "http://$HOST:8080/api/v1/oauth/token" | head -c 300; echo
