@@ -51,7 +51,8 @@ if cfg['mode'] == 'probe' or not r.ok:
 
 books = list(MARCReader(open(os.path.join(os.path.dirname(__file__), 'books-for-koha-DENT.mrc'), 'rb'), to_unicode=True, force_utf8=True))
 start, limit = cfg.get('start', 0), cfg.get('limit', len(books))
-todo = list(enumerate(books))[start:start + limit]
+skip = set(cfg.get('skip', []))
+todo = [x for x in list(enumerate(books))[start:start + limit] if x[0] not in skip]
 lock = threading.Lock()
 stats = {'books': 0, 'items': 0, 'failed': 0}
 
