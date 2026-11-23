@@ -62,7 +62,8 @@ books = list(MARCReader(open(os.path.join(os.path.dirname(__file__), 'books-for-
 start, limit = cfg.get('start', 0), cfg.get('limit', len(books))
 skip = set(cfg.get('skip', []))
 attach = {int(k): v for k, v in cfg.get('attach', {}).items()}
-todo = [x for x in list(enumerate(books))[start:start + limit] if x[0] not in skip]
+only = set(cfg.get('only', []))
+todo = [x for x in list(enumerate(books))[start:start + limit] if x[0] not in skip and (not only or x[0] in only)]
 lock = threading.Lock()
 stats = {'books': 0, 'items': 0, 'failed': 0}
 
@@ -73,7 +74,7 @@ def push(arg):
     xml = record_to_xml(rec, namespace=True)
     bid = attach.get(i)
     if bid is None:
-        r = api('POST', '/biblios', data=xml, headers={'Content-Type': 'application/marcxml+xml'}, allow_redirects=False)
+        r = api('POST', '/biblios', data=xml, headers={'Content-Type': 'application/marcxml+xml', 'x-confirm-not-duplicate': '1'}, allow_redirects=False)
         loc = re.search(r'/biblios/(\d+)', r.headers.get('Location', ''))
         if r.status_code in (200, 201):
             bid = r.json().get('id') or r.json().get('biblio_id')
@@ -86,9 +87,10 @@ def push(arg):
         return
     ok = 0
     for f in items:
-        body = {'home_library_id': 'DENT', 'holding_library_id': 'DENT', 'item_type_id': f['y'] or 'BK'}
-        if f['o']:
-            body['callnumber'] = f['o']
+        body = {'home_library_id': 'DENT', 'holding_library_id': 'DENT', 'item_type_id': (f.get_subfields('y') or ['BK'])[0]}
+        code = (f.get_subfields('o') or [None])[0]
+        if code:
+            body['callnumber'] = code
         ri = api('POST', f'/biblios/{bid}/items', json=body)
         if ri.status_code in (200, 201):
             ok += 1
