@@ -1,0 +1,22 @@
+name: Koha reachability (read-only)
+on:
+  push:
+    branches: [claude/project-thread-vapo01]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      HOST: 167.86.66.47
+    steps:
+      - run: |
+          probe() { echo "== $1"; curl -s -o body.txt -D head.txt -w "%{http_code} total=%{time_total}s\n" --max-time 40 "$1" || echo FAILED; grep -i -E "^(www-authenticate|server|location):" head.txt || true; grep -o "<title>[^<]*" body.txt | head -1 || true; head -c 300 body.txt; echo; }
+          probe "http://$HOST:8080/cgi-bin/koha/mainpage.pl"
+          probe "http://$HOST/cgi-bin/koha/opac-main.pl"
+          probe "http://$HOST:8080/api/v1/"
+          probe "http://$HOST:8080/api/v1/libraries"
+          probe "http://$HOST/api/v1/public/libraries"
+          probe "http://$HOST:8080/api/v1/.html"
+          probe "http://$HOST/cgi-bin/koha/opac-search.pl?q=anatomy"
