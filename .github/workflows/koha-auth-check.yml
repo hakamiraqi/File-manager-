@@ -11,13 +11,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - run: |
-          U=http://167.86.66.47:8080/api/v1/libraries
-          for a in "none" "basic" "bearer"; do
-            echo "== $a"
-            case $a in
-              none) curl -s -m 40 -w "  [%{http_code}]\n" "$U";;
-              basic) curl -s -m 40 -w "  [%{http_code}]\n" -u fake.user:fakepass "$U";;
-              bearer) curl -s -m 40 -w "  [%{http_code}]\n" -H "Authorization: Bearer abc123" "$U";;
-            esac
-          done
-          echo "== spec security"; curl -s -m 40 http://167.86.66.47:8080/api/v1/ | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('version'), d.get('securityDefinitions') or d.get('components',{}).get('securitySchemes'))"
+          curl -s -m 60 -c jar http://167.86.66.47:8080/cgi-bin/koha/mainpage.pl > login.html
+          grep -o -i -E '<meta name="generator"[^>]*>|Koha [0-9]+\.[0-9]+\.[0-9]+[^"<]*|<meta name="csrf-token"[^>]*>' login.html | head
+          echo "== form"; sed -n '/<form/,/<\/form>/p' login.html | grep -o -E '<(form|input|select)[^>]*>' | sed -E 's/value="[A-Za-z0-9+\/=_-]{20,}"/value="<long>"/' | head -30
+          echo "== branch options"; grep -o -E '<option[^>]*value="DENT"[^>]*>' login.html
+          echo "== js"; curl -s -m 60 http://167.86.66.47:8080/cgi-bin/koha/svc/config/systempreferences 2>/dev/null | head -c 200; echo
