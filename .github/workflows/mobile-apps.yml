@@ -42,7 +42,7 @@ jobs:
         # Kept on the VPS, outside the repo; the first run creates it there.
         env:
           KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
           VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
         run: |
           if [ -z "$KEY" ]; then echo "::warning::No VPS_SSH_KEY: the APK is signed with a throwaway debug key."; exit 0; fi
@@ -171,7 +171,7 @@ jobs:
       - name: Upload to the VPS
         env:
           KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
           VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
         run: |
           [ -n "$KEY" ] || { echo "::error::Secret VPS_SSH_KEY is not set."; exit 1; }
