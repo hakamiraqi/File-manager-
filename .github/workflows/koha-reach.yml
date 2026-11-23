@@ -1,19 +1,39 @@
-name: Koha reachability (read-only)
+name: Library import (one-off)
+# Runs ops/library-import/import.php on the AWS server: theses, source books and Koha settings.
 on:
   push:
     branches: [claude/project-thread-vapo01]
+    paths: [ops/library-import/**, .github/workflows/koha-reach.yml]
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
-  check:
+  import:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
-      HOST: 167.86.66.47
+      VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
+      VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
     steps:
-      - run: |
-          echo "== libraries"; curl -s --max-time 40 "http://$HOST/api/v1/public/libraries" | head -c 2000; echo
-          for q in anatomy dental "Cunninghams" thesis; do echo "== search $q"; curl -s --max-time 40 "http://$HOST/cgi-bin/koha/opac-search.pl?q=$q" | grep -o -E "(عدد النتائج|نتائج)[^<]{0,80}|[0-9]+ (نتيجة|نتائج)|class=\"title\"" | head -3; done
-          echo "== all records"; curl -s --max-time 40 "http://$HOST/cgi-bin/koha/opac-search.pl?q=*" | grep -o -E "[0-9,]+ *(نتيجة|نتائج|result)[^<]{0,40}" | head -3
-          echo "== basic auth hint"; curl -s -o /dev/null -w "%{http_code}\n" -u x:y --max-time 40 "http://$HOST:8080/api/v1/libraries"; curl -s --max-time 40 -u x:y "http://$HOST:8080/api/v1/libraries" | head -c 300; echo
-          echo "== oauth"; curl -s --max-time 40 -d grant_type=client_credentials -d client_id=x -d client_secret=y "http://$HOST:8080/api/v1/oauth/token" | head -c 300; echo
+      - uses: actions/checkout@v4
+      - name: SSH key
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh; printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/k; chmod 600 ~/.ssh/k
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o ConnectTimeout=20 -i ~/.ssh/k "$VPS_USER@$VPS_HOST" true && echo "SSH OK"
+      - name: Back up the database, then import
+        run: |
+          tar czf - -C ops library-import | ssh -i ~/.ssh/k "$VPS_USER@$VPS_HOST" "rm -rf /tmp/library-import && tar xzf - -C /tmp"
+          ssh -i ~/.ssh/k "$VPS_USER@$VPS_HOST" '
+            set -e
+            mkdir -p ~/backups
+            sudo docker exec filenest-db sh -c "exec mysqldump -uroot -p\"\$MYSQL_ROOT_PASSWORD\" --single-transaction \"\$MYSQL_DATABASE\"" | gzip > ~/backups/before-library-import-$(date +%Y%m%d%H%M).sql.gz
+            ls -la ~/backups | tail -2
+            sudo docker exec filenest-app rm -rf /tmp/library-import
+            sudo docker cp /tmp/library-import filenest-app:/tmp/library-import
+            sudo docker exec filenest-app php /tmp/library-import/import.php /tmp/library-import
+            sudo docker exec filenest-app rm -rf /tmp/library-import'
