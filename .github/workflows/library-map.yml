@@ -1,0 +1,30 @@
+name: Library map (one-off)
+
+# Lays out «خريطة المكتبة» on the live site from ops/library-map/apply.php (2026-11-23, by
+# request). Runs when that script changes on the thread branch, or by hand.
+on:
+  push:
+    branches: [claude/project-thread-t1w6z0]
+    paths: ['ops/library-map/**', '.github/workflows/library-map.yml']
+  workflow_dispatch:
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up SSH
+        env:
+          KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/vps_key
+          chmod 600 ~/.ssh/vps_key
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Save the map
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
+          VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
+        run: |
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo docker exec -i filenest-app php" < ops/library-map/apply.php
