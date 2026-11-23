@@ -1,1 +1,1 @@
-{"mode": "push", "start": 8, "limit": 3, "workers": 1, "attach": {"8": 2414, "9": 2415, "10": 2416}, "delete": [2417]}
+{"mode": "push", "start": 0, "workers": 3, "skip": [8, 9, 10]}
