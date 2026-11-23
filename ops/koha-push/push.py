@@ -46,6 +46,15 @@ t = time.time(); r = api('GET', '/libraries', params={'_per_page': 3})
 print(f'GET /libraries -> {r.status_code} in {time.time()-t:.1f}s: {r.text[:200]}')
 r = api('GET', '/item_types', params={'_per_page': 50})
 print('item types:', r.status_code, [i.get('item_type_id') for i in r.json()] if r.ok else r.text[:200])
+if cfg['mode'] == 'debug':
+    for m, path, kw in [('GET', '/biblios', {'params': {'_per_page': 1}}),
+                        ('POST', '/biblios', {'data': '<record xmlns="http://www.loc.gov/MARC21/slim"><leader>00000nam a2200000 a 4500</leader></record>', 'headers': {'Content-Type': 'application/marcxml+xml'}}),
+                        ('POST', '/biblios', {'json': {}})]:
+        r = s.request(m, f'{BASE}/api/v1{path}', timeout=120, allow_redirects=False, **kw)
+        title = re.search(r'<title>([^<]*)', r.text)
+        print(m, path, r.status_code, r.headers.get('Content-Type'), r.headers.get('Location'), title.group(1).strip() if title else r.text[:200])
+    print('cookies:', list(s.cookies.keys()), 'csrf header set:', bool(s.headers.get('CSRF-TOKEN')))
+    sys.exit(0)
 if cfg['mode'] == 'probe' or not r.ok:
     sys.exit(0)
 
