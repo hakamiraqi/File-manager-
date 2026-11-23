@@ -55,6 +55,9 @@ if cfg['mode'] == 'list':
 if cfg['mode'] == 'probe' or not r.ok:
     sys.exit(0)
 
+for bid in cfg.get('delete', []):
+    r = api('DELETE', f'/biblios/{bid}')
+    print('delete biblio', bid, '->', r.status_code, r.text[:200])
 books = list(MARCReader(open(os.path.join(os.path.dirname(__file__), 'books-for-koha-DENT.mrc'), 'rb'), to_unicode=True, force_utf8=True))
 start, limit = cfg.get('start', 0), cfg.get('limit', len(books))
 skip = set(cfg.get('skip', []))
