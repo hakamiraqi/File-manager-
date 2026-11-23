@@ -1,0 +1,17 @@
+name: Koha count (read-only)
+on:
+  push:
+    branches: [claude/project-thread-vapo01]
+    paths: [ops/koha-push/count.py, .github/workflows/koha-count.yml]
+permissions:
+  contents: read
+jobs:
+  count:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -q requests && python3 ops/koha-push/count.py
+        env:
+          KOHA_USER: ${{ secrets.KOHA_USER }}
+          KOHA_PASS: ${{ secrets.KOHA_PASS }}
