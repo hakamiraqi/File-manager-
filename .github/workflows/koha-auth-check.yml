@@ -1,0 +1,23 @@
+name: Koha auth check (read-only)
+on:
+  push:
+    branches: [claude/project-thread-vapo01]
+    paths: [.github/workflows/koha-auth-check.yml]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: |
+          U=http://167.86.66.47:8080/api/v1/libraries
+          for a in "none" "basic" "bearer"; do
+            echo "== $a"
+            case $a in
+              none) curl -s -m 40 -w "  [%{http_code}]\n" "$U";;
+              basic) curl -s -m 40 -w "  [%{http_code}]\n" -u fake.user:fakepass "$U";;
+              bearer) curl -s -m 40 -w "  [%{http_code}]\n" -H "Authorization: Bearer abc123" "$U";;
+            esac
+          done
+          echo "== spec security"; curl -s -m 40 http://167.86.66.47:8080/api/v1/ | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('info',{}).get('version'), d.get('securityDefinitions') or d.get('components',{}).get('securitySchemes'))"
