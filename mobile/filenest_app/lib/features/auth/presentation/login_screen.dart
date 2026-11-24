@@ -159,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: ClipRRect(borderRadius: BorderRadius.circular(26), child: Image.asset('assets/images/logo.png', width: 92, height: 92)),
               ),
               const SizedBox(height: 14),
-              Text(siteName == null || siteName.isEmpty ? 'FileNest' : siteName,
+              Text(siteName == null || siteName.isEmpty ? 'مسماري' : siteName,
                   textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(context.l('الملفات والمكتبة والأطاريح في مكان واحد', 'Files, library and theses in one place'),

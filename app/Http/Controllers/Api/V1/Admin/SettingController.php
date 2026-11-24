@@ -11,13 +11,13 @@ use Illuminate\Http\Request;
 class SettingController extends Controller
 {
     private const DEFAULTS = [
-        'site_name' => 'FileNest',
+        'site_name' => 'مسماري',
         'logo_path' => null,
         'header_image_path' => null,
         'registration_enabled' => '1',
         'registration_role' => 'user',
         'default_locale' => 'ar',
-        'active_skin' => 'indigo',
+        'active_skin' => 'clay',
         'custom_css' => '',
         'default_quota_mb' => '5120',
         'max_upload_mb' => '2048',

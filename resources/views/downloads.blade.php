@@ -1,5 +1,5 @@
 @php
-    $siteName = \App\Models\Setting::get('site_name', config('app.name', 'FileNest'));
+    $siteName = \App\Models\Setting::get('site_name', config('app.name', 'مسماري'));
     $cards = [
         'android' => ['title' => 'أندرويد', 'sub' => 'ملف APK للهواتف والأجهزة اللوحية', 'icon' => 'android', 'hint' => 'افتح الملف بعد التنزيل واسمح بالتثبيت من هذا المصدر.'],
         'ios' => ['title' => 'آيفون', 'sub' => 'ملف IPA (غير موقّع)', 'icon' => 'ios', 'hint' => 'يُثبَّت عبر Sideloadly أو AltStore باستخدام حساب Apple الخاص بك.'],
@@ -28,8 +28,8 @@
     <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     <style>
-        :root { --bg: #f4f6fb; --card: #fff; --text: #1f2937; --muted: #6b7280; --accent: #4f46e5; --line: #e5e7eb; }
-        @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #e5e7eb; --muted: #94a3b8; --accent: #818cf8; --line: #334155; } }
+        :root { --bg: #f4f6fb; --card: #fff; --text: #1f2937; --muted: #6b7280; --accent: #b5532e; --line: #e5e7eb; }
+        @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #e5e7eb; --muted: #94a3b8; --accent: #e07a50; --line: #334155; } }
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Tahoma, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
         main { max-width: 820px; margin: 0 auto; padding: 32px 16px 48px; }
