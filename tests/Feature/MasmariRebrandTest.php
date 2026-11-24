@@ -48,6 +48,6 @@ class MasmariRebrandTest extends TestCase
     public function test_the_page_shows_the_new_name_and_logo(): void
     {
         Setting::setMany(['site_name' => 'مسماري', 'active_skin' => 'clay']);
-        $this->get('/login')->assertOk()->assertSee('<title inertia>مسماري</title>', false)->assertSee('data-skin="clay"', false);
+        $this->withoutVite()->get('/login')->assertOk()->assertSee('<title inertia>مسماري</title>', false)->assertSee('data-skin="clay"', false);
     }
 }
