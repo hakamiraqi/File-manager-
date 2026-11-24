@@ -174,7 +174,7 @@ Route::get('/brand.json', function () {
     $logo = \App\Models\Setting::get('logo_path');
 
     return response()->json([
-        'name' => \App\Models\Setting::get('site_name', config('app.name', 'FileNest')),
+        'name' => \App\Models\Setting::get('site_name', config('app.name', 'مسماري')),
         'logo' => $logo ? asset('storage/'.$logo) : null,
     ]);
 });

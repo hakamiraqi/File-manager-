@@ -30,7 +30,7 @@ class FileNestApp extends StatelessWidget {
       child: Consumer2<LocaleProvider, ThemeProvider>(
         builder: (context, localeProvider, themeProvider, _) {
           return MaterialApp(
-            title: 'FileNest',
+            title: 'مسماري',
             debugShowCheckedModeBanner: false,
             theme: AppTheme.light(),
             darkTheme: AppTheme.dark(),

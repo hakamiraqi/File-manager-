@@ -33,7 +33,7 @@ return [
     // or provides custom CSS in the "value" for a "custom" skin.
     'skins' => [
         'indigo', 'slate', 'emerald', 'rose', 'amber', 'sky',
-        'violet', 'teal', 'orange', 'zinc', 'cyan', 'fuchsia',
+        'violet', 'teal', 'orange', 'zinc', 'cyan', 'fuchsia', 'clay',
     ],
 
     'supported_locales' => [

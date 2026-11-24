@@ -3,11 +3,11 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>تفعيل النظام - {{ \App\Models\Setting::get('site_name', config('app.name', 'FileNest')) }}</title>
+    <title>تفعيل النظام - {{ \App\Models\Setting::get('site_name', config('app.name', 'مسماري')) }}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <style>
-        :root { color-scheme: light dark; --bg: #f3f4fb; --card: #fff; --text: #1f2937; --muted: #6b7280; --border: #d1d5db; --accent: #4f46e5; --red: #dc2626; }
-        @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #e5e7eb; --muted: #94a3b8; --border: #334155; --accent: #6366f1; } }
+        :root { color-scheme: light dark; --bg: #f3f4fb; --card: #fff; --text: #1f2937; --muted: #6b7280; --border: #d1d5db; --accent: #b5532e; --red: #dc2626; }
+        @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --card: #1e293b; --text: #e5e7eb; --muted: #94a3b8; --border: #334155; --accent: #e07a50; } }
         * { box-sizing: border-box; }
         body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--text); font-family: Tahoma, "Segoe UI", sans-serif; }
         .card { width: 100%; max-width: 440px; background: var(--card); border: 1px solid var(--border); border-radius: 18px; padding: 28px 24px; }
@@ -27,7 +27,7 @@
         @csrf
         <img class="logo" src="/favicon.svg" alt="">
         <h1>تفعيل النظام على هذا الحاسوب</h1>
-        <p>أدخل رمز تفعيل FileNest الخاص بجامعتك (من منصة التراخيص). يحتاج التفعيل اتصال إنترنت مرة واحدة فقط، وبعدها يعمل النظام بدون إنترنت. كل رمز يُستخدم على حاسوب واحد فقط.</p>
+        <p>أدخل رمز التفعيل الخاص بجامعتك (من منصة التراخيص). يحتاج التفعيل اتصال إنترنت مرة واحدة فقط، وبعدها يعمل النظام بدون إنترنت. كل رمز يُستخدم على حاسوب واحد فقط.</p>
         <label for="code">رمز التفعيل</label>
         <input id="code" name="code" value="{{ old('code') }}" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" required autofocus>
         @error('code') <div class="error">{{ $message }}</div> @enderror

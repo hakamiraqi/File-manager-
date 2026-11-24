@@ -818,7 +818,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
           ? Scaffold(backgroundColor: Colors.transparent, body: content, floatingActionButton: fab)
           : Scaffold(
               appBar: AppBar(
-                title: Text(widget.folder?.name ?? 'FileNest'),
+                title: Text(widget.folder?.name ?? 'مسماري'),
                 actions: [
                   IconButton(
                     icon: const Icon(Icons.more_vert_rounded),

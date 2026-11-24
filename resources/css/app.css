@@ -30,6 +30,7 @@ body[data-skin='orange']  { --accent-50:#fff7ed; --accent-500:#f97316; --accent-
 body[data-skin='zinc']    { --accent-50:#fafafa; --accent-500:#71717a; --accent-600:#52525b; --accent-700:#3f3f46; }
 body[data-skin='cyan']    { --accent-50:#ecfeff; --accent-500:#06b6d4; --accent-600:#0891b2; --accent-700:#0e7490; }
 body[data-skin='fuchsia'] { --accent-50:#fdf4ff; --accent-500:#d946ef; --accent-600:#c026d3; --accent-700:#a21caf; }
+body[data-skin='clay']    { --accent-50:#fbf1ec; --accent-500:#c8643d; --accent-600:#b5532e; --accent-700:#964325; }
 
 /*
  * Scrollbars (2026-11-06, by request): slim, rounded, in the skin's colour,

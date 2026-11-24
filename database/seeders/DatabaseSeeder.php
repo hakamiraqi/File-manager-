@@ -15,11 +15,11 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         Setting::setMany([
-            'site_name' => 'FileNest',
+            'site_name' => 'مسماري',
             'registration_enabled' => '1',
             'registration_role' => 'user',
             'default_locale' => 'ar',
-            'active_skin' => 'indigo',
+            'active_skin' => 'clay',
             'custom_css' => '',
             'default_quota_mb' => (string) config('filenest.default_quota_mb'),
             'max_upload_mb' => (string) config('filenest.max_upload_mb'),
