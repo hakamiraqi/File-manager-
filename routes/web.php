@@ -62,6 +62,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::put('/files/{file}', [FileController::class, 'update'])->name('files.update');
     Route::post('/files/{file}/copy', [FileController::class, 'copy'])->name('files.copy');
+    Route::post('/files/{file}/extract', [\App\Http\Controllers\ZipExtractController::class, 'store'])->middleware('throttle:20,1')->name('files.extract');
     Route::delete('/files/{file}', [FileController::class, 'destroy'])->name('files.destroy');
     Route::get('/files/{file}/download', [FileController::class, 'download'])->name('files.download');
     Route::get('/files/{file}/preview', [FileController::class, 'preview'])->name('files.preview');

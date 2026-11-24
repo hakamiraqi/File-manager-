@@ -1961,5 +1961,16 @@
     "covers.page": "Page",
     "covers.use_page": "Use it",
     "covers.menu": "Book cover…",
-    "admin.nav.covers": "Book covers"
+    "admin.nav.covers": "Book covers",
+    "zip.extracted": "Extracted to folder “:folder” (:files files).",
+    "zip.skipped": "Skipped :count files of a type that isn't allowed.",
+    "zip.extracting": "Extracting “:name”…",
+    "zip.extracting_short": "Extracting…",
+    "zip.failed": "Couldn't extract the zip file.",
+    "zip.extract_here": "Extract here",
+    "zip.kept_as_file": "Not extracted, kept as a zip file:",
+    "zip.question_title": "Zip file",
+    "zip.question": "You picked :count zip file(s). Extract the contents into a folder after uploading?",
+    "zip.upload_only": "Upload only",
+    "zip.upload_extract": "Upload and extract"
 }

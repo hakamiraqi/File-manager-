@@ -1961,5 +1961,16 @@
     "covers.page": "صفحة",
     "covers.use_page": "استعمالها",
     "covers.menu": "غلاف الكتاب…",
-    "admin.nav.covers": "أغلفة الكتب"
+    "admin.nav.covers": "أغلفة الكتب",
+    "zip.extracted": "تم الاستخراج إلى المجلد «:folder» (:files ملف).",
+    "zip.skipped": "تم تخطي :count ملف غير مسموح بنوعه.",
+    "zip.extracting": "جارِ استخراج «:name»…",
+    "zip.extracting_short": "جارِ الاستخراج…",
+    "zip.failed": "تعذّر استخراج الملف المضغوط.",
+    "zip.extract_here": "استخراج هنا",
+    "zip.kept_as_file": "لم يُستخرج، وحُفظ كملف مضغوط:",
+    "zip.question_title": "ملف مضغوط",
+    "zip.question": "اخترت :count ملف مضغوط (zip). هل تريد استخراج محتوياته في مجلد بعد الرفع؟",
+    "zip.upload_only": "رفع فقط",
+    "zip.upload_extract": "رفع واستخراج"
 }

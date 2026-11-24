@@ -26,6 +26,15 @@ return [
     // File extensions that can never be uploaded, regardless of settings.
     'forbidden_extensions' => ['php', 'phtml', 'php3', 'php4', 'php5', 'phar', 'exe', 'sh', 'bat', 'cmd'],
 
+    // Unpacking an uploaded .zip ("استخراج"): limits that stop zip bombs.
+    // Total size of everything unpacked from one archive, the most entries
+    // and folder depth one archive may hold, and the highest packing ratio
+    // (unpacked ÷ packed) accepted for a big archive or a big entry.
+    'zip_max_extracted_mb' => (int) env('FILENEST_ZIP_MAX_EXTRACTED_MB', 4096),
+    'zip_max_entries' => (int) env('FILENEST_ZIP_MAX_ENTRIES', 10000),
+    'zip_max_depth' => 32,
+    'zip_max_ratio' => 200,
+
     // Number of days a trashed file/folder is kept before permanent purge.
     'trash_retention_days' => (int) env('FILENEST_TRASH_RETENTION_DAYS', 30),
 

@@ -45,6 +45,10 @@ function forgetPending(identifier) {
  *    and hands back whichever chunks it already has, so only the missing
  *    ones are re-sent.
  */
+export function isZipName(name) {
+    return /\.zip$/i.test(name ?? '');
+}
+
 export function useChunkedUpload({ onUploaded } = {}) {
     const uploads = reactive([]);
 
@@ -121,12 +125,21 @@ export function useChunkedUpload({ onUploaded } = {}) {
 
             if (entry.status !== 'uploading') return;
 
-            const { data } = await axios.post(route('uploads.finalize'), { identifier: entry.identifier });
+            // A .zip the user asked to unpack is unpacked by finalize itself,
+            // which can take a while for a big archive: say so meanwhile.
+            if (entry.extract) entry.status = 'extracting';
+
+            const { data } = await axios.post(route('uploads.finalize'), {
+                identifier: entry.identifier,
+                extract: entry.extract,
+            });
 
             entry.status = 'done';
             entry.progress = 100;
+            entry.extracted = data.extracted ?? null;
+            entry.extractError = data.extract_error ?? null;
             forgetPending(entry.identifier);
-            onUploaded?.(data.file);
+            onUploaded?.(data.file, data);
         } catch (e) {
             if (entry.status === 'paused' || entry.status === 'cancelled') return;
             entry.status = 'error';
@@ -134,8 +147,11 @@ export function useChunkedUpload({ onUploaded } = {}) {
         }
     }
 
-    function createEntry(file, folderId) {
+    function createEntry(file, folderId, { extract = false } = {}) {
         return reactive({
+            extract: !!extract && isZipName(file.name),
+            extracted: null,
+            extractError: null,
             id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             name: file.name,
             file,
@@ -149,14 +165,15 @@ export function useChunkedUpload({ onUploaded } = {}) {
         });
     }
 
-    function upload(file, folderId) {
-        const entry = createEntry(file, folderId);
+    function upload(file, folderId, options = {}) {
+        const entry = createEntry(file, folderId, options);
         uploads.push(entry);
         return runUpload(entry);
     }
 
-    function uploadMany(files, folderId) {
-        return Promise.all(Array.from(files).map((file) => upload(file, folderId)));
+    /** options.extract: unpack every .zip among [files] once uploaded. */
+    function uploadMany(files, folderId, options = {}) {
+        return Promise.all(Array.from(files).map((file) => upload(file, folderId, options)));
     }
 
     async function createRemoteFolder(name, parentId) {
