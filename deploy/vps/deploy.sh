@@ -20,6 +20,8 @@ if [ ! -f .env ]; then
 fi
 # The office editor's shared secret (added 2026-11-12; existing .env files get one once).
 grep -q '^ONLYOFFICE_JWT_SECRET=.\+' .env || { sed -i '/^ONLYOFFICE_JWT_SECRET=/d' .env; echo "ONLYOFFICE_JWT_SECRET=$(rand 40)" >> .env; echo "Added the office editor secret to .env."; }
+# «مسماري» (2026-11-24): the site's name in e-mails and the built pages (APP_NAME stays, so sessions survive).
+sed -i 's/^MAIL_FROM_NAME="\${APP_NAME}"$/MAIL_FROM_NAME="مسماري"/; s/^VITE_APP_NAME="\${APP_NAME}"$/VITE_APP_NAME="مسماري"/' .env
 mkdir -p public/downloads
 # The web and app containers read this folder as another user, so it must stay world-readable.
 chmod 755 public public/downloads
