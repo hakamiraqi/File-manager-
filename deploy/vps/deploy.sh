@@ -54,7 +54,14 @@ compose restart queue scheduler >/dev/null
 
 # The office editor runs on its own: a failure here is reported, never stops the deploy.
 sudo docker rm -f filenest-onlyoffice >/dev/null 2>&1 || true   # the editor used before 2026-11-14
-compose --profile office up -d office || echo "Office editor did not start; the site works without it." >&2
+# It needs about 4 GB of memory, so small servers skip it (set OFFICE=on in .env to force it).
+mem_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+if [ "$mem_mb" -lt 3500 ] && ! grep -q '^OFFICE=on' .env; then
+    compose --profile office stop office >/dev/null 2>&1 || true
+    echo "Office editor skipped: this server has ${mem_mb} MB of memory."
+else
+    compose --profile office up -d office || echo "Office editor did not start; the site works without it." >&2
+fi
 
 if [ "$first_run" = yes ] || [ ! -f "$HOME/filenest-admin-password.txt" ]; then
     pw="$(rand 16)"

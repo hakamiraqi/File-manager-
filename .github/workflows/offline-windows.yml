@@ -416,7 +416,7 @@ jobs:
       - name: Upload to the VPS (/download)
         env:
           KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
           VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
         run: |
           [ -n "$KEY" ] || { echo "::error::Secret VPS_SSH_KEY is not set."; exit 1; }
@@ -505,7 +505,7 @@ jobs:
       - name: Upload to the VPS (/downloads/FileNestOffice-addon-windows.zip) when it changed
         env:
           KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_HOST: ${{ secrets.VPS_HOST || '193.123.83.82' }}
+          VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
           VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
         run: |
           [ -n "$KEY" ] || { echo "::error::Secret VPS_SSH_KEY is not set."; exit 1; }
