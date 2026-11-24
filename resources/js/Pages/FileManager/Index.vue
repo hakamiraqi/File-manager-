@@ -14,7 +14,8 @@ import PreviewModal from '@/Components/PreviewModal.vue';
 import CoverPicker from '@/Components/CoverPicker.vue';
 import SaveButton from '@/Components/SaveButton.vue';
 import TagInput from '@/Components/TagInput.vue';
-import { useChunkedUpload } from '@/Composables/useChunkedUpload';
+import { useChunkedUpload, isZipName } from '@/Composables/useChunkedUpload';
+import Modal from '@/Components/Modal.vue';
 import { useTrans } from '@/Composables/useTrans';
 import { PhotoIcon, BookOpenIcon, WrenchScrewdriverIcon,
     FolderIcon,
@@ -47,6 +48,7 @@ import { PhotoIcon, BookOpenIcon, WrenchScrewdriverIcon,
     Squares2X2Icon,
     ListBulletIcon,
     CheckIcon,
+    ArchiveBoxArrowDownIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -163,6 +165,55 @@ const {
     onUploaded: () => router.reload({ only: ['folders', 'files'] }),
 });
 
+// Zip files: picked or dropped files that include a .zip first ask whether
+// to unpack them on upload ("رفع واستخراج") or keep them as they are.
+const zipChoice = ref(null); // { files: File[], folderId, zipCount }
+
+function startUpload(fileList, folderId) {
+    const files = Array.from(fileList);
+    const zipCount = files.filter((f) => isZipName(f.name)).length;
+    if (zipCount && can.value.upload !== false) {
+        zipChoice.value = { files, folderId, zipCount };
+        return;
+    }
+    uploadMany(files, folderId);
+}
+
+function resolveZipChoice(extract) {
+    const choice = zipChoice.value;
+    zipChoice.value = null;
+    if (choice) uploadMany(choice.files, choice.folderId, { extract });
+}
+
+// «استخراج هنا» on a zip already uploaded.
+const extracting = ref(null); // file id being unpacked
+const extractNotice = ref(null); // { ok: bool, text }
+
+function extractSummary(x) {
+    let text = t('zip.extracted', 'تم الاستخراج إلى المجلد «:folder» (:files ملف).', { folder: x.folder.name, files: x.files });
+    if (x.skipped_count) text += ' ' + t('zip.skipped', 'تم تخطي :count ملف غير مسموح بنوعه.', { count: x.skipped_count });
+    return text;
+}
+
+async function extractZip(file) {
+    if (extracting.value) return;
+    extracting.value = file.id;
+    extractNotice.value = { ok: true, text: t('zip.extracting', 'جارِ استخراج «:name»…', { name: file.name }) };
+    try {
+        const { data } = await window.axios.post(route('files.extract', file.id), {}, { headers: { Accept: 'application/json' } });
+        extractNotice.value = { ok: true, text: extractSummary(data.extracted) };
+        router.reload({ only: ['folders', 'files'] });
+    } catch (e) {
+        const errors = e.response?.data?.errors;
+        extractNotice.value = {
+            ok: false,
+            text: (errors && Object.values(errors).flat()[0]) || e.response?.data?.message || t('zip.failed', 'تعذّر استخراج الملف المضغوط.'),
+        };
+    } finally {
+        extracting.value = null;
+    }
+}
+
 const resumeFileInput = ref(null);
 const resumeTarget = ref(null);
 
@@ -259,7 +310,7 @@ function formatDate(value) {
 }
 
 function onFilesChosen(event) {
-    uploadMany(event.target.files, props.currentFolder?.id ?? null);
+    startUpload(event.target.files, props.currentFolder?.id ?? null);
     event.target.value = '';
 }
 
@@ -281,7 +332,7 @@ function onContainerDragOver(event) {
 function onDrop(event) {
     dragOver.value = false;
     if (event.dataTransfer.files.length) {
-        uploadMany(event.dataTransfer.files, props.currentFolder?.id ?? null);
+        startUpload(event.dataTransfer.files, props.currentFolder?.id ?? null);
     }
 }
 
@@ -326,7 +377,7 @@ function onDropOnTarget(event, folderId) {
     }
 
     if (event.dataTransfer.files.length) {
-        uploadMany(event.dataTransfer.files, folderId);
+        startUpload(event.dataTransfer.files, folderId);
     }
 }
 
@@ -945,6 +996,9 @@ function uploadFromUrl() {
                                 <DropdownLink v-if="isOfficeFile(file)" :href="route('office.edit', file.id)">
                                     <PencilSquareIcon class="me-2 inline h-4 w-4" /> {{ t('office.open', 'فتح في المحرر') }}
                                 </DropdownLink>
+                                <DropdownLink v-if="can.upload && isZipName(file.name)" as="button" :disabled="!!extracting" @click="extractZip(file)">
+                                    <ArchiveBoxArrowDownIcon class="me-2 inline h-4 w-4" /> {{ t('zip.extract_here', 'استخراج هنا') }}
+                                </DropdownLink>
                                 <DropdownLink v-if="isMediaFile(file)" as="button" @click="playlistTarget = { ...file, type: 'file' }">
                                     <QueueListIcon class="me-2 inline h-4 w-4" /> {{ t('action.add_to_playlist', 'إضافة إلى قائمة تشغيل') }}
                                 </DropdownLink>
@@ -978,6 +1032,7 @@ function uploadFromUrl() {
                     <span class="min-w-0 flex-1 truncate">{{ u.name }}</span>
                     <span class="ms-2 flex shrink-0 items-center gap-1.5">
                         <span v-if="u.status === 'uploading' || u.status === 'paused'">{{ u.progress }}%</span>
+                        <span v-else-if="u.status === 'extracting'" class="text-[var(--accent-600)]">{{ t('zip.extracting_short', 'جارِ الاستخراج…') }}</span>
                         <span v-else-if="u.status === 'done'" class="text-emerald-600 dark:text-emerald-400">{{ t('upload.done', 'تم') }}</span>
                         <span v-else-if="u.status === 'error'" class="text-red-500">{{ t('upload.failed', 'فشل') }}</span>
 
@@ -993,6 +1048,8 @@ function uploadFromUrl() {
                     </span>
                 </div>
                 <p v-if="u.status === 'error'" class="mt-0.5 text-red-500">{{ u.error }}</p>
+                <p v-if="u.extracted" class="mt-0.5 text-emerald-600 dark:text-emerald-400">{{ extractSummary(u.extracted) }}</p>
+                <p v-if="u.extractError" class="mt-0.5 text-amber-600 dark:text-amber-400">{{ t('zip.kept_as_file', 'لم يُستخرج، وحُفظ كملف مضغوط:') }} {{ u.extractError }}</p>
                 <div class="mt-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700">
                     <div
                         class="h-full rounded-full bg-[var(--accent-600)] transition-all"
@@ -1001,6 +1058,41 @@ function uploadFromUrl() {
                     />
                 </div>
             </div>
+        </div>
+
+        <!-- Zip: unpack on upload, or keep as is -->
+        <Modal :show="!!zipChoice" max-width="md" @close="zipChoice = null">
+            <div class="p-6" data-testid="zip-choice">
+                <div class="flex items-center gap-3">
+                    <ArchiveBoxArrowDownIcon class="h-8 w-8 shrink-0 text-[var(--accent-600)]" />
+                    <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ t('zip.question_title', 'ملف مضغوط') }}</h2>
+                </div>
+                <p class="mt-3 text-sm text-gray-600 dark:text-gray-300">
+                    {{ t('zip.question', 'اخترت :count ملف مضغوط (zip). هل تريد استخراج محتوياته في مجلد بعد الرفع؟', { count: zipChoice?.zipCount ?? 0 }) }}
+                </p>
+                <div class="mt-5 flex flex-wrap justify-end gap-2">
+                    <button type="button" class="rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700" @click="zipChoice = null">
+                        {{ t('action.cancel', 'إلغاء') }}
+                    </button>
+                    <button type="button" data-testid="zip-keep" class="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700" @click="resolveZipChoice(false)">
+                        {{ t('zip.upload_only', 'رفع فقط') }}
+                    </button>
+                    <button type="button" data-testid="zip-extract" class="rounded-lg bg-[var(--accent-600)] px-3 py-2 text-sm font-medium text-white hover:opacity-90" @click="resolveZipChoice(true)">
+                        {{ t('zip.upload_extract', 'رفع واستخراج') }}
+                    </button>
+                </div>
+            </div>
+        </Modal>
+
+        <!-- Result of «استخراج هنا» -->
+        <div
+            v-if="extractNotice"
+            class="fixed bottom-4 start-4 z-40 flex max-w-sm items-start gap-2 rounded-xl border bg-white p-3 text-sm shadow-lg dark:bg-gray-800"
+            :class="extractNotice.ok ? 'border-emerald-200 text-gray-700 dark:border-emerald-800 dark:text-gray-200' : 'border-red-200 text-red-600 dark:border-red-800'"
+        >
+            <ArrowPathIcon v-if="extracting" class="mt-0.5 h-4 w-4 shrink-0 animate-spin" />
+            <span class="flex-1">{{ extractNotice.text }}</span>
+            <button v-if="!extracting" class="text-gray-400 hover:text-gray-600" @click="extractNotice = null"><XMarkIcon class="h-4 w-4" /></button>
         </div>
 
         <NewFolderModal :show="newFolderModal" :parent-id="currentFolder?.id ?? null" @close="newFolderModal = false" />

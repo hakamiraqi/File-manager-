@@ -13,6 +13,7 @@ use App\Services\ExtensionFilter;
 use App\Services\NotificationDispatcher;
 use App\Services\StorageQuotaService;
 use App\Services\UniqueNamer;
+use App\Services\ZipExtractor;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -136,10 +137,12 @@ class FileUploadController extends Controller
         ]);
     }
 
-    public function finalize(Request $request, NotificationDispatcher $notifier): JsonResponse
+    public function finalize(Request $request, NotificationDispatcher $notifier, ZipExtractor $extractor): JsonResponse
     {
         $data = $request->validate([
             'identifier' => ['required', 'uuid'],
+            // A .zip the user chose to unpack on upload ("رفع واستخراج").
+            'extract' => ['sometimes', 'boolean'],
         ]);
 
         $session = FileUploadSession::where('user_id', $request->user()->id)
@@ -175,6 +178,26 @@ class FileUploadController extends Controller
 
         $actualSize = filesize($destination);
 
+        // Unpack straight from the joined upload: on success the archive
+        // itself is not kept (and never counts against the quota). If it
+        // cannot be unpacked, it is saved as an ordinary file instead and
+        // the reason is returned, so nothing the user sent is lost.
+        $extractError = null;
+        if (($data['extract'] ?? false) && ZipExtractor::isZip($session->original_name)) {
+            try {
+                $result = $extractor->extract($destination, $session->original_name, $user, $session->folder_id);
+                @unlink($destination);
+                $this->cleanupSession($session);
+
+                ActivityLog::record('file.extracted', "رفع واستخراج الملف المضغوط \"{$session->original_name}\"", $result['folder']);
+                $notifier->uploadOccurred($user, $result['folder']->name);
+
+                return response()->json(['file' => null, 'extracted' => $this->summary($result)]);
+            } catch (ValidationException $e) {
+                $extractError = collect($e->errors())->flatten()->first();
+            }
+        }
+
         try {
             $this->quota->assertHasSpace($user, $actualSize);
         } catch (ValidationException $e) {
@@ -206,7 +229,22 @@ class FileUploadController extends Controller
             TranscodeVideoQualities::dispatch($file->id);
         }
 
-        return response()->json(['file' => $file]);
+        return response()->json(['file' => $file, 'extract_error' => $extractError]);
+    }
+
+    /**
+     * @param  array{folder: Folder, files: int, folders: int, skipped: array<int, string>}  $result
+     * @return array<string, mixed>
+     */
+    public static function summary(array $result): array
+    {
+        return [
+            'folder' => ['id' => $result['folder']->id, 'name' => $result['folder']->name],
+            'files' => $result['files'],
+            'folders' => $result['folders'],
+            'skipped' => array_slice($result['skipped'], 0, 20),
+            'skipped_count' => count($result['skipped']),
+        ];
     }
 
     public function cancel(Request $request): JsonResponse
