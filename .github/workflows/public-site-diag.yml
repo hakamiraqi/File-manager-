@@ -26,6 +26,7 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST || '16.16.76.126' }}
           VPS_USER: ${{ secrets.VPS_USER || 'ubuntu' }}
         run: |
+          ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo docker exec -i filenest-app php" < ops/public-site/enable.php
           ssh -i ~/.ssh/vps_key "$VPS_USER@$VPS_HOST" "sudo docker exec -i filenest-app php" < ops/public-site/diag.php
           curl -s -o /dev/null -w "map for visitors: %{http_code} -> %{redirect_url}\n" https://files.azoclinic.duckdns.org/library/map
           curl -s -o /dev/null -w "theses for visitors: %{http_code} -> %{redirect_url}\n" https://files.azoclinic.duckdns.org/theses
