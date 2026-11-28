@@ -12,6 +12,9 @@ import ShareModal from '@/Components/ShareModal.vue';
 import AddToPlaylistModal from '@/Components/AddToPlaylistModal.vue';
 import PreviewModal from '@/Components/PreviewModal.vue';
 import CoverPicker from '@/Components/CoverPicker.vue';
+import FolderCover from '@/Components/FolderCover.vue';
+import FolderAppearanceModal from '@/Components/FolderAppearanceModal.vue';
+import { accentVars, folderColor, themeByKey } from '@/lib/folderThemes';
 import SaveButton from '@/Components/SaveButton.vue';
 import TagInput from '@/Components/TagInput.vue';
 import { useChunkedUpload, isZipName } from '@/Composables/useChunkedUpload';
@@ -49,6 +52,9 @@ import { PhotoIcon, BookOpenIcon, WrenchScrewdriverIcon,
     ListBulletIcon,
     CheckIcon,
     ArchiveBoxArrowDownIcon,
+    SwatchIcon,
+    TagIcon,
+    ArchiveBoxIcon,
 } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
@@ -58,6 +64,8 @@ const props = defineProps({
     files: Array,
     filters: Object,
     thesisPresets: { type: Object, default: () => ({ departments: [], subjects: [] }) },
+    folderLook: { type: Object, default: null },
+    archiveRules: { type: Array, default: () => [] },
 });
 
 const { t } = useTrans();
@@ -81,6 +89,30 @@ const shareTarget = ref(null);
 const playlistTarget = ref(null);
 const previewFile = ref(null);
 const coverTarget = ref(null);
+
+// ---- Folder look: colour, college theme, logo and cover (inherited from the folders above) ----
+const appearanceTarget = ref(null);
+const look = computed(() => props.folderLook ?? null);
+const lookColor = computed(() => folderColor(look.value));
+const hasLook = computed(() => !!(look.value && (look.value.color || look.value.theme || look.value.logo_url || look.value.cover_url)));
+const pageStyle = computed(() => (lookColor.value ? accentVars(lookColor.value) : {}));
+function editCurrentLook() {
+    appearanceTarget.value = { id: props.currentFolder.id, name: props.currentFolder.name, ...(look.value?.own ?? {}) };
+}
+
+// ---- Archive category of a file (صادر، وارد…), picked by hand or left to the automatic sorting ----
+const archiveTarget = ref(null);
+const archiveSaving = ref(false);
+async function setArchive(file, payload) {
+    archiveSaving.value = true;
+    try {
+        await window.axios.put(route('files.archive', file.id), payload, { headers: { Accept: 'application/json' } });
+        archiveTarget.value = null;
+        router.reload({ only: ['files'] });
+    } finally {
+        archiveSaving.value = false;
+    }
+}
 
 function isMediaFile(file) {
     return /^(video|audio)\//.test(file.mime_type ?? '');
@@ -507,6 +539,7 @@ function uploadFromUrl() {
 
         <div
             class="relative min-h-full p-6"
+            :style="pageStyle"
             @dragover.prevent="onContainerDragOver"
             @dragleave.prevent="dragOver = false"
             @drop.prevent="onDrop"
@@ -557,6 +590,28 @@ function uploadFromUrl() {
                 </div>
             </div>
             <input ref="resumeFileInput" data-testid="resume-file-input" type="file" class="hidden" @change="onResumeFileChosen" />
+
+            <!-- The folder's cover band: its picture or its college theme, with its logo -->
+            <FolderCover
+                v-if="currentFolder && hasLook"
+                class="mb-4"
+                :look="look"
+                :title="currentFolder.name"
+                :subtitle="themeByKey(look.theme)?.name || ''"
+            >
+                <button
+                    v-if="can.rename_folder"
+                    type="button"
+                    data-testid="folder-look-edit"
+                    class="ms-auto flex shrink-0 items-center gap-1 rounded-lg bg-white/20 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-white/30"
+                    @click="editCurrentLook"
+                >
+                    <SwatchIcon class="h-4 w-4" /> {{ t('folder_look.edit', 'تغيير المظهر') }}
+                </button>
+            </FolderCover>
+            <p v-if="currentFolder && hasLook && look.inherited_from && !look.own?.theme && !look.own?.color" class="-mt-2 mb-4 text-xs text-gray-400">
+                {{ t('folder_look.inherited', 'المظهر مأخوذ من المجلد «:name».', { name: look.inherited_from.name }) }}
+            </p>
 
             <!-- Folder info: researcher/supervisor/thesis/publisher/etc. -->
             <div v-if="currentFolder" class="mb-6 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
@@ -756,6 +811,15 @@ function uploadFromUrl() {
                         </DropdownLink>
                     </template>
                 </Dropdown>
+                <button
+                    v-if="currentFolder && can.rename_folder && !hasLook"
+                    type="button"
+                    data-testid="folder-look-open"
+                    @click="editCurrentLook"
+                    class="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                >
+                    <SwatchIcon class="h-5 w-5" /> {{ t('folder_look.title', 'مظهر المجلد') }}
+                </button>
                 <input ref="fileInput" data-testid="upload-file-input" type="file" multiple class="hidden" @change="onFilesChosen" />
                 <input
                     ref="folderInput"
@@ -869,7 +933,20 @@ function uploadFromUrl() {
                     >
                         <CheckIcon v-if="selected.folders.has(folder.id)" class="h-3.5 w-3.5" />
                     </button>
-                    <FolderIcon class="shrink-0 text-amber-400" :class="isList ? 'h-7 w-7' : 'h-12 w-12'" />
+                    <span
+                        v-if="!isList && folderColor(folder)"
+                        class="pointer-events-none absolute inset-x-0 top-0 h-1.5 rounded-t-xl"
+                        :style="{ background: folderColor(folder) }"
+                    />
+                    <span v-if="folder.logo_url" class="relative shrink-0" :class="isList ? 'h-7 w-7' : 'h-12 w-12'">
+                        <img :src="folder.logo_url" alt="" class="h-full w-full rounded-md object-contain" loading="lazy" />
+                    </span>
+                    <FolderIcon
+                        v-else
+                        class="shrink-0"
+                        :class="[isList ? 'h-7 w-7' : 'h-12 w-12', folderColor(folder) ? '' : 'text-amber-400']"
+                        :style="folderColor(folder) ? { color: folderColor(folder) } : null"
+                    />
                     <!-- dir="auto" (2026-11-10, by request): an English name is cut at its end, so its start shows. -->
                     <p class="text-sm font-medium text-gray-700 dark:text-gray-200" :class="isList ? 'min-w-0 flex-1 text-start' : 'mt-2 w-full truncate'" :title="folder.name"><span :class="isList ? 'line-clamp-2 break-words leading-snug' : 'inline-block max-w-full truncate align-bottom'"><bdi>{{ folder.name }}</bdi></span></p>
                     <span v-if="isList" class="hidden shrink-0 text-xs text-gray-400 sm:inline">{{ formatDate(folder.created_at) }}</span>
@@ -894,6 +971,9 @@ function uploadFromUrl() {
                                 </DropdownLink>
                                 <DropdownLink v-if="can.rename_folder" as="button" @click="renameTarget = { ...folder, type: 'folder' }">
                                     <PencilIcon class="me-2 inline h-4 w-4" /> {{ t('action.rename', 'إعادة تسمية') }}
+                                </DropdownLink>
+                                <DropdownLink v-if="can.rename_folder" as="button" @click="appearanceTarget = folder">
+                                    <SwatchIcon class="me-2 inline h-4 w-4" /> {{ t('folder_look.menu', 'المظهر (لون، ثيم، شعار، غلاف)') }}
                                 </DropdownLink>
                                 <DropdownLink v-if="can.move" as="button" @click="moveTarget = { ...folder, type: 'folder' }">
                                     <ArrowsRightLeftIcon class="me-2 inline h-4 w-4" /> {{ t('action.move', 'نقل') }}
@@ -959,6 +1039,14 @@ function uploadFromUrl() {
                         </p>
                         <p v-if="!isList" class="text-xs text-gray-400">{{ file.human_size ?? '' }}</p>
                         <p v-else class="mt-0.5 text-xs text-gray-400 sm:hidden">{{ file.human_size ?? '' }} · {{ formatDate(file.created_at) }}</p>
+                        <span
+                            v-if="file.archive_rule"
+                            class="mt-1 inline-flex max-w-full items-center gap-1 truncate rounded-full px-2 py-0.5 text-[10px] font-medium text-white"
+                            :style="{ background: file.archive_rule.color || '#64748b' }"
+                            :title="[file.archive_ref && (t('archive.ref', 'العدد') + ': ' + file.archive_ref), file.archive_date].filter(Boolean).join(' · ')"
+                        >
+                            <TagIcon class="h-3 w-3 shrink-0" /> {{ file.archive_rule.name }}
+                        </span>
                         <p v-if="file.content_snippet" class="mt-1 line-clamp-2 w-full text-start text-xs text-gray-500 dark:text-gray-400" dir="auto">
                             {{ file.content_snippet }}
                         </p>
@@ -1001,6 +1089,9 @@ function uploadFromUrl() {
                                 </DropdownLink>
                                 <DropdownLink v-if="isMediaFile(file)" as="button" @click="playlistTarget = { ...file, type: 'file' }">
                                     <QueueListIcon class="me-2 inline h-4 w-4" /> {{ t('action.add_to_playlist', 'إضافة إلى قائمة تشغيل') }}
+                                </DropdownLink>
+                                <DropdownLink as="button" @click="archiveTarget = file">
+                                    <ArchiveBoxIcon class="me-2 inline h-4 w-4" /> {{ t('archive.menu', 'تصنيف الأرشفة…') }}
                                 </DropdownLink>
                                 <DropdownLink v-if="can.rename" as="button" @click="renameTarget = { ...file, type: 'file' }">
                                     <PencilIcon class="me-2 inline h-4 w-4" /> {{ t('action.rename', 'إعادة تسمية') }}
@@ -1094,6 +1185,44 @@ function uploadFromUrl() {
             <span class="flex-1">{{ extractNotice.text }}</span>
             <button v-if="!extracting" class="text-gray-400 hover:text-gray-600" @click="extractNotice = null"><XMarkIcon class="h-4 w-4" /></button>
         </div>
+
+        <FolderAppearanceModal :show="!!appearanceTarget" :folder="appearanceTarget" @close="appearanceTarget = null" />
+
+        <!-- Archive category of one file -->
+        <Modal :show="!!archiveTarget" max-width="md" @close="archiveTarget = null">
+            <div v-if="archiveTarget" class="p-5" data-testid="archive-choice">
+                <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ t('archive.menu_title', 'تصنيف الأرشفة') }}</h2>
+                <p class="mt-1 truncate text-sm text-gray-500"><bdi>{{ archiveTarget.name }}</bdi></p>
+                <p v-if="archiveTarget.archive_ref || archiveTarget.archive_date" class="mt-1 text-xs text-gray-500">
+                    <span v-if="archiveTarget.archive_ref">{{ t('archive.ref', 'العدد') }}: <bdi>{{ archiveTarget.archive_ref }}</bdi></span>
+                    <span v-if="archiveTarget.archive_ref && archiveTarget.archive_date"> · </span>
+                    <span v-if="archiveTarget.archive_date">{{ t('archive.date', 'التاريخ') }}: {{ archiveTarget.archive_date }}</span>
+                </p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                    <button
+                        v-for="r in archiveRules"
+                        :key="r.id"
+                        type="button"
+                        :disabled="archiveSaving"
+                        class="flex items-center gap-1.5 rounded-full border px-3 py-1 text-sm"
+                        :class="archiveTarget.archive_rule_id === r.id ? 'border-transparent text-white' : 'border-gray-300 text-gray-700 dark:border-gray-600 dark:text-gray-200'"
+                        :style="archiveTarget.archive_rule_id === r.id ? { background: r.color || '#64748b' } : null"
+                        @click="setArchive(archiveTarget, { rule_id: r.id })"
+                    >
+                        <span class="h-2.5 w-2.5 rounded-full" :style="{ background: r.color || '#64748b' }" /> {{ r.name }}
+                    </button>
+                </div>
+                <div class="mt-5 flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3 text-sm dark:border-gray-700">
+                    <button type="button" :disabled="archiveSaving" class="text-[var(--accent-600)] hover:underline" @click="setArchive(archiveTarget, { auto: true })">
+                        {{ t('archive.auto', 'تصنيف تلقائي حسب النص') }}
+                    </button>
+                    <button type="button" :disabled="archiveSaving" class="text-gray-500 hover:underline" @click="setArchive(archiveTarget, { rule_id: null })">
+                        {{ t('archive.none', 'بلا تصنيف') }}
+                    </button>
+                    <a :href="route('archive.index')" class="ms-auto text-gray-500 hover:underline">{{ t('archive.open', 'فتح الأرشيف') }}</a>
+                </div>
+            </div>
+        </Modal>
 
         <NewFolderModal :show="newFolderModal" :parent-id="currentFolder?.id ?? null" @close="newFolderModal = false" />
         <RenameModal :show="!!renameTarget" :item="renameTarget" @close="renameTarget = null" />

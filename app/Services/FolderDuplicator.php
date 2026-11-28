@@ -22,6 +22,9 @@ class FolderDuplicator
             'name' => UniqueNamer::forFolder($user->id, $targetParentId, $source->name),
             'color' => $source->color,
         ]);
+        if ($source->theme) {
+            $copy->forceFill(['theme' => $source->theme])->save();
+        }
 
         foreach ($source->files()->whereNull('deleted_at')->get() as $file) {
             $this->quota->assertHasSpace($user, $file->size);

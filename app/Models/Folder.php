@@ -20,6 +20,61 @@ class Folder extends Model
 {
     use HasFactory, SoftDeletes;
 
+    protected $appends = ['logo_url', 'cover_url'];
+
+    protected $hidden = ['logo_path', 'cover_path'];
+
+    /** The uploaded logo, versioned by its file name so a new one shows at once. */
+    protected function logoUrl(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(fn () => $this->logo_path
+            ? route('folders.logo', ['folder' => $this->id, 'v' => substr(md5($this->logo_path), 0, 8)]) : null);
+    }
+
+    protected function coverUrl(): \Illuminate\Database\Eloquent\Casts\Attribute
+    {
+        return \Illuminate\Database\Eloquent\Casts\Attribute::get(fn () => $this->cover_path
+            ? route('folders.cover', ['folder' => $this->id, 'v' => substr(md5($this->cover_path), 0, 8)]) : null);
+    }
+
+    /**
+     * How this folder looks: each part (colour, theme, logo, cover) comes from the folder itself or
+     * the nearest folder above it that has one, so a college folder dresses everything inside it.
+     *
+     * @param  array<int, Folder>|null  $trail  root first, ending with this folder
+     */
+    public function effectiveLook(?array $trail = null): array
+    {
+        $trail = array_reverse($trail ?? $this->breadcrumbs());
+        $pick = function (string $attr) use ($trail) {
+            foreach ($trail as $node) {
+                if (filled($node->{$attr})) {
+                    return $node;
+                }
+            }
+
+            return null;
+        };
+        $color = $pick('color');
+        $theme = $pick('theme');
+        $logo = $pick('logo_path');
+        $cover = $pick('cover_path');
+
+        return [
+            'color' => $color?->color,
+            'theme' => $theme?->theme,
+            'logo_url' => $logo?->logo_url,
+            'cover_url' => $cover?->cover_url,
+            // Where the look comes from, when it is a folder above (shown as «من مجلد …»).
+            'inherited_from' => collect([$color, $theme, $logo, $cover])->filter()
+                ->first(fn ($n) => $n->id !== $this->id)?->only(['id', 'name']),
+            'own' => [
+                'color' => $this->color, 'theme' => $this->theme,
+                'logo_url' => $this->logo_url, 'cover_url' => $this->cover_url,
+            ],
+        ];
+    }
+
     public const DEGREES = ['diploma', 'master', 'phd'];
 
     public const LANGUAGES = ['ar', 'en', 'ku', 'other'];

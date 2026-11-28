@@ -29,6 +29,9 @@ class File extends Model
             'cover_checked_at' => 'datetime',
             'video_checked_at' => 'datetime',
             'video_height' => 'integer',
+            'archive_date' => 'date:Y-m-d',
+            'archive_manual' => 'boolean',
+            'archive_classified_at' => 'datetime',
         ];
     }
 
@@ -182,6 +185,12 @@ class File extends Model
     {
         return $this->isImage() || $this->isVideo() || $this->isPdf()
             || in_array($this->mime_type, ['text/plain', 'text/csv', 'application/json'], true);
+    }
+
+    /** The archive category the file was sorted into (صادر، وارد…). */
+    public function archiveRule(): BelongsTo
+    {
+        return $this->belongsTo(ArchiveRule::class);
     }
 
     public function disk()

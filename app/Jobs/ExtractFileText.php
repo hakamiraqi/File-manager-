@@ -40,5 +40,9 @@ class ExtractFileText implements ShouldQueue
             'content_text' => $text,
             'content_indexed_at' => now(),
         ])->save();
+
+        if ($text !== null && trim((string) $text) !== '') {
+            app(\App\Services\Archive\ArchiveClassifier::class)->classify($file);
+        }
     }
 }
