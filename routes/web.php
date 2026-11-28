@@ -41,7 +41,22 @@ Route::middleware(['auth', 'verified', 'can:manage-contact'])->group(function ()
 Route::get('/theses', [\App\Http\Controllers\ThesisController::class, 'index'])->name('theses.index');
 Route::get('/oai', \App\Http\Controllers\OaiController::class)->middleware('throttle:60,1')->name('oai');
 
+// A folder's logo and cover: for those who can open it, and for visitors on a public folder.
+Route::get('/folders/{folder}/logo', [\App\Http\Controllers\FolderAppearanceController::class, 'logo'])->name('folders.logo');
+Route::get('/folders/{folder}/cover', [\App\Http\Controllers\FolderAppearanceController::class, 'cover'])->name('folders.cover');
+
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('/folders/{folder}/appearance', [\App\Http\Controllers\FolderAppearanceController::class, 'update'])->name('folders.appearance');
+
+    // The archive: files sorted by the words in their text (صادر، وارد…).
+    Route::get('/archive', [\App\Http\Controllers\ArchiveController::class, 'index'])->name('archive.index');
+    Route::put('/files/{file}/archive', [\App\Http\Controllers\ArchiveController::class, 'setCategory'])->name('files.archive');
+    Route::post('/archive/rules', [\App\Http\Controllers\ArchiveController::class, 'storeRule'])->name('archive.rules.store');
+    Route::put('/archive/rules/{rule}', [\App\Http\Controllers\ArchiveController::class, 'updateRule'])->name('archive.rules.update');
+    Route::delete('/archive/rules/{rule}', [\App\Http\Controllers\ArchiveController::class, 'destroyRule'])->name('archive.rules.destroy');
+    Route::post('/archive/test', [\App\Http\Controllers\ArchiveController::class, 'test'])->middleware('throttle:60,1')->name('archive.test');
+    Route::post('/archive/reclassify', [\App\Http\Controllers\ArchiveController::class, 'reclassify'])->name('archive.reclassify');
+
     Route::get('/theses/similar', [\App\Http\Controllers\ThesisController::class, 'similar'])->name('theses.similar');
     Route::get('/theses/export', [\App\Http\Controllers\ThesisController::class, 'export'])->name('theses.export');
     Route::get('/theses/template', [\App\Http\Controllers\ThesisController::class, 'template'])->name('theses.template');

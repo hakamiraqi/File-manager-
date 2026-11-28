@@ -43,7 +43,7 @@ class FileManagerController extends Controller
             ->when($search !== '', fn ($q) => $q->where('user_id', $user->id)->where('name', 'like', "%{$search}%"));
 
         $filesQuery = File::query()
-            ->with('qualities')
+            ->with(['qualities', 'archiveRule:id,name,color'])
             ->whereNull('deleted_at')
             ->when($search === '' && $currentFolder, fn ($q) => $q->where('folder_id', $currentFolder->id))
             ->when($search === '' && ! $currentFolder, fn ($q) => $q->where('user_id', $user->id)->whereNull('folder_id'))
@@ -65,6 +65,9 @@ class FileManagerController extends Controller
         return Inertia::render('FileManager/Index', [
             'currentFolder' => $currentFolder,
             'breadcrumbs' => $currentFolder?->breadcrumbsFor($user) ?? [],
+            // Only folders the user may open lend their look (an assigned folder's parent stays private).
+            'folderLook' => $currentFolder?->effectiveLook($currentFolder->breadcrumbsFor($user)),
+            'archiveRules' => \App\Models\ArchiveRule::where('enabled', true)->orderByDesc('priority')->orderBy('name')->get(['id', 'name', 'color']),
             'assignedFolderIds' => $assignedIds,
             'thesisPresets' => app(\App\Services\Theses\ThesisCatalog::class)->presets(),
             'folders' => $folders,

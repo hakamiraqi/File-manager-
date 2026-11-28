@@ -33,6 +33,11 @@ class LoadMonitor
     {
         $maxCpu = OcrSettings::int('ocr_max_cpu');
         $minRam = OcrSettings::int('ocr_min_ram_mb');
+        // On a small server (2 GB) the 1.5 GB default could never be free, so OCR never ran.
+        // Ask for at most a third of the computer's memory.
+        if ($minRam > 0 && ($total = $this->totalRamMb()) !== null) {
+            $minRam = min($minRam, intdiv($total, 3));
+        }
         $minDisk = OcrSettings::int('ocr_min_disk_gb');
         $maxUsers = OcrSettings::int('ocr_max_users');
 
@@ -65,6 +70,16 @@ class LoadMonitor
         }
 
         return null;
+    }
+
+    protected function totalRamMb(): ?int
+    {
+        if (PHP_OS_FAMILY !== 'Linux') {
+            return null;
+        }
+        $info = @file_get_contents('/proc/meminfo');
+
+        return $info && preg_match('/^MemTotal:\s+(\d+)\s+kB/m', $info, $m) ? intdiv((int) $m[1], 1024) : null;
     }
 
     /** @return array{0: float|null, 1: int|null} */

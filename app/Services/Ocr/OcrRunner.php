@@ -137,6 +137,15 @@ class OcrRunner
                 'ocr_seconds' => (int) round(microtime(true) - $started),
                 'ocr_done_at' => now(),
             ])->save();
+
+            // The archive sorts the scan by its recognised words (صادر، وارد…) as soon as it has them.
+            if ($merged !== null) {
+                try {
+                    app(\App\Services\Archive\ArchiveClassifier::class)->classify($file);
+                } catch (Throwable $e) {
+                    Log::warning("Archive sorting failed for file {$file->id}: {$e->getMessage()}");
+                }
+            }
         } catch (Throwable $e) {
             $attempts = $file->ocr_attempts + 1;
             $file->forceFill([
